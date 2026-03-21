@@ -38,7 +38,7 @@ export function CatalogButton() {
   useEffect(() => { fetchCatalogs(); }, []);
 
   const handleDownload = async (catalog: Catalog) => {
-    const { data } = await supabase.storage.from("manuals").createSignedUrl(catalog.file_path, 300);
+    const { data } = await supabase.storage.from("manuais").createSignedUrl(catalog.file_path, 300);
     if (data?.signedUrl) window.open(data.signedUrl, "_blank");
   };
 
@@ -51,7 +51,7 @@ export function CatalogButton() {
     try {
       const filePath = `catalog_${Date.now()}_${file.name}`;
       const { error: uploadErr } = await supabase.storage
-        .from("manuals")
+        .from("manuais")
         .upload(filePath, file, { contentType: "application/pdf" });
       if (uploadErr) throw uploadErr;
 
@@ -77,7 +77,7 @@ export function CatalogButton() {
 
   const handleDelete = async (catalog: Catalog) => {
     if (!confirm(`Remover "${catalog.title}"?`)) return;
-    await supabase.storage.from("manuals").remove([catalog.file_path]);
+    await supabase.storage.from("manuais").remove([catalog.file_path]);
     await supabase.from("catalogs").delete().eq("id", catalog.id);
     toast.success("Catálogo removido");
     fetchCatalogs();
