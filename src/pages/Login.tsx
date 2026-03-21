@@ -35,7 +35,7 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      const redirectTo = "https://conceptusinagensespeciais.vercel.app";
+      const redirectTo = "https://conceptusinagensespeciais-lac.vercel.app";
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
