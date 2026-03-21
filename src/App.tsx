@@ -18,21 +18,9 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, approved, isAdmin, signOut } = useAuth();
+  const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (!isAdmin && approved === false) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-4">
-        <div className="text-center space-y-4 max-w-md">
-          <div className="text-5xl">⏳</div>
-          <h1 className="text-xl font-semibold text-foreground">Conta pendente de aprovação</h1>
-          <p className="text-sm text-muted-foreground">Sua conta foi criada com sucesso, mas precisa ser aprovada por um administrador antes de acessar o sistema.</p>
-          <button onClick={signOut} className="text-sm text-primary hover:underline">Sair</button>
-        </div>
-      </div>
-    );
-  }
   return <>{children}</>;
 }
 
