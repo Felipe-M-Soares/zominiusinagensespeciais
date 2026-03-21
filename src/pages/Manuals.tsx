@@ -52,7 +52,7 @@ export default function Manuals() {
     try {
       const filePath = `${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage
-        .from("manuals")
+        .from("manuais")
         .upload(filePath, file, { contentType: "application/pdf" });
 
       if (uploadError) throw uploadError;
@@ -82,14 +82,14 @@ export default function Manuals() {
 
   const handleDelete = async (manual: Manual) => {
     if (!confirm(`Excluir "${manual.title}"?`)) return;
-    await supabase.storage.from("manuals").remove([manual.file_path]);
+    await supabase.storage.from("manuais").remove([manual.file_path]);
     await supabase.from("manuals").delete().eq("id", manual.id);
     toast.success("Manual excluído");
     fetchManuals();
   };
 
   const getDownloadUrl = async (filePath: string) => {
-    const { data } = await supabase.storage.from("manuals").createSignedUrl(filePath, 300);
+    const { data } = await supabase.storage.from("manuais").createSignedUrl(filePath, 300);
     return data?.signedUrl ?? '';
   };
 
