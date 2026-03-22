@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ShieldCheck, User, Trash2, KeyRound, CheckCircle, XCircle } from "lucide-react";
+import { Trash2, KeyRound, CheckCircle, XCircle } from "lucide-react";
 
 interface UserProfile {
   user_id: string;
@@ -42,7 +42,6 @@ export function AdminUsers() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { user: currentUser } = useAuth();
 
-  // Password reset state
   const [passwordDialog, setPasswordDialog] = useState<UserProfile | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -74,7 +73,7 @@ export function AdminUsers() {
       .from("user_roles")
       .update({ role: newRole })
       .eq("user_id", userId);
-    if (error) { console.error("Role change error:", error); toast.error("Erro ao alterar função."); }
+    if (error) { toast.error("Erro ao alterar função."); }
     else { toast.success("Função atualizada"); fetchUsers(); }
   };
 
@@ -95,24 +94,21 @@ export function AdminUsers() {
     }
     setResettingPassword(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { toast.error("Sessão expirada"); return; }
-
-      const res = await supabase.functions.invoke("admin-reset-password", {
-        body: { target_user_id: passwordDialog.user_id, new_password: newPassword },
-        headers: { Authorization: `Bearer ${session.access_token}` },
+      const { error } = await supabase.rpc("reset_user_password" as any, {
+        target_user_id: passwordDialog.user_id,
+        new_password: newPassword,
       });
 
-      if (res.error) {
-        console.error("Password reset error:", res.error);
-        toast.error("Erro ao redefinir senha.");
+      if (error) {
+        console.error("Password reset error:", error);
+        toast.error("Erro ao redefinir senha: " + error.message);
       } else {
-        toast.success(`Senha de ${passwordDialog.display_name || passwordDialog.email} alterada com sucesso`);
+        toast.success(`Senha de ${passwordDialog.display_name || passwordDialog.email} alterada`);
         setPasswordDialog(null);
         setNewPassword("");
       }
-    } catch {
-      toast.error("Erro inesperado ao redefinir senha");
+    } catch (err: any) {
+      toast.error("Erro inesperado: " + err.message);
     } finally {
       setResettingPassword(false);
     }
@@ -121,23 +117,19 @@ export function AdminUsers() {
   const deleteUser = async (userId: string) => {
     setDeletingId(userId);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { toast.error("Sessão expirada"); return; }
-
-      const res = await supabase.functions.invoke("delete-account", {
-        body: { target_user_id: userId },
-        headers: { Authorization: `Bearer ${session.access_token}` },
+      const { error } = await supabase.rpc("delete_user" as any, {
+        target_user_id: userId,
       });
 
-      if (res.error) {
-        console.error("Delete user error:", res.error);
-        toast.error("Erro ao excluir conta.");
+      if (error) {
+        console.error("Delete user error:", error);
+        toast.error("Erro ao excluir conta: " + error.message);
       } else {
         toast.success("Conta excluída com sucesso");
         fetchUsers();
       }
-    } catch {
-      toast.error("Erro inesperado ao excluir conta");
+    } catch (err: any) {
+      toast.error("Erro inesperado: " + err.message);
     } finally {
       setDeletingId(null);
     }
