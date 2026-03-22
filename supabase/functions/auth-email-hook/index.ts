@@ -134,7 +134,6 @@ async function handleWebhook(req: Request): Promise<Response> {
   const signature = req.headers.get('webhook-signature') ?? ''
 
   console.log('Webhook headers:', { webhookId, timestamp, hasSignature: !!signature })
-  console.log('Full payload:', JSON.stringify(payload))
 
   if (!webhookId || !timestamp || !signature) {
     console.error('Missing Standard Webhooks headers', { webhookId, timestamp, hasSignature: !!signature })
@@ -166,6 +165,7 @@ async function handleWebhook(req: Request): Promise<Response> {
   let payload: any
   try {
     payload = JSON.parse(body)
+    console.log('Full payload:', JSON.stringify(payload).slice(0, 500))
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON payload' }), {
       status: 400,
