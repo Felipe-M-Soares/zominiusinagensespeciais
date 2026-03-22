@@ -9,6 +9,19 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+function decodeJWT(token: string): Record<string, any> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = parts[1];
+    const padded = payload + "=".repeat((4 - payload.length % 4) % 4);
+    const decoded = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -23,35 +36,44 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Não autenticado" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    // Use service role to verify token
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user: caller }, error: userError } = await adminClient.auth.getUser(token);
+    const payload = decodeJWT(token);
 
-    if (userError || !caller) {
-      console.error("Token error:", userError?.message);
+    if (!payload || !payload.sub) {
+      console.error("Invalid JWT payload:", payload);
       return new Response(JSON.stringify({ error: "Token inválido" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return new Response(JSON.stringify({ error: "Token expirado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const callerId = payload.sub as string;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
     // Check admin role
-    const { data: roleData } = await adminClient
+    const { data: roleData, error: roleError } = await adminClient
       .from("user_roles")
       .select("role")
-      .eq("user_id", caller.id)
+      .eq("user_id", callerId)
       .maybeSingle();
+
+    console.log("Caller ID:", callerId, "Role:", roleData?.role, "Error:", roleError?.message);
 
     if (roleData?.role !== "admin") {
       return new Response(
@@ -86,7 +108,7 @@ serve(async (req) => {
       });
     }
 
-    if (target_user_id === caller.id) {
+    if (target_user_id === callerId) {
       return new Response(
         JSON.stringify({ error: "Use o fluxo padrão para alterar sua própria senha" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
