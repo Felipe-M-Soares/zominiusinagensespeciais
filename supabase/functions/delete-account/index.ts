@@ -35,17 +35,16 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     // Verify caller token server-side
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user: caller }, error: userError } = await userClient.auth.getUser();
-    if (userError || !caller) {
-      return new Response(JSON.stringify({ error: "Token inválido" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
+    const adminClient2 = createClient(supabaseUrl, serviceRoleKey);
+const { data: { user: caller }, error: userError } = await adminClient2.auth.getUser(
+  authHeader.replace('Bearer ', '')
+);
+if (userError || !caller) {
+  return new Response(JSON.stringify({ error: "Token inválido" }), {
+    status: 401,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
     let body: Record<string, unknown> = {};
     try {
       body = await req.json();
