@@ -176,7 +176,7 @@ async function handleWebhook(req: Request): Promise<Response> {
   console.log('Webhook payload keys:', Object.keys(payload))
 
   const emailType = payload.email_data?.email_action_type ?? payload.type ?? payload.action_type
-  const recipientEmail = payload.email_data?.email ?? payload.email
+  const recipientEmail = payload.user?.email ?? payload.email_data?.email ?? payload.email
   const confirmationUrl = payload.email_data?.token_hash
     ? `https://${ROOT_DOMAIN}/auth/confirm?token_hash=${payload.email_data.token_hash}&type=${emailType}`
     : payload.email_data?.redirect_to ?? `https://${ROOT_DOMAIN}`
