@@ -27,6 +27,47 @@ interface AuthContext {
 
 const AuthContext = createContext<AuthContext | null>(null);
 
+function translateError(message: string): string {
+  const errors: Record<string, string> = {
+    "Invalid login credentials": "Email ou senha incorretos.",
+    "Invalid email or password": "Email ou senha incorretos.",
+    "Email not confirmed": "Confirme seu email antes de entrar. Verifique sua caixa de entrada.",
+    "User already registered": "Este email já está cadastrado.",
+    "Email already registered": "Este email já está cadastrado.",
+    "Email already in use": "Este email já está em uso.",
+    "Password should be at least 6 characters": "A senha deve ter no mínimo 6 caracteres.",
+    "Password should be at least 8 characters": "A senha deve ter no mínimo 8 caracteres.",
+    "Signup requires a valid password": "Informe uma senha válida.",
+    "Unable to validate email address: invalid format": "Formato de email inválido.",
+    "Invalid email": "Email inválido.",
+    "Email link is invalid or has expired": "O link expirou ou é inválido. Solicite um novo.",
+    "Token has expired or is invalid": "O link expirou. Solicite um novo.",
+    "User not found": "Usuário não encontrado.",
+    "Too many requests": "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+    "Email rate limit exceeded": "Limite de emails atingido. Tente novamente em alguns minutos.",
+    "over_email_send_rate_limit": "Limite de emails atingido. Aguarde alguns minutos.",
+    "For security purposes, you can only request this after": "Por segurança, aguarde antes de solicitar novamente.",
+    "Session expired": "Sua sessão expirou. Faça login novamente.",
+    "User is not authorized": "Sem permissão para realizar esta ação.",
+    "New password should be different from the old password": "A nova senha deve ser diferente da atual.",
+    "Auth session missing": "Sessão não encontrada. Faça login novamente.",
+    "signup_disabled": "Novos cadastros estão desativados no momento.",
+    "email_not_confirmed": "Confirme seu email antes de entrar.",
+    "invalid_credentials": "Email ou senha incorretos.",
+  };
+
+  // Check exact match
+  if (errors[message]) return errors[message];
+
+  // Check partial match
+  for (const [key, value] of Object.entries(errors)) {
+    if (message.toLowerCase().includes(key.toLowerCase())) return value;
+  }
+
+  // Return original if no translation found
+  return message;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -58,7 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -68,14 +108,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        // Use setTimeout to avoid Supabase deadlock on auth callbacks
         setTimeout(() => fetchRoleAndApproval(session.user.id), 0);
       } else {
         setRole(null);
@@ -89,7 +127,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<{ error: string | null }> => {
-      // Basic input sanitization
       const cleanEmail = email.trim().toLowerCase();
       if (!cleanEmail || !password) {
         return { error: "Email e senha são obrigatórios." };
@@ -98,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: cleanEmail,
         password,
       });
-      return { error: error?.message ?? null };
+      return { error: error ? translateError(error.message) : null };
     },
     []
   );
@@ -127,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           emailRedirectTo: window.location.origin,
         },
       });
-      return { error: error?.message ?? null };
+      return { error: error ? translateError(error.message) : null };
     },
     []
   );
