@@ -134,6 +134,7 @@ async function handleWebhook(req: Request): Promise<Response> {
   const signature = req.headers.get('webhook-signature') ?? ''
 
   console.log('Webhook headers:', { webhookId, timestamp, hasSignature: !!signature })
+  console.log('Full payload:', JSON.stringify(payload))
 
   if (!webhookId || !timestamp || !signature) {
     console.error('Missing Standard Webhooks headers', { webhookId, timestamp, hasSignature: !!signature })
