@@ -27,6 +27,16 @@ import { Toaster } from "@/components/ui/toaster";
     return <>{children}</>;
   }
 
+  // FIX: Rota /pending-approval precisa de proteção — usuário sem login não deve acessá-la.
+  // Também evita que usuário já aprovado fique preso nessa página.
+  function PendingApprovalRoute() {
+    const { user, loading, approved } = useAuth();
+    if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+    if (!user) return <Navigate to="/login" replace />;
+    if (approved === true) return <Navigate to="/" replace />;
+    return <PendingApproval />;
+  }
+
   function AdminRoute({ children }: { children: React.ReactNode }) {
     const { user, loading, isAdmin, approved } = useAuth();
     if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
@@ -36,8 +46,12 @@ import { Toaster } from "@/components/ui/toaster";
   }
 
   function PublicOnly({ children }: { children: React.ReactNode }) {
-    const { user, loading } = useAuth();
+    const { user, loading, approved } = useAuth();
     if (loading) return null;
+    // FIX: Se o usuário está logado mas não aprovado, redireciona para pending-approval
+    // Sem esta checagem, o fluxo era: /login → PublicOnly redireciona para / →
+    // ProtectedRoute redireciona para /pending-approval → usuário tenta /login de novo → loop infinito
+    if (user && approved === false) return <Navigate to="/pending-approval" replace />;
     if (user) return <Navigate to="/" replace />;
     return <>{children}</>;
   }
@@ -54,7 +68,7 @@ import { Toaster } from "@/components/ui/toaster";
               <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
               <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
               <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/pending-approval" element={<PendingApproval />} />
+              <Route path="/pending-approval" element={<PendingApprovalRoute />} />
               <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
               <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />

@@ -93,9 +93,11 @@ export function useFilteredDevices(
           d.internal_code.includes(q) ||
           d.anvisa_registration.includes(q) ||
           d.primary_material.toLowerCase().includes(q) ||
-          d.exocad_compatibility.toLowerCase().includes(q) ||
-          d.brand_name.toLowerCase().includes(q) ||
-          d.body_region.toLowerCase().includes(q);
+          // FIX: estes campos podem ser null vindo do banco — sem ?. causaria TypeError
+          // quebrando toda a pesquisa silenciosamente
+          (d.exocad_compatibility?.toLowerCase() ?? "").includes(q) ||
+          (d.brand_name?.toLowerCase() ?? "").includes(q) ||
+          (d.body_region?.toLowerCase() ?? "").includes(q);
         if (!matchesSearch) return false;
       }
       if (deferredFilters.material && d.primary_material !== deferredFilters.material) return false;

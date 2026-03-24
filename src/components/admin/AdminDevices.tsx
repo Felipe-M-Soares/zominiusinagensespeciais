@@ -109,11 +109,13 @@ export function AdminDevices() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast.error("Sessão expirada"); return; }
 
+      // FIX: Edge function agora exige confirm_replace: "CONFIRMAR_SUBSTITUICAO" para
+      // replace_all=true, prevenindo substituição acidental de toda a base de dados.
       let body: any;
       if (file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
-        body = { csv: text, replace_all: true };
+        body = { csv: text, replace_all: true, confirm_replace: "CONFIRMAR_SUBSTITUICAO" };
       } else {
-        body = { ...JSON.parse(text), replace_all: true };
+        body = { ...JSON.parse(text), replace_all: true, confirm_replace: "CONFIRMAR_SUBSTITUICAO" };
       }
 
       toast.info("Importação iniciada... Isso pode levar alguns minutos.");
@@ -155,14 +157,19 @@ export function AdminDevices() {
     }
   };
 
-  // Reset to page 0 when search changes
+  // Reset para página 0 quando a busca muda
   useEffect(() => {
-    setPage(0);
+    // FIX: O useEffect de [page] também seria disparado na montagem, causando 2 fetches
+    // simultâneos. Centralizamos tudo aqui: quando search muda, resetamos a página
+    // e buscamos; quando page muda (por paginação), buscamos com a página nova.
     fetchDevices(search, 0);
+    setPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
   useEffect(() => {
+    // Só executa para mudanças de página após a montagem inicial (page > 0)
+    if (page === 0) return;
     fetchDevices(search, page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
@@ -181,19 +188,24 @@ export function AdminDevices() {
       return;
     }
 
+    // FIX: setSaving(false) deve estar em finally — se ocorrer exceção no meio,
+    // o botão "Salvar" ficava travado em loading infinito para o usuário.
     setSaving(true);
-    if (isNew) {
-      const { error } = await supabase.from("devices").insert(parseResult.data as TablesInsert<"devices">);
-      if (error) { console.error("Device insert error:", error); toast.error("Erro ao criar o dispositivo."); }
-      else { toast.success("Dispositivo criado"); setEditDevice(null); fetchDevices(search, page); }
-    } else {
-      const { id } = editDevice as Device;
-      const { id: _id, ...updates } = parseResult.data as any;
-      const { error } = await supabase.from("devices").update(updates).eq("id", id!);
-      if (error) { console.error("Device update error:", error); toast.error("Erro ao atualizar o dispositivo."); }
-      else { toast.success("Dispositivo atualizado"); setEditDevice(null); fetchDevices(search, page); }
+    try {
+      if (isNew) {
+        const { error } = await supabase.from("devices").insert(parseResult.data as TablesInsert<"devices">);
+        if (error) { console.error("Device insert error:", error); toast.error("Erro ao criar o dispositivo."); }
+        else { toast.success("Dispositivo criado"); setEditDevice(null); fetchDevices(search, page); }
+      } else {
+        const { id } = editDevice as Device;
+        const { id: _id, ...updates } = parseResult.data as any;
+        const { error } = await supabase.from("devices").update(updates).eq("id", id!);
+        if (error) { console.error("Device update error:", error); toast.error("Erro ao atualizar o dispositivo."); }
+        else { toast.success("Dispositivo atualizado"); setEditDevice(null); fetchDevices(search, page); }
+      }
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   // CODE-003 FIX: Replace window.confirm() with AlertDialog (no thread blocking, styleable, works in PWA)

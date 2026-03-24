@@ -14,6 +14,26 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Concept" />
     <meta name="robots" content="noindex, nofollow" />
+    <!-- PERF-004 FIX: preconnect reduz latência ao carregar fontes do Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- SEC-002 FIX: Content Security Policy — restringe origens de scripts/estilos/conexões.
+         Previne XSS, injeção de scripts externos e exfiltração de dados.
+         'unsafe-inline' em style-src é necessário para Tailwind/shadcn runtime styles. -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline';
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      img-src 'self' data: blob: https:;
+      connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fonts.googleapis.com;
+      frame-ancestors 'none';
+      base-uri 'self';
+      form-action 'self';
+    " />
+    <!-- SEC-003 FIX: Headers de segurança adicionais via meta (complementar ao Vercel headers config) -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
     <title>Concept Usinagens Especiais</title>
     <meta name="description" content="Base de dados de dispositivos dentários - Conformidade ANVISA" />
     <meta name="author" content="Concept Usinagens Especiais" />

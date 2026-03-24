@@ -78,34 +78,39 @@ import { useState, useEffect } from "react";
         toast.error("Preencha nome e contato");
         return;
       }
+      // FIX: try/finally garante que setSaving(false) sempre é chamado,
+      // mesmo se o Supabase lançar uma exceção inesperada.
       setSaving(true);
-      if (editingContact) {
-        const { error } = await supabase
-          .from("contacts")
-          .update({ name: name.trim(), contact: contact.trim(), location: location.trim() })
-          .eq("id", editingContact.id);
-        if (error) {
-          toast.error("Erro ao atualizar contato");
+      try {
+        if (editingContact) {
+          const { error } = await supabase
+            .from("contacts")
+            .update({ name: name.trim(), contact: contact.trim(), location: location.trim() })
+            .eq("id", editingContact.id);
+          if (error) {
+            toast.error("Erro ao atualizar contato");
+          } else {
+            toast.success("Contato atualizado");
+            setDialogOpen(false);
+            fetchContacts();
+          }
         } else {
-          toast.success("Contato atualizado");
-          setDialogOpen(false);
-          fetchContacts();
+          const { error } = await supabase.from("contacts").insert({
+            name: name.trim(),
+            contact: contact.trim(),
+            location: location.trim(),
+          } as any);
+          if (error) {
+            toast.error("Erro ao adicionar contato");
+          } else {
+            toast.success("Contato adicionado");
+            setDialogOpen(false);
+            fetchContacts();
+          }
         }
-      } else {
-        const { error } = await supabase.from("contacts").insert({
-          name: name.trim(),
-          contact: contact.trim(),
-          location: location.trim(),
-        } as any);
-        if (error) {
-          toast.error("Erro ao adicionar contato");
-        } else {
-          toast.success("Contato adicionado");
-          setDialogOpen(false);
-          fetchContacts();
-        }
+      } finally {
+        setSaving(false);
       }
-      setSaving(false);
     };
 
     const handleDeleteConfirm = async () => {

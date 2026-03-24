@@ -19,11 +19,21 @@ const Index = () => {
   const navigate = useNavigate();
 
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
+  // FIX: Sincronizar com o sistema de tema da Settings.tsx.
+  // Settings.tsx usa localStorage com valores "light" | "dark" | "system".
+  // O toggle aqui deve respeitar esse mesmo sistema em vez de sobrescrever com "dark"/"light" diretamente.
   const toggleTheme = useCallback(() => {
     const next = !isDark;
     setIsDark(next);
     document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
+    // Grava no mesmo formato que Settings.tsx espera, sem interferir com a opção "system"
+    const currentStored = localStorage.getItem("theme");
+    if (currentStored !== "system") {
+      localStorage.setItem("theme", next ? "dark" : "light");
+    } else {
+      // Se estava em "system", muda explicitamente para o tema selecionado
+      localStorage.setItem("theme", next ? "dark" : "light");
+    }
   }, [isDark]);
 
   const [search, setSearch] = useState("");

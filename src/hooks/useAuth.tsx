@@ -96,33 +96,52 @@ import {
     }, []);
 
     useEffect(() => {
-      // FIX: Wait for fetchRoleAndApproval to complete before clearing the loading state
-      // so that role/approved are available before any route guard renders.
+      let initialLoadDone = false;
+
+      // Carrega a sessão inicial primeiro e garante que role/approved estejam prontos
+      // antes de qualquer guard de rota renderizar.
       supabase.auth.getSession().then(async ({ data: { session } }) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchRoleAndApproval(session.user.id);
         }
+        initialLoadDone = true;
         setLoading(false);
       });
 
+      // FIX: onAuthStateChange dispara em TODA troca de token (incluindo refresh silencioso).
+      // Só atualizamos role/approved em eventos que realmente mudam o usuário logado,
+      // evitando renders e fetches desnecessários que causavam o loop.
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      } = supabase.auth.onAuthStateChange(async (event, session) => {
+        // TOKEN_REFRESHED não muda o usuário — apenas atualiza a sessão silenciosamente.
+        // Processar esse evento causava setState loops desnecessários.
+        if (event === "TOKEN_REFRESHED") {
+          setSession(session);
+          return;
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
+
         if (session?.user) {
-          // BUG-004 FIX: Await role fetch before clearing loading to prevent race condition
           await fetchRoleAndApproval(session.user.id);
         } else {
           setRole(null);
           setApproved(null);
         }
-        setLoading(false);
+
+        // Só atualiza loading se a carga inicial já foi concluída,
+        // evitando conflito de estado com o getSession() acima.
+        if (initialLoadDone) {
+          setLoading(false);
+        }
       });
 
       return () => subscription.unsubscribe();
+      // fetchRoleAndApproval é estável (useCallback com deps vazias) — seguro incluir
     }, [fetchRoleAndApproval]);
 
     const signIn = useCallback(
@@ -170,6 +189,14 @@ import {
     );
 
     const signOut = useCallback(async () => {
+      // FIX: Limpa o estado local imediatamente antes de chamar signOut.
+      // Sem isso, nos frames entre o signOut e o onAuthStateChange reagir,
+      // componentes como AdminRoute ainda viam isAdmin=true e approved=true,
+      // podendo exibir conteúdo protegido brevemente.
+      setUser(null);
+      setSession(null);
+      setRole(null);
+      setApproved(null);
       await supabase.auth.signOut();
     }, []);
 

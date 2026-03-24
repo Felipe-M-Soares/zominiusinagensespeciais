@@ -110,8 +110,10 @@ export function AdminUsers() {
     }
     setResettingPassword(true);
     try {
-      // CODE-002 FIX: Use Edge Function instead of non-existent RPC cast to "as any"
       const { data: { session } } = await supabase.auth.getSession();
+      // FIX: "return" dentro de try{} ainda executa o finally{} — correto.
+      // O bug anterior era um early return ANTES do setResettingPassword(true),
+      // aqui está seguro pois o finally sempre limpa o estado.
       if (!session) { toast.error("Sessão expirada"); return; }
 
       const { error } = await supabase.functions.invoke("admin-reset-password", {
@@ -137,8 +139,8 @@ export function AdminUsers() {
   const deleteUser = async (userId: string) => {
     setDeletingId(userId);
     try {
-      // CODE-002 FIX: Use Edge Function instead of non-existent RPC cast to "as any"
       const { data: { session } } = await supabase.auth.getSession();
+      // FIX: mesmo padrão — return dentro de try é seguro porque finally executa
       if (!session) { toast.error("Sessão expirada"); return; }
 
       const { error } = await supabase.functions.invoke("delete-account", {
