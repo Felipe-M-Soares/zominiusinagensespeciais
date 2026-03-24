@@ -1,10 +1,14 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// VULN-005 FIX: Use consistent domain across all edge functions
 const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "https://conceptusinagensespeciais.vercel.app",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "https://conceptusinagensespeciais-lac.vercel.app",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// VULN-007: Limits to prevent DoS
+const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_RECORDS = 10_000;
 
 function parseCSV(text: string): Record<string, string>[] {
   // Remove BOM
@@ -141,7 +145,7 @@ function mapAnvisaDevice(d: any) {
   };
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -154,9 +158,24 @@ serve(async (req) => {
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // CODE-006 FIX: Validate env vars early with informative error
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
+      console.error("Missing required environment variables");
+      return new Response(JSON.stringify({ error: "Erro de configuração do servidor" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // VULN-007 FIX: Enforce maximum body size to prevent DoS/OOM attacks
+    const contentLength = req.headers.get("content-length");
+    if (contentLength && parseInt(contentLength) > MAX_BODY_BYTES) {
+      return new Response(JSON.stringify({ error: `Arquivo muito grande. Limite: ${MAX_BODY_BYTES / 1024 / 1024}MB` }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -216,8 +235,22 @@ serve(async (req) => {
       });
     }
 
-    // Delete all existing if requested
+    // VULN-007 FIX: Limit maximum records per import to prevent DoS
+    if (mapped.length > MAX_RECORDS) {
+      return new Response(JSON.stringify({ error: `Muitos registros. Limite: ${MAX_RECORDS} por importação` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // OPS-003 FIX: replace_all requires explicit confirmation token to prevent accidental mass deletion
     if (body.replace_all === true) {
+      if (body.confirm_replace !== "CONFIRMAR_SUBSTITUICAO") {
+        return new Response(JSON.stringify({
+          error: "Para substituir todos os dispositivos, inclua confirm_replace: 'CONFIRMAR_SUBSTITUICAO' no corpo da requisição"
+        }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       await adminClient.from("devices").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     }
 

@@ -69,21 +69,37 @@ export function AdminUsers() {
   useEffect(() => { fetchUsers(); }, []);
 
   const changeRole = async (userId: string, newRole: "admin" | "client") => {
-    const { error } = await supabase
+    // CODE-005 FIX: Verify the update actually affected a row (silent failure otherwise)
+    const { data, error } = await supabase
       .from("user_roles")
       .update({ role: newRole })
-      .eq("user_id", userId);
-    if (error) { toast.error("Erro ao alterar função."); }
-    else { toast.success("Função atualizada"); fetchUsers(); }
+      .eq("user_id", userId)
+      .select("user_id");
+    if (error) {
+      toast.error("Erro ao alterar função.");
+    } else if (!data || data.length === 0) {
+      toast.error("Usuário não encontrado para alterar função.");
+    } else {
+      toast.success("Função atualizada");
+      fetchUsers();
+    }
   };
 
   const toggleApproval = async (userId: string, approve: boolean) => {
-    const { error } = await supabase
+    // CODE-005 FIX: Verify the update actually affected a row (silent failure otherwise)
+    const { data, error } = await supabase
       .from("profiles")
       .update({ approved: approve } as any)
-      .eq("user_id", userId);
-    if (error) { toast.error("Erro ao alterar aprovação."); }
-    else { toast.success(approve ? "Usuário aprovado" : "Aprovação removida"); fetchUsers(); }
+      .eq("user_id", userId)
+      .select("user_id");
+    if (error) {
+      toast.error("Erro ao alterar aprovação.");
+    } else if (!data || data.length === 0) {
+      toast.error("Perfil não encontrado para alterar aprovação.");
+    } else {
+      toast.success(approve ? "Usuário aprovado" : "Aprovação removida");
+      fetchUsers();
+    }
   };
 
   const resetPassword = async () => {
@@ -94,14 +110,18 @@ export function AdminUsers() {
     }
     setResettingPassword(true);
     try {
-      const { error } = await supabase.rpc("reset_user_password" as any, {
-        target_user_id: passwordDialog.user_id,
-        new_password: newPassword,
+      // CODE-002 FIX: Use Edge Function instead of non-existent RPC cast to "as any"
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Sessão expirada"); return; }
+
+      const { error } = await supabase.functions.invoke("admin-reset-password", {
+        body: { target_user_id: passwordDialog.user_id, new_password: newPassword },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
       if (error) {
         console.error("Password reset error:", error);
-        toast.error("Erro ao redefinir senha: " + error.message);
+        toast.error("Erro ao redefinir senha.");
       } else {
         toast.success(`Senha de ${passwordDialog.display_name || passwordDialog.email} alterada`);
         setPasswordDialog(null);
@@ -117,13 +137,18 @@ export function AdminUsers() {
   const deleteUser = async (userId: string) => {
     setDeletingId(userId);
     try {
-      const { error } = await supabase.rpc("delete_user" as any, {
-        target_user_id: userId,
+      // CODE-002 FIX: Use Edge Function instead of non-existent RPC cast to "as any"
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Sessão expirada"); return; }
+
+      const { error } = await supabase.functions.invoke("delete-account", {
+        body: { target_user_id: userId },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
       if (error) {
         console.error("Delete user error:", error);
-        toast.error("Erro ao excluir conta: " + error.message);
+        toast.error("Erro ao excluir conta.");
       } else {
         toast.success("Conta excluída com sucesso");
         fetchUsers();

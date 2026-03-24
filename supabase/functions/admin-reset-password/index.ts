@@ -1,7 +1,8 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") ?? "https://conceptusinagensespeciais-lac.vercel.app";
+// VULN-005: Use env var for CORS origin, consistent across all functions
+const ALLOWED_ORIGIN =
+  Deno.env.get("ALLOWED_ORIGIN") ?? "https://conceptusinagensespeciais-lac.vercel.app";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
@@ -9,20 +10,14 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function decodeJWT(token: string): Record<string, any> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payload = parts[1];
-    const padded = payload + "=".repeat((4 - payload.length % 4) % 4);
-    const decoded = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
+// CODE-006: Validate env vars at startup
+function getRequiredEnv(key: string): string {
+  const value = Deno.env.get(key);
+  if (!value) throw new Error(`Missing required environment variable: ${key}`);
+  return value;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -35,6 +30,20 @@ serve(async (req) => {
   }
 
   try {
+    // CODE-006: Validate env vars early with informative error
+    let supabaseUrl: string, supabaseAnonKey: string, serviceRoleKey: string;
+    try {
+      supabaseUrl = getRequiredEnv("SUPABASE_URL");
+      supabaseAnonKey = getRequiredEnv("SUPABASE_ANON_KEY");
+      serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+    } catch (envErr) {
+      console.error(envErr);
+      return new Response(JSON.stringify({ error: "Erro de configuração do servidor" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Não autenticado" }), {
@@ -43,37 +52,33 @@ serve(async (req) => {
       });
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    const payload = decodeJWT(token);
-
-    if (!payload || !payload.sub) {
-      console.error("Invalid JWT payload:", payload);
+    // VULN-001 FIX: Use auth.getUser() for cryptographic JWT validation.
+    // NEVER use manual base64 JWT decoding for identity — it has NO signature verification
+    // and allows any attacker to forge a token with arbitrary sub/role claims.
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Token inválido" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      return new Response(JSON.stringify({ error: "Token expirado" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const callerId = payload.sub as string;
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // VULN-002 FIX: Now that user.id is cryptographically verified, role check is trustworthy
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-
-    // Check admin role
-    const { data: roleData, error: roleError } = await adminClient
+    const { data: roleData } = await adminClient
       .from("user_roles")
       .select("role")
-      .eq("user_id", callerId)
+      .eq("user_id", user.id)
       .maybeSingle();
 
-    console.log("Caller ID:", callerId, "Role:", roleData?.role, "Error:", roleError?.message);
+    // VULN-010 FIX: Do not log sensitive user data in production
+    const DEBUG = Deno.env.get("DEBUG") === "true";
+    if (DEBUG) {
+      console.log("Caller role:", roleData?.role);
+    }
 
     if (roleData?.role !== "admin") {
       return new Response(
@@ -92,7 +97,10 @@ serve(async (req) => {
       });
     }
 
-    const { target_user_id, new_password } = body as { target_user_id?: string; new_password?: string };
+    const { target_user_id, new_password } = body as {
+      target_user_id?: string;
+      new_password?: string;
+    };
 
     if (!target_user_id || typeof target_user_id !== "string") {
       return new Response(JSON.stringify({ error: "target_user_id é obrigatório" }), {
@@ -102,13 +110,13 @@ serve(async (req) => {
     }
 
     if (!new_password || typeof new_password !== "string" || new_password.length < 8) {
-      return new Response(JSON.stringify({ error: "A senha deve ter no mínimo 8 caracteres" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "A senha deve ter no mínimo 8 caracteres" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    if (target_user_id === callerId) {
+    if (target_user_id === user.id) {
       return new Response(
         JSON.stringify({ error: "Use o fluxo padrão para alterar sua própria senha" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }

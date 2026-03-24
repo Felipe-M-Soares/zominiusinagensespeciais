@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect, useMemo, useDeferredValue } from "react";
+import { fetchAllPages } from "@/lib/supabaseUtils";
 import type { Tables } from "@/integrations/supabase/types";
 import type { Device } from "@/types/device";
 
@@ -36,36 +36,17 @@ export function useDevices() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchAllDevices = async () => {
-      const BATCH = 1000;
-      let all: DbDevice[] = [];
-      let from = 0;
-
-      while (true) {
-        const { data, error: dbError } = await supabase
-          .from("devices")
-          .select("*")
-          .order("model")
-          .range(from, from + BATCH - 1);
-
-        if (dbError) {
-          console.error("Device fetch error:", dbError);
-          setError("Erro ao carregar dispositivos.");
-          setLoading(false);
-          return;
-        }
-
-        const rows = data ?? [];
-        all = all.concat(rows);
-        if (rows.length < BATCH) break;
-        from += BATCH;
-      }
-
-      console.log(`Loaded ${all.length} devices from database`);
-      setDevices(all.map(toDevice));
-      setLoading(false);
-    };
-    fetchAllDevices();
+    // CODE-001 FIX: Use shared fetchAllPages instead of duplicated while-loop logic
+    fetchAllPages<DbDevice>("devices", "model")
+      .then((all) => {
+        setDevices(all.map(toDevice));
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Device fetch error:", err);
+        setError("Erro ao carregar dispositivos.");
+        setLoading(false);
+      });
   }, []);
 
   return { devices, loading, error };
@@ -85,15 +66,22 @@ export function useFilteredDevices(
   filters: Filters,
   letter: string
 ) {
+  // PERF-002 FIX: Defer expensive filter computation so keystrokes stay responsive.
+  // React 18 useDeferredValue schedules the re-computation at lower priority,
+  // preventing blocking the main thread on every keystroke with large datasets.
+  const deferredSearch = useDeferredValue(search);
+  const deferredFilters = useDeferredValue(filters);
+  const deferredLetter = useDeferredValue(letter);
+
   return useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = deferredSearch.toLowerCase().trim();
     return devices.filter((d) => {
-      if (letter) {
+      if (deferredLetter) {
         const firstChar = d.model.charAt(0).toUpperCase();
-        if (letter === "#") {
+        if (deferredLetter === "#") {
           if (/[A-Z]/.test(firstChar)) return false;
         } else {
-          if (firstChar !== letter) return false;
+          if (firstChar !== deferredLetter) return false;
         }
       }
 
@@ -110,16 +98,16 @@ export function useFilteredDevices(
           d.body_region.toLowerCase().includes(q);
         if (!matchesSearch) return false;
       }
-      if (filters.material && d.primary_material !== filters.material) return false;
-      if (filters.classification && d.classification_code !== filters.classification) return false;
-      if (filters.sterile === "true" && !d.sterile) return false;
-      if (filters.sterile === "false" && d.sterile) return false;
-      if (filters.single_use === "true" && !d.single_use) return false;
-      if (filters.single_use === "false" && d.single_use) return false;
-      if (filters.exocad && d.exocad_compatibility !== filters.exocad) return false;
+      if (deferredFilters.material && d.primary_material !== deferredFilters.material) return false;
+      if (deferredFilters.classification && d.classification_code !== deferredFilters.classification) return false;
+      if (deferredFilters.sterile === "true" && !d.sterile) return false;
+      if (deferredFilters.sterile === "false" && d.sterile) return false;
+      if (deferredFilters.single_use === "true" && !d.single_use) return false;
+      if (deferredFilters.single_use === "false" && d.single_use) return false;
+      if (deferredFilters.exocad && d.exocad_compatibility !== deferredFilters.exocad) return false;
       return true;
     });
-  }, [devices, search, filters, letter]);
+  }, [devices, deferredSearch, deferredFilters, deferredLetter]);
 }
 
 export function useDeviceOptions(devices: Device[]) {

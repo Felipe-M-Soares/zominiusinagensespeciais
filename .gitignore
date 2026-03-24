@@ -37,3 +37,8 @@ ehthumbs.db
 # Capacitor
 android/
 ios/
+
+# Supabase local temp files — contain project-ref, pooler-url and internal versions.
+# NEVER commit these: they expose infrastructure identifiers.
+# See ARCH-004 / OPS-001 in security audit.
+supabase/.temp/

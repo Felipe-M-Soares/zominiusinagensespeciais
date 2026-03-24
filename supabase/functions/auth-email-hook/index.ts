@@ -31,7 +31,8 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 const SITE_NAME = "Concept Usinagens Especiais"
-const ROOT_DOMAIN = "conceptusinagensespeciais-lac.vercel.app"
+// OPS-004 FIX: Use env var so staging/preview/production all work correctly
+const ROOT_DOMAIN = Deno.env.get("ROOT_DOMAIN") ?? "conceptusinagensespeciais-lac.vercel.app"
 const FROM_EMAIL = Deno.env.get('FROM_EMAIL') ?? 'onboarding@resend.dev'
 
 // Standard Webhooks signature verification

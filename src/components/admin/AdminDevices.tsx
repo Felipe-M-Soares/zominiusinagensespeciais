@@ -1,9 +1,21 @@
 import { useState, useEffect, useRef } from "react";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchDevicesPage } from "@/lib/supabaseUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -11,6 +23,28 @@ import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2, Search, Upload, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+
+// VULN-009 FIX: Validate device form with Zod before sending to Supabase
+const deviceSchema = z.object({
+  udi_di: z.string().min(1, "UDI-DI é obrigatório").max(200),
+  model: z.string().min(1, "Modelo é obrigatório").max(300),
+  reference: z.string().min(1, "Referência é obrigatória").max(200),
+  internal_code: z.string().max(100).optional().default(""),
+  anvisa_registration: z.string().max(100).optional().default(""),
+  brand_name: z.string().max(200).optional().default(""),
+  primary_material: z.string().max(200).optional().default(""),
+  secondary_material: z.string().max(200).optional().default(""),
+  surface_treatment: z.string().max(200).optional().default(""),
+  classification_code: z.string().min(1, "Código de classificação é obrigatório").max(50),
+  risk_class: z.enum(["I", "II", "III", "IV"]),
+  sterile: z.boolean().default(false),
+  single_use: z.boolean().default(false),
+  implantable: z.boolean().default(true),
+  intended_use: z.string().min(1, "Uso pretendido é obrigatório").max(1000),
+  body_region: z.string().min(1, "Região do corpo é obrigatória").max(200),
+  manufacturer_country: z.string().max(100).optional().default(""),
+  exocad_compatibility: z.string().max(200).optional().default(""),
+});
 
 type Device = Tables<"devices">;
 
@@ -38,17 +72,37 @@ const emptyDevice: Omit<TablesInsert<"devices">, "id" | "created_at" | "updated_
 
 export function AdminDevices() {
   const [devices, setDevices] = useState<Device[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 100;
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [editDevice, setEditDevice] = useState<Partial<TablesInsert<"devices">> | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // VULN-007 FIX: Validate file size and type on the client before uploading
+    const MAX_FILE_SIZE_MB = 10;
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      toast.error(`Arquivo muito grande. Máximo: ${MAX_FILE_SIZE_MB}MB`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    const validTypes = [".json", ".csv", ".txt"];
+    const isValidType = validTypes.some(ext => file.name.toLowerCase().endsWith(ext));
+    if (!isValidType) {
+      toast.error("Tipo de arquivo inválido. Aceitos: .json, .csv, .txt");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setImporting(true);
     try {
       const text = await file.text();
@@ -75,7 +129,7 @@ export function AdminDevices() {
       } else {
         const d = res.data as { inserted: number; skipped: number; total: number };
         toast.success(`Importação concluída: ${d.inserted} dispositivos importados de ${d.total}`);
-        fetchDevices();
+        setPage(0); fetchDevices(search, 0);
       }
     } catch (err) {
       console.error("Import parse error:", err);
@@ -86,60 +140,69 @@ export function AdminDevices() {
     }
   };
 
-  const fetchDevices = async () => {
+  // PERF-001 / PERF-003 FIX: Server-side paginated fetch instead of loading everything into memory.
+  // CODE-001 FIX: Uses shared fetchDevicesPage from supabaseUtils (no more duplicated while-loop).
+  const fetchDevices = async (searchQuery = search, currentPage = page) => {
     setLoading(true);
-    const BATCH = 1000;
-    let all: Device[] = [];
-    let from = 0;
-
-    while (true) {
-      const { data, error } = await supabase
-        .from("devices")
-        .select("*")
-        .order("model")
-        .range(from, from + BATCH - 1);
-
-      if (error) { toast.error("Erro ao carregar dispositivos"); break; }
-      const rows = data ?? [];
-      all = all.concat(rows);
-      if (rows.length < BATCH) break;
-      from += BATCH;
+    try {
+      const { data, count } = await fetchDevicesPage<Device>(searchQuery, currentPage, PAGE_SIZE);
+      setDevices(data);
+      setTotalCount(count);
+    } catch (err) {
+      toast.error("Erro ao carregar dispositivos");
+    } finally {
+      setLoading(false);
     }
-
-    setDevices(all);
-    setLoading(false);
   };
 
-  useEffect(() => { fetchDevices(); }, []);
+  // Reset to page 0 when search changes
+  useEffect(() => {
+    setPage(0);
+    fetchDevices(search, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
-  const filtered = devices.filter(d => {
-    const q = search.toLowerCase();
-    return !q || d.model.toLowerCase().includes(q) || d.reference.toLowerCase().includes(q) || d.udi_di.includes(q);
-  });
+  useEffect(() => {
+    fetchDevices(search, page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  // Server-side filtering means no client-side filter needed
+  const filtered = devices;
 
   const handleSave = async () => {
     if (!editDevice) return;
+
+    // VULN-009 FIX: Validate with Zod before sending to Supabase
+    const parseResult = deviceSchema.safeParse(editDevice);
+    if (!parseResult.success) {
+      const firstError = parseResult.error.errors[0];
+      toast.error(firstError?.message ?? "Dados inválidos no formulário");
+      return;
+    }
+
     setSaving(true);
     if (isNew) {
-      const { error } = await supabase.from("devices").insert(editDevice as TablesInsert<"devices">);
+      const { error } = await supabase.from("devices").insert(parseResult.data as TablesInsert<"devices">);
       if (error) { console.error("Device insert error:", error); toast.error("Erro ao criar o dispositivo."); }
-      else toast.success("Dispositivo criado");
+      else { toast.success("Dispositivo criado"); setEditDevice(null); fetchDevices(search, page); }
     } else {
-      const { id, created_at, updated_at, ...updates } = editDevice as Device;
+      const { id } = editDevice as Device;
+      const { id: _id, ...updates } = parseResult.data as any;
       const { error } = await supabase.from("devices").update(updates).eq("id", id!);
       if (error) { console.error("Device update error:", error); toast.error("Erro ao atualizar o dispositivo."); }
-      else toast.success("Dispositivo atualizado");
+      else { toast.success("Dispositivo atualizado"); setEditDevice(null); fetchDevices(search, page); }
     }
     setSaving(false);
-    setEditDevice(null);
-    fetchDevices();
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Excluir este dispositivo?")) return;
-    const { error } = await supabase.from("devices").delete().eq("id", id);
+  // CODE-003 FIX: Replace window.confirm() with AlertDialog (no thread blocking, styleable, works in PWA)
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmId) return;
+    const { error } = await supabase.from("devices").delete().eq("id", deleteConfirmId);
     if (error) toast.error("Erro ao excluir");
-    else { toast.success("Excluído"); fetchDevices(); }
+    else { toast.success("Excluído"); fetchDevices(search, page); }
+    setDeleteConfirmId(null);
   };
 
   const updateField = (key: string, value: unknown) => {
@@ -165,7 +228,7 @@ export function AdminDevices() {
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{devices.length.toLocaleString("pt-BR")} dispositivos cadastrados</p>
+      <p className="text-xs text-muted-foreground">{totalCount.toLocaleString("pt-BR")} dispositivos cadastrados</p>
 
       {loading ? (
         <div className="flex justify-center py-10"><div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" /></div>
@@ -195,7 +258,7 @@ export function AdminDevices() {
                       <Button variant="ghost" size="icon" onClick={() => { setEditDevice({ ...d }); setIsNew(false); }}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(d.id)}>
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirmId(d.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
@@ -204,9 +267,35 @@ export function AdminDevices() {
               ))}
             </TableBody>
           </Table>
-          {filtered.length > 100 && <p className="text-center text-sm text-muted-foreground py-2">Mostrando 100 de {filtered.length}</p>}
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center justify-between px-4 py-2 border-t text-sm text-muted-foreground">
+              <span>Página {page + 1} de {Math.ceil(totalCount / PAGE_SIZE)} ({totalCount.toLocaleString("pt-BR")} total)</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Anterior</Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount}>Próxima</Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* CODE-003 FIX: AlertDialog instead of window.confirm() for delete confirmation */}
+      <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir dispositivo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O dispositivo será removido permanentemente do catálogo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={!!editDevice} onOpenChange={() => setEditDevice(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
