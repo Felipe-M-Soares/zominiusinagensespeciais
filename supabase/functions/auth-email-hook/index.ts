@@ -166,7 +166,7 @@ async function handleWebhook(req: Request): Promise<Response> {
   let payload: any
   try {
     payload = JSON.parse(body)
-    console.log('Full payload:', JSON.stringify(payload).slice(0, 500))
+    console.log('Webhook payload received, keys:', Object.keys(payload))
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON payload' }), {
       status: 400,
@@ -174,15 +174,48 @@ async function handleWebhook(req: Request): Promise<Response> {
     })
   }
 
-  console.log('Webhook payload keys:', Object.keys(payload))
+  // Removed: was duplicating key log above
 
   const emailType = payload.email_data?.email_action_type ?? payload.type ?? payload.action_type
   const recipientEmail = payload.user?.email ?? payload.email_data?.email ?? payload.email
-  const confirmationUrl = payload.email_data?.token_hash
-    ? `https://${ROOT_DOMAIN}/auth/confirm?token_hash=${payload.email_data.token_hash}&type=${emailType}`
-    : payload.email_data?.redirect_to ?? `https://${ROOT_DOMAIN}`
 
-  console.log('Processing email:', { emailType, recipient: recipientEmail })
+  // SEC-A: Valida que recipientEmail é uma string de email válida antes de tentar enviar.
+  // Sem esta checagem, um payload corrompido com email undefined causaria envio para "undefined".
+  if (!recipientEmail || typeof recipientEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+    console.error('Invalid or missing recipient email in payload')
+    return new Response(JSON.stringify({ error: 'Invalid recipient email' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  // SEC-B: confirmationUrl - redirect_to vem do payload (controlado pelo Supabase),
+  // mas pode conter valores arbitrários. Garantimos que só usamos URLs do próprio domínio.
+  // Um redirect_to malicioso em email de confirmação levaria o usuário para site de phishing.
+  const rawRedirectTo = payload.email_data?.redirect_to
+  let confirmationUrl: string
+  if (payload.email_data?.token_hash) {
+    const safeType = encodeURIComponent(String(emailType || ''))
+    const safeHash = encodeURIComponent(String(payload.email_data.token_hash))
+    confirmationUrl = `https://${ROOT_DOMAIN}/auth/confirm?token_hash=${safeHash}&type=${safeType}`
+  } else if (rawRedirectTo && typeof rawRedirectTo === 'string') {
+    // Só aceita URLs do próprio domínio para prevenir open redirect em emails
+    try {
+      const parsed = new URL(rawRedirectTo)
+      if (parsed.hostname === ROOT_DOMAIN || parsed.hostname === `www.${ROOT_DOMAIN}`) {
+        confirmationUrl = rawRedirectTo
+      } else {
+        console.error('redirect_to domain not allowed:', parsed.hostname)
+        confirmationUrl = `https://${ROOT_DOMAIN}`
+      }
+    } catch {
+      confirmationUrl = `https://${ROOT_DOMAIN}`
+    }
+  } else {
+    confirmationUrl = `https://${ROOT_DOMAIN}`
+  }
+
+  console.log('Processing email type:', emailType) // FIX: removed recipient email from logs (privacy)
 
   const EmailTemplate = EMAIL_TEMPLATES[emailType]
   if (!EmailTemplate) {

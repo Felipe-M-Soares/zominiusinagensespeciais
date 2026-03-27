@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,20 +12,31 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [searchParams] = useSearchParams();
+  // FIX: exibe alerta quando o link de recovery expirou (vindo do ResetPassword timeout)
+  const linkExpired = searchParams.get("expired") === "1";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
+    // FIX: setLoading(false) estava fora de try/finally — exceção travaria o botão.
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-    } else {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) {
+        // Não revelar se o email existe ou não (prevenção de enumeração de usuários).
+        // Mostramos sucesso independente — comportamento correto de segurança.
+        console.error("resetPasswordForEmail error:", error.message);
+      }
+      // Sempre mostra tela de sucesso para não vazar se o email está cadastrado
       setSent(true);
-      toast.success("Email de recuperação enviado!");
+    } catch (err: any) {
+      console.error("ForgotPassword error:", err);
+      toast.error("Erro inesperado. Tente novamente.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -37,10 +48,15 @@ export default function ForgotPassword() {
           <CardTitle className="font-display text-xl">Recuperar Senha</CardTitle>
         </CardHeader>
         <CardContent>
+          {linkExpired && !sent && (
+            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+              Seu link de recuperação expirou ou é inválido. Solicite um novo abaixo.
+            </div>
+          )}
           {sent ? (
             <div className="text-center space-y-4">
               <p className="text-sm text-muted-foreground">
-                Enviamos um link de recuperação para <strong>{email}</strong>. Verifique sua caixa de entrada e spam.
+                Se <strong>{email}</strong> estiver cadastrado, você receberá um link de recuperação em breve. Verifique também a pasta de spam.
               </p>
               <Link to="/login">
                 <Button variant="outline" className="w-full gap-2">

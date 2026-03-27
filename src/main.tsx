@@ -1,9 +1,8 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 
-// FIX: O operador ! suprime o erro de TypeScript mas causa crash silencioso em produção
-// se o elemento root não for encontrado. Verificamos explicitamente antes de montar.
 const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error(
@@ -11,4 +10,8 @@ if (!rootElement) {
   );
 }
 
-createRoot(rootElement).render(<App />);
+createRoot(rootElement).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);

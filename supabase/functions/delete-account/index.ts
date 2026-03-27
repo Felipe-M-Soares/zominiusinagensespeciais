@@ -100,6 +100,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    // SEC: Valida que target_user_id é um UUID válido para prevenir injeção via path
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(targetUserId)) {
+      return new Response(JSON.stringify({ error: "target_user_id deve ser um UUID válido" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (targetUserId === user.id) {
       return new Response(
         JSON.stringify({ error: "Não é possível excluir sua própria conta" }),
@@ -107,9 +116,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    await adminClient.from("profiles").delete().eq("user_id", targetUserId);
-    await adminClient.from("user_roles").delete().eq("user_id", targetUserId);
+    // SEC: Verifica que o usuário alvo existe ANTES de tentar deletar registros relacionados.
+    // Sem esta checagem, um UUID de usuário inexistente causaria deleções sem efeito
+    // seguidas de um erro confuso do auth.admin.deleteUser.
+    const { data: targetUser, error: lookupError } = await adminClient.auth.admin.getUserById(targetUserId);
+    if (lookupError || !targetUser?.user) {
+      return new Response(JSON.stringify({ error: "Usuário alvo não encontrado" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
+    // Ordem correta: delete auth user first (cascades via DB triggers if configured),
+    // then clean up application tables. This way if deleteUser fails, app tables are intact.
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetUserId);
     if (deleteError) {
       console.error("deleteUser error:", deleteError.message);
@@ -118,6 +137,10 @@ Deno.serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Limpeza de tabelas da aplicação após deleção bem-sucedida do auth user
+    await adminClient.from("profiles").delete().eq("user_id", targetUserId);
+    await adminClient.from("user_roles").delete().eq("user_id", targetUserId);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,19 +15,38 @@ export default function ResetPassword() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Listen for the PASSWORD_RECOVERY event
+    // FIX: Não usar getSession() para habilitar o formulário de reset.
+    // getSession() retorna qualquer sessão existente (do localStorage), então um usuário
+    // já logado que abrisse /reset-password veria o formulário imediatamente, sem ter
+    // clicado num link de recovery — podendo alterar a própria senha sem autenticação extra.
+    // A única fonte confiável de uma sessão de recovery é o evento PASSWORD_RECOVERY
+    // do onAuthStateChange, que é disparado pelo Supabase ao processar o token da URL.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
         setReady(true);
       }
     });
 
-    // Check if we already have a session (user clicked the link)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setReady(true);
-    });
+    // Timeout de segurança: se após 15s o evento PASSWORD_RECOVERY não chegou,
+    // o link expirou ou é inválido — mostra mensagem de erro ao invés de spinner infinito.
+    const timeout = setTimeout(() => {
+      setReady((prev) => {
+        if (!prev) {
+          // Não mudamos ready para true — apenas sinalizamos timeout via navigate
+          // Usamos um setTimeout aninhado para sair do setter e acionar o redirecionamento
+          setTimeout(() => {
+            // Redireciona para forgot-password com flag de link expirado
+            window.location.replace("/forgot-password?expired=1");
+          }, 0);
+        }
+        return prev;
+      });
+    }, 15_000);
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -36,14 +55,30 @@ export default function ResetPassword() {
       toast.error("As senhas não coincidem");
       return;
     }
+    if (password.length < 8) {
+      toast.error("A senha deve ter no mínimo 8 caracteres");
+      return;
+    }
+    // FIX: setLoading(false) estava fora de try/finally — se updateUser lançasse exceção,
+    // o botão ficava travado em "Salvando..." para sempre.
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("Senha redefinida com sucesso!");
-      navigate("/");
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success("Senha redefinida! Faça login novamente para continuar.");
+        // SEC: Após alterar a senha, invalidamos a sessão atual e forçamos novo login.
+        // Isso previne session fixation: se o link de recovery foi interceptado,
+        // o atacante não consegue manter a sessão após a vítima redefinir a senha.
+        await supabase.auth.signOut();
+        navigate("/login");
+      }
+    } catch (err: any) {
+      toast.error("Erro inesperado. Tente novamente.");
+      console.error("ResetPassword error:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -54,6 +89,12 @@ export default function ResetPassword() {
           <CardContent className="py-10 text-center">
             <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4" />
             <p className="text-sm text-muted-foreground">Verificando link de recuperação...</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Se esta tela persistir, o link pode ter expirado.{" "}
+              <Link to="/forgot-password" className="text-primary hover:underline">
+                Solicitar novo link
+              </Link>
+            </p>
           </CardContent>
         </Card>
       </div>

@@ -109,9 +109,27 @@ Deno.serve(async (req) => {
       });
     }
 
+    // SEC: Valida UUID para prevenir path injection ou queries inesperadas
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(target_user_id)) {
+      return new Response(JSON.stringify({ error: "target_user_id deve ser um UUID válido" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // SEC: Valida senha — mínimo 8 chars, máximo 72 chars (limite do bcrypt usado pelo Supabase Auth).
+    // Senhas acima de 72 chars são silenciosamente truncadas pelo bcrypt — informar o limite
+    // é mais honesto que aceitar qualquer tamanho e truncar sem avisar.
     if (!new_password || typeof new_password !== "string" || new_password.length < 8) {
       return new Response(
         JSON.stringify({ error: "A senha deve ter no mínimo 8 caracteres" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (new_password.length > 72) {
+      return new Response(
+        JSON.stringify({ error: "A senha deve ter no máximo 72 caracteres" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
