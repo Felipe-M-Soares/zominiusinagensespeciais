@@ -1,11 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// VULN-005 FIX: Use consistent domain across all edge functions
-const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "https://conceptusinagensespeciais-lac.vercel.app",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// CORS: handled dynamically via getCorsHeaders(req) inside Deno.serve
 
 // VULN-007: Limits to prevent DoS
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB
@@ -160,6 +155,8 @@ function mapAnvisaDevice(d: any) {
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

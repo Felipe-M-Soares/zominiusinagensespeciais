@@ -152,6 +152,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // fetchRoleAndApproval é estável (useCallback com deps vazias) — seguro incluir
   }, [fetchRoleAndApproval]);
 
+  // FIX: Extrai limpeza de estado local para reutilização em signOut e signUp.
+  const clearLocalState = useCallback(() => {
+    setUser(null);
+    setSession(null);
+    setRole(null);
+    setApproved(null);
+  }, []);
+
   const signIn = useCallback(
     async (email: string, password: string): Promise<{ error: string | null }> => {
       const cleanEmail = email.trim().toLowerCase();
@@ -195,7 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: "A senha deve ter no máximo 72 caracteres." };
       }
 
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
         options: {
@@ -203,22 +211,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           emailRedirectTo: window.location.origin,
         },
       });
-      return { error: error ? translateError(error.message) : null };
+      if (error) return { error: translateError(error.message) };
+
+      // FIX: signUp() cria sessão automaticamente quando email confirmation está off.
+      // Limpamos o estado local imediatamente (sem esperar onAuthStateChange)
+      // para que o componente Register permaneça visível e mostre a tela de sucesso.
+      if (data.session) {
+        clearLocalState();
+        await supabase.auth.signOut();
+      }
+
+      return { error: null };
     },
-    []
+    [clearLocalState]
   );
 
   const signOut = useCallback(async () => {
-    // FIX: Limpa o estado local imediatamente antes de chamar signOut.
-    // Sem isso, nos frames entre o signOut e o onAuthStateChange reagir,
-    // componentes como AdminRoute ainda viam isAdmin=true e approved=true,
-    // podendo exibir conteúdo protegido brevemente.
-    setUser(null);
-    setSession(null);
-    setRole(null);
-    setApproved(null);
+    // Limpa imediatamente para evitar que guards de rota vejam estado stale
+    clearLocalState();
     await supabase.auth.signOut();
-  }, []);
+  }, [clearLocalState]);
 
   return (
     <AuthContext.Provider

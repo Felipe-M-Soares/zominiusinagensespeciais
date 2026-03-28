@@ -117,9 +117,6 @@ const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
   setImporting(true);
   try {
     const text = await file.text();
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { toast.error("Sessão expirada"); return; }
-
     let body: Record<string, unknown>;
     if (file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
       body = { csv: text, replace_all: true, confirm_replace: "CONFIRMAR_SUBSTITUICAO" };
@@ -152,7 +149,6 @@ const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
     const res = await supabase.functions.invoke("import-devices", {
       body,
-      headers: { Authorization: `Bearer ${session.access_token}` },
     });
 
     if (res.error) {

@@ -148,15 +148,8 @@ const resetPassword = async () => {
   }
   setResettingPassword(true);
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    // FIX: "return" dentro de try{} ainda executa o finally{} — correto.
-    // O bug anterior era um early return ANTES do setResettingPassword(true),
-    // aqui está seguro pois o finally sempre limpa o estado.
-    if (!session) { toast.error("Sessão expirada"); return; }
-
     const { error } = await supabase.functions.invoke("admin-reset-password", {
       body: { target_user_id: passwordDialog.user_id, new_password: newPassword },
-      headers: { Authorization: `Bearer ${session.access_token}` },
     });
 
     if (error) {
@@ -178,13 +171,8 @@ const resetPassword = async () => {
 const deleteUser = async (userId: string) => {
   setDeletingId(userId);
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    // FIX: mesmo padrão — return dentro de try é seguro porque finally executa
-    if (!session) { toast.error("Sessão expirada"); return; }
-
     const { error } = await supabase.functions.invoke("delete-account", {
       body: { target_user_id: userId },
-      headers: { Authorization: `Bearer ${session.access_token}` },
     });
 
     if (error) {
@@ -214,9 +202,6 @@ const createUser = async () => {
   }
   setCreatingUser(true);
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { toast.error("Sessão expirada"); return; }
-
     const { error } = await supabase.functions.invoke("admin-create-user", {
       body: {
         email: newUserEmail.trim().toLowerCase(),
@@ -224,7 +209,6 @@ const createUser = async () => {
         display_name: newUserName.trim(),
         role: newUserRole,
       },
-      headers: { Authorization: `Bearer ${session.access_token}` },
     });
 
     if (error) {

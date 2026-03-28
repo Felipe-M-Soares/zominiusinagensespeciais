@@ -147,8 +147,31 @@ export default function Manuals() {
     fetchManuals();
   };
 
+  // FIX: Download robusto para todos os browsers (incluindo iOS Safari).
+  // a.download é ignorado em URLs cross-origin (Supabase Storage) no Safari/iOS.
+  // Solução: fetch() o arquivo como blob → criar blob URL local → usar a.download.
+  // O blob URL é same-origin (blob:), então a.download funciona em todos os browsers.
+  const triggerDownload = async (signedUrl: string, filename: string) => {
+    try {
+      const response = await fetch(signedUrl);
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename.endsWith(".pdf") ? filename : filename + ".pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Libera memória após 60s (tempo suficiente para o browser iniciar o download)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch {
+      // Fallback: abre em nova aba se o fetch falhar (ex: CORS no blob)
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
   const handleDownload = async (filePath: string, title: string, id: string) => {
-    // FIX: previne duplo-clique por manual e fornece feedback visual
     if (downloading === id) return;
     setDownloading(id);
     try {
@@ -157,15 +180,7 @@ export default function Manuals() {
         toast.error("Erro ao gerar link de download");
         return;
       }
-      // FIX: window.open() bloqueado por popup blocker em callbacks async.
-      // Usar <a> com download + click() garante o download mesmo em callbacks assíncronos.
-      const a = document.createElement("a");
-      a.href = data.signedUrl;
-      a.download = title.endsWith(".pdf") ? title : `${title}.pdf`;
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      await triggerDownload(data.signedUrl, title);
     } finally {
       setDownloading(null);
     }

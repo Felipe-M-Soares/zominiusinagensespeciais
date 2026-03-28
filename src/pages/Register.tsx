@@ -13,6 +13,7 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const { signUp } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,19 +23,15 @@ export default function Register() {
       toast.error("As senhas não coincidem");
       return;
     }
-    // FIX: setLoading(false) estava fora de try/finally.
     setLoading(true);
     try {
       const { error } = await signUp(email, password, displayName);
       if (error) {
         toast.error(error);
       } else {
-        // FIX: Limpa o formulário após sucesso e informa o usuário claramente
-        setEmail("");
-        setPassword("");
-        setConfirmPassword("");
-        setDisplayName("");
-        toast.success("Conta criada com sucesso! Aguarde a aprovação do administrador para acessar o sistema.");
+        // FIX: tela de sucesso dedicada — toast sumia antes de ser lido porque
+        // o componente desmontava quando signUp criava sessão automaticamente.
+        setSuccess(true);
       }
     } catch (err: any) {
       console.error("Register error:", err);
@@ -44,6 +41,38 @@ export default function Register() {
     }
   };
 
+  // Tela de sucesso — exibida após cadastro bem-sucedido
+  if (success) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center space-y-4">
+            <Logo className="h-14 object-contain mx-auto" />
+            <CardTitle className="font-display text-xl">Conta Criada!</CardTitle>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <div className="h-14 w-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto">
+              <svg className="h-7 w-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">Cadastro realizado com sucesso!</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Um administrador precisa aprovar seu acesso antes que você possa entrar no sistema.
+                Você será notificado quando isso acontecer.
+              </p>
+            </div>
+            <Link to="/login">
+              <Button variant="outline" className="w-full">Voltar ao login</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Formulário de cadastro
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <Card className="w-full max-w-md">
@@ -76,8 +105,8 @@ export default function Register() {
               required
               autoComplete="new-password"
               minLength={8}
+              maxLength={72}
             />
-            {/* BUG-010 FIX: Confirm password field prevents undetected typos */}
             <Input
               type="password"
               placeholder="Confirmar senha"
@@ -86,6 +115,7 @@ export default function Register() {
               required
               autoComplete="new-password"
               minLength={8}
+              maxLength={72}
             />
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Criando..." : "Criar Conta"}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -28,19 +29,10 @@ export default function ResetPassword() {
     });
 
     // Timeout de segurança: se após 15s o evento PASSWORD_RECOVERY não chegou,
-    // o link expirou ou é inválido — mostra mensagem de erro ao invés de spinner infinito.
+    // o link expirou ou é inválido. Usamos estado separado para acionar o redirect
+    // em vez de chamar navigate() ou window.location dentro de um setState updater.
     const timeout = setTimeout(() => {
-      setReady((prev) => {
-        if (!prev) {
-          // Não mudamos ready para true — apenas sinalizamos timeout via navigate
-          // Usamos um setTimeout aninhado para sair do setter e acionar o redirecionamento
-          setTimeout(() => {
-            // Redireciona para forgot-password com flag de link expirado
-            window.location.replace("/forgot-password?expired=1");
-          }, 0);
-        }
-        return prev;
-      });
+      setTimedOut(true);
     }, 15_000);
 
     return () => {
@@ -48,6 +40,14 @@ export default function ResetPassword() {
       clearTimeout(timeout);
     };
   }, []);
+
+  // FIX: Redireciona para forgot-password quando o link expirou.
+  // Feito via useEffect (não dentro de setState/timeout) para ser compatível com React.
+  useEffect(() => {
+    if (timedOut && !ready) {
+      navigate("/forgot-password?expired=1", { replace: true });
+    }
+  }, [timedOut, ready, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

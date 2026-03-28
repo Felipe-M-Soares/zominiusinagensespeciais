@@ -73,8 +73,28 @@ export function CatalogButton() {
 
   useEffect(() => { fetchCatalogs(); }, []);
 
+  // FIX: Download robusto para todos os browsers (incluindo iOS Safari).
+  // a.download é ignorado em URLs cross-origin (Supabase Storage) no Safari/iOS.
+  // Solução: fetch() como blob → blob URL local → a.download funciona em todos.
+  const triggerDownload = async (signedUrl: string, filename: string) => {
+    try {
+      const response = await fetch(signedUrl);
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename.endsWith(".pdf") ? filename : filename + ".pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch {
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
   const handleDownload = async (catalog: Catalog) => {
-    // FIX: previne duplo-clique e fornece feedback visual durante a geração do link
     if (downloading) return;
     setDownloading(true);
     try {
@@ -83,15 +103,7 @@ export function CatalogButton() {
         toast.error("Erro ao gerar link de download");
         return;
       }
-      // FIX: window.open() bloqueado por popup blocker em callbacks async.
-      // Usar <a> com download + click() garante o download mesmo em callbacks assíncronos.
-      const a = document.createElement("a");
-      a.href = data.signedUrl;
-      a.download = catalog.title.endsWith(".pdf") ? catalog.title : catalog.title + ".pdf";
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      await triggerDownload(data.signedUrl, catalog.title);
     } finally {
       setDownloading(false);
     }
