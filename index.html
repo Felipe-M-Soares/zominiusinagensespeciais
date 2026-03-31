@@ -14,6 +14,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Concept" />
     <meta name="robots" content="noindex, nofollow" />
+    <!-- PERF: preconnect reduz latência ao carregar fontes do Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- NOTA: Content-Security-Policy autoritativa está em vercel.json (HTTP header).
+         Meta CSP foi removida — conflitava com vercel.json e tinha font-src incorreto.
+         frame-ancestors só funciona via HTTP header, não via meta tag. -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
     <title>Concept Usinagens Especiais</title>
     <meta name="description" content="Base de dados de dispositivos dentários - Conformidade ANVISA" />
     <meta name="author" content="Concept Usinagens Especiais" />

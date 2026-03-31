@@ -1,28 +1,29 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") ?? "https://conceptusinagensespeciais-lac.vercel.app";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-function decodeJWT(token: string): Record<string, any> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payload = parts[1];
-    const padded = payload + "=".repeat((4 - payload.length % 4) % 4);
-    const decoded = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
+// FIX: CORS dinâmico — ALLOWED_ORIGIN pode ser "*" (dev) ou domínio exato (prod).
+// O CORS estático com domínio hardcoded bloqueia requests quando o domínio de produção
+// não bate exatamente (ex: www. vs sem www, ou domínios custom no Vercel).
+function getCorsHeaders(req: Request): Record<string, string> {
+  const allowed = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
+  const origin = req.headers.get("origin") ?? "";
+  const responseOrigin = allowed === "*" ? "*" : (origin === allowed ? origin : allowed);
+  return {
+    "Access-Control-Allow-Origin": responseOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
 }
 
-serve(async (req) => {
+// CODE-006: Validate env vars at startup
+function getRequiredEnv(key: string): string {
+  const value = Deno.env.get(key);
+  if (!value) throw new Error(`Missing required environment variable: ${key}`);
+  return value;
+}
+
+Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -35,6 +36,20 @@ serve(async (req) => {
   }
 
   try {
+    // CODE-006: Validate env vars early with informative error
+    let supabaseUrl: string, supabaseAnonKey: string, serviceRoleKey: string;
+    try {
+      supabaseUrl = getRequiredEnv("SUPABASE_URL");
+      supabaseAnonKey = getRequiredEnv("SUPABASE_ANON_KEY");
+      serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+    } catch (envErr) {
+      console.error(envErr);
+      return new Response(JSON.stringify({ error: "Erro de configuração do servidor" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Não autenticado" }), {
@@ -43,38 +58,33 @@ serve(async (req) => {
       });
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    const payload = decodeJWT(token);
-
-    if (!payload || !payload.sub) {
-      console.error("Invalid JWT payload:", payload);
+    // VULN-001 FIX: Use auth.getUser() for cryptographic JWT validation.
+    // NEVER use manual base64 JWT decoding for identity — it has NO signature verification
+    // and allows any attacker to forge a token with arbitrary sub/role claims.
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Token inválido" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Check token expiry
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      return new Response(JSON.stringify({ error: "Token expirado" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const callerId = payload.sub as string;
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // VULN-002 FIX: Now that user.id is cryptographically verified, role check is trustworthy
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-
-    // Check admin role
-    const { data: roleData, error: roleError } = await adminClient
+    const { data: roleData } = await adminClient
       .from("user_roles")
       .select("role")
-      .eq("user_id", callerId)
+      .eq("user_id", user.id)
       .maybeSingle();
 
-    console.log("Caller ID:", callerId, "Role:", roleData?.role, "Error:", roleError?.message);
+    // VULN-010 FIX: Do not log sensitive user data in production
+    const DEBUG = Deno.env.get("DEBUG") === "true";
+    if (DEBUG) {
+      console.log("Caller role:", roleData?.role);
+    }
 
     if (roleData?.role !== "admin") {
       return new Response(
@@ -84,7 +94,9 @@ serve(async (req) => {
     }
 
     let body: Record<string, unknown> = {};
-    try { body = await req.json(); } catch { /* empty */ }
+    try {
+      body = await req.json();
+    } catch { /* empty body is ok */ }
 
     const targetUserId = body.target_user_id;
     if (!targetUserId || typeof targetUserId !== "string") {
@@ -94,16 +106,35 @@ serve(async (req) => {
       });
     }
 
-    if (targetUserId === callerId) {
+    // SEC: Valida que target_user_id é um UUID válido para prevenir injeção via path
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(targetUserId)) {
+      return new Response(JSON.stringify({ error: "target_user_id deve ser um UUID válido" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (targetUserId === user.id) {
       return new Response(
         JSON.stringify({ error: "Não é possível excluir sua própria conta" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    await adminClient.from("profiles").delete().eq("user_id", targetUserId);
-    await adminClient.from("user_roles").delete().eq("user_id", targetUserId);
+    // SEC: Verifica que o usuário alvo existe ANTES de tentar deletar registros relacionados.
+    // Sem esta checagem, um UUID de usuário inexistente causaria deleções sem efeito
+    // seguidas de um erro confuso do auth.admin.deleteUser.
+    const { data: targetUser, error: lookupError } = await adminClient.auth.admin.getUserById(targetUserId);
+    if (lookupError || !targetUser?.user) {
+      return new Response(JSON.stringify({ error: "Usuário alvo não encontrado" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
+    // Ordem correta: delete auth user first (cascades via DB triggers if configured),
+    // then clean up application tables. This way if deleteUser fails, app tables are intact.
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetUserId);
     if (deleteError) {
       console.error("deleteUser error:", deleteError.message);
@@ -112,6 +143,10 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Limpeza de tabelas da aplicação após deleção bem-sucedida do auth user
+    await adminClient.from("profiles").delete().eq("user_id", targetUserId);
+    await adminClient.from("user_roles").delete().eq("user_id", targetUserId);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

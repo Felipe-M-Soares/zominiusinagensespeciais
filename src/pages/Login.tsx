@@ -22,24 +22,33 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) return;
+    // FIX: setLoading(false) estava fora de try/finally — exceção em signIn travaria o botão.
     setLoading(true);
-    const { error } = await signIn(email, password);
-    setLoading(false);
-    if (error) {
-      toast.error(error);
-    } else {
-      navigate("/");
+    try {
+      const { error } = await signIn(email, password);
+      if (error) {
+        toast.error(error);
+      } else {
+        navigate("/");
+      }
+    } catch (err: any) {
+      console.error("Login error:", err);
+      toast.error("Erro inesperado. Tente novamente.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
-      const redirectTo = "https://conceptusinagensespeciais-lac.vercel.app";
+      // FIX: window.location.origin pode ser http:// em dev mas deve ser https:// em prod.
+      // Usamos a env var VITE_SITE_URL quando disponível, com fallback para origin.
+      const siteUrl = import.meta.env.VITE_SITE_URL ?? window.location.origin;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo,
+          redirectTo: siteUrl,
           queryParams: {
             prompt: "select_account",
           },
@@ -57,7 +66,6 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/30 flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {/* Logo & Welcome */}
         <div className="flex flex-col items-center gap-3 text-center">
           <Logo className="h-14 object-contain" />
           <div>
@@ -66,9 +74,7 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Card */}
         <div className="bg-card border border-border rounded-2xl p-6 shadow-xl shadow-primary/5 space-y-5">
-          {/* Google Button */}
           <Button
             type="button"
             variant="outline"
@@ -85,7 +91,6 @@ export default function Login() {
             {googleLoading ? "Conectando..." : "Continuar com Google"}
           </Button>
 
-          {/* Divider */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-border" />
@@ -95,7 +100,6 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-3">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-foreground">Email</label>
@@ -152,7 +156,6 @@ export default function Login() {
           </form>
         </div>
 
-        {/* Footer */}
         <p className="text-center text-xs text-muted-foreground">
           Não tem conta?{" "}
           <Link to="/register" className="text-primary font-medium hover:underline">
@@ -166,7 +169,7 @@ export default function Login() {
             size="sm"
             className="w-full gap-2 text-muted-foreground text-xs"
             disabled={isInstalled}
-            onClick={() => install().then((ok) => ok && toast.success("App instalado!"))}
+            onClick={() => install().then((ok) => ok && toast.success("App instalado!")).catch(() => toast.error("Não foi possível instalar o app."))}
           >
             {isInstalled ? (
               <>

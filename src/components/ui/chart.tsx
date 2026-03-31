@@ -65,17 +65,32 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null;
   }
 
+  // SEC: id e color são injetados diretamente em uma <style> tag via dangerouslySetInnerHTML.
+  // Um id ou color malicioso poderia fechar o seletor e injetar CSS arbitrário ou
+  // até encerrar a tag <style> e iniciar uma <script> tag (CSS injection / XSS via style).
+  // Sanitizamos: id aceita apenas [a-z0-9-], color aceita apenas valores CSS seguros.
+  const safeId = id.replace(/[^a-z0-9-]/gi, "");
+  const sanitizeColor = (c: string) =>
+    // Permite: hex (#fff, #ffffff), rgb/rgba/hsl/hsla(…), nomes CSS, variáveis var(--x)
+    // Rejeita qualquer coisa com: aspas, ponto e vírgula, colchetes, parênteses não-CSS, barras
+    /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|var\(--[a-z0-9-]+\)|[a-z]+)$/i.test(c.trim())
+      ? c.trim()
+      : "transparent";
+
   return (
     <style
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(
             ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
+${prefix} [data-chart=${safeId}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
-    const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
+    const rawColor = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
+    const color = rawColor ? sanitizeColor(rawColor) : null;
+    // SEC: key também sanitizado — apenas identificadores CSS válidos
+    const safeKey = key.replace(/[^a-z0-9-]/gi, "");
+    return color ? `  --color-${safeKey}: ${color};` : null;
   })
   .join("\n")}
 }

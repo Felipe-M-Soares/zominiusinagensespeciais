@@ -56,15 +56,12 @@ function translateError(message: string): string {
     "invalid_credentials": "Email ou senha incorretos.",
   };
 
-  // Check exact match
   if (errors[message]) return errors[message];
 
-  // Check partial match
   for (const [key, value] of Object.entries(errors)) {
     if (message.toLowerCase().includes(key.toLowerCase())) return value;
   }
 
-  // Return original if no translation found
   return message;
 }
 
@@ -99,31 +96,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchRoleAndApproval(session.user.id);
-      }
-      setLoading(false);
-    });
+    let initialLoadDone = false;
 
+    // Carrega a sessão inicial primeiro e garante que role/approved estejam prontos
+    // antes de qualquer guard de rota renderizar.
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          await fetchRoleAndApproval(session.user.id);
+        }
+        initialLoadDone = true;
+        setLoading(false);
+      })
+      .catch((err) => {
+        // FIX: Sem este .catch(), uma falha de rede no getSession() deixava
+        // loading=true para sempre, travando o app com spinner infinito.
+        console.error("getSession failed:", err);
+        initialLoadDone = true;
+        setLoading(false);
+      });
+
+    // FIX: onAuthStateChange dispara em TODA troca de token (incluindo refresh silencioso).
+    // Só atualizamos role/approved em eventos que realmente mudam o usuário logado,
+    // evitando renders e fetches desnecessários que causavam o loop.
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // TOKEN_REFRESHED não muda o usuário — apenas atualiza a sessão silenciosamente.
+      // Processar esse evento causava setState loops desnecessários.
+      if (event === "TOKEN_REFRESHED") {
+        setSession(session);
+        return;
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
+
       if (session?.user) {
-        setTimeout(() => fetchRoleAndApproval(session.user.id), 0);
+        await fetchRoleAndApproval(session.user.id);
       } else {
         setRole(null);
         setApproved(null);
       }
-      setLoading(false);
+
+      // Só atualiza loading se a carga inicial já foi concluída,
+      // evitando conflito de estado com o getSession() acima.
+      if (initialLoadDone) {
+        setLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
+    // fetchRoleAndApproval é estável (useCallback com deps vazias) — seguro incluir
   }, [fetchRoleAndApproval]);
+
+  // FIX: Extrai limpeza de estado local para reutilização em signOut e signUp.
+  const clearLocalState = useCallback(() => {
+    setUser(null);
+    setSession(null);
+    setRole(null);
+    setApproved(null);
+  }, []);
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<{ error: string | null }> => {
@@ -147,7 +182,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       displayName: string
     ): Promise<{ error: string | null }> => {
       const cleanEmail = email.trim().toLowerCase();
-      const cleanName = displayName.trim().slice(0, 100);
+      // SEC: Remove caracteres de controle Unicode (U+0000–U+001F, U+007F, U+200B zero-width, etc.)
+      // que poderiam causar comportamentos inesperados na renderização de nomes de usuário
+      // ou em templates de email (ex.: quebrar linha em email HTML, injetar conteúdo invisível).
+      const cleanName = displayName
+        .trim()
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\u0000-\u001F\u007F\u200B\u200C\u200D\uFEFF]/g, "")
+        .slice(0, 100);
 
       if (!cleanEmail || !password || !cleanName) {
         return { error: "Todos os campos são obrigatórios." };
@@ -155,8 +197,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (password.length < 8) {
         return { error: "A senha deve ter no mínimo 8 caracteres." };
       }
+      // SEC: bcrypt trunca silenciosamente senhas acima de 72 caracteres.
+      // Informamos o limite ao invés de aceitar e truncar sem avisar.
+      if (password.length > 72) {
+        return { error: "A senha deve ter no máximo 72 caracteres." };
+      }
 
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
         options: {
@@ -164,14 +211,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           emailRedirectTo: window.location.origin,
         },
       });
-      return { error: error ? translateError(error.message) : null };
+      if (error) return { error: translateError(error.message) };
+
+      // FIX: signUp() cria sessão automaticamente quando email confirmation está off.
+      // Limpamos o estado local imediatamente (sem esperar onAuthStateChange)
+      // para que o componente Register permaneça visível e mostre a tela de sucesso.
+      if (data.session) {
+        clearLocalState();
+        await supabase.auth.signOut();
+      }
+
+      return { error: null };
     },
-    []
+    [clearLocalState]
   );
 
   const signOut = useCallback(async () => {
+    // Limpa imediatamente para evitar que guards de rota vejam estado stale
+    clearLocalState();
     await supabase.auth.signOut();
-  }, []);
+  }, [clearLocalState]);
 
   return (
     <AuthContext.Provider
