@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const cleanName = displayName
         .trim()
         // eslint-disable-next-line no-control-regex
-        .replace(/[\u0000-\u001F\u007F\u200B\u200C\u200D\uFEFF]/g, "")
+        .replace(/[\u0000-\u001F\u007F]|\u200B|\u200C|\u200D|\uFEFF/g, "")
         .slice(0, 100);
 
       if (!cleanEmail || !password || !cleanName) {
