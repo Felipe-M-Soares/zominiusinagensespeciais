@@ -147,40 +147,31 @@ export default function Manuals() {
     fetchManuals();
   };
 
-  // FIX: Download robusto para todos os browsers (incluindo iOS Safari).
-  // a.download é ignorado em URLs cross-origin (Supabase Storage) no Safari/iOS.
-  // Solução: fetch() o arquivo como blob → criar blob URL local → usar a.download.
-  // O blob URL é same-origin (blob:), então a.download funciona em todos os browsers.
-  const triggerDownload = async (signedUrl: string, filename: string) => {
-    try {
-      const response = await fetch(signedUrl);
-      if (!response.ok) throw new Error("Download failed");
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = filename.endsWith(".pdf") ? filename : filename + ".pdf";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // Libera memória após 60s (tempo suficiente para o browser iniciar o download)
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-    } catch {
-      // Fallback: abre em nova aba se o fetch falhar (ex: CORS no blob)
-      window.open(signedUrl, "_blank", "noopener,noreferrer");
-    }
-  };
-
+  // FIX DEFINITIVO: Usar window.open com a URL assinada diretamente.
+  // fetch() falha com CORS porque o bucket Supabase não tem o domínio Vercel na allowlist.
+  // window.open() com a URL assinada funciona universalmente — o browser segue a URL
+  // autenticada e o Supabase retorna o PDF com Content-Disposition: attachment.
   const handleDownload = async (filePath: string, title: string, id: string) => {
     if (downloading === id) return;
     setDownloading(id);
     try {
-      const { data, error } = await supabase.storage.from("manuals").createSignedUrl(filePath, 300);
+      const safeFilename = (title.endsWith(".pdf") ? title : title + ".pdf")
+        .replace(/[^a-zA-Z0-9._\-\s]/g, "_");
+      const { data, error } = await supabase.storage
+        .from("manuals")
+        .createSignedUrl(filePath, 300, { download: safeFilename });
       if (error || !data?.signedUrl) {
         toast.error("Erro ao gerar link de download");
         return;
       }
-      await triggerDownload(data.signedUrl, title);
+      // Cria link invisível e clica — não abre popup, funciona em todos os browsers
+      const a = document.createElement("a");
+      a.href = data.signedUrl;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     } finally {
       setDownloading(null);
     }

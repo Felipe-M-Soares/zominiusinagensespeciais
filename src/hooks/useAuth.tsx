@@ -23,6 +23,8 @@ interface AuthContext {
     displayName: string
   ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  // Força re-fetch de role e approved — usado pela tela de aprovação pendente
+  refreshApproval: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContext | null>(null);
@@ -232,6 +234,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }, [clearLocalState]);
 
+  // Força re-fetch de role/approved sem precisar de novo login.
+  // Usado pela PendingApproval para detectar aprovação e redirecionar corretamente.
+  const refreshApproval = useCallback(async () => {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    if (currentSession?.user) {
+      await fetchRoleAndApproval(currentSession.user.id);
+    }
+  }, [fetchRoleAndApproval]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -244,6 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signIn,
         signUp,
         signOut,
+        refreshApproval,
       }}
     >
       {children}

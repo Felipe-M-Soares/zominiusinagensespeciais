@@ -7,9 +7,14 @@ import { RecoveryEmail } from '../_shared/email-templates/recovery.tsx'
 import { EmailChangeEmail } from '../_shared/email-templates/email-change.tsx'
 import { ReauthenticationEmail } from '../_shared/email-templates/reauthentication.tsx'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://conceptusinagensespeciais-lac.vercel.app',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// FIX: CORS dinâmico — evita bloqueio quando domínio muda
+function buildCorsHeaders(origin: string): Record<string, string> {
+  const allowed = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
+  const responseOrigin = allowed === '*' ? '*' : (origin === allowed ? origin : allowed);
+  return {
+    'Access-Control-Allow-Origin': responseOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
 }
 
 const EMAIL_SUBJECTS: Record<string, string> = {
@@ -32,7 +37,7 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 
 const SITE_NAME = "Concept Usinagens Especiais"
 // OPS-004 FIX: Use env var so staging/preview/production all work correctly
-const ROOT_DOMAIN = Deno.env.get("ROOT_DOMAIN") ?? "conceptusinagensespeciais-lac.vercel.app"
+const ROOT_DOMAIN = Deno.env.get("ROOT_DOMAIN") ?? Deno.env.get("ALLOWED_ORIGIN")?.replace("https://", "") ?? "conceptusinagensespeciais-lac.vercel.app"
 const FROM_EMAIL = Deno.env.get('FROM_EMAIL') ?? 'onboarding@resend.dev'
 
 // Standard Webhooks signature verification
@@ -116,7 +121,7 @@ async function sendEmail(opts: {
   return { message_id: data.id }
 }
 
-async function handleWebhook(req: Request): Promise<Response> {
+async function handleWebhook(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
   const secret = Deno.env.get('HOOK_SECRET')
 
   if (!secret) {
@@ -268,6 +273,7 @@ async function handleWebhook(req: Request): Promise<Response> {
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req.headers.get('origin') ?? '');
   const url = new URL(req.url)
 
   if (req.method === 'OPTIONS') {
@@ -275,7 +281,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    return await handleWebhook(req)
+    return await handleWebhook(req, corsHeaders)
   } catch (error) {
     console.error('Webhook handler error:', error)
     const message = error instanceof Error ? error.message : 'Unknown error'

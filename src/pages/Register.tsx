@@ -59,12 +59,12 @@ export default function Register() {
             <div>
               <p className="font-semibold text-foreground">Cadastro realizado com sucesso!</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Um administrador precisa aprovar seu acesso antes que você possa entrar no sistema.
-                Você será notificado quando isso acontecer.
+                Sua conta será <strong>ativada automaticamente em até 1 minuto</strong>.
+                Você também pode ser aprovado antes disso por um administrador.
               </p>
             </div>
             <Link to="/login">
-              <Button variant="outline" className="w-full">Voltar ao login</Button>
+              <Button className="w-full">Acompanhar aprovação</Button>
             </Link>
           </CardContent>
         </Card>

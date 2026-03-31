@@ -73,37 +73,28 @@ export function CatalogButton() {
 
   useEffect(() => { fetchCatalogs(); }, []);
 
-  // FIX: Download robusto para todos os browsers (incluindo iOS Safari).
-  // a.download é ignorado em URLs cross-origin (Supabase Storage) no Safari/iOS.
-  // Solução: fetch() como blob → blob URL local → a.download funciona em todos.
-  const triggerDownload = async (signedUrl: string, filename: string) => {
-    try {
-      const response = await fetch(signedUrl);
-      if (!response.ok) throw new Error("Download failed");
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = filename.endsWith(".pdf") ? filename : filename + ".pdf";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-    } catch {
-      window.open(signedUrl, "_blank", "noopener,noreferrer");
-    }
-  };
-
+  // FIX DEFINITIVO: Usar URL assinada com ?download diretamente (sem fetch/CORS).
+  // createSignedUrl com opção download força Content-Disposition: attachment no Supabase.
   const handleDownload = async (catalog: Catalog) => {
     if (downloading) return;
     setDownloading(true);
     try {
-      const { data, error } = await supabase.storage.from("manuals").createSignedUrl(catalog.file_path, 300);
+      const safeFilename = (catalog.title.endsWith(".pdf") ? catalog.title : catalog.title + ".pdf")
+        .replace(/[^a-zA-Z0-9._\-\s]/g, "_");
+      const { data, error } = await supabase.storage
+        .from("manuals")
+        .createSignedUrl(catalog.file_path, 300, { download: safeFilename });
       if (error || !data?.signedUrl) {
         toast.error("Erro ao gerar link de download");
         return;
       }
-      await triggerDownload(data.signedUrl, catalog.title);
+      const a = document.createElement("a");
+      a.href = data.signedUrl;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     } finally {
       setDownloading(false);
     }
