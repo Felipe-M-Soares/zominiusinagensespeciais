@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 // FIX: CORS dinâmico — ALLOWED_ORIGIN pode ser "*" (dev) ou domínio exato (prod).
 // O CORS estático com domínio hardcoded bloqueia requests quando o domínio de produção
@@ -87,8 +87,9 @@ Deno.serve(async (req) => {
     }
 
     if (roleData?.role !== "admin") {
+      console.error("Access denied. user.id:", user.id, "role found:", roleData?.role ?? "none");
       return new Response(
-        JSON.stringify({ error: "Apenas administradores podem excluir usuários" }),
+        JSON.stringify({ error: "Acesso negado. Papel encontrado: " + (roleData?.role ?? "nenhum") + ". Apenas administradores podem excluir usuários." }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -156,8 +157,9 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("delete-account error:", err);
-    return new Response(JSON.stringify({ error: "Erro interno." }), {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("delete-account error:", msg);
+    return new Response(JSON.stringify({ error: "Erro interno: " + msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

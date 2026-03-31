@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 // FIX CRÍTICO: getCorsHeaders() estava sendo chamada mas nunca definida neste arquivo,
 // causando ReferenceError em toda importação de CSV. Definição adicionada aqui.

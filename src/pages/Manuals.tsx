@@ -21,7 +21,7 @@ import { ArrowLeft, Upload, Trash2, Download, FileText, Plus } from "lucide-reac
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
 
-const MAX_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_MB = 20;
 
 // BUG-007 FIX: Sanitize filename to avoid broken signed URLs with spaces/accents
 function sanitizeFilename(name: string): string {
@@ -157,25 +157,43 @@ export default function Manuals() {
     try {
       const safeFilename = (title.endsWith(".pdf") ? title : title + ".pdf")
         .replace(/[^a-zA-Z0-9._\-\s]/g, "_");
+
+      // Tenta signed URL primeiro (funciona com buckets privados)
       const { data, error } = await supabase.storage
         .from("manuals")
         .createSignedUrl(filePath, 300, { download: safeFilename });
-      if (error || !data?.signedUrl) {
-        toast.error("Erro ao gerar link de download");
+
+      let url: string | null = data?.signedUrl ?? null;
+
+      if (error || !url) {
+        console.warn("createSignedUrl falhou, tentando getPublicUrl:", error?.message);
+        // Fallback para bucket público
+        const { data: pubData } = supabase.storage
+          .from("manuals")
+          .getPublicUrl(filePath, { download: safeFilename } as any);
+        url = pubData?.publicUrl ?? null;
+      }
+
+      if (!url) {
+        toast.error("Erro ao gerar link de download. Verifique as permissões do bucket no Supabase.");
         return;
       }
-      // Cria link invisível e clica — não abre popup, funciona em todos os browsers
+
       const a = document.createElement("a");
-      a.href = data.signedUrl;
+      a.href = url;
+      a.download = safeFilename;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+    } catch (err: any) {
+      console.error("Download error:", err);
+      toast.error("Erro inesperado ao baixar o arquivo.");
     } finally {
       setDownloading(null);
     }
-  };
+  };;
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";

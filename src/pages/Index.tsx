@@ -1,28 +1,21 @@
-import { useState, useCallback } from "react";
-import { useDevices, useFilteredDevices, useDeviceOptions, type Filters } from "@/hooks/useDevices";
+import { useState, useCallback, useRef } from "react";
+import { useDevices, useDeviceOptions, type Filters } from "@/hooks/useDevices";
 import { useAuth } from "@/hooks/useAuth";
 import { SearchFilters } from "@/components/SearchFilters";
 import { DeviceCard } from "@/components/DeviceCard";
 import { DeviceDetail } from "@/components/DeviceDetail";
 import type { Device } from "@/types/device";
 import { Button } from "@/components/ui/button";
-import { LogOut, Settings, Sun, Moon, Phone, BookOpen, ChevronDown } from "lucide-react";
+import { LogOut, Settings, Sun, Moon, Phone, BookOpen, ChevronDown, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { CatalogButton } from "@/components/CatalogButton";
 
-const PAGE_SIZE = 60;
-
 const Index = () => {
-const { devices, loading, error } = useDevices();
 const { signOut, isAdmin } = useAuth();
 const navigate = useNavigate();
 
 const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
-// FIX: Toggle de tema simplificado e correto.
-// Ambos os branches do código original faziam a mesma coisa (lógica morta).
-// Agora: sempre grava "light"/"dark" no localStorage (mesmo formato do Settings.tsx)
-// e sincroniza o DOM imediatamente.
 const toggleTheme = useCallback(() => {
   const next = !isDark;
   setIsDark(next);
@@ -32,41 +25,58 @@ const toggleTheme = useCallback(() => {
 
 const [search, setSearch] = useState("");
 const [filters, setFilters] = useState<Filters>({ material: "", classification: "", sterile: "", single_use: "", exocad: "" });
-const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 const [activeLetter, setActiveLetter] = useState("");
+const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
 
-const filtered = useFilteredDevices(devices, search, filters, activeLetter);
-const options = useDeviceOptions(devices);
+// Debounce search para não disparar requisição a cada tecla
+const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const [debouncedSearch, setDebouncedSearch] = useState("");
+const [debouncedFilters, setDebouncedFilters] = useState(filters);
+const [debouncedLetter, setDebouncedLetter] = useState("");
 
-const handleFilterChange = useCallback((key: string, value: string) => {
-  setFilters((prev) => ({ ...prev, [key]: value }));
-  setVisibleCount(PAGE_SIZE);
-}, []);
-
-const handleClear = useCallback(() => {
-  setSearch("");
-  setFilters({ material: "", classification: "", sterile: "", single_use: "", exocad: "" });
-  setActiveLetter("");
-  setVisibleCount(PAGE_SIZE);
+const applyDebounced = useCallback((newSearch: string, newFilters: Filters, newLetter: string) => {
+  if (debounceRef.current) clearTimeout(debounceRef.current);
+  debounceRef.current = setTimeout(() => {
+    setDebouncedSearch(newSearch);
+    setDebouncedFilters(newFilters);
+    setDebouncedLetter(newLetter);
+  }, 350);
 }, []);
 
 const handleSearchChange = useCallback((v: string) => {
   setSearch(v);
-  setVisibleCount(PAGE_SIZE);
-}, []);
+  applyDebounced(v, filters, activeLetter);
+}, [filters, activeLetter, applyDebounced]);
+
+const handleFilterChange = useCallback((key: string, value: string) => {
+  const next = { ...filters, [key]: value };
+  setFilters(next);
+  applyDebounced(search, next, activeLetter);
+}, [search, filters, activeLetter, applyDebounced]);
 
 const handleLetterSelect = useCallback((letter: string) => {
   setActiveLetter(letter);
-  setVisibleCount(PAGE_SIZE);
+  applyDebounced(search, filters, letter);
+}, [search, filters, applyDebounced]);
+
+const handleClear = useCallback(() => {
+  const empty: Filters = { material: "", classification: "", sterile: "", single_use: "", exocad: "" };
+  setSearch("");
+  setFilters(empty);
+  setActiveLetter("");
+  if (debounceRef.current) clearTimeout(debounceRef.current);
+  setDebouncedSearch("");
+  setDebouncedFilters(empty);
+  setDebouncedLetter("");
 }, []);
 
-const visibleDevices = filtered.slice(0, visibleCount);
-const remaining = filtered.length - visibleCount;
+const { devices, totalCount, loading, loadingMore, error, loadMore, hasMore } =
+  useDevices(debouncedSearch, debouncedFilters, debouncedLetter);
+
+const options = useDeviceOptions();
 
 return (
   <div className="min-h-screen bg-background">
-    {/* Modern header */}
     <header className="border-b border-border/50 bg-card/80 backdrop-blur-md sticky top-0 z-10">
       <div className="container mx-auto px-4 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
@@ -120,14 +130,14 @@ return (
             filters={filters}
             onFilterChange={handleFilterChange}
             onClear={handleClear}
-            resultCount={filtered.length}
-            totalCount={devices.length}
+            resultCount={devices.length}
+            totalCount={totalCount}
             activeLetter={activeLetter}
             availableLetters={options.availableLetters}
             onLetterSelect={handleLetterSelect}
           />
 
-          {filtered.length === 0 ? (
+          {devices.length === 0 ? (
             <div className="text-center py-16 space-y-2">
               <p className="text-muted-foreground text-lg font-display">Nenhum dispositivo encontrado</p>
               <p className="text-muted-foreground text-sm">Tente ajustar os filtros ou a pesquisa</p>
@@ -135,20 +145,23 @@ return (
           ) : (
             <>
               <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {visibleDevices.map((device) => (
+                {devices.map((device) => (
                   <DeviceCard key={device.udi_di} device={device} onClick={setSelectedDevice} />
                 ))}
               </div>
 
-              {remaining > 0 && (
+              {hasMore && (
                 <div className="flex justify-center pt-2">
                   <Button
                     variant="outline"
-                    onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                    onClick={loadMore}
+                    disabled={loadingMore}
                     className="gap-2"
                   >
-                    <ChevronDown className="h-4 w-4" />
-                    Carregar mais ({Math.min(PAGE_SIZE, remaining).toLocaleString("pt-BR")} de {remaining.toLocaleString("pt-BR")} restantes)
+                    {loadingMore
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</>
+                      : <><ChevronDown className="h-4 w-4" /> Carregar mais ({(totalCount - devices.length).toLocaleString("pt-BR")} restantes)</>
+                    }
                   </Button>
                 </div>
               )}

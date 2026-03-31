@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useDeferredValue } from "react";
-import { fetchAllPages } from "@/lib/supabaseUtils";
+import { useState, useEffect, useMemo, useDeferredValue, useCallback, useRef } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import type { Device } from "@/types/device";
 
@@ -30,32 +30,7 @@ return {
 };
 }
 
-export function useDevices() {
-const [devices, setDevices] = useState<Device[]>([]);
-const [loading, setLoading] = useState(true);
-const [error, setError] = useState<string | null>(null);
-
-useEffect(() => {
-  // FIX: isMounted flag evita setState em componente desmontado (memory leak / React warning).
-  // Isso pode ocorrer se o usuário navegar para outra página antes do fetch terminar.
-  let isMounted = true;
-  fetchAllPages<DbDevice>("devices", "model")
-    .then((all) => {
-      if (!isMounted) return;
-      setDevices(all.map(toDevice));
-      setLoading(false);
-    })
-    .catch((err) => {
-      if (!isMounted) return;
-      console.error("Device fetch error:", err);
-      setError("Erro ao carregar dispositivos.");
-      setLoading(false);
-    });
-  return () => { isMounted = false; };
-}, []);
-
-return { devices, loading, error };
-}
+const PAGE_SIZE = 60;
 
 export type Filters = {
 material: string;
@@ -65,45 +40,169 @@ single_use: string;
 exocad: string;
 };
 
-export function useFilteredDevices(
-devices: Device[],
-search: string,
-filters: Filters,
-letter: string
-) {
-// PERF-002 FIX: Defer expensive filter computation so keystrokes stay responsive.
-// React 18 useDeferredValue schedules the re-computation at lower priority,
-// preventing blocking the main thread on every keystroke with large datasets.
+// PERF: Busca server-side paginada — nunca carrega tudo na memória.
+// Substitui o fetchAllPages que trazia todos os registros de uma vez.
+export function useDevices(search: string, filters: Filters, letter: string) {
+const [devices, setDevices] = useState<Device[]>([]);
+const [totalCount, setTotalCount] = useState(0);
+const [loading, setLoading] = useState(true);
+const [loadingMore, setLoadingMore] = useState(false);
+const [error, setError] = useState<string | null>(null);
+const [offset, setOffset] = useState(0);
+const abortRef = useRef<AbortController | null>(null);
+
+const fetchPage = useCallback(async (currentOffset: number, replace: boolean) => {
+  // Cancela requisição anterior se ainda em andamento
+  if (abortRef.current) abortRef.current.abort();
+  const controller = new AbortController();
+  abortRef.current = controller;
+
+  if (replace) setLoading(true); else setLoadingMore(true);
+
+  try {
+    let query = supabase
+      .from("devices")
+      .select("*", { count: "exact" })
+      .order("model")
+      .range(currentOffset, currentOffset + PAGE_SIZE - 1);
+
+    const q = search.trim();
+    if (q) {
+      query = query.or([
+        `model.ilike.%${q}%`,
+        `reference.ilike.%${q}%`,
+        `udi_di.ilike.%${q}%`,
+        `internal_code.ilike.%${q}%`,
+        `anvisa_registration.ilike.%${q}%`,
+        `brand_name.ilike.%${q}%`,
+        `primary_material.ilike.%${q}%`,
+        `exocad_compatibility.ilike.%${q}%`,
+      ].join(","));
+    }
+
+    if (letter) {
+      if (letter === "#") {
+        // modelos que não começam com letra A-Z
+        query = query.not("model", "ilike", "a%")
+          .not("model", "ilike", "b%").not("model", "ilike", "c%")
+          .not("model", "ilike", "d%").not("model", "ilike", "e%")
+          .not("model", "ilike", "f%").not("model", "ilike", "g%")
+          .not("model", "ilike", "h%").not("model", "ilike", "i%")
+          .not("model", "ilike", "j%").not("model", "ilike", "k%")
+          .not("model", "ilike", "l%").not("model", "ilike", "m%")
+          .not("model", "ilike", "n%").not("model", "ilike", "o%")
+          .not("model", "ilike", "p%").not("model", "ilike", "q%")
+          .not("model", "ilike", "r%").not("model", "ilike", "s%")
+          .not("model", "ilike", "t%").not("model", "ilike", "u%")
+          .not("model", "ilike", "v%").not("model", "ilike", "w%")
+          .not("model", "ilike", "x%").not("model", "ilike", "y%")
+          .not("model", "ilike", "z%");
+      } else {
+        query = query.ilike("model", `${letter}%`);
+      }
+    }
+
+    if (filters.material) query = query.eq("primary_material", filters.material);
+    if (filters.classification) query = query.eq("classification_code", filters.classification);
+    if (filters.sterile === "true") query = query.eq("sterile", true);
+    if (filters.sterile === "false") query = query.eq("sterile", false);
+    if (filters.single_use === "true") query = query.eq("single_use", true);
+    if (filters.single_use === "false") query = query.eq("single_use", false);
+    if (filters.exocad) query = query.eq("exocad_compatibility", filters.exocad);
+
+    const { data, error: err, count } = await query;
+    if (controller.signal.aborted) return;
+    if (err) throw err;
+
+    const mapped = (data ?? []).map(toDevice);
+    setDevices(prev => replace ? mapped : [...prev, ...mapped]);
+    setTotalCount(count ?? 0);
+    setOffset(currentOffset + mapped.length);
+  } catch (err: any) {
+    if (controller.signal.aborted) return;
+    console.error("Device fetch error:", err);
+    setError("Erro ao carregar dispositivos.");
+  } finally {
+    if (!controller.signal.aborted) {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }
+}, [search, filters, letter]);
+
+// Reinicia quando filtros mudam
+useEffect(() => {
+  setOffset(0);
+  setDevices([]);
+  fetchPage(0, true);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [search, filters, letter]);
+
+const loadMore = useCallback(() => {
+  fetchPage(offset, false);
+}, [fetchPage, offset]);
+
+const hasMore = devices.length < totalCount;
+
+return { devices, totalCount, loading, loadingMore, error, loadMore, hasMore };
+}
+
+// Hook para opções de filtro — carrega apenas os valores únicos, não todos os registros
+export function useDeviceOptions() {
+const [options, setOptions] = useState({
+  materials: [] as string[],
+  classifications: [] as string[],
+  exocadOptions: [] as string[],
+  availableLetters: new Set<string>(),
+});
+
+useEffect(() => {
+  // Busca apenas os campos necessários para os filtros, sem trazer dados completos
+  Promise.all([
+    supabase.from("devices").select("primary_material").order("primary_material"),
+    supabase.from("devices").select("classification_code").order("classification_code"),
+    supabase.from("devices").select("exocad_compatibility").not("exocad_compatibility", "is", null),
+    supabase.from("devices").select("model").order("model"),
+  ]).then(([matRes, classRes, exocadRes, modelRes]) => {
+    const materials = [...new Set((matRes.data ?? []).map((d: any) => d.primary_material).filter(Boolean))];
+    const classifications = [...new Set((classRes.data ?? []).map((d: any) => d.classification_code).filter(Boolean))];
+    const exocadOptions = [...new Set((exocadRes.data ?? [])
+      .map((d: any) => d.exocad_compatibility)
+      .filter((v: any) => v && v !== "N.A"))];
+    const letters = new Set<string>();
+    (modelRes.data ?? []).forEach((d: any) => {
+      const c = (d.model ?? "").charAt(0).toUpperCase();
+      letters.add(/[A-Z]/.test(c) ? c : "#");
+    });
+    setOptions({ materials, classifications, exocadOptions, availableLetters: letters });
+  });
+}, []);
+
+return options;
+}
+
+// Mantido para compatibilidade mas não mais usado na Index — pode ser removido futuramente
+export type { Filters as FilterType };
+export function useFilteredDevices(devices: Device[], search: string, filters: Filters, letter: string) {
 const deferredSearch = useDeferredValue(search);
 const deferredFilters = useDeferredValue(filters);
 const deferredLetter = useDeferredValue(letter);
-
 return useMemo(() => {
   const q = deferredSearch.toLowerCase().trim();
   return devices.filter((d) => {
     if (deferredLetter) {
       const firstChar = d.model.charAt(0).toUpperCase();
-      if (deferredLetter === "#") {
-        if (/[A-Z]/.test(firstChar)) return false;
-      } else {
-        if (firstChar !== deferredLetter) return false;
-      }
+      if (deferredLetter === "#") { if (/[A-Z]/.test(firstChar)) return false; }
+      else { if (firstChar !== deferredLetter) return false; }
     }
-
     if (q) {
-      const matchesSearch =
-        d.model.toLowerCase().includes(q) ||
-        d.reference.toLowerCase().includes(q) ||
-        d.udi_di.includes(q) ||
-        d.internal_code.includes(q) ||
-        d.anvisa_registration.includes(q) ||
+      const match = d.model.toLowerCase().includes(q) || d.reference.toLowerCase().includes(q) ||
+        d.udi_di.includes(q) || d.internal_code.includes(q) || d.anvisa_registration.includes(q) ||
         d.primary_material.toLowerCase().includes(q) ||
-        // FIX: estes campos podem ser null vindo do banco — sem ?. causaria TypeError
-        // quebrando toda a pesquisa silenciosamente
         (d.exocad_compatibility?.toLowerCase() ?? "").includes(q) ||
         (d.brand_name?.toLowerCase() ?? "").includes(q) ||
         (d.body_region?.toLowerCase() ?? "").includes(q);
-      if (!matchesSearch) return false;
+      if (!match) return false;
     }
     if (deferredFilters.material && d.primary_material !== deferredFilters.material) return false;
     if (deferredFilters.classification && d.classification_code !== deferredFilters.classification) return false;
@@ -115,34 +214,4 @@ return useMemo(() => {
     return true;
   });
 }, [devices, deferredSearch, deferredFilters, deferredLetter]);
-}
-
-export function useDeviceOptions(devices: Device[]) {
-return useMemo(() => {
-  const materials = new Set<string>();
-  const classifications = new Set<string>();
-  const exocadOptions = new Set<string>();
-  const letters = new Set<string>();
-
-  devices.forEach((d) => {
-    materials.add(d.primary_material);
-    classifications.add(d.classification_code);
-    if (d.exocad_compatibility && d.exocad_compatibility !== "N.A") {
-      exocadOptions.add(d.exocad_compatibility);
-    }
-    const firstChar = d.model.charAt(0).toUpperCase();
-    if (/[A-Z]/.test(firstChar)) {
-      letters.add(firstChar);
-    } else {
-      letters.add("#");
-    }
-  });
-
-  return {
-    materials: Array.from(materials).sort(),
-    classifications: Array.from(classifications).sort(),
-    exocadOptions: Array.from(exocadOptions).sort(),
-    availableLetters: letters,
-  };
-}, [devices]);
 }

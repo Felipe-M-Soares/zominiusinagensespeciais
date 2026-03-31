@@ -19,7 +19,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Download, Upload, FileUp, Trash2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
-const MAX_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_MB = 20;
 
 // BUG-007 FIX: Sanitize filename - remove special chars/spaces that break signed URLs
 function sanitizeFilename(name: string): string {

@@ -30,12 +30,25 @@ import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus } from "lucide-react";
 // FIX: supabase.functions.invoke() coloca erros HTTP (4xx/5xx) em error.context.body,
 // não em error.message (que é sempre "Edge Function returned a non-2xx status code").
 // Sem este helper, o usuário via sempre a mensagem genérica em vez do erro real da função.
+// FIX: supabase.functions.invoke() v2 — o error.context é um Response que pode já
+// ter sido parcialmente consumido. Tentamos .clone() + .json() primeiro, depois .text().
+// Se tudo falhar, usamos error.message como fallback.
 async function readInvokeError(error: unknown): Promise<string> {
   try {
     const e = error as { context?: Response; message?: string };
-    if (e?.context && typeof e.context.json === "function") {
-      const body = await e.context.json() as { error?: string };
-      if (body?.error) return String(body.error);
+    if (e?.context instanceof Response) {
+      try {
+        const cloned = e.context.clone();
+        const body = await cloned.json() as { error?: string; message?: string };
+        if (body?.error) return String(body.error);
+        if (body?.message) return String(body.message);
+      } catch {
+        try {
+          const cloned2 = e.context.clone();
+          const text = await cloned2.text();
+          if (text) return text.slice(0, 200);
+        } catch { /* ignore */ }
+      }
     }
   } catch { /* ignore */ }
   return (error as { message?: string })?.message ?? "Erro desconhecido";
