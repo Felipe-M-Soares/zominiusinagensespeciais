@@ -133,20 +133,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Ordem correta: delete auth user first (cascades via DB triggers if configured),
-    // then clean up application tables. This way if deleteUser fails, app tables are intact.
+    // Ordem correta: limpar tabelas da aplicação ANTES de deletar o auth user.
+    // Se deletarmos o auth user primeiro e o cleanup falhar, os registros ficam órfãos
+    // sem user_id válido e sem como associar a quem pertenciam.
+    const { error: profileErr } = await adminClient.from("profiles").delete().eq("user_id", targetUserId);
+    if (profileErr) console.error("profiles delete error:", profileErr.message);
+    
+    const { error: roleErr } = await adminClient.from("user_roles").delete().eq("user_id", targetUserId);
+    if (roleErr) console.error("user_roles delete error:", roleErr.message);
+
+    // Agora deleta o auth user
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetUserId);
     if (deleteError) {
       console.error("deleteUser error:", deleteError.message);
       return new Response(
-        JSON.stringify({ error: "Não foi possível excluir o usuário." }),
+        JSON.stringify({ error: "Não foi possível excluir o usuário: " + deleteError.message }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Limpeza de tabelas da aplicação após deleção bem-sucedida do auth user
-    await adminClient.from("profiles").delete().eq("user_id", targetUserId);
-    await adminClient.from("user_roles").delete().eq("user_id", targetUserId);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

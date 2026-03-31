@@ -54,13 +54,16 @@ function parseCSV(text: string): Record<string, string>[] {
     return result;
   };
 
-  const headers = parseRow(lines[0]);
+  const headers = parseRow(lines[0]).map(h => h.trim());
   const rows: Record<string, string>[] = [];
   for (let i = 1; i < lines.length; i++) {
     const values = parseRow(lines[i]);
     if (values.length < 2) continue;
     const row: Record<string, string> = {};
-    headers.forEach((h, idx) => { row[h] = values[idx] ?? ''; });
+    headers.forEach((h, idx) => { 
+      row[h] = values[idx] ?? '';
+      row[h.toLowerCase()] = values[idx] ?? '';
+    });
     rows.push(row);
   }
   return rows;
@@ -79,22 +82,30 @@ function t(s: string, max: number): string {
   return typeof s === 'string' ? s.trim().slice(0, max) : '';
 }
 
+function g(r: Record<string, string>, ...keys: string[]): string {
+  for (const k of keys) {
+    const v = r[k] || r[k.toLowerCase()] || r[k.toUpperCase()];
+    if (v) return v;
+  }
+  return '';
+}
+
 function mapCSVRow(r: Record<string, string>) {
-  // Support both old and new CSV column names
-  const model = r['Model'] || r['model'] || r['devices/model'] || '';
-  const internalCode = r['Internal_Code'] || r['internal_code'] || r['devices/internal_code'] || '';
-  const udiDi = r['Udi_Di'] || r['udi_di'] || r['devices/udi_di'] || '';
-  const reference = r['reference'] || r['Reference'] || r['devices/reference'] || '';
-  const exocad = r['Exocad'] || r['exocad'] || r['devices/software_compatibility/exocad'] || '';
-  const anvisaReg = r['Register_Anvisa'] || r['anvisa_registration'] || r['devices/anvisa_registration'] || '';
-  const primaryMaterial = r['Primary_Material'] || r['primary_material'] || r['devices/composition/primary_material'] || '';
-  const classCode = r['Classification_Code'] || r['classification_code'] || r['devices/technical_information/classification_code'] || 'III';
-  const brandName = r['Brand_Name'] || r['brand_name'] || r['devices/brand_name'] || '';
-  const country = r['Manufacturer_Country'] || r['manufacturer_country'] || r['devices/manufacturer_country'] || '';
-  const gmdn = r['Gmdn'] || r['gmdn'] || '';
-  const singleUse = r['Labeled As A Single-Use Device?'] || r['single_use'] || r['devices/technical_information/single_use'] || '';
-  const sterile = r['Labeled As A Sterile Device?'] || r['sterile'] || r['devices/technical_information/sterile'] || '';
-  const category = r['Medical Device Category'] || '';
+  // Support any casing of column names - g() tries original, lowercase and uppercase
+  const model = g(r, 'Model', 'model', 'MODELO', 'Modelo', 'devices/model');
+  const internalCode = g(r, 'Internal_Code', 'internal_code', 'Codigo_Interno', 'codigo_interno', 'devices/internal_code');
+  const udiDi = g(r, 'Udi_Di', 'udi_di', 'UDI_DI', 'UDI-DI', 'udi-di', 'UDIDI', 'devices/udi_di');
+  const reference = g(r, 'Reference', 'reference', 'Referencia', 'referencia', 'REF', 'ref', 'devices/reference');
+  const exocad = g(r, 'Exocad', 'exocad', 'devices/software_compatibility/exocad');
+  const anvisaReg = g(r, 'Register_Anvisa', 'anvisa_registration', 'Anvisa', 'anvisa', 'registro_anvisa', 'devices/anvisa_registration');
+  const primaryMaterial = g(r, 'Primary_Material', 'primary_material', 'Material_Principal', 'material_principal', 'devices/composition/primary_material');
+  const classCode = g(r, 'Classification_Code', 'classification_code', 'Codigo_Classificacao', 'devices/technical_information/classification_code') || 'III';
+  const brandName = g(r, 'Brand_Name', 'brand_name', 'Marca', 'marca', 'devices/brand_name');
+  const country = g(r, 'Manufacturer_Country', 'manufacturer_country', 'Pais', 'pais', 'devices/manufacturer_country');
+  const gmdn = g(r, 'Gmdn', 'gmdn', 'uso_pretendido', 'intended_use');
+  const singleUse = g(r, 'Labeled As A Single-Use Device?', 'single_use', 'uso_unico', 'devices/technical_information/single_use');
+  const sterile = g(r, 'Labeled As A Sterile Device?', 'sterile', 'esteril', 'devices/technical_information/sterile');
+  const category = g(r, 'Medical Device Category', 'category', 'categoria', 'body_region', 'regiao_corpo');
 
   return {
     udi_di: t(udiDi, 200),
@@ -243,7 +254,17 @@ Deno.serve(async (req) => {
 
     if (body.csv && typeof body.csv === 'string') {
       const rows = parseCSV(body.csv);
-      mapped = rows.map(mapCSVRow).filter(d => d.udi_di);
+      const allMapped = rows.map(mapCSVRow);
+      mapped = allMapped.filter(d => d.udi_di);
+      if (mapped.length === 0 && rows.length > 0) {
+        const detectedCols = rows.length > 0 ? Object.keys(rows[0]).slice(0, 10).join(', ') : 'nenhuma';
+        console.error('CSV columns detected:', detectedCols);
+        return new Response(JSON.stringify({ 
+          error: \`Nenhum registro com UDI-DI encontrado. Colunas detectadas no CSV: \${detectedCols}. Certifique-se que existe uma coluna chamada 'udi_di', 'Udi_Di' ou 'UDI-DI'.\`
+        }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     } else if (Array.isArray(body.dispositivos_medicos) && body.dispositivos_medicos.length > 0) {
       mapped = body.dispositivos_medicos.map(mapAnvisaDevice).filter((d: any) => d.udi_di);
     } else if (Array.isArray(body.devices) && body.devices.length > 0) {
