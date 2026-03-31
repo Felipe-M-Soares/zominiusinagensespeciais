@@ -1,6 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-<<<<<<< HEAD
 // FIX CRÍTICO: getCorsHeaders() estava sendo chamada em Deno.serve mas nunca definida,
 // causando ReferenceError em toda importação CSV. Adicionada a definição da função.
 function getCorsHeaders(req: Request): Record<string, string> {
@@ -13,9 +12,6 @@ function getCorsHeaders(req: Request): Record<string, string> {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 }
-=======
-// CORS: handled dynamically via getCorsHeaders(req) inside Deno.serve
->>>>>>> 631d36d94aa464fb75c43d2420b7343169fbb4c1
 
 // VULN-007: Limits to prevent DoS
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB
