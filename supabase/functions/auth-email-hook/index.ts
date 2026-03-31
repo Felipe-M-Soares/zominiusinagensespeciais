@@ -7,15 +7,9 @@ import { RecoveryEmail } from '../_shared/email-templates/recovery.tsx'
 import { EmailChangeEmail } from '../_shared/email-templates/email-change.tsx'
 import { ReauthenticationEmail } from '../_shared/email-templates/reauthentication.tsx'
 
-// FIX: CORS dinâmico — ALLOWED_ORIGIN pode ser "*" (dev) ou domínio exato (prod).
-// O CORS estático hardcoded impedia emails de disparar quando o domínio mudar.
-function getCorsHeaders(origin: string): Record<string, string> {
-  const allowed = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
-  const responseOrigin = allowed === '*' ? '*' : (origin === allowed ? origin : allowed);
-  return {
-    'Access-Control-Allow-Origin': responseOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  };
+const corsHeaders = {
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://conceptusinagensespeciais-lac.vercel.app',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 const EMAIL_SUBJECTS: Record<string, string> = {
@@ -122,7 +116,7 @@ async function sendEmail(opts: {
   return { message_id: data.id }
 }
 
-async function handleWebhook(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
+async function handleWebhook(req: Request): Promise<Response> {
   const secret = Deno.env.get('HOOK_SECRET')
 
   if (!secret) {
@@ -274,7 +268,6 @@ async function handleWebhook(req: Request, corsHeaders: Record<string, string>):
 }
 
 Deno.serve(async (req) => {
-  const corsHeaders = getCorsHeaders(req.headers.get('origin') ?? '');
   const url = new URL(req.url)
 
   if (req.method === 'OPTIONS') {
@@ -282,7 +275,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    return await handleWebhook(req, corsHeaders)
+    return await handleWebhook(req)
   } catch (error) {
     console.error('Webhook handler error:', error)
     const message = error instanceof Error ? error.message : 'Unknown error'
