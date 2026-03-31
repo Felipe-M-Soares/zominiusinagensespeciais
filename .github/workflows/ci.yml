@@ -46,6 +46,11 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+      - name: Pull Vercel project settings
+        run: npx vercel pull --yes --environment=production --token ${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       - name: Build with Vercel
         run: npx vercel build --prod --token ${{ secrets.VERCEL_TOKEN }}
         env:
