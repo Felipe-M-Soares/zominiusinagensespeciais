@@ -68,8 +68,27 @@ async function queryDevices(
     );
   }
 
-  if (letter && letter !== "#") {
+  // FIX: filtro de letra só se aplica quando NÃO há busca por texto,
+  // para não conflitar com a busca multi-campo e retornar count errado.
+  if (!q && letter && letter !== "#") {
     query = query.ilike("model", `${letter}%`);
+  }
+  if (!q && letter === "#") {
+    // Modelos que não começam com letra A-Z
+    query = query.not("model", "ilike", "a%")
+      .not("model", "ilike", "b%").not("model", "ilike", "c%")
+      .not("model", "ilike", "d%").not("model", "ilike", "e%")
+      .not("model", "ilike", "f%").not("model", "ilike", "g%")
+      .not("model", "ilike", "h%").not("model", "ilike", "i%")
+      .not("model", "ilike", "j%").not("model", "ilike", "k%")
+      .not("model", "ilike", "l%").not("model", "ilike", "m%")
+      .not("model", "ilike", "n%").not("model", "ilike", "o%")
+      .not("model", "ilike", "p%").not("model", "ilike", "q%")
+      .not("model", "ilike", "r%").not("model", "ilike", "s%")
+      .not("model", "ilike", "t%").not("model", "ilike", "u%")
+      .not("model", "ilike", "v%").not("model", "ilike", "w%")
+      .not("model", "ilike", "x%").not("model", "ilike", "y%")
+      .not("model", "ilike", "z%");
   }
 
   if (filters.material) query = query.eq("primary_material", filters.material);
@@ -97,6 +116,9 @@ export function useDevices(search: string, filters: Filters, letter: string) {
   const offsetRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Serializa filters para uso estável em deps
+  const filtersKey = JSON.stringify(filters);
+
   // Quando search/filters/letter mudam: recomeça do zero
   useEffect(() => {
     if (abortRef.current) abortRef.current.abort();
@@ -109,7 +131,10 @@ export function useDevices(search: string, filters: Filters, letter: string) {
     setError(null);
     setLoading(true);
 
-    queryDevices(search, filters, letter, 0, controller.signal)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const currentFilters = JSON.parse(filtersKey) as Filters;
+
+    queryDevices(search, currentFilters, letter, 0, controller.signal)
       .then(({ data, count }) => {
         if (controller.signal.aborted) return;
         setDevices(data);
@@ -127,14 +152,22 @@ export function useDevices(search: string, filters: Filters, letter: string) {
 
     return () => controller.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, JSON.stringify(filters), letter]);
+  }, [search, filtersKey, letter]);
+
+  // FIX: loadMore usa refs para evitar deps instáveis (objetos/funções)
+  const searchRef = useRef(search);
+  const filtersRef = useRef(filters);
+  const letterRef = useRef(letter);
+  useEffect(() => { searchRef.current = search; }, [search]);
+  useEffect(() => { filtersRef.current = filters; }, [filters]);
+  useEffect(() => { letterRef.current = letter; }, [letter]);
 
   const loadMore = useCallback(() => {
     if (loadingMore) return;
     const controller = new AbortController();
     setLoadingMore(true);
 
-    queryDevices(search, filters, letter, offsetRef.current, controller.signal)
+    queryDevices(searchRef.current, filtersRef.current, letterRef.current, offsetRef.current, controller.signal)
       .then(({ data, count }) => {
         if (controller.signal.aborted) return;
         setDevices((prev) => [...prev, ...data]);
@@ -148,8 +181,7 @@ export function useDevices(search: string, filters: Filters, letter: string) {
       .finally(() => {
         if (!controller.signal.aborted) setLoadingMore(false);
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, filters, letter, loadingMore]);
+  }, [loadingMore]);
 
   const hasMore = devices.length < totalCount;
 
@@ -173,6 +205,13 @@ export function useDeviceOptions() {
       supabase.from("devices").select("model").order("model"),
     ]).then(([matRes, classRes, exocadRes, modelRes]) => {
       if (cancelled) return;
+
+      // FIX: trata erros de cada query individualmente em vez de engolir silenciosamente
+      if (matRes.error) console.error("useDeviceOptions materials error:", matRes.error);
+      if (classRes.error) console.error("useDeviceOptions classifications error:", classRes.error);
+      if (exocadRes.error) console.error("useDeviceOptions exocad error:", exocadRes.error);
+      if (modelRes.error) console.error("useDeviceOptions models error:", modelRes.error);
+
       const materials = [
         ...new Set(
           (matRes.data ?? []).map((d: any) => d.primary_material).filter(Boolean)
@@ -196,6 +235,9 @@ export function useDeviceOptions() {
         letters.add(/[A-Z]/.test(c) ? c : "#");
       });
       setOptions({ materials, classifications, exocadOptions, availableLetters: letters });
+    }).catch((err) => {
+      // FIX: captura erros de rede que antes eram silenciosos
+      console.error("useDeviceOptions fetch error:", err);
     });
     return () => { cancelled = true; };
   }, []);

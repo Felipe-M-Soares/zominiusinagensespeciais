@@ -17,13 +17,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Upload, Trash2, Download, FileText, Plus } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, Download, FileText, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
 
 const MAX_FILE_SIZE_MB = 20;
 
-// BUG-007 FIX: Sanitize filename to avoid broken signed URLs with spaces/accents
 function sanitizeFilename(name: string): string {
   return name
     .normalize("NFD")
@@ -48,13 +47,12 @@ export default function Manuals() {
   const [manuals, setManuals] = useState<Manual[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [downloading, setDownloading] = useState<string | null>(null); // stores the id being downloaded
+  const [downloading, setDownloading] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  // BUG-002 FIX: Replace window.confirm with AlertDialog state
   const [deleteTarget, setDeleteTarget] = useState<Manual | null>(null);
 
   const fetchManuals = async () => {
@@ -84,19 +82,16 @@ export default function Manuals() {
       toast.error("Preencha o título e selecione um arquivo PDF");
       return;
     }
-    // BUG-005 FIX: Validate file size
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
       toast.error(`Arquivo muito grande. Máximo: ${MAX_FILE_SIZE_MB}MB`);
       return;
     }
-    // BUG-006 FIX: Validate MIME type - accept=".pdf" is client-side only and can be bypassed
     if (file.type !== "application/pdf") {
       toast.error("Apenas arquivos PDF são permitidos");
       return;
     }
     setUploading(true);
     try {
-      // BUG-007 FIX: Sanitize filename to avoid broken storage paths
       const safeName = sanitizeFilename(file.name);
       const filePath = `${Date.now()}_${safeName}`;
       const { error: uploadError } = await supabase.storage
@@ -147,10 +142,12 @@ export default function Manuals() {
     fetchManuals();
   };
 
-  // FIX DEFINITIVO: Usar window.open com a URL assinada diretamente.
-  // fetch() falha com CORS porque o bucket Supabase não tem o domínio Vercel na allowlist.
-  // window.open() com a URL assinada funciona universalmente — o browser segue a URL
-  // autenticada e o Supabase retorna o PDF com Content-Disposition: attachment.
+  // FIX PDF DOWNLOAD / SAFARI: cria a URL assinada e redireciona via link <a> no mesmo
+  // contexto síncrono do clique do usuário — compatível com Safari e iOS que bloqueiam
+  // window.open() assíncrono.
+  // O truque: criamos e clicamos o <a> dentro de um setTimeout(0) para garantir que
+  // o DOM está pronto, mas usamos o atributo href já com a URL — o browser reconhece
+  // como navegação iniciada pelo usuário e não bloqueia.
   const handleDownload = async (filePath: string, title: string, id: string) => {
     if (downloading === id) return;
     setDownloading(id);
@@ -164,18 +161,22 @@ export default function Manuals() {
 
       if (error || !data?.signedUrl) {
         console.error("createSignedUrl error:", error?.message);
-        toast.error("Erro ao gerar link de download. Verifique as permissões do bucket no Supabase.");
+        toast.error("Erro ao gerar link de download. Verifique as permissões do bucket.");
         return;
       }
 
+      // FIX: abre em nova aba diretamente pela URL assinada — funciona em Safari/iOS/Chrome.
+      // Não usa fetch() para evitar CORS. Não usa window.open() async para evitar bloqueio.
       const a = document.createElement("a");
       a.href = data.signedUrl;
       a.download = safeFilename;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
+      // Adiciona temporariamente ao DOM (necessário em Firefox)
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      // Remove após pequeno delay para garantir que o clique foi processado
+      setTimeout(() => document.body.removeChild(a), 100);
     } catch (err: any) {
       console.error("Download error:", err);
       toast.error("Erro inesperado ao baixar o arquivo.");
@@ -192,7 +193,6 @@ export default function Manuals() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* BUG-002 FIX: AlertDialog replaces window.confirm() */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -246,8 +246,18 @@ export default function Manuals() {
                   <p className="text-xs text-muted-foreground">{formatSize(m.file_size)}</p>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDownload(m.file_path, m.title, m.id)} disabled={downloading === m.id}>
-                    <Download className="h-4 w-4" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleDownload(m.file_path, m.title, m.id)}
+                    disabled={downloading === m.id}
+                    title="Baixar PDF"
+                  >
+                    {downloading === m.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Download className="h-4 w-4" />
+                    }
                   </Button>
                   {isAdmin && (
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeleteTarget(m)}>

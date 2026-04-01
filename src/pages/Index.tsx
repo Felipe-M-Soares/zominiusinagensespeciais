@@ -6,10 +6,11 @@ import { DeviceCard } from "@/components/DeviceCard";
 import { DeviceDetail } from "@/components/DeviceDetail";
 import type { Device } from "@/types/device";
 import { Button } from "@/components/ui/button";
-import { LogOut, Settings, Sun, Moon, Phone, BookOpen, ChevronDown, Loader2 } from "lucide-react";
+import { LogOut, Settings, Phone, BookOpen, ChevronDown, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { CatalogButton } from "@/components/CatalogButton";
+import { getStoredTheme, applyTheme } from "@/pages/Settings";
 
 const EMPTY_FILTERS: Filters = { material: "", classification: "", sterile: "", single_use: "", exocad: "" };
 
@@ -17,22 +18,24 @@ const Index = () => {
   const { signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  const [isDark, setIsDark] = useState(() =>
-    document.documentElement.classList.contains("dark")
-  );
+  // FIX TEMA: usa a mesma lógica de Settings (applyTheme/getStoredTheme) para que
+  // o toggle do Index e a página de Settings fiquem sincronizados.
+  const [isDark, setIsDark] = useState(() => {
+    const theme = getStoredTheme();
+    if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return theme === "dark";
+  });
+
   const toggleTheme = useCallback(() => {
     const next = !isDark;
     setIsDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
+    applyTheme(next ? "dark" : "light");
   }, [isDark]);
 
-  // Estado bruto (digitação instantânea na UI)
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
 
-  // Estado debounced (enviado ao hook de dados)
   const [querySearch, setQuerySearch] = useState("");
   const [queryFilters, setQueryFilters] = useState<Filters>(EMPTY_FILTERS);
   const [queryLetter, setQueryLetter] = useState("");
@@ -88,7 +91,6 @@ const Index = () => {
     setQueryLetter("");
   }, []);
 
-  // Cleanup debounce on unmount
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
@@ -97,6 +99,9 @@ const Index = () => {
     useDevices(querySearch, queryFilters, queryLetter);
 
   const options = useDeviceOptions();
+
+  // FIX TEMA: ícone de tema reflete o estado real do documento
+  const currentlyDark = document.documentElement.classList.contains("dark");
 
   return (
     <div className="min-h-screen bg-background">
@@ -140,8 +145,17 @@ const Index = () => {
             >
               <Phone className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme}>
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={toggleTheme}
+              title={currentlyDark ? "Modo claro" : "Modo escuro"}
+            >
+              {currentlyDark
+                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              }
             </Button>
             <Button
               variant="ghost"

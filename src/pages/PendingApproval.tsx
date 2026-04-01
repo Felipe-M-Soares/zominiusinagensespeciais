@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,30 +7,33 @@ import { Logo } from "@/components/Logo";
 import { Clock, LogOut, CheckCircle, Loader2 } from "lucide-react";
 
 const AUTO_APPROVE_SECONDS = 60;
-const POLL_INTERVAL_MS = 5_000; // verifica aprovação a cada 5 segundos
+const POLL_INTERVAL_MS = 5_000;
 
 export default function PendingApproval() {
   const { signOut, user, refreshApproval, approved } = useAuth();
   const navigate = useNavigate();
 
   const [secondsLeft, setSecondsLeft] = useState(AUTO_APPROVE_SECONDS);
+  // FIX LOOP: controla se a Edge Function já foi invocada para evitar chamadas repetidas
+  const autoApproveCalledRef = useRef(false);
   const [autoApproveTriggered, setAutoApproveTriggered] = useState(false);
   const [checking, setChecking] = useState(false);
+  // FIX LOOP: flag para evitar que o polling continue após navegar
+  const navigatedRef = useRef(false);
 
   // Quando approved virar true no contexto, navega para home
   useEffect(() => {
-    if (approved === true) {
+    if (approved === true && !navigatedRef.current) {
+      navigatedRef.current = true;
       navigate("/", { replace: true });
     }
   }, [approved, navigate]);
 
-  // Verifica aprovação: atualiza o contexto de auth
   const checkApproval = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || navigatedRef.current) return;
     setChecking(true);
     try {
       await refreshApproval();
-      // approved será atualizado no contexto → o useEffect acima detecta e navega
     } catch (err) {
       console.error("checkApproval error:", err);
     } finally {
@@ -38,9 +41,10 @@ export default function PendingApproval() {
     }
   }, [user?.id, refreshApproval]);
 
-  // Chama a Edge Function de aprovação automática no Supabase
+  // FIX LOOP: a Edge Function auto-approve só é chamada uma vez usando ref
   const triggerAutoApprove = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || autoApproveCalledRef.current) return;
+    autoApproveCalledRef.current = true;
     try {
       await supabase.functions.invoke("auto-approve", {
         body: { user_id: user.id },
@@ -59,17 +63,21 @@ export default function PendingApproval() {
     return () => clearInterval(timer);
   }, [secondsLeft]);
 
-  // Quando chega a 0: dispara aprovação automática
+  // FIX LOOP: quando chega a 0 dispara aprovação + verifica, mas nunca em loop
   useEffect(() => {
     if (secondsLeft === 0 && !autoApproveTriggered) {
       setAutoApproveTriggered(true);
-      triggerAutoApprove().then(() => checkApproval());
+      triggerAutoApprove().then(() => {
+        if (!navigatedRef.current) checkApproval();
+      });
     }
   }, [secondsLeft, autoApproveTriggered, triggerAutoApprove, checkApproval]);
 
-  // Polling a cada 5s para detectar aprovação manual pelo admin antes dos 60s
+  // FIX LOOP: polling para enquanto o componente estiver montado E não tiver navegado
   useEffect(() => {
-    const interval = setInterval(checkApproval, POLL_INTERVAL_MS);
+    const interval = setInterval(() => {
+      if (!navigatedRef.current) checkApproval();
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [checkApproval]);
 
@@ -87,10 +95,8 @@ export default function PendingApproval() {
           {/* Ícone com progresso circular */}
           <div className="relative h-16 w-16 mx-auto">
             <svg className="absolute inset-0 h-16 w-16 -rotate-90" viewBox="0 0 64 64">
-              {/* Trilha de fundo */}
               <circle cx="32" cy="32" r="28" fill="none" strokeWidth="4"
                 className="stroke-amber-100 dark:stroke-amber-900/30" />
-              {/* Progresso */}
               <circle cx="32" cy="32" r="28" fill="none" strokeWidth="4"
                 strokeLinecap="round"
                 strokeDasharray={circumference}
@@ -108,7 +114,6 @@ export default function PendingApproval() {
             </div>
           </div>
 
-          {/* Título */}
           {isApproving ? (
             <div>
               <h1 className="text-lg font-semibold text-green-600 dark:text-green-400">
@@ -127,7 +132,6 @@ export default function PendingApproval() {
             </div>
           )}
 
-          {/* Countdown box */}
           {!isApproving && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 space-y-1">
               <p className="text-xs font-medium text-amber-700 dark:text-amber-300 flex items-center justify-center gap-1.5">
@@ -144,7 +148,6 @@ export default function PendingApproval() {
             </div>
           )}
 
-          {/* Indicador de verificação */}
           {checking && (
             <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -152,7 +155,6 @@ export default function PendingApproval() {
             </p>
           )}
 
-          {/* Botão verificar manualmente */}
           {!isApproving && (
             <Button
               variant="outline"
