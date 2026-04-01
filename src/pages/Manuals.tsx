@@ -158,29 +158,18 @@ export default function Manuals() {
       const safeFilename = (title.endsWith(".pdf") ? title : title + ".pdf")
         .replace(/[^a-zA-Z0-9._\-\s]/g, "_");
 
-      // Tenta signed URL primeiro (funciona com buckets privados)
       const { data, error } = await supabase.storage
         .from("manuals")
         .createSignedUrl(filePath, 300, { download: safeFilename });
 
-      let url: string | null = data?.signedUrl ?? null;
-
-      if (error || !url) {
-        console.warn("createSignedUrl falhou, tentando getPublicUrl:", error?.message);
-        // Fallback para bucket público
-        const { data: pubData } = supabase.storage
-          .from("manuals")
-          .getPublicUrl(filePath, { download: safeFilename } as any);
-        url = pubData?.publicUrl ?? null;
-      }
-
-      if (!url) {
+      if (error || !data?.signedUrl) {
+        console.error("createSignedUrl error:", error?.message);
         toast.error("Erro ao gerar link de download. Verifique as permissões do bucket no Supabase.");
         return;
       }
 
       const a = document.createElement("a");
-      a.href = url;
+      a.href = data.signedUrl;
       a.download = safeFilename;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
@@ -193,7 +182,7 @@ export default function Manuals() {
     } finally {
       setDownloading(null);
     }
-  };;
+  };
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B";
