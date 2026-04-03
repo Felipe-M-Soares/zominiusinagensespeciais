@@ -130,10 +130,14 @@ export function AdminDevices() {
         });
 
       // Detecta assinatura de Latin-1/Windows-1252 mal-decodificado como UTF-8.
-      // Bytes 0xC2–0xC7 seguidos de 0x80–0xBF são produzidos quando bytes >= 0x80
-      // do ISO/Win-1252 são interpretados como sequências UTF-8 de 2 bytes.
-      // Cobre: ® → Â®, Ø → Ã\x98, § → Â§, ã → Ã£, ç → Ã§, â → Ã¢, etc.
-      const looksCorrupted = (s: string) => /[\u00c2\u00c3\u00c4\u00c5\u00c6\u00c7][\u0080-\u00bf]/.test(s);
+      // CASO 1: Bytes 0xC2–0xC7 seguidos de 0x80–0xBF → mojibake visível (ex: ã→Ã£, ç→Ã§).
+      // CASO 2: Bytes isolados >= 0x80 que não formam sequência UTF-8 válida → browser
+      //   substitui por U+FFFD (◆). Ex: º (0xBA), Ø (0xD8 + ASCII), â (0xE2 + ASCII).
+      //   Esses caracteres são comuns em CSVs ANVISA/Excel Brasil (ISO-8859-1) e passavam
+      //   invisíveis pelo check anterior, mantendo o texto corrompido.
+      const looksCorrupted = (s: string) =>
+        /[\u00c2\u00c3\u00c4\u00c5\u00c6\u00c7][\u0080-\u00bf]/.test(s) ||
+        s.includes("\uFFFD");
 
       let text = await readFileWithEncoding(file, "UTF-8");
       if (looksCorrupted(text)) {
