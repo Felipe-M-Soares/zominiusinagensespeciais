@@ -177,20 +177,8 @@ export function AdminDevices() {
 
       toast.info("Importação iniciada... Isso pode levar alguns minutos.");
 
-      // FIX JWT: passa o token explicitamente no header Authorization.
-      // supabase.functions.invoke() usa apikey por padrão, mas a Edge Function
-      // valida o JWT via req.headers.get("Authorization") para verificar se é admin.
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
-        toast.error("Sessão expirada. Faça login novamente.");
-        return;
-      }
-
-      const res = await supabase.functions.invoke("import-devices", {
-        body,
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // O SDK injeta o JWT do usuário logado automaticamente
+      const res = await supabase.functions.invoke("import-devices", { body });
 
       if (res.error) {
         console.error("Import error:", res.error);
