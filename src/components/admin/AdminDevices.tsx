@@ -117,9 +117,10 @@ export function AdminDevices() {
 
     setImporting(true);
     try {
-      // CORREÇÃO ENCODING: CSVs do Excel/ANVISA frequentemente são ISO-8859-1 (Latin-1).
-      // file.text() usa UTF-8 por padrão e converte acentos em símbolos (Ã§, Ã£o, etc).
-      // Solução: tenta UTF-8 primeiro; se detectar caracteres corrompidos, relê como ISO-8859-1.
+      // CORREÇÃO ENCODING: CSVs do Excel/ANVISA frequentemente são ISO-8859-1 ou Windows-1252.
+      // file.text() usa UTF-8 por padrão e corrompe acentos e símbolos (®, Ø, §, ã, ç...).
+      // Estratégia: tenta UTF-8 → se corrompido, tenta Windows-1252 (superset do ISO-8859-1,
+      // padrão do Excel no Windows Brasil) → fallback para ISO-8859-1.
       const readFileWithEncoding = (f: File, encoding: string): Promise<string> =>
         new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -128,30 +129,41 @@ export function AdminDevices() {
           reader.readAsText(f, encoding);
         });
 
-      // Detecta se o texto tem caracteres corrompidos típicos de ISO-8859-1 lido como UTF-8
-      const looksCorrupted = (s: string) => /Ã[£§¡¢¤¥¦©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ]/.test(s);
+      // Detecta assinatura de Latin-1/Windows-1252 mal-decodificado como UTF-8.
+      // Bytes 0xC2–0xC7 seguidos de 0x80–0xBF são produzidos quando bytes >= 0x80
+      // do ISO/Win-1252 são interpretados como sequências UTF-8 de 2 bytes.
+      // Cobre: ® → Â®, Ø → Ã\x98, § → Â§, ã → Ã£, ç → Ã§, â → Ã¢, etc.
+      const looksCorrupted = (s: string) => /[\u00c2\u00c3\u00c4\u00c5\u00c6\u00c7][\u0080-\u00bf]/.test(s);
 
       let text = await readFileWithEncoding(file, "UTF-8");
       if (looksCorrupted(text)) {
-        text = await readFileWithEncoding(file, "ISO-8859-1");
+        // Windows-1252 é o padrão do Excel no Windows — tenta primeiro
+        const win1252 = await readFileWithEncoding(file, "windows-1252");
+        // Se win-1252 ainda parecer corrompido, tenta ISO-8859-1
+        text = looksCorrupted(win1252)
+          ? await readFileWithEncoding(file, "ISO-8859-1")
+          : win1252;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let body: Record<string, any>;
 
       if (isCsv) {
-        // FIX CSV MAIÚSCULA: normaliza headers para lowercase antes de validar.
-        // CSVs gerados por Excel/LibreOffice frequentemente têm cabeçalhos com
-        // primeira letra maiúscula (ex: "Udi_Di", "Model") ou totalmente maiúsculo ("UDI_DI").
-        // A Edge Function aceita qualquer casing, mas validamos aqui para feedback imediato.
         const firstLine = text.split("\n")[0] ?? "";
         const delimiter = firstLine.includes(";") ? ";" : ",";
-        const headers = firstLine.split(delimiter).map(h =>
-          h.trim().replace(/^["']|["']$/g, "").trim().toLowerCase().replace(/-/g, "_")
-        );
-        // Variações aceitas de cada campo obrigatório
+
+        // Normaliza header: remove acentos, lowercase, hífens/espaços → underscore
+        // Assim "Referência" casa com "reference", "UDI-DI" casa com "udi_di", etc.
+        const normalizeH = (h: string) =>
+          h.trim().replace(/^["']|["']$/g, "").trim()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase().replace(/[\s\-]+/g, "_").replace(/[^a-z0-9_]/g, "");
+
+        const headers = firstLine.split(delimiter).map(normalizeH);
+
+        // Variações aceitas de cada campo obrigatório (já normalizadas)
         const requiredVariants: Record<string, string[]> = {
-          "udi_di":    ["udi_di", "udi-di", "udidi"],
-          "model":     ["model", "modelo"],
+          "udi_di":    ["udi_di", "udidi", "udi"],
+          "model":     ["model", "modelo", "nome"],
           "reference": ["reference", "referencia", "ref"],
         };
         const missing: string[] = [];
