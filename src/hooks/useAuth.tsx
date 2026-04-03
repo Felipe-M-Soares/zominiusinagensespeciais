@@ -92,17 +92,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle(),
       ]);
       setRole(roleData?.role ?? "client");
-      // SEGURANÇA CORRIGIDA: quando o perfil não existe (race condition no cadastro),
-      // usa false como padrão seguro. A aprovação automática (auto-approve Edge Function)
-      // cuida de liberar o acesso após 55s. Usar true como fallback era inseguro pois
-      // permitia contornar aprovação deletando o próprio perfil.
-      setApproved(profileData?.approved ?? false);
+      // LÓGICA CORRETA:
+      // - profileData === null → perfil ainda não existe (race condition pós-cadastro)
+      //   → mantém null para que App.tsx não redirecione (só redireciona se === false)
+      // - profileData.approved === true  → aprovado ✓
+      // - profileData.approved === false → não aprovado → vai para /pending-approval
+      // NOTA: ?? true mantém compatibilidade com contas antigas sem campo approved
+      setApproved(profileData == null ? null : (profileData.approved ?? true));
       // blocked: se null/undefined, trata como false (não bloqueado)
       setBlocked(profileData?.blocked ?? false);
     } catch (err) {
       console.error("Failed to fetch role/approval:", err);
       setRole("client");
-      setApproved(false);
+      // Em caso de erro na query, mantém null para não redirecionar erroneamente
+      setApproved(null);
       setBlocked(false);
     }
   }, []);

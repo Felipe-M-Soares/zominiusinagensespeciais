@@ -37,9 +37,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, approved, blocked } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
   if (!user) return <Navigate to="/login" replace />;
-  // Usuário bloqueado: redireciona para login com estado de bloqueio
+  // Usuário bloqueado: desloga e mostra mensagem
   if (blocked) return <Navigate to="/login" state={{ blocked: true }} replace />;
-  // Só redireciona se explicitamente false — null significa "ainda carregando perfil"
+  // null = aprovação ainda carregando (race condition pós-login), aguarda sem redirecionar
+  if (approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  // Só redireciona se explicitamente false
   if (approved === false) return <Navigate to="/pending-approval" replace />;
   return <>{children}</>;
 }
@@ -50,6 +52,8 @@ function PendingApprovalRoute() {
   const { user, loading, approved } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
   if (!user) return <Navigate to="/login" replace />;
+  // null = perfil ainda carregando, aguarda sem redirecionar
+  if (approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
   if (approved === true) return <Navigate to="/" replace />;
   return <PendingApproval />;
 }
@@ -59,7 +63,9 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
   if (!user) return <Navigate to="/login" replace />;
   if (blocked) return <Navigate to="/login" state={{ blocked: true }} replace />;
-  if (!isAdmin || !approved) return <Navigate to="/" replace />;
+  // null = aprovação ainda carregando, aguarda
+  if (approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (!isAdmin || approved === false) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
