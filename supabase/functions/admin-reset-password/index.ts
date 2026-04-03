@@ -59,9 +59,10 @@ Deno.serve(async (req) => {
     // Valida JWT passando o token diretamente — forma correta em Edge Functions
     const token = authHeader.replace("Bearer ", "").trim();
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: { user }, error: userError } = await userClient.auth.getUser(token);
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
       console.error("JWT validation failed in admin-reset-password:", userError?.message ?? "no user");
       return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {

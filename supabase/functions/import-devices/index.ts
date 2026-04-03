@@ -286,13 +286,15 @@ Deno.serve(async (req) => {
     }
     const rawText = new TextDecoder().decode(rawBuffer);
 
-    // Valida JWT via Supabase Auth passando o token diretamente — forma correta em Edge Functions.
-    // auth.getUser() sem argumento usa a sessão interna vazia e retorna "Invalid JWT".
+    // CORREÇÃO JWT: padrão oficial Supabase para Edge Functions.
+    // Passa o Authorization header no global.headers ao criar o cliente.
+    // getUser() SEM argumento lê do header — forma mais confiável.
     const token = authHeader.replace("Bearer ", "").trim();
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: { user }, error: userError } = await userClient.auth.getUser(token);
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
       // Loga o erro real para debug no Supabase Dashboard → Edge Functions → Logs
       console.error("JWT validation failed:", userError?.message ?? "no user returned");

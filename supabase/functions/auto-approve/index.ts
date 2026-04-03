@@ -47,11 +47,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    // CORREÇÃO JWT: padrão oficial Supabase para Edge Functions.
+    // Passa o Authorization header no global.headers ao criar o cliente.
+    // getUser() SEM argumento lê do header — forma mais confiável.
     const token = authHeader.replace("Bearer ", "").trim();
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: { user }, error: userError } = await userClient.auth.getUser(token);
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
       console.error("JWT validation failed in auto-approve:", userError?.message ?? "no user");
       return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {

@@ -58,14 +58,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    // VULN-001 FIX: Passa o JWT diretamente para getUser(token) — forma correta em Edge Functions.
-    // auth.getUser() sem argumento usa a sessão interna do cliente (vazia numa Edge Function),
-    // retornando "Invalid JWT". Com o token explícito, o Supabase Auth valida criptograficamente.
+    // CORREÇÃO JWT: padrão oficial Supabase para Edge Functions.
+    // Passa o Authorization header no global.headers ao criar o cliente.
+    // getUser() SEM argumento lê do header — forma mais confiável.
+    // getUser(token) como argumento às vezes falha com "Invalid JWT" em certos
+    // estados de sessão mesmo com token válido.
     const token = authHeader.replace("Bearer ", "").trim();
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: { user }, error: userError } = await userClient.auth.getUser(token);
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
       console.error("JWT validation failed:", userError?.message ?? "no user returned");
       return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {

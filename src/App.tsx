@@ -37,7 +37,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, approved } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
   if (!user) return <Navigate to="/login" replace />;
-  // SEC-001 FIX: Unapproved users must not access any protected content
+  // Só redireciona se explicitamente false — null significa "ainda carregando perfil"
   if (approved === false) return <Navigate to="/pending-approval" replace />;
   return <>{children}</>;
 }
@@ -63,9 +63,8 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { user, loading, approved } = useAuth();
   if (loading) return null;
-  // FIX: Se o usuário está logado mas não aprovado, redireciona para pending-approval
-  // Sem esta checagem, o fluxo era: /login → PublicOnly redireciona para / →
-  // ProtectedRoute redireciona para /pending-approval → usuário tenta /login de novo → loop infinito
+  // Só redireciona para pending-approval se approved for explicitamente false
+  // null = perfil ainda carregando, não deve bloquear
   if (user && approved === false) return <Navigate to="/pending-approval" replace />;
   if (user) return <Navigate to="/" replace />;
   return <>{children}</>;

@@ -90,7 +90,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle(),
       ]);
       setRole(roleData?.role ?? "client");
-      setApproved(profileData?.approved ?? false);
+      // CORREÇÃO: quando o perfil ainda não existe (race condition no cadastro)
+      // ou approved é null, assume true. O trigger insere approved=true mas pode
+      // haver delay entre o INSERT e esta leitura — tratar como false causava
+      // redirecionamento errado para /pending-approval logo após cadastro.
+      setApproved(profileData?.approved ?? true);
     } catch (err) {
       console.error("Failed to fetch role/approval:", err);
       setRole("client");
