@@ -117,7 +117,24 @@ export function AdminDevices() {
 
     setImporting(true);
     try {
-      const text = await file.text();
+      // CORREÇÃO ENCODING: CSVs do Excel/ANVISA frequentemente são ISO-8859-1 (Latin-1).
+      // file.text() usa UTF-8 por padrão e converte acentos em símbolos (Ã§, Ã£o, etc).
+      // Solução: tenta UTF-8 primeiro; se detectar caracteres corrompidos, relê como ISO-8859-1.
+      const readFileWithEncoding = (f: File, encoding: string): Promise<string> =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string ?? "");
+          reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
+          reader.readAsText(f, encoding);
+        });
+
+      // Detecta se o texto tem caracteres corrompidos típicos de ISO-8859-1 lido como UTF-8
+      const looksCorrupted = (s: string) => /Ã[£§¡¢¤¥¦©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ]/.test(s);
+
+      let text = await readFileWithEncoding(file, "UTF-8");
+      if (looksCorrupted(text)) {
+        text = await readFileWithEncoding(file, "ISO-8859-1");
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let body: Record<string, any>;
 
