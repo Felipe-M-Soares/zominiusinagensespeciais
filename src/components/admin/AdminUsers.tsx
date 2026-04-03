@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus } from "lucide-react";
+import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus, ShieldX, ShieldCheck } from "lucide-react";
 
 /**
  * @deprecated Use invokeWithAuth() que já faz esse parsing internamente.
@@ -49,6 +49,7 @@ interface UserProfile {
   created_at: string;
   role: "admin" | "client";
   approved: boolean;
+  blocked: boolean;
 }
 
 export function AdminUsers() {
@@ -84,6 +85,7 @@ export function AdminUsers() {
         created_at: p.created_at,
         role: (roleMap.get(p.user_id) as "admin" | "client") ?? "client",
         approved: p.approved ?? false,
+        blocked: (p as { blocked?: boolean }).blocked ?? false,
       })));
     } catch (err) {
       console.error("fetchUsers:", err);
@@ -96,6 +98,11 @@ export function AdminUsers() {
   useEffect(() => { fetchUsers(); }, []);
 
   const changeRole = async (userId: string, newRole: "admin" | "client") => {
+    // SEGURANÇA: admin não pode rebaixar a si mesmo — evita lock-out acidental
+    if (userId === currentUser?.id && newRole !== "admin") {
+      toast.error("Você não pode remover sua própria permissão de administrador.");
+      return;
+    }
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
     if (error) toast.error("Erro ao alterar função: " + error.message);
     else { toast.success("Função atualizada"); fetchUsers(); }
@@ -105,6 +112,48 @@ export function AdminUsers() {
     const { error } = await supabase.from("profiles").update({ approved: approve }).eq("user_id", userId);
     if (error) toast.error("Erro ao alterar aprovação: " + error.message);
     else { toast.success(approve ? "Usuário aprovado" : "Aprovação removida"); fetchUsers(); }
+  };
+
+  // REVOGAR: bloqueia o email do usuário (blocked=true + approved=false)
+  // A sessão ativa é invalidada via Edge Function admin-reset-password com senha aleatória,
+  // forçando logout imediato. Usuário vê mensagem de bloqueio ao tentar logar novamente.
+  const revokeAccess = async (userId: string, userEmail: string | null) => {
+    try {
+      // 1. Marca como bloqueado E não aprovado no banco
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .update({ approved: false, blocked: true })
+        .eq("user_id", userId);
+
+      if (profileErr) {
+        toast.error("Erro ao bloquear usuário: " + profileErr.message);
+        return;
+      }
+
+      // 2. Invalida a sessão ativa gerando uma senha aleatória temporária
+      //    (força logout do usuário em até ~60s quando o token expirar ou na próxima requisição)
+      const tempPassword = crypto.randomUUID() + crypto.randomUUID();
+      await invokeWithAuth("admin-reset-password", {
+        body: { target_user_id: userId, new_password: tempPassword },
+      });
+
+      toast.success(
+        `Acesso de ${userEmail ?? "usuário"} bloqueado. Ele não conseguirá mais entrar no sistema.`
+      );
+      fetchUsers();
+    } catch (err) {
+      console.error("revokeAccess error:", err);
+      toast.error("Erro inesperado ao bloquear usuário.");
+    }
+  };
+
+  const unblockAccess = async (userId: string) => {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ blocked: false, approved: true })
+      .eq("user_id", userId);
+    if (error) toast.error("Erro ao desbloquear: " + error.message);
+    else { toast.success("Usuário desbloqueado e aprovado"); fetchUsers(); }
   };
 
   const resetPassword = async () => {
@@ -243,9 +292,11 @@ export function AdminUsers() {
                   <TableCell className="text-sm">{u.email}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{new Date(u.created_at).toLocaleDateString("pt-BR")}</TableCell>
                   <TableCell>
-                    {u.approved
-                      ? <Badge variant="default" className="gap-1 bg-green-600"><CheckCircle className="h-3 w-3" /> Aprovado</Badge>
-                      : <Badge variant="secondary" className="gap-1 text-orange-600"><XCircle className="h-3 w-3" /> Pendente</Badge>
+                    {u.blocked
+                      ? <Badge variant="destructive" className="gap-1"><ShieldX className="h-3 w-3" /> Bloqueado</Badge>
+                      : u.approved
+                        ? <Badge variant="default" className="gap-1 bg-green-600"><CheckCircle className="h-3 w-3" /> Aprovado</Badge>
+                        : <Badge variant="secondary" className="gap-1 text-orange-600"><XCircle className="h-3 w-3" /> Pendente</Badge>
                     }
                   </TableCell>
                   <TableCell>
@@ -258,17 +309,48 @@ export function AdminUsers() {
                         </SelectContent>
                       </Select>
 
-                      {!u.approved && !isSelf && (
+                      {/* Usuário bloqueado: mostrar botão de desbloquear */}
+                      {u.blocked && !isSelf && (
+                        <Button variant="outline" size="sm" className="h-8 text-green-600 border-green-300 hover:bg-green-50"
+                          onClick={() => unblockAccess(u.user_id)}>
+                          <ShieldCheck className="h-4 w-4 mr-1" /> Desbloquear
+                        </Button>
+                      )}
+
+                      {/* Usuário pendente (não aprovado, não bloqueado): botão Aprovar */}
+                      {!u.approved && !u.blocked && !isSelf && (
                         <Button variant="outline" size="sm" className="h-8 text-green-600 border-green-300 hover:bg-green-50"
                           onClick={() => toggleApproval(u.user_id, true)}>
                           <CheckCircle className="h-4 w-4 mr-1" /> Aprovar
                         </Button>
                       )}
-                      {u.approved && !isSelf && u.role !== "admin" && (
-                        <Button variant="outline" size="sm" className="h-8 text-orange-600 border-orange-300 hover:bg-orange-50"
-                          onClick={() => toggleApproval(u.user_id, false)}>
-                          <XCircle className="h-4 w-4 mr-1" /> Revogar
-                        </Button>
+
+                      {/* Usuário aprovado e não bloqueado: botão Revogar (bloqueia o email) */}
+                      {u.approved && !u.blocked && !isSelf && u.role !== "admin" && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-8 text-red-600 border-red-300 hover:bg-red-50">
+                              <ShieldX className="h-4 w-4 mr-1" /> Revogar
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Bloquear acesso de {u.display_name || u.email}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                O email <strong>{u.email}</strong> será bloqueado imediatamente.
+                                O usuário verá uma mensagem de "Acesso Bloqueado" ao tentar entrar e não conseguirá acessar o sistema até que um administrador o desbloqueie.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => revokeAccess(u.user_id, u.email)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Bloquear Acesso
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       )}
 
                       <Button variant="outline" size="icon" className="h-8 w-8" title="Alterar senha"

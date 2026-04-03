@@ -279,11 +279,12 @@ export function AdminDevices() {
   const handleDeleteAllDevices = async () => {
     setDeletingAll(true);
     try {
-      // Deleta em lotes para evitar timeout (Supabase limita rows por query)
       let deleted = 0;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        // Busca IDs em lote de 500
+      const MAX_ITERATIONS = 200; // protege contra loop infinito (máx 100.000 registros)
+      let iterations = 0;
+
+      while (iterations < MAX_ITERATIONS) {
+        iterations++;
         const { data: rows, error: fetchErr } = await supabase
           .from("devices")
           .select("id")
@@ -298,7 +299,12 @@ export function AdminDevices() {
         if (delErr) throw delErr;
         deleted += ids.length;
       }
-      toast.success(`${deleted.toLocaleString("pt-BR")} peças excluídas com sucesso`);
+
+      if (iterations >= MAX_ITERATIONS) {
+        toast.warning(`Limite de iterações atingido. ${deleted.toLocaleString("pt-BR")} peças excluídas. Recarregue a página e repita se necessário.`);
+      } else {
+        toast.success(`${deleted.toLocaleString("pt-BR")} peças excluídas com sucesso`);
+      }
       setPage(0);
       fetchDevices("", 0);
     } catch (err) {

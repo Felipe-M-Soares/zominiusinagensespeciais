@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/Logo";
 import { toast } from "sonner";
-import { Download, CheckCircle, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Download, CheckCircle, Mail, Lock, Eye, EyeOff, ShieldX } from "lucide-react";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -18,6 +18,10 @@ export default function Login() {
   const { signIn } = useAuth();
   const { canInstall, isInstalled, install } = usePWAInstall();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Detecta redirecionamento por bloqueio (vindo de ProtectedRoute ou após login)
+  const wasBlocked = (location.state as { blocked?: boolean } | null)?.blocked === true;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +35,7 @@ export default function Login() {
       } else {
         navigate("/");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Login error:", err);
       toast.error("Erro inesperado. Tente novamente.");
     } finally {
@@ -55,7 +59,7 @@ export default function Login() {
         },
       });
       if (error) throw error;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Google sign-in error:", err);
       toast.error("Erro ao entrar com Google");
     } finally {
@@ -73,6 +77,19 @@ export default function Login() {
             <p className="text-xs text-muted-foreground mt-1">Acesse sua conta para continuar</p>
           </div>
         </div>
+
+        {/* Banner de bloqueio — aparece quando o usuário foi redirecionado por ter acesso bloqueado */}
+        {wasBlocked && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 flex items-start gap-3">
+            <ShieldX className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-red-700 dark:text-red-300">Acesso Bloqueado</p>
+              <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                Seu acesso foi bloqueado pelo administrador. Entre em contato com o suporte para regularizar sua conta.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="bg-card border border-border rounded-2xl p-6 shadow-xl shadow-primary/5 space-y-5">
           <Button

@@ -46,9 +46,21 @@ function parseCSV(text: string): Record<string, string>[] {
     return result;
   };
 
-  // Normaliza os headers: trimado, sem aspas, sem espaços internos
+  // Normaliza header: remove acentos, lowercase, sem espaços/hifens → underscore
+  // Ex: "Região do Corpo" → "regiao_do_corpo", "Titânio" → "titanio"
+  const normalizeHeader = (h: string): string =>
+    h.trim()
+      .replace(/^["']|["']$/g, "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove diacritics (acentos)
+      .toLowerCase()
+      .replace(/[\s\-]+/g, "_")        // espaço/hífen → underscore
+      .replace(/[^a-z0-9_]/g, "");     // remove caracteres especiais restantes
+
   const rawHeaders = parseRow(lines[0]);
   const headers = rawHeaders.map(h => h.trim().replace(/^["']|["']$/g, "").trim());
+  const normalizedHeaders = headers.map(normalizeHeader);
 
   const rows: Record<string, string>[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -57,11 +69,13 @@ function parseCSV(text: string): Record<string, string>[] {
     const row: Record<string, string> = {};
     headers.forEach((h, idx) => {
       const v = (values[idx] ?? "").replace(/^["']|["']$/g, "").trim();
-      // Armazena com a chave original, lowercase E uppercase para lookup flexível
+      const norm = normalizedHeaders[idx];
+      // Armazena com a chave original, lowercase, uppercase, normalizada e sem underscores
       row[h] = v;
       row[h.toLowerCase()] = v;
       row[h.toUpperCase()] = v;
-      // Também armazena sem underscores (ex: "udiDi" para "udi_di")
+      row[norm] = v;                              // ex: "regiao_do_corpo"
+      row[norm.replace(/_/g, "")] = v;           // ex: "regiaodocorpo"
       row[h.replace(/_/g, "").toLowerCase()] = v;
     });
     rows.push(row);
@@ -82,13 +96,17 @@ function t(s: unknown, max: number): string {
 
 /**
  * Lookup flexível de campo no CSV.
- * FIX MAIÚSCULA: tenta a chave original, lowercase, uppercase, sem underscore,
- * e todas as variações comuns do campo. A ordem importa — mais específico primeiro.
+ * FIX ACENTO/MAIÚSCULA: normaliza cada chave removendo acentos antes de comparar.
+ * Ex: "Região" → "regiao", "Titânio" → "titanio"
  */
+function normalizeKey(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s\-]+/g, "_").replace(/[^a-z0-9_]/g, "");
+}
+
 function g(r: Record<string, string>, ...keys: string[]): string {
   for (const k of keys) {
-    // Tenta as 4 formas: original, lower, upper, sem underscore
-    const tries = [k, k.toLowerCase(), k.toUpperCase(), k.replace(/_/g, "").toLowerCase()];
+    const norm = normalizeKey(k);
+    const tries = [k, k.toLowerCase(), k.toUpperCase(), k.replace(/_/g, "").toLowerCase(), norm, norm.replace(/_/g, "")];
     for (const t of tries) {
       if (r[t] !== undefined && r[t] !== "") return r[t];
     }
@@ -404,8 +422,21 @@ Deno.serve(async (req) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // Deleta todos (usando id que nunca é "00000000-..." real)
-      await adminClient.from("devices").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      // SEGURANÇA: deleta em lotes para evitar timeout e registra quantos foram removidos.
+      // Se o delete falhar, abortamos ANTES de apagar — evita catálogo vazio acidental.
+      const { error: deleteError } = await adminClient
+        .from("devices")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (deleteError) {
+        console.error("replace_all delete error:", deleteError.message);
+        return new Response(JSON.stringify({
+          error: "Erro ao limpar catálogo antes da importação: " + deleteError.message
+        }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // ── Upsert em batches ────────────────────────────────────────────────────

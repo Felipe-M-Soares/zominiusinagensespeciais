@@ -16,6 +16,7 @@ interface AuthContext {
   role: "admin" | "client" | null;
   isAdmin: boolean;
   approved: boolean | null;
+  blocked: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (
     email: string,
@@ -74,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "client" | null>(null);
   const [approved, setApproved] = useState<boolean | null>(null);
+  const [blocked, setBlocked] = useState<boolean>(false);
 
   const fetchRoleAndApproval = useCallback(async (userId: string) => {
     try {
@@ -85,20 +87,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle(),
         supabase
           .from("profiles")
-          .select("approved")
+          .select("approved, blocked")
           .eq("user_id", userId)
           .maybeSingle(),
       ]);
       setRole(roleData?.role ?? "client");
-      // CORREÇÃO: quando o perfil ainda não existe (race condition no cadastro)
-      // ou approved é null, assume true. O trigger insere approved=true mas pode
-      // haver delay entre o INSERT e esta leitura — tratar como false causava
-      // redirecionamento errado para /pending-approval logo após cadastro.
-      setApproved(profileData?.approved ?? true);
+      // SEGURANÇA CORRIGIDA: quando o perfil não existe (race condition no cadastro),
+      // usa false como padrão seguro. A aprovação automática (auto-approve Edge Function)
+      // cuida de liberar o acesso após 55s. Usar true como fallback era inseguro pois
+      // permitia contornar aprovação deletando o próprio perfil.
+      setApproved(profileData?.approved ?? false);
+      // blocked: se null/undefined, trata como false (não bloqueado)
+      setBlocked(profileData?.blocked ?? false);
     } catch (err) {
       console.error("Failed to fetch role/approval:", err);
       setRole("client");
       setApproved(false);
+      setBlocked(false);
     }
   }, []);
 
@@ -160,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setRole(null);
     setApproved(null);
+    setBlocked(false);
   }, []);
 
   const signIn = useCallback(
@@ -168,11 +174,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!cleanEmail || !password) {
         return { error: "Email e senha são obrigatórios." };
       }
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password,
       });
-      return { error: error ? translateError(error.message) : null };
+      if (error) return { error: translateError(error.message) };
+
+      // SEGURANÇA: checa se o usuário está bloqueado ANTES de liberar acesso
+      if (data.user) {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("blocked")
+          .eq("user_id", data.user.id)
+          .maybeSingle();
+
+        if (profileData?.blocked === true) {
+          // Desloga imediatamente — não deixa entrar
+          await supabase.auth.signOut();
+          return {
+            error:
+              "Seu acesso foi bloqueado pelo administrador. Entre em contato com o suporte para mais informações.",
+          };
+        }
+      }
+
+      return { error: null };
     },
     []
   );
@@ -249,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         isAdmin: role === "admin",
         approved,
+        blocked,
         signIn,
         signUp,
         signOut,

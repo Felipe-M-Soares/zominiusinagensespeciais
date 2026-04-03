@@ -101,13 +101,21 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: profile, error: profileError } = await adminClient
       .from("profiles")
-      .select("approved, created_at")
+      .select("approved, blocked, created_at")
       .eq("user_id", targetUserId)
       .maybeSingle();
 
     if (profileError || !profile) {
       return new Response(JSON.stringify({ error: "Perfil não encontrado" }), {
         status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // SEGURANÇA: usuário bloqueado por admin não pode ser auto-aprovado
+    if (profile.blocked === true) {
+      return new Response(JSON.stringify({ error: "Conta bloqueada pelo administrador." }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
