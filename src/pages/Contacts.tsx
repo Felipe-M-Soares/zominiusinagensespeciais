@@ -39,7 +39,6 @@ export default function Contacts() {
   const [contact, setContact] = useState("");
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
-  // BUG-003 FIX: Replace window.confirm with AlertDialog state
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
 
   const fetchContacts = async () => {
@@ -66,96 +65,66 @@ export default function Contacts() {
 
   const openAddDialog = () => {
     setEditingContact(null);
-    setName("");
-    setContact("");
-    setLocation("");
+    setName(""); setContact(""); setLocation("");
     setDialogOpen(true);
   };
 
   const openEditDialog = (c: Contact) => {
     setEditingContact(c);
-    setName(c.name);
-    setContact(c.contact);
-    setLocation(c.location);
+    setName(c.name); setContact(c.contact); setLocation(c.location);
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!name.trim() || !contact.trim()) {
-      toast.error("Preencha nome e contato");
-      return;
-    }
-    // Validação de tamanho máximo (defense-in-depth além do maxLength do input)
+    if (!name.trim() || !contact.trim()) { toast.error("Preencha nome e contato"); return; }
     if (name.trim().length > 100 || contact.trim().length > 100 || location.trim().length > 100) {
-      toast.error("Campos excedem o tamanho máximo permitido (100 caracteres).");
-      return;
+      toast.error("Campos excedem o tamanho máximo permitido (100 caracteres)."); return;
     }
-    // FIX: try/finally garante que setSaving(false) sempre é chamado,
-    // mesmo se o Supabase lançar uma exceção inesperada.
     setSaving(true);
     try {
       if (editingContact) {
-        const { error } = await supabase
-          .from("contacts")
+        const { error } = await supabase.from("contacts")
           .update({ name: name.trim(), contact: contact.trim(), location: location.trim() })
           .eq("id", editingContact.id);
-        if (error) {
-          toast.error("Erro ao atualizar contato");
-        } else {
-          toast.success("Contato atualizado");
-          setDialogOpen(false);
-          fetchContacts();
-        }
+        if (error) { toast.error("Erro ao atualizar contato"); }
+        else { toast.success("Contato atualizado"); setDialogOpen(false); fetchContacts(); }
       } else {
-        const { error } = await supabase.from("contacts").insert({
-          name: name.trim(),
-          contact: contact.trim(),
-          location: location.trim(),
-        });
-        if (error) {
-          toast.error("Erro ao adicionar contato");
-        } else {
-          toast.success("Contato adicionado");
-          setDialogOpen(false);
-          fetchContacts();
-        }
+        const { error } = await supabase.from("contacts")
+          .insert({ name: name.trim(), contact: contact.trim(), location: location.trim() });
+        if (error) { toast.error("Erro ao adicionar contato"); }
+        else { toast.success("Contato adicionado"); setDialogOpen(false); fetchContacts(); }
       }
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
-    const c = deleteTarget;
-    setDeleteTarget(null);
+    const c = deleteTarget; setDeleteTarget(null);
     const { error } = await supabase.from("contacts").delete().eq("id", c.id);
-    if (error) {
-      toast.error("Erro ao excluir contato");
-      return;
-    }
-    toast.success("Contato excluído");
-    fetchContacts();
+    if (error) { toast.error("Erro ao excluir contato"); return; }
+    toast.success("Contato excluído"); fetchContacts();
   };
 
-  // SEC: Valida o número antes de construir a URL do WhatsApp.
-  // Sem validação, um campo "contact" com valor como "javascript:" ou URL arbitrária
-  // poderia ser aberto via window.open() causando open redirect ou XSS.
   const getWhatsAppUrl = (phone: string): string | null => {
     const digits = phone.replace(/\D/g, "");
-    // Número brasileiro: 10-11 dígitos sem DDI, ou 12-13 com DDI 55
-    const normalized = !digits.startsWith("55") && digits.length <= 11
-      ? "55" + digits
-      : digits;
-    // Valida: deve ter entre 12-13 dígitos (DDI 55 + DDD + número)
+    const normalized = !digits.startsWith("55") && digits.length <= 11 ? "55" + digits : digits;
     if (!/^\d{12,13}$/.test(normalized)) return null;
     const message = encodeURIComponent("Olá! Vim do app Concept Usinagens, poderia me ajudar?");
     return `https://wa.me/${normalized}?text=${message}`;
   };
 
+  const ACCENT_COLORS = [
+    { bg: "from-blue-500/20 to-blue-400/5", icon: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
+    { bg: "from-emerald-500/20 to-emerald-400/5", icon: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
+    { bg: "from-violet-500/20 to-violet-400/5", icon: "bg-violet-500/15 text-violet-600 dark:text-violet-400" },
+    { bg: "from-amber-500/20 to-amber-400/5", icon: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+    { bg: "from-rose-500/20 to-rose-400/5", icon: "bg-rose-500/15 text-rose-600 dark:text-rose-400" },
+    { bg: "from-cyan-500/20 to-cyan-400/5", icon: "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400" },
+  ];
+  const getAccent = (n: string) => ACCENT_COLORS[(n.charCodeAt(0) || 0) % ACCENT_COLORS.length];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-accent/30">
-      {/* BUG-003 FIX: AlertDialog replaces window.confirm() */}
+    <div className="min-h-screen bg-gradient-to-br from-background to-accent/20">
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -188,66 +157,85 @@ export default function Contacts() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-5">
+      <main className="container mx-auto px-4 py-6">
         {loading ? (
           <div className="flex justify-center py-20">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
           </div>
         ) : contacts.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
-            <User className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p>Nenhum contato cadastrado</p>
+            <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+              <User className="h-8 w-8 opacity-30" />
+            </div>
+            <p className="font-medium">Nenhum contato cadastrado</p>
+            <p className="text-xs mt-1 opacity-60">Os contatos aparecerão aqui</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {contacts.map((c) => (
-              <div key={c.id} className="group flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:bg-accent/30 transition-colors">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <User className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm">{c.name}</p>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Phone className="h-3 w-3" />
-                    <span className="truncate">{c.contact}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {contacts.map((c) => {
+              const accent = getAccent(c.name);
+              const waUrl = getWhatsAppUrl(c.contact);
+              return (
+                <div
+                  key={c.id}
+                  className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1"
+                  style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}
+                >
+                  {/* Top accent bar */}
+                  <div className="h-0.5 bg-gradient-to-r from-transparent via-brand to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
+
+                  {/* Gradient header */}
+                  <div className={`px-4 pt-4 pb-3 bg-gradient-to-br ${accent.bg}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 ${accent.icon} text-lg font-bold select-none`}>
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-[13px] leading-tight line-clamp-1">{c.name}</p>
+                        {c.location && (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <MapPin className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                            <span className="text-[11px] text-muted-foreground/70 truncate">{c.location}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  {c.location && (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <MapPin className="h-3 w-3" />
-                      <span className="truncate">{c.location}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-lg text-green-600 hover:text-green-700 hover:bg-green-50"
-                    onClick={() => {
-                      const url = getWhatsAppUrl(c.contact);
-                      if (url) {
-                        window.open(url, "_blank", "noopener,noreferrer");
-                      } else {
-                        toast.error("Número de telefone inválido para WhatsApp");
-                      }
-                    }}
-                    title="WhatsApp"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                  </Button>
-                  {isAdmin && (
-                    <div className="flex gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => openEditDialog(c)}>
-                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+
+                  {/* Phone row */}
+                  <div className="px-4 py-2.5 border-t border-border/30 flex items-center gap-2">
+                    <Phone className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                    <span className="text-[11px] text-muted-foreground truncate">{c.contact}</span>
+                  </div>
+
+                  {/* Actions footer */}
+                  <div className="px-3 pb-3 pt-1 flex items-center gap-2">
+                    {waUrl ? (
+                      <Button
+                        size="sm"
+                        className="flex-1 h-8 gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-none"
+                        onClick={() => window.open(waUrl, "_blank", "noopener,noreferrer")}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        WhatsApp
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setDeleteTarget(c)}>
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="flex-1" />
+                    )}
+                    {isAdmin && (
+                      <div className="flex gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={() => openEditDialog(c)}>
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-destructive/10" onClick={() => setDeleteTarget(c)}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>

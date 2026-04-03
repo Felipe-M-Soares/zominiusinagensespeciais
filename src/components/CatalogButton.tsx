@@ -206,19 +206,19 @@ export function CatalogButton() {
   if (loading) return null;
   if (catalogs.length === 0 && !isAdmin) return null;
 
-  // Um catálogo sem admin: botão direto
+  // Um catálogo sem admin: botão direto com texto
   if (catalogs.length === 1 && !isAdmin) {
     return (
       <Button
-        variant="ghost" size="icon" className="h-8 w-8"
+        variant="ghost" size="sm" className="h-8 px-2 sm:px-3 gap-1 text-xs"
         onClick={() => handleDownload(catalogs[0])}
         disabled={downloadingId === catalogs[0].id}
-        title="Baixar Catálogo"
       >
         {downloadingId === catalogs[0].id
           ? <Loader2 className="h-4 w-4 animate-spin" />
           : <Download className="h-4 w-4" />
         }
+        Catálogo
       </Button>
     );
   }
@@ -249,7 +249,7 @@ export function CatalogButton() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 gap-1 text-xs">
             <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Catálogo</span>
+            Catálogo
             <ChevronDown className="h-3 w-3 opacity-60" />
           </Button>
         </DropdownMenuTrigger>

@@ -10,7 +10,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Upload, Trash2, Download, FileText, Plus, Loader2, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, Download, FileText, Plus, Loader2, X, CheckCircle2, AlertCircle, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
 
@@ -79,41 +79,19 @@ export default function Manuals() {
   const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files ?? []);
     if (!selected.length) return;
-
     const valid: QueuedFile[] = [];
     const skipped: string[] = [];
-
     for (const f of selected) {
-      if (f.type !== "application/pdf") {
-        skipped.push(`${f.name} (não é PDF)`);
-        continue;
-      }
-      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-        skipped.push(`${f.name} (maior que ${MAX_FILE_SIZE_MB}MB)`);
-        continue;
-      }
-      valid.push({
-        id: `${Date.now()}_${Math.random()}`,
-        file: f,
-        title: pdfNameToTitle(f.name),
-        description: "",
-        status: "pending",
-      });
+      if (f.type !== "application/pdf") { skipped.push(`${f.name} (não é PDF)`); continue; }
+      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) { skipped.push(`${f.name} (maior que ${MAX_FILE_SIZE_MB}MB)`); continue; }
+      valid.push({ id: `${Date.now()}_${Math.random()}`, file: f, title: pdfNameToTitle(f.name), description: "", status: "pending" });
     }
-
-    if (skipped.length > 0) {
-      toast.warning(`Arquivos ignorados:\n${skipped.join("\n")}`);
-    }
-
+    if (skipped.length > 0) toast.warning(`Arquivos ignorados:\n${skipped.join("\n")}`);
     setQueue(prev => {
       const total = prev.length + valid.length;
-      if (total > MAX_FILES_AT_ONCE) {
-        toast.error(`Máximo de ${MAX_FILES_AT_ONCE} arquivos por vez`);
-        return prev;
-      }
+      if (total > MAX_FILES_AT_ONCE) { toast.error(`Máximo de ${MAX_FILES_AT_ONCE} arquivos por vez`); return prev; }
       return [...prev, ...valid];
     });
-
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -121,38 +99,21 @@ export default function Manuals() {
     setQueue(prev => prev.map(q => q.id === id ? { ...q, ...patch } : q));
   };
 
-  const removeFromQueue = (id: string) => {
-    setQueue(prev => prev.filter(q => q.id !== id));
-  };
+  const removeFromQueue = (id: string) => { setQueue(prev => prev.filter(q => q.id !== id)); };
 
   const uploadOne = async (item: QueuedFile): Promise<boolean> => {
-    if (!item.title.trim()) {
-      updateQueueItem(item.id, { status: "error", errorMsg: "Título obrigatório" });
-      return false;
-    }
-
+    if (!item.title.trim()) { updateQueueItem(item.id, { status: "error", errorMsg: "Título obrigatório" }); return false; }
     updateQueueItem(item.id, { status: "uploading" });
-
     try {
       const safeName = sanitizeFilename(item.file.name);
       const filePath = `${Date.now()}_${safeName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("manuals").upload(filePath, item.file, { contentType: "application/pdf" });
+      const { error: uploadError } = await supabase.storage.from("manuals").upload(filePath, item.file, { contentType: "application/pdf" });
       if (uploadError) throw uploadError;
-
       const { error: dbError } = await supabase.from("manuals").insert({
-        title: item.title.trim(),
-        description: item.description.trim() || null,
-        file_path: filePath,
-        file_size: item.file.size,
+        title: item.title.trim(), description: item.description.trim() || null,
+        file_path: filePath, file_size: item.file.size,
       });
-
-      if (dbError) {
-        await supabase.storage.from("manuals").remove([filePath]);
-        throw dbError;
-      }
-
+      if (dbError) { await supabase.storage.from("manuals").remove([filePath]); throw dbError; }
       updateQueueItem(item.id, { status: "done" });
       return true;
     } catch (err: unknown) {
@@ -166,62 +127,36 @@ export default function Manuals() {
   const handleUploadAll = async () => {
     const pending = queue.filter(q => q.status === "pending" || q.status === "error");
     if (!pending.length) return;
-
     const emptyTitles = pending.filter(q => !q.title.trim());
     if (emptyTitles.length > 0) {
       toast.error("Preencha o título de todos os arquivos antes de enviar");
       emptyTitles.forEach(q => updateQueueItem(q.id, { status: "error", errorMsg: "Título obrigatório" }));
       return;
     }
-
     setIsUploadingAll(true);
     let successCount = 0;
-
-    for (const item of pending) {
-      const ok = await uploadOne(item);
-      if (ok) successCount++;
-    }
-
+    for (const item of pending) { const ok = await uploadOne(item); if (ok) successCount++; }
     setIsUploadingAll(false);
-
     if (successCount > 0) {
       toast.success(`${successCount} manual${successCount > 1 ? "is" : ""} adicionado${successCount > 1 ? "s" : ""} com sucesso`);
       fetchManuals();
     }
-
     const failed = queue.filter(q => q.status === "error").length;
-    if (failed > 0) {
-      toast.error(`${failed} arquivo${failed > 1 ? "s" : ""} falharam. Corrija e tente novamente.`);
-    }
-
+    if (failed > 0) toast.error(`${failed} arquivo${failed > 1 ? "s" : ""} falharam. Corrija e tente novamente.`);
     setQueue(prev => prev.filter(q => q.status !== "done"));
   };
 
-  const handleCloseDialog = () => {
-    if (isUploadingAll) return;
-    setDialogOpen(false);
-    setQueue([]);
-  };
+  const handleCloseDialog = () => { if (isUploadingAll) return; setDialogOpen(false); setQueue([]); };
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
-    const manual = deleteTarget;
-    setDeleteTarget(null);
-
+    const manual = deleteTarget; setDeleteTarget(null);
     try {
       await supabase.storage.from("manuals").remove([manual.file_path]);
       const { error } = await supabase.from("manuals").delete().eq("id", manual.id);
-      if (error) {
-        console.error("Delete DB error:", error);
-        toast.error("Erro ao excluir manual");
-        return;
-      }
-      toast.success("Manual excluído");
-      fetchManuals();
-    } catch (err) {
-      console.error("handleDeleteConfirm unexpected:", err);
-      toast.error("Erro inesperado ao excluir");
-    }
+      if (error) { console.error("Delete DB error:", error); toast.error("Erro ao excluir manual"); return; }
+      toast.success("Manual excluído"); fetchManuals();
+    } catch (err) { console.error("handleDeleteConfirm unexpected:", err); toast.error("Erro inesperado ao excluir"); }
   };
 
   const handleDownload = async (manual: Manual) => {
@@ -229,59 +164,39 @@ export default function Manuals() {
     setDownloadingId(manual.id);
     try {
       const safeFilename = (manual.title.endsWith(".pdf") ? manual.title : manual.title + ".pdf")
-        .replace(/[^a-zA-Z0-9._\-\s]/g, "_");
-
+        .replace(/[^a-zA-Z0-9.\-\s]/g, "_");
       let signedUrl: string | null = null;
-
-      const { data, error } = await supabase.storage
-        .from("manuals")
+      const { data, error } = await supabase.storage.from("manuals")
         .createSignedUrl(manual.file_path, 300, { download: safeFilename });
-
       if (!error && data?.signedUrl) {
         signedUrl = data.signedUrl;
       } else {
         console.warn("createSignedUrl failed:", manual.file_path, error?.message);
-
         const underscoreIdx = manual.file_path.indexOf("_");
         if (underscoreIdx !== -1) {
           const timestamp = manual.file_path.slice(0, underscoreIdx);
           const rest = manual.file_path.slice(underscoreIdx + 1);
           const sanitizedPath = `${timestamp}_${sanitizeFilename(rest)}`;
-
           if (sanitizedPath !== manual.file_path) {
-            const { data: data2, error: error2 } = await supabase.storage
-              .from("manuals")
+            const { data: data2, error: error2 } = await supabase.storage.from("manuals")
               .createSignedUrl(sanitizedPath, 300, { download: safeFilename });
-
-            if (!error2 && data2?.signedUrl) {
-              signedUrl = data2.signedUrl;
-            }
+            if (!error2 && data2?.signedUrl) signedUrl = data2.signedUrl;
           }
         }
       }
-
       if (!signedUrl) {
         const msg = isAdmin
           ? `Arquivo não encontrado. Path: "${manual.file_path}". Exclua e reenvie.`
           : "Arquivo não disponível. Contacte o administrador.";
-        toast.error(msg, { duration: 8000 });
-        return;
+        toast.error(msg, { duration: 8000 }); return;
       }
-
       const a = document.createElement("a");
-      a.href = signedUrl;
-      a.download = safeFilename;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      document.body.appendChild(a);
-      a.click();
+      a.href = signedUrl; a.download = safeFilename; a.target = "_blank"; a.rel = "noopener noreferrer";
+      document.body.appendChild(a); a.click();
       setTimeout(() => { if (document.body.contains(a)) document.body.removeChild(a); }, 200);
     } catch (err: unknown) {
-      console.error("Download error:", err);
-      toast.error("Erro inesperado ao baixar o arquivo.");
-    } finally {
-      setDownloadingId(null);
-    }
+      console.error("Download error:", err); toast.error("Erro inesperado ao baixar o arquivo.");
+    } finally { setDownloadingId(null); }
   };
 
   const formatSize = (bytes: number) => {
@@ -295,7 +210,7 @@ export default function Manuals() {
   const hasQueue = queue.length > 0;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-background to-accent/20">
       <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -306,10 +221,7 @@ export default function Manuals() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -331,47 +243,71 @@ export default function Manuals() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-5">
+      <main className="container mx-auto px-4 py-6">
         {loading ? (
           <div className="flex justify-center py-20">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
           </div>
         ) : manuals.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
-            <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p>Nenhum manual disponível</p>
+            <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+              <BookOpen className="h-8 w-8 opacity-30" />
+            </div>
+            <p className="font-medium">Nenhum manual disponível</p>
+            <p className="text-xs mt-1 opacity-60">Os manuais em PDF aparecerão aqui</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {manuals.map(m => (
               <div
                 key={m.id}
-                className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:bg-accent/30 transition-colors"
+                className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1"
+                style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}
               >
-                <FileText className="h-8 w-8 text-primary shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{m.title}</p>
-                  {m.description && <p className="text-xs text-muted-foreground truncate">{m.description}</p>}
-                  <p className="text-xs text-muted-foreground">{formatSize(m.file_size)}</p>
+                {/* Top accent bar */}
+                <div className="h-0.5 bg-gradient-to-r from-transparent via-brand to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
+
+                {/* PDF icon header */}
+                <div className="px-4 pt-4 pb-3 bg-gradient-to-br from-red-500/15 to-red-400/5">
+                  <div className="flex items-center gap-3">
+                    <div className="h-11 w-11 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+                      <FileText className="h-6 w-6 text-red-500 dark:text-red-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[13px] leading-tight line-clamp-2">{m.title}</p>
+                      <p className="text-[11px] text-muted-foreground/60 mt-0.5 font-mono">PDF • {formatSize(m.file_size)}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex gap-1 shrink-0">
+
+                {/* Description */}
+                {m.description && (
+                  <div className="px-4 py-2.5 border-t border-border/30">
+                    <p className="text-[11px] text-muted-foreground line-clamp-2">{m.description}</p>
+                  </div>
+                )}
+
+                {/* Actions footer */}
+                <div className={`px-3 pb-3 flex items-center gap-2 ${m.description ? "pt-1" : "pt-2 border-t border-border/30"}`}>
                   <Button
-                    variant="ghost" size="icon" className="h-8 w-8"
+                    size="sm"
+                    className="flex-1 h-8 gap-1.5 text-xs rounded-xl shadow-none"
                     onClick={() => handleDownload(m)}
                     disabled={downloadingId === m.id}
-                    title="Baixar PDF"
                   >
                     {downloadingId === m.id
-                      ? <Loader2 className="h-4 w-4 animate-spin" />
-                      : <Download className="h-4 w-4" />
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Baixando...</>
+                      : <><Download className="h-3.5 w-3.5" />Baixar PDF</>
                     }
                   </Button>
                   {isAdmin && (
                     <Button
-                      variant="ghost" size="icon" className="h-8 w-8"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-xl opacity-40 group-hover:opacity-100 transition-opacity hover:bg-destructive/10"
                       onClick={() => setDeleteTarget(m)}
                     >
-                      <Trash2 className="h-4 w-4 text-destructive" />
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     </Button>
                   )}
                 </div>
@@ -381,7 +317,7 @@ export default function Manuals() {
         )}
 
         {isAdmin && manuals.length > 0 && (
-          <p className="text-xs text-muted-foreground mt-4 text-center">
+          <p className="text-xs text-muted-foreground mt-6 text-center">
             Se um manual mostrar "Arquivo não encontrado", exclua-o e reenvie o PDF.
           </p>
         )}
@@ -394,14 +330,7 @@ export default function Manuals() {
           </DialogHeader>
 
           <div className="space-y-3 overflow-hidden flex flex-col">
-            <input
-              type="file"
-              accept=".pdf,application/pdf"
-              multiple
-              ref={fileRef}
-              onChange={handleFilesSelected}
-              className="hidden"
-            />
+            <input type="file" accept=".pdf,application/pdf" multiple ref={fileRef} onChange={handleFilesSelected} className="hidden" />
 
             <Button
               variant="outline"
@@ -410,10 +339,7 @@ export default function Manuals() {
               disabled={isUploadingAll}
             >
               <Upload className="h-5 w-5 shrink-0" />
-              <span className="text-sm">
-                Selecionar PDFs{" "}
-                <span className="text-xs opacity-70">(múltiplos, máx. {MAX_FILE_SIZE_MB}MB cada)</span>
-              </span>
+              <span className="text-sm">Selecionar PDFs <span className="text-xs opacity-70">(múltiplos, máx. {MAX_FILE_SIZE_MB}MB cada)</span></span>
             </Button>
 
             {hasQueue && (
@@ -422,12 +348,9 @@ export default function Manuals() {
                   <div
                     key={item.id}
                     className={`rounded-lg border p-3 space-y-2 text-sm transition-colors ${
-                      item.status === "done"
-                        ? "border-green-500/40 bg-green-50/10"
-                        : item.status === "error"
-                        ? "border-destructive/40 bg-destructive/5"
-                        : "border-border bg-card"
-                    }`}
+                      item.status === "done" ? "border-green-500/40 bg-green-50/10"
+                      : item.status === "error" ? "border-destructive/40 bg-destructive/5"
+                      : "border-border bg-card"}`}
                   >
                     <div className="flex items-center gap-2">
                       {item.status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
@@ -437,56 +360,34 @@ export default function Manuals() {
                       <span className="truncate flex-1 text-xs text-muted-foreground">{item.file.name}</span>
                       <span className="text-xs text-muted-foreground shrink-0">{formatSize(item.file.size)}</span>
                       {item.status !== "uploading" && item.status !== "done" && (
-                        <button
-                          type="button"
-                          onClick={() => removeFromQueue(item.id)}
-                          className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
-                        >
+                        <button type="button" onClick={() => removeFromQueue(item.id)} className="shrink-0 text-muted-foreground hover:text-destructive transition-colors">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>
-
                     {item.status !== "done" && (
                       <div className="space-y-1">
                         <Label className="text-xs">Título *</Label>
                         <input
-                          type="text"
-                          value={item.title}
-                          onChange={e => updateQueueItem(item.id, {
-                            title: e.target.value,
-                            status: item.status === "error" ? "pending" : item.status,
-                            errorMsg: undefined,
-                          })}
-                          disabled={item.status === "uploading"}
-                          placeholder="Título do manual"
-                          maxLength={200}
+                          type="text" value={item.title}
+                          onChange={e => updateQueueItem(item.id, { title: e.target.value, status: item.status === "error" ? "pending" : item.status, errorMsg: undefined })}
+                          disabled={item.status === "uploading"} placeholder="Título do manual" maxLength={200}
                           className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
                         />
                       </div>
                     )}
-
                     {item.status !== "done" && (
                       <div className="space-y-1">
                         <Label className="text-xs">Descrição</Label>
                         <Textarea
                           value={item.description}
                           onChange={e => updateQueueItem(item.id, { description: e.target.value })}
-                          disabled={item.status === "uploading"}
-                          placeholder="Descrição opcional"
-                          rows={1}
-                          className="text-xs resize-none"
+                          disabled={item.status === "uploading"} placeholder="Descrição opcional" rows={1} className="text-xs resize-none"
                         />
                       </div>
                     )}
-
-                    {item.status === "error" && item.errorMsg && (
-                      <p className="text-xs text-destructive">{item.errorMsg}</p>
-                    )}
-
-                    {item.status === "done" && (
-                      <p className="text-xs text-green-600 dark:text-green-400">✓ {item.title}</p>
-                    )}
+                    {item.status === "error" && item.errorMsg && <p className="text-xs text-destructive">{item.errorMsg}</p>}
+                    {item.status === "done" && <p className="text-xs text-green-600 dark:text-green-400">✓ {item.title}</p>}
                   </div>
                 ))}
               </div>
