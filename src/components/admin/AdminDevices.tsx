@@ -121,13 +121,31 @@ export function AdminDevices() {
       let body: Record<string, any>;
 
       if (isCsv) {
-        // FIX CSV: valida que o CSV tem as colunas obrigatórias antes de enviar
+        // FIX CSV MAIÚSCULA: normaliza headers para lowercase antes de validar.
+        // CSVs gerados por Excel/LibreOffice frequentemente têm cabeçalhos com
+        // primeira letra maiúscula (ex: "Udi_Di", "Model") ou totalmente maiúsculo ("UDI_DI").
+        // A Edge Function aceita qualquer casing, mas validamos aqui para feedback imediato.
         const firstLine = text.split("\n")[0] ?? "";
-        const headers = firstLine.split(",").map(h => h.trim().replace(/^"|"$/g, "").toLowerCase());
-        const required = ["udi_di", "model", "reference"];
-        const missing = required.filter(r => !headers.includes(r));
+        const delimiter = firstLine.includes(";") ? ";" : ",";
+        const headers = firstLine.split(delimiter).map(h =>
+          h.trim().replace(/^["']|["']$/g, "").trim().toLowerCase().replace(/-/g, "_")
+        );
+        // Variações aceitas de cada campo obrigatório
+        const requiredVariants: Record<string, string[]> = {
+          "udi_di":    ["udi_di", "udi-di", "udidi"],
+          "model":     ["model", "modelo"],
+          "reference": ["reference", "referencia", "ref"],
+        };
+        const missing: string[] = [];
+        for (const [field, variants] of Object.entries(requiredVariants)) {
+          const found = headers.some(h => variants.includes(h));
+          if (!found) missing.push(field);
+        }
         if (missing.length > 0) {
-          toast.error(`CSV inválido. Colunas obrigatórias ausentes: ${missing.join(", ")}`);
+          toast.error(
+            `CSV inválido. Colunas obrigatórias não encontradas: ${missing.join(", ")}. ` +
+            `Colunas detectadas: ${headers.slice(0, 8).join(", ")}`
+          );
           return;
         }
         body = { csv: text, replace_all: true, confirm_replace: "CONFIRMAR_SUBSTITUICAO" };
@@ -159,14 +177,27 @@ export function AdminDevices() {
 
       toast.info("Importação iniciada... Isso pode levar alguns minutos.");
 
-      const res = await supabase.functions.invoke("import-devices", { body });
+      // FIX JWT: passa o token explicitamente no header Authorization.
+      // supabase.functions.invoke() usa apikey por padrão, mas a Edge Function
+      // valida o JWT via req.headers.get("Authorization") para verificar se é admin.
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        toast.error("Sessão expirada. Faça login novamente.");
+        return;
+      }
+
+      const res = await supabase.functions.invoke("import-devices", {
+        body,
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       if (res.error) {
         console.error("Import error:", res.error);
         let errorMsg = "Erro na importação. Tente novamente.";
         try {
           const e = res.error as { context?: Response };
-          if (e?.context && typeof e.context.json === "function") {
+          if (e?.context instanceof Response) {
             const b = await e.context.clone().json() as { error?: string };
             if (b?.error) errorMsg = b.error;
           }

@@ -21,7 +21,6 @@ import { toast } from "sonner";
 
 const MAX_FILE_SIZE_MB = 20;
 
-// BUG-007 FIX: Sanitize filename - remove special chars/spaces that break signed URLs
 function sanitizeFilename(name: string): string {
   return name
     .normalize("NFD")
@@ -42,7 +41,7 @@ export function CatalogButton() {
   const { isAdmin } = useAuth();
   const [catalogs, setCatalogs] = useState<Catalog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState("");
@@ -56,10 +55,14 @@ export function CatalogButton() {
         .from("catalogs")
         .select("*")
         .order("created_at", { ascending: false });
-      if (error) throw error;
-      setCatalogs((data as Catalog[]) ?? []);
+      if (error) {
+        console.error("fetchCatalogs error:", error.message);
+        // Não mostra toast aqui — pode ser usuário ainda não aprovado
+      } else {
+        setCatalogs((data as Catalog[]) ?? []);
+      }
     } catch (err) {
-      console.error("fetchCatalogs error:", err);
+      console.error("fetchCatalogs unexpected error:", err);
     } finally {
       setLoading(false);
     }
@@ -67,11 +70,15 @@ export function CatalogButton() {
 
   useEffect(() => { fetchCatalogs(); }, []);
 
-  // FIX PDF DOWNLOAD: usa URL assinada + link <a> clicado diretamente.
-  // Compatível com Safari/iOS que bloqueia window.open() após operações async.
+  /**
+   * FIX DOWNLOAD PDF:
+   * 1. Gera URL assinada (privada, expira em 5 min, com parâmetro download)
+   * 2. Cria <a> com href + download e clica — funciona em Safari/iOS/Chrome
+   * 3. Não usa fetch() (CORS) nem window.open() assíncrono (Safari bloqueia)
+   */
   const handleDownload = async (catalog: Catalog) => {
-    if (downloading) return;
-    setDownloading(true);
+    if (downloadingId === catalog.id) return;
+    setDownloadingId(catalog.id);
     try {
       const safeFilename = (catalog.title.endsWith(".pdf") ? catalog.title : catalog.title + ".pdf")
         .replace(/[^a-zA-Z0-9._\-\s]/g, "_");
@@ -82,7 +89,12 @@ export function CatalogButton() {
 
       if (error || !data?.signedUrl) {
         console.error("createSignedUrl error:", error?.message);
-        toast.error("Erro ao gerar link de download.");
+        // Mensagem específica: ajuda o admin a saber que é problema de storage policy
+        toast.error(
+          isAdmin
+            ? "Erro ao gerar link. Verifique as políticas do bucket 'catalogs' no Supabase Storage."
+            : "Erro ao gerar link de download. Contacte o administrador."
+        );
         return;
       }
 
@@ -93,12 +105,14 @@ export function CatalogButton() {
       a.rel = "noopener noreferrer";
       document.body.appendChild(a);
       a.click();
-      setTimeout(() => document.body.removeChild(a), 100);
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+      }, 200);
     } catch (err: any) {
       console.error("Download error:", err);
-      toast.error("Erro ao baixar catálogo.");
+      toast.error("Erro inesperado ao baixar catálogo.");
     } finally {
-      setDownloading(false);
+      setDownloadingId(null);
     }
   };
 
@@ -115,15 +129,32 @@ export function CatalogButton() {
       toast.error("Apenas arquivos PDF são permitidos");
       return;
     }
+
     setUploading(true);
     try {
       const safeName = sanitizeFilename(file.name);
       const filePath = `${Date.now()}_${safeName}`;
+
+      // FIX UPLOAD: Tenta o upload primeiro e captura o erro específico do storage.
+      // O erro mais comum aqui é falta de política INSERT no bucket "catalogs".
       const { error: uploadError } = await supabase.storage
         .from("catalogs")
         .upload(filePath, file, { contentType: "application/pdf" });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("Storage upload error:", uploadError.message, uploadError);
+        // Distingue entre erros de permissão e outros
+        if (
+          uploadError.message?.toLowerCase().includes("unauthorized") ||
+          uploadError.message?.toLowerCase().includes("row-level security") ||
+          uploadError.message?.toLowerCase().includes("403")
+        ) {
+          toast.error("Sem permissão para fazer upload. Verifique as políticas do bucket 'catalogs' no Supabase Storage → Policies.");
+        } else {
+          toast.error("Erro ao enviar arquivo: " + uploadError.message);
+        }
+        return;
+      }
 
       const { error: dbError } = await supabase.from("catalogs").insert({
         title: title.trim(),
@@ -132,8 +163,11 @@ export function CatalogButton() {
       });
 
       if (dbError) {
+        // Rollback: remove o arquivo que já foi enviado
         await supabase.storage.from("catalogs").remove([filePath]);
-        throw dbError;
+        console.error("DB insert error:", dbError.message);
+        toast.error("Erro ao salvar catálogo: " + dbError.message);
+        return;
       }
 
       toast.success("Catálogo adicionado com sucesso");
@@ -143,8 +177,8 @@ export function CatalogButton() {
       if (fileRef.current) fileRef.current.value = "";
       fetchCatalogs();
     } catch (err: any) {
-      console.error("Upload error:", err);
-      toast.error("Erro ao enviar catálogo");
+      console.error("Upload unexpected error:", err);
+      toast.error("Erro inesperado ao enviar catálogo.");
     } finally {
       setUploading(false);
     }
@@ -154,11 +188,15 @@ export function CatalogButton() {
     if (!deleteTarget) return;
     const cat = deleteTarget;
     setDeleteTarget(null);
+
+    // Remove arquivo do storage primeiro
     const { error: storageErr } = await supabase.storage.from("catalogs").remove([cat.file_path]);
-    if (storageErr) console.error("Storage delete error:", storageErr);
+    if (storageErr) console.error("Storage delete error:", storageErr.message);
+
+    // Remove registro da tabela
     const { error: dbErr } = await supabase.from("catalogs").delete().eq("id", cat.id);
     if (dbErr) {
-      toast.error("Erro ao excluir catálogo");
+      toast.error("Erro ao excluir catálogo: " + dbErr.message);
       return;
     }
     toast.success("Catálogo excluído");
@@ -166,22 +204,21 @@ export function CatalogButton() {
   };
 
   if (loading) return null;
-
-  // Sem catálogos e sem admin: não mostra nada
   if (catalogs.length === 0 && !isAdmin) return null;
 
-  // Um catálogo: botão direto de download
+  // Um catálogo sem admin: botão direto
   if (catalogs.length === 1 && !isAdmin) {
     return (
       <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8"
+        variant="ghost" size="icon" className="h-8 w-8"
         onClick={() => handleDownload(catalogs[0])}
-        disabled={downloading}
+        disabled={downloadingId === catalogs[0].id}
         title="Baixar Catálogo"
       >
-        {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        {downloadingId === catalogs[0].id
+          ? <Loader2 className="h-4 w-4 animate-spin" />
+          : <Download className="h-4 w-4" />
+        }
       </Button>
     );
   }
@@ -198,7 +235,10 @@ export function CatalogButton() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -213,17 +253,32 @@ export function CatalogButton() {
             <ChevronDown className="h-3 w-3 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuContent align="end" className="w-56">
+          {catalogs.length === 0 && isAdmin && (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum catálogo cadastrado</div>
+          )}
           {catalogs.map((cat) => (
-            <DropdownMenuItem key={cat.id} className="gap-2 cursor-pointer" onClick={() => handleDownload(cat)}>
-              <Download className="h-3.5 w-3.5 shrink-0" />
+            <DropdownMenuItem
+              key={cat.id}
+              className="gap-2 cursor-pointer"
+              onClick={() => handleDownload(cat)}
+              disabled={downloadingId === cat.id}
+            >
+              {downloadingId === cat.id
+                ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                : <Download className="h-3.5 w-3.5 shrink-0" />
+              }
               <span className="truncate">{cat.title}</span>
             </DropdownMenuItem>
           ))}
+
           {isAdmin && (
             <>
               {catalogs.length > 0 && <div className="my-1 border-t border-border" />}
-              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => setDialogOpen(true)}>
+              <DropdownMenuItem
+                className="gap-2 cursor-pointer text-primary focus:text-primary"
+                onClick={() => setDialogOpen(true)}
+              >
                 <FileUp className="h-3.5 w-3.5 shrink-0" />
                 Adicionar catálogo
               </DropdownMenuItem>
@@ -250,19 +305,34 @@ export function CatalogButton() {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label>Título *</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Catálogo 2025" />
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ex: Catálogo 2025"
+                maxLength={100}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Arquivo PDF * (máx. {MAX_FILE_SIZE_MB}MB)</Label>
-              <input type="file" accept=".pdf,application/pdf" ref={fileRef} onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="hidden" />
-              <Button variant="outline" className="w-full gap-2" onClick={() => fileRef.current?.click()}>
-                <Upload className="h-4 w-4" />
-                {file ? file.name : "Selecionar PDF"}
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                ref={fileRef}
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="hidden"
+              />
+              <Button variant="outline" className="w-full gap-2 truncate" onClick={() => fileRef.current?.click()}>
+                <Upload className="h-4 w-4 shrink-0" />
+                <span className="truncate">{file ? file.name : "Selecionar PDF"}</span>
               </Button>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-              <Button onClick={handleUpload} disabled={uploading}>{uploading ? "Enviando..." : "Enviar"}</Button>
+              <Button variant="outline" onClick={() => { setDialogOpen(false); setFile(null); setTitle(""); }}>
+                Cancelar
+              </Button>
+              <Button onClick={handleUpload} disabled={uploading || !file || !title.trim()}>
+                {uploading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Enviando...</> : "Enviar"}
+              </Button>
             </div>
           </div>
         </DialogContent>

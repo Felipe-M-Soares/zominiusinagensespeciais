@@ -27,29 +27,65 @@ import {
 import { toast } from "sonner";
 import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus } from "lucide-react";
 
-// FIX JWT/EXCLUIR: lê o corpo real do erro da Edge Function.
-// supabase.functions.invoke() coloca erros HTTP em error.context (Response),
-// não em error.message. Sem este helper o usuário via sempre "non-2xx status code".
-async function readInvokeError(error: unknown): Promise<string> {
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Obtém o JWT da sessão atual e força refresh se estiver próximo de expirar.
+ * Retorna null se não houver sessão válida.
+ *
+ * FIX JWT: supabase.functions.invoke() NÃO envia Authorization automaticamente
+ * quando o client usa anon key + RLS — ele envia via `apikey`.
+ * A Edge Function lê `req.headers.get("Authorization")` explicitamente,
+ * então precisamos passar o token do usuário logado manualmente.
+ */
+async function getValidToken(): Promise<string | null> {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session) return null;
+
+  // Força refresh se expira em menos de 2 minutos
+  const expiresAt = session.expires_at ?? 0;
+  const secsLeft = expiresAt - Math.floor(Date.now() / 1000);
+  if (secsLeft < 120) {
+    const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+    if (refreshErr || !refreshed.session) return null;
+    return refreshed.session.access_token;
+  }
+  return session.access_token;
+}
+
+/**
+ * Chama uma Edge Function passando o JWT explicitamente no header Authorization.
+ * Lê o corpo real do erro (4xx/5xx) em vez da mensagem genérica do SDK.
+ */
+async function invokeWithAuth(
+  fn: string,
+  body: Record<string, unknown>
+): Promise<{ data: unknown; error: string | null }> {
+  const token = await getValidToken();
+  if (!token) return { data: null, error: "Sessão expirada. Faça login novamente." };
+
+  const { data, error } = await supabase.functions.invoke(fn, {
+    body,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!error) return { data, error: null };
+
+  // Tenta ler o corpo real do erro da Edge Function
   try {
     const e = error as { context?: Response; message?: string };
     if (e?.context instanceof Response) {
-      try {
-        const cloned = e.context.clone();
-        const body = await cloned.json() as { error?: string; message?: string };
-        if (body?.error) return String(body.error);
-        if (body?.message) return String(body.message);
-      } catch {
-        try {
-          const cloned2 = e.context.clone();
-          const text = await cloned2.text();
-          if (text) return text.slice(0, 200);
-        } catch { /* ignore */ }
-      }
+      const cloned = e.context.clone();
+      const parsed = await cloned.json() as { error?: string; message?: string };
+      if (parsed?.error) return { data: null, error: parsed.error };
+      if (parsed?.message) return { data: null, error: parsed.message };
     }
-  } catch { /* ignore */ }
-  return (error as { message?: string })?.message ?? "Erro desconhecido";
+  } catch { /* fallback */ }
+
+  return { data: null, error: (error as { message?: string })?.message ?? "Erro desconhecido" };
 }
+
+// ─── types ───────────────────────────────────────────────────────────────────
 
 interface UserProfile {
   user_id: string;
@@ -59,6 +95,8 @@ interface UserProfile {
   role: "admin" | "client";
   approved: boolean;
 }
+
+// ─── component ───────────────────────────────────────────────────────────────
 
 export function AdminUsers() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -80,8 +118,10 @@ export function AdminUsers() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const { data: profiles, error: pErr } = await supabase.from("profiles").select("*");
-      const { data: roles, error: rErr } = await supabase.from("user_roles").select("*");
+      const [{ data: profiles, error: pErr }, { data: roles, error: rErr }] = await Promise.all([
+        supabase.from("profiles").select("*"),
+        supabase.from("user_roles").select("*"),
+      ]);
 
       if (pErr || rErr) {
         toast.error("Erro ao carregar usuários");
@@ -114,10 +154,11 @@ export function AdminUsers() {
       .update({ role: newRole })
       .eq("user_id", userId)
       .select("user_id");
+
     if (error) {
-      toast.error("Erro ao alterar função.");
+      toast.error("Erro ao alterar função: " + error.message);
     } else if (!data || data.length === 0) {
-      toast.error("Usuário não encontrado para alterar função.");
+      toast.error("Registro de função não encontrado para este usuário.");
     } else {
       toast.success("Função atualizada");
       fetchUsers();
@@ -130,10 +171,11 @@ export function AdminUsers() {
       .update({ approved: approve })
       .eq("user_id", userId)
       .select("user_id");
+
     if (error) {
-      toast.error("Erro ao alterar aprovação.");
+      toast.error("Erro ao alterar aprovação: " + error.message);
     } else if (!data || data.length === 0) {
-      toast.error("Perfil não encontrado para alterar aprovação.");
+      toast.error("Perfil não encontrado.");
     } else {
       toast.success(approve ? "Usuário aprovado" : "Aprovação removida");
       fetchUsers();
@@ -141,75 +183,43 @@ export function AdminUsers() {
   };
 
   const resetPassword = async () => {
-    if (!passwordDialog || !newPassword.trim()) return;
-    if (newPassword.length < 8) {
-      toast.error("A senha deve ter no mínimo 8 caracteres");
-      return;
-    }
+    if (!passwordDialog || newPassword.length < 8) return;
     if (newPassword.length > 72) {
-      toast.error("A senha deve ter no máximo 72 caracteres");
+      toast.error("Senha deve ter no máximo 72 caracteres");
       return;
     }
     setResettingPassword(true);
     try {
-      const { error } = await supabase.functions.invoke("admin-reset-password", {
-        body: { target_user_id: passwordDialog.user_id, new_password: newPassword },
+      const { error } = await invokeWithAuth("admin-reset-password", {
+        target_user_id: passwordDialog.user_id,
+        new_password: newPassword,
       });
 
       if (error) {
-        console.error("Password reset error:", error);
-        const msg = await readInvokeError(error);
-        toast.error("Erro ao redefinir senha: " + msg);
+        toast.error("Erro ao redefinir senha: " + error);
       } else {
         toast.success(`Senha de ${passwordDialog.display_name || passwordDialog.email} alterada`);
         setPasswordDialog(null);
         setNewPassword("");
       }
-    } catch (err: any) {
-      toast.error("Erro inesperado: " + err.message);
     } finally {
       setResettingPassword(false);
     }
   };
 
-  // FIX JWT/EXCLUIR: A Edge Function delete-account precisa do JWT do admin logado.
-  // supabase.functions.invoke() injeta o token automaticamente via Authorization header
-  // a partir da sessão ativa. Se o token expirou, forçamos refresh antes de invocar.
   const deleteUser = async (userId: string) => {
     setDeletingId(userId);
     try {
-      // Garante que a sessão está válida (token não expirado) antes de chamar a Edge Function.
-      // Sem isso, o Supabase pode enviar um token expirado e a Edge Function rejeita com JWT error.
-      const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
-      if (sessionErr || !session) {
-        toast.error("Sessão expirada. Faça login novamente.");
-        return;
-      }
-
-      // Se o token expira em menos de 60s, força refresh preventivo
-      const expiresAt = session.expires_at ?? 0;
-      if (expiresAt - Math.floor(Date.now() / 1000) < 60) {
-        const { error: refreshErr } = await supabase.auth.refreshSession();
-        if (refreshErr) {
-          toast.error("Não foi possível renovar a sessão. Faça login novamente.");
-          return;
-        }
-      }
-
-      const { error } = await supabase.functions.invoke("delete-account", {
-        body: { target_user_id: userId },
+      const { error } = await invokeWithAuth("delete-account", {
+        target_user_id: userId,
       });
 
       if (error) {
-        console.error("Delete user error:", error);
-        const msg = await readInvokeError(error);
-        toast.error("Erro ao excluir conta: " + msg);
+        toast.error("Erro ao excluir conta: " + error);
       } else {
         toast.success("Conta excluída com sucesso");
         fetchUsers();
       }
-    } catch (err: any) {
-      toast.error("Erro inesperado: " + err.message);
     } finally {
       setDeletingId(null);
     }
@@ -226,25 +236,15 @@ export function AdminUsers() {
     }
     setCreatingUser(true);
     try {
-      // Mesma garantia de sessão válida para criar usuário via Edge Function
-      const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
-      if (sessionErr || !session) {
-        toast.error("Sessão expirada. Faça login novamente.");
-        return;
-      }
-
-      const { error } = await supabase.functions.invoke("admin-create-user", {
-        body: {
-          email: newUserEmail.trim().toLowerCase(),
-          password: newUserPassword,
-          display_name: newUserName.trim(),
-          role: newUserRole,
-        },
+      const { error } = await invokeWithAuth("admin-create-user", {
+        email: newUserEmail.trim().toLowerCase(),
+        password: newUserPassword,
+        display_name: newUserName.trim(),
+        role: newUserRole,
       });
 
       if (error) {
-        const msg = await readInvokeError(error);
-        toast.error("Erro ao criar conta: " + msg);
+        toast.error("Erro ao criar conta: " + error);
       } else {
         toast.success("Conta criada com sucesso!");
         setCreateDialog(false);
@@ -254,15 +254,17 @@ export function AdminUsers() {
         setNewUserRole("client");
         fetchUsers();
       }
-    } catch (err: any) {
-      toast.error("Erro inesperado: " + err.message);
     } finally {
       setCreatingUser(false);
     }
   };
 
   if (loading) {
-    return <div className="flex justify-center py-10"><div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" /></div>;
+    return (
+      <div className="flex justify-center py-10">
+        <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   return (
@@ -273,6 +275,7 @@ export function AdminUsers() {
         </Button>
       </div>
 
+      {/* ── Criar usuário ── */}
       <Dialog open={createDialog} onOpenChange={setCreateDialog}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -314,9 +317,7 @@ export function AdminUsers() {
             <div className="space-y-2">
               <Label>Perfil</Label>
               <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as "admin" | "client")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="client">Cliente</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
@@ -336,6 +337,7 @@ export function AdminUsers() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Tabela de usuários ── */}
       <div className="rounded-lg border overflow-auto">
         <Table>
           <TableHeader>
@@ -354,7 +356,9 @@ export function AdminUsers() {
                 <TableRow key={u.user_id}>
                   <TableCell className="font-medium">{u.display_name ?? "—"}</TableCell>
                   <TableCell className="text-sm">{u.email}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{new Date(u.created_at).toLocaleDateString("pt-BR")}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(u.created_at).toLocaleDateString("pt-BR")}
+                  </TableCell>
                   <TableCell>
                     {u.approved ? (
                       <Badge variant="default" className="gap-1 bg-green-600">
@@ -367,9 +371,13 @@ export function AdminUsers() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Select value={u.role} onValueChange={(v) => changeRole(u.user_id, v as "admin" | "client")}>
-                        <SelectTrigger className="w-[120px] h-8">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Select
+                        value={u.role}
+                        onValueChange={(v) => changeRole(u.user_id, v as "admin" | "client")}
+                        disabled={isSelf}
+                      >
+                        <SelectTrigger className="w-[110px] h-8">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -380,9 +388,7 @@ export function AdminUsers() {
 
                       {!u.approved && !isSelf && (
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 text-green-600 border-green-300 hover:bg-green-50"
+                          variant="outline" size="sm" className="h-8 text-green-600 border-green-300 hover:bg-green-50"
                           onClick={() => toggleApproval(u.user_id, true)}
                         >
                           <CheckCircle className="h-4 w-4 mr-1" /> Aprovar
@@ -390,9 +396,7 @@ export function AdminUsers() {
                       )}
                       {u.approved && !isSelf && u.role !== "admin" && (
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 text-orange-600 border-orange-300 hover:bg-orange-50"
+                          variant="outline" size="sm" className="h-8 text-orange-600 border-orange-300 hover:bg-orange-50"
                           onClick={() => toggleApproval(u.user_id, false)}
                         >
                           <XCircle className="h-4 w-4 mr-1" /> Revogar
@@ -400,11 +404,9 @@ export function AdminUsers() {
                       )}
 
                       <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => { setPasswordDialog(u); setNewPassword(""); }}
+                        variant="outline" size="icon" className="h-8 w-8"
                         title="Alterar senha"
+                        onClick={() => { setPasswordDialog(u); setNewPassword(""); }}
                       >
                         <KeyRound className="h-4 w-4" />
                       </Button>
@@ -412,9 +414,7 @@ export function AdminUsers() {
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button
-                            variant="destructive"
-                            size="icon"
-                            className="h-8 w-8"
+                            variant="destructive" size="icon" className="h-8 w-8"
                             disabled={isSelf || deletingId === u.user_id}
                             title={isSelf ? "Não é possível excluir sua própria conta" : "Excluir conta"}
                           >
@@ -448,6 +448,7 @@ export function AdminUsers() {
         </Table>
       </div>
 
+      {/* ── Alterar senha ── */}
       <Dialog open={!!passwordDialog} onOpenChange={() => setPasswordDialog(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
