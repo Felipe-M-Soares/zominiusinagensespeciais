@@ -225,10 +225,10 @@ export function useDeviceOptions() {
       const exocadOptions = [
         ...new Set(
           (exocadRes.data ?? [])
-            .map((d: any) => d.exocad_compatibility)
-            .filter((v: any) => v && v !== "N.A")
+            .map((d: any) => (d.exocad_compatibility ?? "").trim())
+            .filter((v: any) => v.length > 0)   // exclui apenas vazios/nulos
         ),
-      ] as string[];
+      ].sort() as string[];
       const letters = new Set<string>();
       (modelRes.data ?? []).forEach((d: any) => {
         const c = (d.model ?? "").charAt(0).toUpperCase();

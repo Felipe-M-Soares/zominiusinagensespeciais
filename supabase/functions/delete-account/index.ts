@@ -58,13 +58,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    // VULN-001 FIX: Use auth.getUser() for cryptographic JWT validation.
-    // NEVER use manual base64 JWT decoding for identity — it has NO signature verification
-    // and allows any attacker to forge a token with arbitrary sub/role claims.
+    // VULN-001 FIX: Passa o JWT diretamente para getUser(token) — forma correta em Edge Functions.
+    // auth.getUser() sem argumento usa a sessão interna do cliente (vazia numa Edge Function),
+    // retornando "Invalid JWT". Com o token explícito, o Supabase Auth valida criptograficamente.
+    const token = authHeader.replace("Bearer ", "").trim();
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    const { data: { user }, error: userError } = await userClient.auth.getUser(token);
     if (userError || !user) {
       console.error("JWT validation failed:", userError?.message ?? "no user returned");
       return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
