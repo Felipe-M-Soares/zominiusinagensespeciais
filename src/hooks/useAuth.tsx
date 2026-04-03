@@ -79,7 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchRoleAndApproval = useCallback(async (userId: string) => {
     try {
-      const [{ data: roleData }, { data: profileData }] = await Promise.all([
+      // Query principal: role + approved — campos que sempre existem
+      const [{ data: roleData }, { data: profileData, error: profileError }] = await Promise.all([
         supabase
           .from("user_roles")
           .select("role")
@@ -87,25 +88,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle(),
         supabase
           .from("profiles")
-          .select("approved, blocked")
+          .select("approved")
           .eq("user_id", userId)
           .maybeSingle(),
       ]);
+
       setRole(roleData?.role ?? "client");
-      // LÓGICA CORRETA:
-      // - profileData === null → perfil ainda não existe (race condition pós-cadastro)
-      //   → mantém null para que App.tsx não redirecione (só redireciona se === false)
-      // - profileData.approved === true  → aprovado ✓
-      // - profileData.approved === false → não aprovado → vai para /pending-approval
-      // NOTA: ?? true mantém compatibilidade com contas antigas sem campo approved
-      setApproved(profileData == null ? null : (profileData.approved ?? true));
-      // blocked: se null/undefined, trata como false (não bloqueado)
-      setBlocked(profileData?.blocked ?? false);
+
+      if (profileError) {
+        // Erro na query de profiles — assume aprovado para não travar o acesso
+        console.error("fetchRoleAndApproval profiles error:", profileError.message);
+        setApproved(true);
+      } else {
+        // profileData === null → perfil ainda não existe (race condition pós-cadastro)
+        // → null = aguarda, App.tsx só redireciona se === false explícito
+        setApproved(profileData == null ? null : (profileData.approved ?? true));
+      }
+
+      // Query separada e tolerante para blocked — se a coluna não existir ainda, não quebra nada
+      try {
+        const { data: blockedData } = await supabase
+          .from("profiles")
+          .select("blocked")
+          .eq("user_id", userId)
+          .maybeSingle();
+        setBlocked(blockedData?.blocked ?? false);
+      } catch {
+        // Coluna blocked ainda não existe no banco (migration pendente) — ignora
+        setBlocked(false);
+      }
+
     } catch (err) {
       console.error("Failed to fetch role/approval:", err);
       setRole("client");
-      // Em caso de erro na query, mantém null para não redirecionar erroneamente
-      setApproved(null);
+      // Em erro geral, assume aprovado para não bloquear acesso indevidamente
+      setApproved(true);
       setBlocked(false);
     }
   }, []);
