@@ -209,18 +209,17 @@ export default function Contacts() {
                   </div>
 
                   {/* Actions footer */}
-                  <div className="px-3 pb-3 pt-1 flex items-center gap-2">
+                  <div className="px-3 pb-3 pt-1 flex items-center justify-between gap-2">
                     {waUrl ? (
-                      <Button
-                        size="sm"
-                        className="flex-1 h-8 gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-none"
+                      <button
                         onClick={() => window.open(waUrl, "_blank", "noopener,noreferrer")}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-600 dark:text-green-400 text-[11px] font-medium transition-colors"
                       >
-                        <MessageCircle className="h-3.5 w-3.5" />
+                        <MessageCircle className="h-3 w-3" />
                         WhatsApp
-                      </Button>
+                      </button>
                     ) : (
-                      <div className="flex-1" />
+                      <div />
                     )}
                     {isAdmin && (
                       <div className="flex gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
