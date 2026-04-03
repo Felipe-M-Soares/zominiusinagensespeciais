@@ -17,6 +17,9 @@ export default function PendingApproval() {
   // FIX LOOP: controla se a Edge Function já foi invocada para evitar chamadas repetidas
   const autoApproveCalledRef = useRef(false);
   const [autoApproveTriggered, setAutoApproveTriggered] = useState(false);
+  // FIX LOOP INFINITO: quando auto-approve falha (ex: JWT inválido), mostra mensagem
+  // ao invés de ficar preso em "Ativando sua conta..." para sempre.
+  const [autoApproveFailed, setAutoApproveFailed] = useState(false);
   const [checking, setChecking] = useState(false);
   // FIX LOOP: flag para evitar que o polling continue após navegar
   const navigatedRef = useRef(false);
@@ -46,11 +49,17 @@ export default function PendingApproval() {
     if (!user?.id || autoApproveCalledRef.current) return;
     autoApproveCalledRef.current = true;
     try {
-      await invokeWithAuth("auto-approve", {
+      const { errorMsg } = await invokeWithAuth("auto-approve", {
         body: { user_id: user.id },
       });
+      // Se a Edge Function retornou erro, marca falha para sair do spinner infinito
+      if (errorMsg) {
+        console.error("auto-approve error:", errorMsg);
+        setAutoApproveFailed(true);
+      }
     } catch (err) {
       console.error("auto-approve invoke error:", err);
+      setAutoApproveFailed(true);
     }
   }, [user?.id]);
 
@@ -102,25 +111,36 @@ export default function PendingApproval() {
                 strokeDasharray={circumference}
                 strokeDashoffset={circumference * (1 - progress / 100)}
                 className={`transition-all duration-1000 ease-linear ${
+                  autoApproveFailed ? "stroke-amber-400" :
                   isApproving ? "stroke-green-500" : "stroke-amber-500"
                 }`}
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              {isApproving
+              {isApproving && !autoApproveFailed
                 ? <Loader2 className="h-6 w-6 text-green-500 animate-spin" />
                 : <Clock className="h-6 w-6 text-amber-500" />
               }
             </div>
           </div>
 
-          {isApproving ? (
+          {isApproving && !autoApproveFailed ? (
             <div>
               <h1 className="text-lg font-semibold text-green-600 dark:text-green-400">
                 Ativando sua conta...
               </h1>
               <p className="text-sm text-muted-foreground mt-2">
                 Aprovação automática em andamento. Você será redirecionado em instantes.
+              </p>
+            </div>
+          ) : autoApproveFailed ? (
+            <div>
+              <h1 className="text-lg font-semibold text-amber-600 dark:text-amber-400">
+                Aguardando Aprovação
+              </h1>
+              <p className="text-sm text-muted-foreground mt-2">
+                A aprovação automática não pôde ser concluída agora.<br />
+                Sua conta será aprovada assim que o administrador confirmar seu acesso.
               </p>
             </div>
           ) : (
@@ -155,7 +175,7 @@ export default function PendingApproval() {
             </p>
           )}
 
-          {!isApproving && (
+          {(!isApproving || autoApproveFailed) && (
             <Button
               variant="outline"
               size="sm"

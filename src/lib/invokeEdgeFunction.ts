@@ -1,31 +1,51 @@
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Invoca uma Edge Function com token JWT garantidamente válido,
- * usando fetch() diretamente para evitar que o SDK sobrescreva
- * o Authorization header com um token stale/expirado.
+ * Obtém um access_token válido, tentando refresh primeiro.
  *
- * CAUSA RAIZ do "Invalid JWT" persistente:
- * ─────────────────────────────────────────
- * supabase.functions.invoke() injeta internamente o Authorization header
- * a partir do token em cache do SDK. Em algumas versões do supabase-js v2,
- * esse header é injetado DEPOIS dos headers customizados, sobrescrevendo
- * o token fresco que passamos manualmente.
+ * CAUSA RAIZ do "authorization: []" no Supabase:
+ * ──────────────────────────────────────────────
+ * refreshSession() pode retornar { session: { access_token: undefined } }
+ * sem nenhum erro. O código anterior assumia que "sem erro = token válido",
+ * resultando em `Bearer undefined` sendo enviado — que o gateway Supabase
+ * descarta silenciosamente, mostrando authorization: [] nos logs.
  *
- * SOLUÇÃO DEFINITIVA:
- * ───────────────────
- * Usar fetch() diretamente contra a URL da Edge Function, passando os headers
- * nós mesmos — sem depender de nenhum comportamento interno do SDK.
- * Antes disso, forçamos refreshSession() se o token estiver expirado.
+ * SOLUÇÃO:
+ * Verificar EXPLICITAMENTE se access_token é uma string não-vazia em cada path.
  */
+async function getFreshToken(): Promise<string | null> {
+  // Tentativa 1: refreshSession
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    const token = data?.session?.access_token;
+    if (!error && typeof token === "string" && token.length > 0) {
+      return token;
+    }
+  } catch {
+    // refresh falhou — tenta getSession
+  }
 
-function isTokenExpiredOrExpiringSoon(token: string, bufferSec = 60): boolean {
+  // Tentativa 2: sessão em cache
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!error && typeof token === "string" && token.length > 0) {
+      return token;
+    }
+  } catch {
+    // getSession também falhou
+  }
+
+  return null;
+}
+
+function isTokenExpired(token: string): boolean {
   try {
     const payload = token.split(".")[1];
     if (!payload) return true;
     const { exp } = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-    if (!exp) return true;
-    return Date.now() / 1000 >= exp - bufferSec;
+    if (typeof exp !== "number") return true;
+    return Date.now() / 1000 >= exp - 10;
   } catch {
     return true;
   }
@@ -36,38 +56,27 @@ export async function invokeWithAuth<T = unknown>(
   options?: { body?: Record<string, unknown> }
 ): Promise<{ data: T | null; error: Error | null; errorMsg: string | null }> {
 
-  // ── 1. Sempre força refresh do token antes de chamar Edge Function ─────
-  // Garante token fresco mesmo que o SDK tenha um token stale em cache.
-  // Isso resolve o "Invalid JWT 401" em delete-account e import-devices.
-  const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+  // 1. Obtém token válido
+  const accessToken = await getFreshToken();
 
-  let accessToken: string | null = null;
-
-  if (!refreshErr && refreshed.session) {
-    accessToken = refreshed.session.access_token;
-  } else {
-    // Fallback: tenta sessão atual se refresh falhar (ex: sem conexão momentânea)
-    const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
-    if (sessionErr || !session) {
-      return {
-        data: null,
-        error: new Error("Sessão não encontrada. Faça login novamente."),
-        errorMsg: "Sessão não encontrada. Faça login novamente.",
-      };
-    }
-    // Se mesmo o token do cache estiver expirado, desloga
-    if (isTokenExpiredOrExpiringSoon(session.access_token, 0)) {
-      await supabase.auth.signOut();
-      return {
-        data: null,
-        error: new Error("Sessão expirada. Faça login novamente."),
-        errorMsg: "Sessão expirada. Faça login novamente.",
-      };
-    }
-    accessToken = session.access_token;
+  if (!accessToken) {
+    return {
+      data: null,
+      error: new Error("Sessão não encontrada. Faça login novamente."),
+      errorMsg: "Sessão não encontrada. Faça login novamente.",
+    };
   }
 
-  // ── 3. Monta URL da Edge Function ──────────────────────────────────────
+  if (isTokenExpired(accessToken)) {
+    supabase.auth.signOut().catch(() => {});
+    return {
+      data: null,
+      error: new Error("Sessão expirada. Faça login novamente."),
+      errorMsg: "Sessão expirada. Faça login novamente.",
+    };
+  }
+
+  // 2. Variáveis de ambiente
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
   const anonKey    = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
@@ -79,18 +88,17 @@ export async function invokeWithAuth<T = unknown>(
     };
   }
 
+  // 3. Chama a Edge Function via fetch() direto
   const url = `${supabaseUrl}/functions/v1/${functionName}`;
 
-  // ── 4. fetch() direto — SEM passar pelo SDK ────────────────────────────
-  // Garantia total de que o token que enviamos é o único na requisição.
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`,   // token fresco, recém-renovado
-        "apikey": anonKey,                           // obrigatório pelo gateway Supabase
+        "Authorization": `Bearer ${accessToken}`,
+        "apikey": anonKey,
       },
       body: options?.body ? JSON.stringify(options.body) : undefined,
     });
@@ -99,7 +107,7 @@ export async function invokeWithAuth<T = unknown>(
     return { data: null, error: networkErr as Error, errorMsg: "Erro de rede: " + msg };
   }
 
-  // ── 5. Lê a resposta ───────────────────────────────────────────────────
+  // 4. Lê a resposta
   let responseBody: unknown;
   try {
     responseBody = await response.json();
@@ -111,7 +119,6 @@ export async function invokeWithAuth<T = unknown>(
     return { data: responseBody as T, error: null, errorMsg: null };
   }
 
-  // Extrai mensagem de erro do corpo JSON
   let errorMsg = `Erro ${response.status}`;
   if (responseBody && typeof responseBody === "object") {
     const body = responseBody as { error?: string; message?: string };
