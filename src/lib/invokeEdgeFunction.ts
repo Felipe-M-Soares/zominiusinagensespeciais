@@ -1,31 +1,22 @@
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Obtém um access_token válido, tentando refresh primeiro.
+ * Obtém um access_token válido.
  *
- * CAUSA RAIZ do "authorization: []" no Supabase:
+ * CORREÇÃO DA ORDEM:
  * ──────────────────────────────────────────────
+ * A versão anterior chamava refreshSession() PRIMEIRO. O problema:
  * refreshSession() pode retornar { session: { access_token: undefined } }
- * sem nenhum erro. O código anterior assumia que "sem erro = token válido",
- * resultando em `Bearer undefined` sendo enviado — que o gateway Supabase
- * descarta silenciosamente, mostrando authorization: [] nos logs.
+ * sem erro quando o servidor não consegue renovar (ex: refresh_token expirado,
+ * sessão inválida no servidor). O código então enviava "Bearer undefined".
  *
- * SOLUÇÃO:
- * Verificar EXPLICITAMENTE se access_token é uma string não-vazia em cada path.
+ * A ordem correta é:
+ * 1. getSession() — lê do cache local (localStorage). Confiável quando a sessão
+ *    ainda é válida. Falha apenas se não existe sessão.
+ * 2. refreshSession() — só como fallback quando getSession retorna token vazio.
  */
 async function getFreshToken(): Promise<string | null> {
-  // Tentativa 1: refreshSession
-  try {
-    const { data, error } = await supabase.auth.refreshSession();
-    const token = data?.session?.access_token;
-    if (!error && typeof token === "string" && token.length > 0) {
-      return token;
-    }
-  } catch {
-    // refresh falhou — tenta getSession
-  }
-
-  // Tentativa 2: sessão em cache
+  // Tentativa 1: sessão em cache local (mais confiável, sem roundtrip de rede)
   try {
     const { data, error } = await supabase.auth.getSession();
     const token = data?.session?.access_token;
@@ -33,7 +24,18 @@ async function getFreshToken(): Promise<string | null> {
       return token;
     }
   } catch {
-    // getSession também falhou
+    // getSession falhou — tenta refresh
+  }
+
+  // Tentativa 2: força refresh do token via rede
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    const token = data?.session?.access_token;
+    if (!error && typeof token === "string" && token.length > 0) {
+      return token;
+    }
+  } catch {
+    // refresh também falhou
   }
 
   return null;

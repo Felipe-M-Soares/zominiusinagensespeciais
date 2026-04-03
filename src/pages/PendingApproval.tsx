@@ -2,11 +2,14 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { Clock, LogOut, CheckCircle, Loader2 } from "lucide-react";
 
-const AUTO_APPROVE_SECONDS = 10;
+// CORREÇÃO: servidor exige 55s de conta criada antes de aprovar.
+// Usamos 62s no frontend para dar margem de latência de rede (+7s).
+const AUTO_APPROVE_SECONDS = 62;
 const POLL_INTERVAL_MS = 5_000;
 
 export default function PendingApproval() {
@@ -76,8 +79,12 @@ export default function PendingApproval() {
   useEffect(() => {
     if (secondsLeft === 0 && !autoApproveTriggered) {
       setAutoApproveTriggered(true);
-      triggerAutoApprove().then(() => {
-        if (!navigatedRef.current) checkApproval();
+      triggerAutoApprove().then(async () => {
+        if (!navigatedRef.current) {
+          // Força refresh do token para que RLS leia approved=true atualizado
+          await supabase.auth.refreshSession().catch(() => {});
+          checkApproval();
+        }
       });
     }
   }, [secondsLeft, autoApproveTriggered, triggerAutoApprove, checkApproval]);

@@ -59,12 +59,11 @@ export default function Register() {
             <div>
               <p className="font-semibold text-foreground">Cadastro realizado com sucesso!</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Sua conta será <strong>ativada automaticamente em até 1 minuto</strong>.
-                Você também pode ser aprovado antes disso por um administrador.
+                Sua conta está pronta. Faça login para acessar o sistema.
               </p>
             </div>
             <Link to="/login">
-              <Button className="w-full">Acompanhar aprovação</Button>
+              <Button className="w-full">Fazer login</Button>
             </Link>
           </CardContent>
         </Card>

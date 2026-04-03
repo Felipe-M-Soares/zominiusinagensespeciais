@@ -222,6 +222,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearLocalState]);
 
   const refreshApproval = useCallback(async () => {
+    // CORREÇÃO: força refresh do token antes de ler do banco.
+    // Sem isso, após auto-approve o RLS pode usar o token antigo e retornar
+    // approved=false mesmo que o banco já tenha sido atualizado.
+    try {
+      await supabase.auth.refreshSession();
+    } catch {
+      // Se refresh falhar, tenta mesmo assim com getSession
+    }
     const { data: { session: currentSession } } = await supabase.auth.getSession();
     if (currentSession?.user) {
       await fetchRoleAndApproval(currentSession.user.id);
