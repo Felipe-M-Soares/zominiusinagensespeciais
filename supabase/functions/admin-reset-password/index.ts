@@ -64,7 +64,8 @@ Deno.serve(async (req) => {
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Token inválido" }), {
+      console.error("JWT validation failed in admin-reset-password:", userError?.message ?? "no user");
+      return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

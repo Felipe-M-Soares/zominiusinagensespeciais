@@ -286,13 +286,15 @@ Deno.serve(async (req) => {
     }
     const rawText = new TextDecoder().decode(rawBuffer);
 
-    // Valida JWT
+    // Valida JWT via Supabase Auth (validação criptográfica real, não só decodificação local)
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Token inválido ou expirado. Faça login novamente." }), {
+      // Loga o erro real para debug no Supabase Dashboard → Edge Functions → Logs
+      console.error("JWT validation failed:", userError?.message ?? "no user returned");
+      return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

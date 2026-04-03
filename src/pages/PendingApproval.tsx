@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { Clock, LogOut, CheckCircle, Loader2 } from "lucide-react";
@@ -46,7 +46,7 @@ export default function PendingApproval() {
     if (!user?.id || autoApproveCalledRef.current) return;
     autoApproveCalledRef.current = true;
     try {
-      await supabase.functions.invoke("auto-approve", {
+      await invokeWithAuth("auto-approve", {
         body: { user_id: user.id },
       });
     } catch (err) {

@@ -3,3 +3,17 @@ project_id = "jemlaugllnwuswpkfzjy"
 [functions]
   [functions.auth-email-hook]
     verify_jwt = false
+
+  [functions.import-devices]
+    verify_jwt = false
+
+  [functions.delete-account]
+    verify_jwt = false
+
+  [functions.admin-reset-password]
+    verify_jwt = false
+
+  [functions.admin-create-user]
+    verify_jwt = false
+  [functions.auto-approve]
+    verify_jwt = false
