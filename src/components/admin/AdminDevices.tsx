@@ -292,6 +292,8 @@ export function AdminDevices() {
       setDeleteAllConfirm(false);
     }
   };
+
+  const handleDeleteConfirm = async () => {
     if (!deleteConfirmId) return;
     const { error } = await supabase.from("devices").delete().eq("id", deleteConfirmId);
     if (error) toast.error("Erro ao excluir");
