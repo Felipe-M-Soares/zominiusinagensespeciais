@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,24 +10,24 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Upload, Trash2, Download, FileText, Plus, Loader2 } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, Download, FileText, Plus, Loader2, X, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
 
 const MAX_FILE_SIZE_MB = 20;
+const MAX_FILES_AT_ONCE = 20;
 
-/**
- * Sanitiza o nome do arquivo para uso no Storage.
- * Remove acentos, substitui caracteres especiais por underscore.
- * DEVE ser igual à função usada no upload para que os paths batam.
- */
 function sanitizeFilename(name: string): string {
   return name
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")        // remove diacritics
-    .replace(/[^a-zA-Z0-9._-]/g, "_")       // special chars → underscore
-    .replace(/_+/g, "_")                     // multiple underscores → one
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/_+/g, "_")
     .toLowerCase();
+}
+
+function pdfNameToTitle(filename: string): string {
+  return filename.replace(/\.pdf$/i, "").trim();
 }
 
 interface Manual {
@@ -40,21 +39,28 @@ interface Manual {
   created_at: string;
 }
 
+interface QueuedFile {
+  id: string;
+  file: File;
+  title: string;
+  description: string;
+  status: "pending" | "uploading" | "done" | "error";
+  errorMsg?: string;
+}
+
 export default function Manuals() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [manuals, setManuals] = useState<Manual[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<Manual | null>(null);
+  const [queue, setQueue] = useState<QueuedFile[]>([]);
+  const [isUploadingAll, setIsUploadingAll] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const fetchManuals = async () => {
+  const fetchManuals = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from("manuals").select("*").order("created_at", { ascending: false });
@@ -66,71 +72,158 @@ export default function Manuals() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => { fetchManuals(); }, [fetchManuals]);
+
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? []);
+    if (!selected.length) return;
+
+    const valid: QueuedFile[] = [];
+    const skipped: string[] = [];
+
+    for (const f of selected) {
+      if (f.type !== "application/pdf") {
+        skipped.push(`${f.name} (não é PDF)`);
+        continue;
+      }
+      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        skipped.push(`${f.name} (maior que ${MAX_FILE_SIZE_MB}MB)`);
+        continue;
+      }
+      valid.push({
+        id: `${Date.now()}_${Math.random()}`,
+        file: f,
+        title: pdfNameToTitle(f.name),
+        description: "",
+        status: "pending",
+      });
+    }
+
+    if (skipped.length > 0) {
+      toast.warning(`Arquivos ignorados:\n${skipped.join("\n")}`);
+    }
+
+    setQueue(prev => {
+      const total = prev.length + valid.length;
+      if (total > MAX_FILES_AT_ONCE) {
+        toast.error(`Máximo de ${MAX_FILES_AT_ONCE} arquivos por vez`);
+        return prev;
+      }
+      return [...prev, ...valid];
+    });
+
+    if (fileRef.current) fileRef.current.value = "";
   };
 
-  useEffect(() => { fetchManuals(); }, []);
+  const updateQueueItem = (id: string, patch: Partial<QueuedFile>) => {
+    setQueue(prev => prev.map(q => q.id === id ? { ...q, ...patch } : q));
+  };
 
-  const handleUpload = async () => {
-    if (!file || !title.trim()) { toast.error("Preencha o título e selecione um arquivo PDF"); return; }
-    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) { toast.error(`Arquivo muito grande. Máximo: ${MAX_FILE_SIZE_MB}MB`); return; }
-    if (file.type !== "application/pdf") { toast.error("Apenas arquivos PDF são permitidos"); return; }
+  const removeFromQueue = (id: string) => {
+    setQueue(prev => prev.filter(q => q.id !== id));
+  };
 
-    setUploading(true);
+  const uploadOne = async (item: QueuedFile): Promise<boolean> => {
+    if (!item.title.trim()) {
+      updateQueueItem(item.id, { status: "error", errorMsg: "Título obrigatório" });
+      return false;
+    }
+
+    updateQueueItem(item.id, { status: "uploading" });
+
     try {
-      // Sempre sanitiza o nome antes de salvar no storage
-      const safeName = sanitizeFilename(file.name);
+      const safeName = sanitizeFilename(item.file.name);
       const filePath = `${Date.now()}_${safeName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("manuals").upload(filePath, file, { contentType: "application/pdf" });
-      if (uploadError) { throw uploadError; }
+        .from("manuals").upload(filePath, item.file, { contentType: "application/pdf" });
+      if (uploadError) throw uploadError;
 
       const { error: dbError } = await supabase.from("manuals").insert({
-        title: title.trim(),
-        description: description.trim() || null,
-        file_path: filePath,   // salva o path sanitizado — o mesmo usado no storage
-        file_size: file.size,
+        title: item.title.trim(),
+        description: item.description.trim() || null,
+        file_path: filePath,
+        file_size: item.file.size,
       });
+
       if (dbError) {
-        await supabase.storage.from("manuals").remove([filePath]); // rollback
+        await supabase.storage.from("manuals").remove([filePath]);
         throw dbError;
       }
 
-      toast.success("Manual adicionado com sucesso");
-      setDialogOpen(false);
-      setTitle(""); setDescription(""); setFile(null);
-      if (fileRef.current) fileRef.current.value = "";
-      fetchManuals();
-    } catch (err: any) {
-      console.error("Upload error:", err);
-      toast.error("Erro ao enviar o manual: " + (err?.message ?? "erro desconhecido"));
-    } finally {
-      setUploading(false);
+      updateQueueItem(item.id, { status: "done" });
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      console.error("uploadOne error:", item.file.name, err);
+      updateQueueItem(item.id, { status: "error", errorMsg: msg });
+      return false;
     }
+  };
+
+  const handleUploadAll = async () => {
+    const pending = queue.filter(q => q.status === "pending" || q.status === "error");
+    if (!pending.length) return;
+
+    const emptyTitles = pending.filter(q => !q.title.trim());
+    if (emptyTitles.length > 0) {
+      toast.error("Preencha o título de todos os arquivos antes de enviar");
+      emptyTitles.forEach(q => updateQueueItem(q.id, { status: "error", errorMsg: "Título obrigatório" }));
+      return;
+    }
+
+    setIsUploadingAll(true);
+    let successCount = 0;
+
+    for (const item of pending) {
+      const ok = await uploadOne(item);
+      if (ok) successCount++;
+    }
+
+    setIsUploadingAll(false);
+
+    if (successCount > 0) {
+      toast.success(`${successCount} manual${successCount > 1 ? "is" : ""} adicionado${successCount > 1 ? "s" : ""} com sucesso`);
+      fetchManuals();
+    }
+
+    const failed = queue.filter(q => q.status === "error").length;
+    if (failed > 0) {
+      toast.error(`${failed} arquivo${failed > 1 ? "s" : ""} falharam. Corrija e tente novamente.`);
+    }
+
+    setQueue(prev => prev.filter(q => q.status !== "done"));
+  };
+
+  const handleCloseDialog = () => {
+    if (isUploadingAll) return;
+    setDialogOpen(false);
+    setQueue([]);
   };
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     const manual = deleteTarget;
     setDeleteTarget(null);
-    await supabase.storage.from("manuals").remove([manual.file_path]);
-    const { error } = await supabase.from("manuals").delete().eq("id", manual.id);
-    if (error) { toast.error("Erro ao excluir manual"); return; }
-    toast.success("Manual excluído");
-    fetchManuals();
+
+    try {
+      await supabase.storage.from("manuals").remove([manual.file_path]);
+      const { error } = await supabase.from("manuals").delete().eq("id", manual.id);
+      if (error) {
+        console.error("Delete DB error:", error);
+        toast.error("Erro ao excluir manual");
+        return;
+      }
+      toast.success("Manual excluído");
+      fetchManuals();
+    } catch (err) {
+      console.error("handleDeleteConfirm unexpected:", err);
+      toast.error("Erro inesperado ao excluir");
+    }
   };
 
-  /**
-   * Download via URL assinada (bucket privado).
-   *
-   * FIX "Object not found":
-   * O erro ocorre quando o file_path no banco não bate com o arquivo no storage.
-   * Isso acontece com arquivos enviados antes da sanitização ser implementada
-   * (ex: o banco tem "IT-5.2.05-Chave.pdf" mas o storage tem "it_5.2.05_chave.pdf").
-   *
-   * Estratégia: tenta o file_path original; se falhar, tenta a versão sanitizada.
-   * Se ambos falharem, orienta o admin a reenviar o arquivo.
-   */
   const handleDownload = async (manual: Manual) => {
     if (downloadingId === manual.id) return;
     setDownloadingId(manual.id);
@@ -138,8 +231,8 @@ export default function Manuals() {
       const safeFilename = (manual.title.endsWith(".pdf") ? manual.title : manual.title + ".pdf")
         .replace(/[^a-zA-Z0-9._\-\s]/g, "_");
 
-      // Tenta 1: path exato salvo no banco
       let signedUrl: string | null = null;
+
       const { data, error } = await supabase.storage
         .from("manuals")
         .createSignedUrl(manual.file_path, 300, { download: safeFilename });
@@ -147,39 +240,34 @@ export default function Manuals() {
       if (!error && data?.signedUrl) {
         signedUrl = data.signedUrl;
       } else {
-        console.warn("createSignedUrl failed for path:", manual.file_path, error?.message);
+        console.warn("createSignedUrl failed:", manual.file_path, error?.message);
 
-        // Tenta 2: versão sanitizada do path (para arquivos antigos)
-        // Extrai timestamp e sanitiza apenas o nome do arquivo
-        const parts = manual.file_path.split("_");
-        const timestamp = parts[0];
-        const rest = parts.slice(1).join("_");
-        const sanitizedPath = `${timestamp}_${sanitizeFilename(rest || manual.file_path)}`;
+        const underscoreIdx = manual.file_path.indexOf("_");
+        if (underscoreIdx !== -1) {
+          const timestamp = manual.file_path.slice(0, underscoreIdx);
+          const rest = manual.file_path.slice(underscoreIdx + 1);
+          const sanitizedPath = `${timestamp}_${sanitizeFilename(rest)}`;
 
-        if (sanitizedPath !== manual.file_path) {
-          const { data: data2, error: error2 } = await supabase.storage
-            .from("manuals")
-            .createSignedUrl(sanitizedPath, 300, { download: safeFilename });
+          if (sanitizedPath !== manual.file_path) {
+            const { data: data2, error: error2 } = await supabase.storage
+              .from("manuals")
+              .createSignedUrl(sanitizedPath, 300, { download: safeFilename });
 
-          if (!error2 && data2?.signedUrl) {
-            signedUrl = data2.signedUrl;
-            console.info("Download fallback to sanitized path worked:", sanitizedPath);
-          } else {
-            console.error("Sanitized path also failed:", sanitizedPath, error2?.message);
+            if (!error2 && data2?.signedUrl) {
+              signedUrl = data2.signedUrl;
+            }
           }
         }
       }
 
       if (!signedUrl) {
         const msg = isAdmin
-          ? `Arquivo não encontrado no storage. Path no banco: "${manual.file_path}". ` +
-            `Exclua este manual e reenvie o arquivo PDF.`
-          : "Arquivo não disponível no momento. Contacte o administrador.";
+          ? `Arquivo não encontrado. Path: "${manual.file_path}". Exclua e reenvie.`
+          : "Arquivo não disponível. Contacte o administrador.";
         toast.error(msg, { duration: 8000 });
         return;
       }
 
-      // Abre o download via link <a> — compatível com Safari/iOS
       const a = document.createElement("a");
       a.href = signedUrl;
       a.download = safeFilename;
@@ -188,7 +276,7 @@ export default function Manuals() {
       document.body.appendChild(a);
       a.click();
       setTimeout(() => { if (document.body.contains(a)) document.body.removeChild(a); }, 200);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Download error:", err);
       toast.error("Erro inesperado ao baixar o arquivo.");
     } finally {
@@ -203,6 +291,9 @@ export default function Manuals() {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
+  const pendingCount = queue.filter(q => q.status === "pending" || q.status === "error").length;
+  const hasQueue = queue.length > 0;
+
   return (
     <div className="min-h-screen bg-background">
       <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
@@ -215,7 +306,10 @@ export default function Manuals() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -250,7 +344,10 @@ export default function Manuals() {
         ) : (
           <div className="space-y-3">
             {manuals.map(m => (
-              <div key={m.id} className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:bg-accent/30 transition-colors">
+              <div
+                key={m.id}
+                className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:bg-accent/30 transition-colors"
+              >
                 <FileText className="h-8 w-8 text-primary shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{m.title}</p>
@@ -258,17 +355,22 @@ export default function Manuals() {
                   <p className="text-xs text-muted-foreground">{formatSize(m.file_size)}</p>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-8 w-8"
+                  <Button
+                    variant="ghost" size="icon" className="h-8 w-8"
                     onClick={() => handleDownload(m)}
                     disabled={downloadingId === m.id}
-                    title="Baixar PDF">
+                    title="Baixar PDF"
+                  >
                     {downloadingId === m.id
                       ? <Loader2 className="h-4 w-4 animate-spin" />
                       : <Download className="h-4 w-4" />
                     }
                   </Button>
                   {isAdmin && (
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeleteTarget(m)}>
+                    <Button
+                      variant="ghost" size="icon" className="h-8 w-8"
+                      onClick={() => setDeleteTarget(m)}
+                    >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   )}
@@ -278,7 +380,6 @@ export default function Manuals() {
           </div>
         )}
 
-        {/* Aviso para admin sobre arquivos com path inválido */}
         {isAdmin && manuals.length > 0 && (
           <p className="text-xs text-muted-foreground mt-4 text-center">
             Se um manual mostrar "Arquivo não encontrado", exclua-o e reenvie o PDF.
@@ -286,32 +387,123 @@ export default function Manuals() {
         )}
       </main>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Adicionar Manual</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Título *</Label>
-              <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex: Manual do Implante HE" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Descrição</Label>
-              <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição opcional" rows={2} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Arquivo PDF * (máx. {MAX_FILE_SIZE_MB}MB)</Label>
-              <input type="file" accept=".pdf,application/pdf" ref={fileRef}
-                onChange={e => setFile(e.target.files?.[0] ?? null)} className="hidden" />
-              <Button variant="outline" className="w-full gap-2 truncate" onClick={() => fileRef.current?.click()}>
-                <Upload className="h-4 w-4 shrink-0" />
-                <span className="truncate">{file ? file.name : "Selecionar PDF"}</span>
+      <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleCloseDialog(); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Adicionar Manuais</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 overflow-hidden flex flex-col">
+            <input
+              type="file"
+              accept=".pdf,application/pdf"
+              multiple
+              ref={fileRef}
+              onChange={handleFilesSelected}
+              className="hidden"
+            />
+
+            <Button
+              variant="outline"
+              className="w-full gap-2 border-dashed h-16 text-muted-foreground hover:text-foreground shrink-0"
+              onClick={() => fileRef.current?.click()}
+              disabled={isUploadingAll}
+            >
+              <Upload className="h-5 w-5 shrink-0" />
+              <span className="text-sm">
+                Selecionar PDFs{" "}
+                <span className="text-xs opacity-70">(múltiplos, máx. {MAX_FILE_SIZE_MB}MB cada)</span>
+              </span>
+            </Button>
+
+            {hasQueue && (
+              <div className="space-y-2 overflow-y-auto flex-1 pr-1" style={{ maxHeight: "50vh" }}>
+                {queue.map(item => (
+                  <div
+                    key={item.id}
+                    className={`rounded-lg border p-3 space-y-2 text-sm transition-colors ${
+                      item.status === "done"
+                        ? "border-green-500/40 bg-green-50/10"
+                        : item.status === "error"
+                        ? "border-destructive/40 bg-destructive/5"
+                        : "border-border bg-card"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {item.status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
+                      {item.status === "done" && <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />}
+                      {item.status === "error" && <AlertCircle className="h-4 w-4 text-destructive shrink-0" />}
+                      {item.status === "pending" && <FileText className="h-4 w-4 text-muted-foreground shrink-0" />}
+                      <span className="truncate flex-1 text-xs text-muted-foreground">{item.file.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{formatSize(item.file.size)}</span>
+                      {item.status !== "uploading" && item.status !== "done" && (
+                        <button
+                          type="button"
+                          onClick={() => removeFromQueue(item.id)}
+                          className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {item.status !== "done" && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Título *</Label>
+                        <input
+                          type="text"
+                          value={item.title}
+                          onChange={e => updateQueueItem(item.id, {
+                            title: e.target.value,
+                            status: item.status === "error" ? "pending" : item.status,
+                            errorMsg: undefined,
+                          })}
+                          disabled={item.status === "uploading"}
+                          placeholder="Título do manual"
+                          maxLength={200}
+                          className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                        />
+                      </div>
+                    )}
+
+                    {item.status !== "done" && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Descrição</Label>
+                        <Textarea
+                          value={item.description}
+                          onChange={e => updateQueueItem(item.id, { description: e.target.value })}
+                          disabled={item.status === "uploading"}
+                          placeholder="Descrição opcional"
+                          rows={1}
+                          className="text-xs resize-none"
+                        />
+                      </div>
+                    )}
+
+                    {item.status === "error" && item.errorMsg && (
+                      <p className="text-xs text-destructive">{item.errorMsg}</p>
+                    )}
+
+                    {item.status === "done" && (
+                      <p className="text-xs text-green-600 dark:text-green-400">✓ {item.title}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1 shrink-0">
+              <Button variant="outline" onClick={handleCloseDialog} disabled={isUploadingAll}>
+                {hasQueue && queue.some(q => q.status === "done") ? "Fechar" : "Cancelar"}
               </Button>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-              <Button onClick={handleUpload} disabled={uploading || !file || !title.trim()}>
-                {uploading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Enviando...</> : "Enviar"}
-              </Button>
+              {hasQueue && pendingCount > 0 && (
+                <Button onClick={handleUploadAll} disabled={isUploadingAll}>
+                  {isUploadingAll
+                    ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Enviando...</>
+                    : <><Upload className="h-4 w-4 mr-1.5" />Enviar {pendingCount} arquivo{pendingCount > 1 ? "s" : ""}</>
+                  }
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>

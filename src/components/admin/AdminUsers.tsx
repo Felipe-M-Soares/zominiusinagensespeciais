@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
 import { useAuth } from "@/hooks/useAuth";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +17,9 @@ import { toast } from "sonner";
 import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus } from "lucide-react";
 
 /**
+ * @deprecated Use invokeWithAuth() que já faz esse parsing internamente.
+ * Mantido apenas para compatibilidade durante migração.
  * Lê o corpo real do erro de uma Edge Function.
- * supabase.functions.invoke() coloca erros HTTP em error.context (um Response),
- * não em error.message (que é sempre a mensagem genérica do SDK).
  */
 async function readEdgeFunctionError(error: unknown): Promise<string> {
   try {
@@ -111,14 +112,11 @@ export function AdminUsers() {
     if (newPassword.length > 72) { toast.error("Senha deve ter no máximo 72 caracteres"); return; }
     setResettingPassword(true);
     try {
-      // O SDK envia o JWT do usuário logado automaticamente via Authorization header
-      // quando há uma sessão ativa — NÃO precisamos passar manualmente.
-      const { error } = await supabase.functions.invoke("admin-reset-password", {
+      const { errorMsg } = await invokeWithAuth("admin-reset-password", {
         body: { target_user_id: passwordDialog.user_id, new_password: newPassword },
       });
-      if (error) {
-        const msg = await readEdgeFunctionError(error);
-        toast.error("Erro ao redefinir senha: " + msg);
+      if (errorMsg) {
+        toast.error("Erro ao redefinir senha: " + errorMsg);
       } else {
         toast.success(`Senha de ${passwordDialog.display_name || passwordDialog.email} alterada`);
         setPasswordDialog(null);
@@ -132,12 +130,11 @@ export function AdminUsers() {
   const deleteUser = async (userId: string) => {
     setDeletingId(userId);
     try {
-      const { error } = await supabase.functions.invoke("delete-account", {
+      const { errorMsg } = await invokeWithAuth("delete-account", {
         body: { target_user_id: userId },
       });
-      if (error) {
-        const msg = await readEdgeFunctionError(error);
-        toast.error("Erro ao excluir: " + msg);
+      if (errorMsg) {
+        toast.error("Erro ao excluir: " + errorMsg);
       } else {
         toast.success("Conta excluída");
         fetchUsers();
@@ -154,7 +151,7 @@ export function AdminUsers() {
     if (newUserPassword.length > 72) { toast.error("Senha máximo 72 caracteres."); return; }
     setCreatingUser(true);
     try {
-      const { error } = await supabase.functions.invoke("admin-create-user", {
+      const { errorMsg } = await invokeWithAuth("admin-create-user", {
         body: {
           email: newUserEmail.trim().toLowerCase(),
           password: newUserPassword,
@@ -162,9 +159,8 @@ export function AdminUsers() {
           role: newUserRole,
         },
       });
-      if (error) {
-        const msg = await readEdgeFunctionError(error);
-        toast.error("Erro ao criar conta: " + msg);
+      if (errorMsg) {
+        toast.error("Erro ao criar conta: " + errorMsg);
       } else {
         toast.success("Conta criada!");
         setCreateDialog(false);

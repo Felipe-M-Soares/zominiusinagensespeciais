@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
 import { fetchDevicesPage } from "@/lib/supabaseUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -177,23 +178,17 @@ export function AdminDevices() {
 
       toast.info("Importação iniciada... Isso pode levar alguns minutos.");
 
-      // O SDK injeta o JWT do usuário logado automaticamente
-      const res = await supabase.functions.invoke("import-devices", { body });
+      // FIX JWT: usa invokeWithAuth para garantir token fresco antes do invoke
+      const { data: importData, errorMsg } = await invokeWithAuth<{ inserted: number; skipped: number; total: number }>(
+        "import-devices",
+        { body }
+      );
 
-      if (res.error) {
-        console.error("Import error:", res.error);
-        let errorMsg = "Erro na importação. Tente novamente.";
-        try {
-          const e = res.error as { context?: Response };
-          if (e?.context instanceof Response) {
-            const b = await e.context.clone().json() as { error?: string };
-            if (b?.error) errorMsg = b.error;
-          }
-        } catch { /* ignore */ }
+      if (errorMsg) {
+        console.error("Import error:", errorMsg);
         toast.error(errorMsg);
-      } else {
-        const d = res.data as { inserted: number; skipped: number; total: number };
-        toast.success(`Importação concluída: ${d.inserted} dispositivos importados de ${d.total}`);
+      } else if (importData) {
+        toast.success(`Importação concluída: ${importData.inserted} dispositivos importados de ${importData.total}`);
         setPage(0);
         fetchDevices(debouncedSearch, 0);
       }
