@@ -68,10 +68,10 @@ async function queryDevices(
     );
   }
 
-  // FIX: filtro de letra só se aplica quando NÃO há busca por texto,
-  // para não conflitar com a busca multi-campo e retornar count errado.
+  // FIX LETRAS: usa ilike com UPPER para garantir que funciona com toda a base,
+  // independente do casing salvo no banco (ex: "parafuso" deve aparecer em "P").
   if (!q && letter && letter !== "#") {
-    query = query.ilike("model", `${letter}%`);
+    query = query.or(`model.ilike.${letter}%,model.ilike.${letter.toLowerCase()}%`);
   }
   if (!q && letter === "#") {
     // Modelos que não começam com letra A-Z
@@ -97,7 +97,7 @@ async function queryDevices(
   if (filters.sterile === "false") query = query.eq("sterile", false);
   if (filters.single_use === "true") query = query.eq("single_use", true);
   if (filters.single_use === "false") query = query.eq("single_use", false);
-  if (filters.exocad) query = query.eq("exocad_compatibility", filters.exocad);
+  if (filters.exocad) query = query.ilike("exocad_compatibility", filters.exocad);
 
   const { data, error, count } = await query;
 

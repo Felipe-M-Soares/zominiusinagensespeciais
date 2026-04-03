@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Search, Upload, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 
@@ -256,7 +256,42 @@ export function AdminDevices() {
     }
   };
 
-  const handleDeleteConfirm = async () => {
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
+  const handleDeleteAllDevices = async () => {
+    setDeletingAll(true);
+    try {
+      // Deleta em lotes para evitar timeout (Supabase limita rows por query)
+      let deleted = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        // Busca IDs em lote de 500
+        const { data: rows, error: fetchErr } = await supabase
+          .from("devices")
+          .select("id")
+          .limit(500);
+        if (fetchErr) throw fetchErr;
+        if (!rows || rows.length === 0) break;
+        const ids = rows.map((r: { id: string }) => r.id);
+        const { error: delErr } = await supabase
+          .from("devices")
+          .delete()
+          .in("id", ids);
+        if (delErr) throw delErr;
+        deleted += ids.length;
+      }
+      toast.success(`${deleted.toLocaleString("pt-BR")} peças excluídas com sucesso`);
+      setPage(0);
+      fetchDevices("", 0);
+    } catch (err) {
+      console.error("deleteAll error:", err);
+      toast.error("Erro ao excluir todas as peças");
+    } finally {
+      setDeletingAll(false);
+      setDeleteAllConfirm(false);
+    }
+  };
     if (!deleteConfirmId) return;
     const { error } = await supabase.from("devices").delete().eq("id", deleteConfirmId);
     if (error) toast.error("Erro ao excluir");
@@ -281,6 +316,16 @@ export function AdminDevices() {
           <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
             {importing ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
             {importing ? "Importando..." : "Importar"}
+          </Button>
+          <Button
+            variant="outline"
+            className="text-destructive border-destructive/40 hover:bg-destructive/10"
+            onClick={() => setDeleteAllConfirm(true)}
+            disabled={deletingAll || totalCount === 0}
+            title="Excluir todas as peças do catálogo"
+          >
+            <ShieldAlert className="h-4 w-4 mr-1" />
+            Excluir Tudo
           </Button>
           <Button onClick={() => { setEditDevice({ ...emptyDevice }); setIsNew(true); }}>
             <Plus className="h-4 w-4 mr-1" /> Novo
@@ -338,6 +383,32 @@ export function AdminDevices() {
           )}
         </div>
       )}
+
+      {/* Dialog confirmar exclusão de TODAS as peças */}
+      <AlertDialog open={deleteAllConfirm} onOpenChange={setDeleteAllConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir TODAS as peças?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é <strong>irreversível</strong>. Todos os{" "}
+              {totalCount.toLocaleString("pt-BR")} dispositivos serão removidos
+              permanentemente do catálogo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAll}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAllDevices}
+              disabled={deletingAll}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingAll
+                ? "Excluindo..."
+                : `Excluir tudo (${totalCount.toLocaleString("pt-BR")})`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
         <AlertDialogContent>

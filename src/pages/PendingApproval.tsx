@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { Clock, LogOut, CheckCircle, Loader2 } from "lucide-react";
 
-const AUTO_APPROVE_SECONDS = 60;
+const AUTO_APPROVE_SECONDS = 10;
 const POLL_INTERVAL_MS = 5_000;
 
 export default function PendingApproval() {

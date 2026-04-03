@@ -36,23 +36,27 @@ export async function invokeWithAuth<T = unknown>(
   options?: { body?: Record<string, unknown> }
 ): Promise<{ data: T | null; error: Error | null; errorMsg: string | null }> {
 
-  // ── 1. Pega sessão do storage local ────────────────────────────────────
-  const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+  // ── 1. Sempre força refresh do token antes de chamar Edge Function ─────
+  // Garante token fresco mesmo que o SDK tenha um token stale em cache.
+  // Isso resolve o "Invalid JWT 401" em delete-account e import-devices.
+  const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
 
-  if (sessionErr || !session) {
-    return {
-      data: null,
-      error: new Error("Sessão não encontrada. Faça login novamente."),
-      errorMsg: "Sessão não encontrada. Faça login novamente.",
-    };
-  }
+  let accessToken: string | null = null;
 
-  // ── 2. Renova se expirado ou prestes a expirar (<60s) ──────────────────
-  let accessToken = session.access_token;
-
-  if (isTokenExpiredOrExpiringSoon(accessToken)) {
-    const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
-    if (refreshErr || !refreshed.session) {
+  if (!refreshErr && refreshed.session) {
+    accessToken = refreshed.session.access_token;
+  } else {
+    // Fallback: tenta sessão atual se refresh falhar (ex: sem conexão momentânea)
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr || !session) {
+      return {
+        data: null,
+        error: new Error("Sessão não encontrada. Faça login novamente."),
+        errorMsg: "Sessão não encontrada. Faça login novamente.",
+      };
+    }
+    // Se mesmo o token do cache estiver expirado, desloga
+    if (isTokenExpiredOrExpiringSoon(session.access_token, 0)) {
       await supabase.auth.signOut();
       return {
         data: null,
@@ -60,7 +64,7 @@ export async function invokeWithAuth<T = unknown>(
         errorMsg: "Sessão expirada. Faça login novamente.",
       };
     }
-    accessToken = refreshed.session.access_token;
+    accessToken = session.access_token;
   }
 
   // ── 3. Monta URL da Edge Function ──────────────────────────────────────
