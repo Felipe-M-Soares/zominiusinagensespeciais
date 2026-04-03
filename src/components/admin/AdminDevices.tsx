@@ -156,7 +156,7 @@ export function AdminDevices() {
         const normalizeH = (h: string) =>
           h.trim().replace(/^["']|["']$/g, "").trim()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase().replace(/[\s\-]+/g, "_").replace(/[^a-z0-9_]/g, "");
+            .toLowerCase().replace(/[\s-]+/g, "_").replace(/[^a-z0-9_]/g, "");
 
         const headers = firstLine.split(delimiter).map(normalizeH);
 

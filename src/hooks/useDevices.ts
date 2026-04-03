@@ -131,7 +131,6 @@ export function useDevices(search: string, filters: Filters, letter: string) {
     setError(null);
     setLoading(true);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const currentFilters = JSON.parse(filtersKey) as Filters;
 
     queryDevices(search, currentFilters, letter, 0, controller.signal)
@@ -151,7 +150,6 @@ export function useDevices(search: string, filters: Filters, letter: string) {
       });
 
     return () => controller.abort();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, filtersKey, letter]);
 
   // FIX: loadMore usa refs para evitar deps instáveis (objetos/funções)
