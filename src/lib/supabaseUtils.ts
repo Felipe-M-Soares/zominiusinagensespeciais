@@ -61,18 +61,27 @@ export async function fetchDevicesPage<T>(
     .range(from, to);
 
   if (search.trim()) {
-    // FIX: expandido para incluir mais campos, consistente com a busca da página Index.
-    query = query.or(
-      [
-        `model.ilike.%${search}%`,
-        `reference.ilike.%${search}%`,
-        `udi_di.ilike.%${search}%`,
-        `internal_code.ilike.%${search}%`,
-        `anvisa_registration.ilike.%${search}%`,
-        `brand_name.ilike.%${search}%`,
-        `primary_material.ilike.%${search}%`,
-      ].join(",")
-    );
+    // SECURITY: sanitiza a busca antes de interpolar na string PostgREST.
+    // Caracteres como `,` `(` `)` têm significado sintático no parser e
+    // podem injetar condições adicionais na query se não forem removidos.
+    const safe = search.trim()
+      .slice(0, 200)
+      .replace(/[(),]/g, "")
+      .replace(/[%_\\]/g, "\\$&");
+
+    if (safe) {
+      query = query.or(
+        [
+          `model.ilike.%${safe}%`,
+          `reference.ilike.%${safe}%`,
+          `udi_di.ilike.%${safe}%`,
+          `internal_code.ilike.%${safe}%`,
+          `anvisa_registration.ilike.%${safe}%`,
+          `brand_name.ilike.%${safe}%`,
+          `primary_material.ilike.%${safe}%`,
+        ].join(",")
+      );
+    }
   }
 
   const { data, error, count } = await query;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -49,26 +49,36 @@ export function CatalogButton() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<Catalog | null>(null);
 
-  const fetchCatalogs = async () => {
+  const fetchAbortRef = useRef<AbortController | null>(null);
+
+  // FIX: useCallback + AbortController — cancela fetch se componente desmontar.
+  const fetchCatalogs = useCallback(async () => {
+    if (fetchAbortRef.current) fetchAbortRef.current.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
     try {
       const { data, error } = await supabase
         .from("catalogs")
         .select("*")
         .order("created_at", { ascending: false });
+      if (controller.signal.aborted) return;
       if (error) {
         console.error("fetchCatalogs error:", error.message);
-        // Não mostra toast aqui — pode ser usuário ainda não aprovado
       } else {
         setCatalogs((data as Catalog[]) ?? []);
       }
     } catch (err) {
+      if (controller.signal.aborted) return;
       console.error("fetchCatalogs unexpected error:", err);
     } finally {
-      setLoading(false);
+      if (!fetchAbortRef.current?.signal.aborted) setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchCatalogs(); }, []);
+  useEffect(() => {
+    fetchCatalogs();
+    return () => { fetchAbortRef.current?.abort(); };
+  }, [fetchCatalogs]);
 
   /**
    * FIX DOWNLOAD PDF:
@@ -108,7 +118,7 @@ export function CatalogButton() {
       setTimeout(() => {
         if (document.body.contains(a)) document.body.removeChild(a);
       }, 200);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Download error:", err);
       toast.error("Erro inesperado ao baixar catálogo.");
     } finally {
@@ -143,7 +153,8 @@ export function CatalogButton() {
 
       if (uploadError) {
         console.error("Storage upload error:", uploadError.message, uploadError);
-        // Distingue entre erros de permissão e outros
+        // SECURITY: não expor mensagem interna do Supabase no toast.
+        // Distingue entre erros de permissão e outros para orientar o admin.
         if (
           uploadError.message?.toLowerCase().includes("unauthorized") ||
           uploadError.message?.toLowerCase().includes("row-level security") ||
@@ -151,7 +162,7 @@ export function CatalogButton() {
         ) {
           toast.error("Sem permissão para fazer upload. Verifique as políticas do bucket 'catalogs' no Supabase Storage → Policies.");
         } else {
-          toast.error("Erro ao enviar arquivo: " + uploadError.message);
+          toast.error("Erro ao enviar arquivo. Tente novamente.");
         }
         return;
       }
@@ -166,7 +177,8 @@ export function CatalogButton() {
         // Rollback: remove o arquivo que já foi enviado
         await supabase.storage.from("catalogs").remove([filePath]);
         console.error("DB insert error:", dbError.message);
-        toast.error("Erro ao salvar catálogo: " + dbError.message);
+        // SECURITY: não expor mensagem interna do DB ao usuário
+        toast.error("Erro ao salvar catálogo. Tente novamente.");
         return;
       }
 
@@ -176,7 +188,7 @@ export function CatalogButton() {
       setFile(null);
       if (fileRef.current) fileRef.current.value = "";
       fetchCatalogs();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Upload unexpected error:", err);
       toast.error("Erro inesperado ao enviar catálogo.");
     } finally {

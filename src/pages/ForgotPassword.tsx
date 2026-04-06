@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,26 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [searchParams] = useSearchParams();
-  // FIX: exibe alerta quando o link de recovery expirou (vindo do ResetPassword timeout)
   const linkExpired = searchParams.get("expired") === "1";
+
+  // SECURITY: rate limiting client-side — impede email bombing.
+  // O Supabase também tem rate limit server-side, mas este guard evita
+  // que cliques rápidos disparem múltiplas requisições antes do server responder.
+  const lastSentRef = useRef<number>(0);
+  const COOLDOWN_MS = 60_000; // 60 segundos entre envios
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
-    // FIX: setLoading(false) estava fora de try/finally — exceção travaria o botão.
+
+    const now = Date.now();
+    const elapsed = now - lastSentRef.current;
+    if (lastSentRef.current > 0 && elapsed < COOLDOWN_MS) {
+      const waitSec = Math.ceil((COOLDOWN_MS - elapsed) / 1000);
+      toast.error(`Aguarde ${waitSec} segundos antes de solicitar outro link.`);
+      return;
+    }
+
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
@@ -27,12 +40,12 @@ export default function ForgotPassword() {
       });
       if (error) {
         // Não revelar se o email existe ou não (prevenção de enumeração de usuários).
-        // Mostramos sucesso independente — comportamento correto de segurança.
         console.error("resetPasswordForEmail error:", error.message);
       }
+      lastSentRef.current = Date.now();
       // Sempre mostra tela de sucesso para não vazar se o email está cadastrado
       setSent(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("ForgotPassword error:", err);
       toast.error("Erro inesperado. Tente novamente.");
     } finally {

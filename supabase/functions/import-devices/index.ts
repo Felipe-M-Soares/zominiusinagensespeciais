@@ -218,7 +218,10 @@ function mapCSVRow(r: Record<string, string>) {
   };
 }
 
-function mapJSONDevice(d: any) {
+function mapJSONDevice(d: Record<string, unknown>) {
+  const tech = (typeof d.technical_information === "object" && d.technical_information) ? d.technical_information as Record<string, unknown> : {};
+  const comp = (typeof d.composition === "object" && d.composition) ? d.composition as Record<string, unknown> : {};
+  const compat = (typeof d.software_compatibility === "object" && d.software_compatibility) ? d.software_compatibility as Record<string, unknown> : {};
   return {
     udi_di:               t(d.udi_di || "", 200),
     reference:            t(d.reference || d.udi_di || "", 200),
@@ -226,24 +229,24 @@ function mapJSONDevice(d: any) {
     internal_code:        t(d.internal_code || "", 100),
     anvisa_registration:  t(d.anvisa_registration || "", 100),
     brand_name:           t(d.brand_name || "", 200),
-    primary_material:     t(d.composition?.primary_material || d.primary_material || "", 200),
-    classification_code:  t(d.technical_information?.classification_code || d.classification_code || "", 50),
-    risk_class:           t(d.technical_information?.classification_code || d.risk_class || "III", 10),
-    sterile:              typeof d.technical_information?.sterile === "boolean" ? d.technical_information.sterile : toBool(d.sterile),
-    single_use:           typeof d.technical_information?.single_use === "boolean" ? d.technical_information.single_use : toBool(d.single_use),
+    primary_material:     t(comp.primary_material || d.primary_material || "", 200),
+    classification_code:  t(tech.classification_code || d.classification_code || "", 50),
+    risk_class:           t(tech.classification_code || d.risk_class || "III", 10),
+    sterile:              typeof tech.sterile === "boolean" ? tech.sterile : toBool(d.sterile as string | boolean | undefined),
+    single_use:           typeof tech.single_use === "boolean" ? tech.single_use : toBool(d.single_use as string | boolean | undefined),
     implantable:          true,
     intended_use:         t(d.intended_use || "Componente protético para implante dentário", 1000),
     body_region:          t(d.body_region || "Oral", 200),
     compatible_systems:   [],
     manufacturer_country: t(d.manufacturer_country || "", 100),
-    exocad_compatibility: t(d.software_compatibility?.exocad || d.exocad_compatibility || "", 200),
+    exocad_compatibility: t(compat.exocad || d.exocad_compatibility || "", 200),
   };
 }
 
-function mapAnvisaDevice(d: any) {
-  const id  = (typeof d.identificacao_dispositivo === "object" && d.identificacao_dispositivo) ? d.identificacao_dispositivo : {};
-  const fab = (typeof d.fabricante === "object" && d.fabricante) ? d.fabricante : {};
-  const car = (typeof d.caracteristicas_dispositivo === "object" && d.caracteristicas_dispositivo) ? d.caracteristicas_dispositivo : {};
+function mapAnvisaDevice(d: Record<string, unknown>) {
+  const id  = (typeof d.identificacao_dispositivo === "object" && d.identificacao_dispositivo) ? d.identificacao_dispositivo as Record<string, unknown> : {};
+  const fab = (typeof d.fabricante === "object" && d.fabricante) ? d.fabricante as Record<string, unknown> : {};
+  const car = (typeof d.caracteristicas_dispositivo === "object" && d.caracteristicas_dispositivo) ? d.caracteristicas_dispositivo as Record<string, unknown> : {};
 
   return {
     udi_di:               t(id.udi_di || "", 200),

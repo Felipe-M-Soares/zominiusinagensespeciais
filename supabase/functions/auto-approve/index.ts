@@ -78,20 +78,23 @@ Deno.serve(async (req) => {
       });
     }
 
+    // SECURITY: valida formato UUID ANTES de qualquer outra checagem.
+    // A verificação de ownership (targetUserId !== user.id) deve vir depois —
+    // caso contrário, um UUID malformado que coincidisse com user.id ignoraria
+    // a validação de formato e chegaria às queries do banco com valor inesperado.
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(targetUserId)) {
+      return new Response(JSON.stringify({ error: "user_id inválido" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Segurança: o usuário só pode aprovar A SI MESMO (auto-aprovação)
     // Admins usam o painel AdminUsers para aprovar outros usuários
     if (targetUserId !== user.id) {
       return new Response(JSON.stringify({ error: "Sem permissão" }), {
         status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // UUID validation
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_REGEX.test(targetUserId)) {
-      return new Response(JSON.stringify({ error: "user_id inválido" }), {
-        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

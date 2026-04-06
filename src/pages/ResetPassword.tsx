@@ -74,7 +74,7 @@ export default function ResetPassword() {
         await supabase.auth.signOut();
         navigate("/login");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error("Erro inesperado. Tente novamente.");
       console.error("ResetPassword error:", err);
     } finally {

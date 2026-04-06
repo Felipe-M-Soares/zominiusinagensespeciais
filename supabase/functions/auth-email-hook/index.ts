@@ -26,7 +26,8 @@ const EMAIL_SUBJECTS: Record<string, string> = {
   reauthentication: 'Seu código de verificação',
 }
 
-const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const EMAIL_TEMPLATES: Record<string, React.ComponentType<Record<string, unknown>>> = {
   signup: SignupEmail,
   invite: InviteEmail,
   magiclink: MagicLinkEmail,
@@ -113,8 +114,11 @@ async function sendEmail(opts: {
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Resend API error: ${error}`)
+    // SECURITY: loga o erro completo internamente mas não propaga a resposta
+    // bruta da Resend API (pode conter detalhes de configuração) para cima na stack.
+    const errorBody = await response.text()
+    console.error(`Resend API error ${response.status}:`, errorBody)
+    throw new Error(`Email delivery failed (status ${response.status})`)
   }
 
   const data = await response.json()
@@ -149,10 +153,14 @@ async function handleWebhook(req: Request, corsHeaders: Record<string, string>):
     })
   }
 
-  // Reject stale requests (older than 5 minutes)
+  // SECURITY: janela de replay reduzida de 300s para 60s.
+  // O Supabase reenvia webhooks com o mesmo webhook-id em caso de falha,
+  // então a idempotência deve ser tratada pela lógica de negócio (o Resend
+  // desduplicará por message_id). Uma janela de 60s é suficiente para latência
+  // de rede e muito mais difícil de explorar em ataques de replay.
   const ts = parseInt(timestamp, 10)
-  if (isNaN(ts) || Math.abs(Date.now() / 1000 - ts) > 300) {
-    console.error('Stale timestamp:', timestamp)
+  if (isNaN(ts) || Math.abs(Date.now() / 1000 - ts) > 60) {
+    console.error('Stale or future timestamp:', timestamp)
     return new Response(JSON.stringify({ error: 'Stale or invalid timestamp' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -168,9 +176,28 @@ async function handleWebhook(req: Request, corsHeaders: Record<string, string>):
     })
   }
 
-  let payload: any
+  // Log webhook-id para rastreabilidade (sem dados pessoais)
+  console.log('Processing webhook:', webhookId)
+
+  // Tipagem do payload do Supabase Auth Hook (Standard Webhooks format)
+  interface WebhookPayload {
+    type?: string
+    action_type?: string
+    email?: string
+    user?: { email?: string; id?: string }
+    email_data?: {
+      email_action_type?: string
+      email?: string
+      new_email?: string
+      token_hash?: string
+      redirect_to?: string
+      otp?: string
+    }
+  }
+
+  let payload: WebhookPayload
   try {
-    payload = JSON.parse(body)
+    payload = JSON.parse(body) as WebhookPayload
     console.log('Webhook payload received, keys:', Object.keys(payload))
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON payload' }), {
@@ -283,9 +310,11 @@ Deno.serve(async (req) => {
   try {
     return await handleWebhook(req, corsHeaders)
   } catch (error) {
+    // SECURITY: loga internamente mas não expõe mensagem de erro ao chamador.
+    // Este hook é chamado pelo Supabase internamente, mas mesmo assim não deve
+    // vazar detalhes de stack trace ou mensagens internas.
     console.error('Webhook handler error:', error)
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return new Response(JSON.stringify({ error: message }), {
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

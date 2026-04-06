@@ -2,6 +2,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   createContext,
   useContext,
   type ReactNode,
@@ -70,12 +71,16 @@ function translateError(message: string): string {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  // FIX LENTIDÃO: loading começa false para não bloquear render inicial.
-  // Setamos true apenas enquanto fetchRoleAndApproval está em andamento.
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "client" | null>(null);
   const [approved, setApproved] = useState<boolean | null>(null);
   const [blocked, setBlocked] = useState<boolean>(false);
+
+  // SECURITY: rate limiting client-side — evita que código automatizado faça
+  // dezenas de tentativas de login por segundo antes que o Supabase bloqueie.
+  // Não substitui o rate limiting server-side, mas reduz a carga e melhora UX.
+  const lastSignInAttemptRef = useRef<number>(0);
+  const signInAttemptsRef = useRef<number>(0);
 
   const fetchRoleAndApproval = useCallback(async (userId: string) => {
     try {
@@ -194,6 +199,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!cleanEmail || !password) {
         return { error: "Email e senha são obrigatórios." };
       }
+
+      // SECURITY: rate limiting client-side.
+      // Permite no máximo 5 tentativas a cada 60s.
+      // O Supabase bloqueia no servidor após N falhas, mas este guard
+      // reduz a carga e impede automação trivial no browser.
+      const now = Date.now();
+      const ONE_MINUTE = 60_000;
+      if (now - lastSignInAttemptRef.current > ONE_MINUTE) {
+        signInAttemptsRef.current = 0; // reseta janela após 1 min sem tentativas
+      }
+      signInAttemptsRef.current += 1;
+      lastSignInAttemptRef.current = now;
+      if (signInAttemptsRef.current > 5) {
+        const waitSec = Math.ceil((ONE_MINUTE - (now - (lastSignInAttemptRef.current - ONE_MINUTE))) / 1000);
+        return { error: `Muitas tentativas de login. Aguarde ${waitSec > 0 ? waitSec : 60} segundos antes de tentar novamente.` };
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password,

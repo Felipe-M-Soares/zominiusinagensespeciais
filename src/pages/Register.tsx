@@ -33,7 +33,7 @@ export default function Register() {
         // o componente desmontava quando signUp criava sessão automaticamente.
         setSuccess(true);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Register error:", err);
       toast.error("Erro inesperado. Tente novamente.");
     } finally {

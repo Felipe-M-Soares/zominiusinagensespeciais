@@ -39,6 +39,22 @@ function toDevice(d: DbDevice): Device {
   };
 }
 
+/**
+ * SECURITY: Sanitiza a string de busca para uso seguro nos filtros PostgREST (.or()).
+ * Caracteres como `,`, `(`, `)` têm significado sintático no parser do PostgREST
+ * e podem ser usados para injetar condições de filtro adicionais se não forem
+ * removidos. Ex.: "x%,udi_di.neq." injetaria um segundo filtro na query.
+ * Também remove curingas extras (`%`, `_`) que o usuário poderia usar para
+ * forçar full-table-scans caros via ILIKE.
+ */
+function sanitizeSearchQuery(raw: string): string {
+  return raw
+    .trim()
+    .slice(0, 200) // limita o tamanho para evitar queries absurdas
+    .replace(/[(),]/g, "")    // remove metacaracteres do parser PostgREST
+    .replace(/[%_\\]/g, "\\$&"); // escapa curingas ILIKE nativos do Postgres
+}
+
 async function queryDevices(
   search: string,
   filters: Filters,
@@ -52,7 +68,7 @@ async function queryDevices(
     .order("model")
     .range(offset, offset + PAGE_SIZE - 1);
 
-  const q = search.trim();
+  const q = sanitizeSearchQuery(search);
   if (q) {
     query = query.or(
       [
@@ -196,11 +212,15 @@ export function useDeviceOptions() {
 
   useEffect(() => {
     let cancelled = false;
+    // PERF: limita cada query de opções a 5.000 registros — suficiente para
+    // popular dropdowns sem fazer full-table-scan em bases grandes.
+    // Se o catálogo crescer além disso, substituir por queries DISTINCT no banco.
+    const OPTS_LIMIT = 5_000;
     Promise.all([
-      supabase.from("devices").select("primary_material").order("primary_material"),
-      supabase.from("devices").select("classification_code").order("classification_code"),
-      supabase.from("devices").select("exocad_compatibility").not("exocad_compatibility", "is", null),
-      supabase.from("devices").select("model").order("model"),
+      supabase.from("devices").select("primary_material").order("primary_material").limit(OPTS_LIMIT),
+      supabase.from("devices").select("classification_code").order("classification_code").limit(OPTS_LIMIT),
+      supabase.from("devices").select("exocad_compatibility").not("exocad_compatibility", "is", null).limit(OPTS_LIMIT),
+      supabase.from("devices").select("model").order("model").limit(OPTS_LIMIT),
     ]).then(([matRes, classRes, exocadRes, modelRes]) => {
       if (cancelled) return;
 
@@ -212,23 +232,23 @@ export function useDeviceOptions() {
 
       const materials = [
         ...new Set(
-          (matRes.data ?? []).map((d: any) => d.primary_material).filter(Boolean)
+          (matRes.data ?? []).map((d: { primary_material: string | null }) => d.primary_material).filter(Boolean)
         ),
       ] as string[];
       const classifications = [
         ...new Set(
-          (classRes.data ?? []).map((d: any) => d.classification_code).filter(Boolean)
+          (classRes.data ?? []).map((d: { classification_code: string | null }) => d.classification_code).filter(Boolean)
         ),
       ] as string[];
       const exocadOptions = [
         ...new Set(
           (exocadRes.data ?? [])
-            .map((d: any) => (d.exocad_compatibility ?? "").trim())
-            .filter((v: any) => v.length > 0)   // exclui apenas vazios/nulos
+            .map((d: { exocad_compatibility: string | null }) => (d.exocad_compatibility ?? "").trim())
+            .filter((v: string) => v.length > 0)
         ),
       ].sort() as string[];
       const letters = new Set<string>();
-      (modelRes.data ?? []).forEach((d: any) => {
+      (modelRes.data ?? []).forEach((d: { model: string | null }) => {
         const c = (d.model ?? "").charAt(0).toUpperCase();
         letters.add(/[A-Z]/.test(c) ? c : "#");
       });

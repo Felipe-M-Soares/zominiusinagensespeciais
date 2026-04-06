@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
@@ -40,13 +40,20 @@ export default function Contacts() {
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
-  const fetchContacts = async () => {
+  // FIX: useCallback + AbortController — evita memory leak se o componente
+  // desmontar enquanto o fetch está em andamento.
+  const fetchContacts = useCallback(async () => {
+    if (fetchAbortRef.current) fetchAbortRef.current.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
     try {
       const { data, error } = await supabase
         .from("contacts")
         .select("*")
         .order("name");
+      if (controller.signal.aborted) return;
       if (error) {
         console.error("Error fetching contacts:", error);
         toast.error("Erro ao carregar contatos");
@@ -54,14 +61,18 @@ export default function Contacts() {
         setContacts((data as Contact[]) ?? []);
       }
     } catch (err) {
+      if (controller.signal.aborted) return;
       console.error("fetchContacts unexpected error:", err);
       toast.error("Erro ao carregar contatos");
     } finally {
-      setLoading(false);
+      if (!fetchAbortRef.current?.signal.aborted) setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchContacts(); }, []);
+  useEffect(() => {
+    fetchContacts();
+    return () => { fetchAbortRef.current?.abort(); };
+  }, [fetchContacts]);
 
   const openAddDialog = () => {
     setEditingContact(null);
@@ -94,6 +105,11 @@ export default function Contacts() {
         if (error) { toast.error("Erro ao adicionar contato"); }
         else { toast.success("Contato adicionado"); setDialogOpen(false); fetchContacts(); }
       }
+    } catch (err) {
+      // FIX: sem este catch, uma exceção de rede deixava setSaving(true) para sempre,
+      // travando o botão "Salvar" permanentemente até recarregar a página.
+      console.error("handleSave error:", err);
+      toast.error("Erro inesperado. Tente novamente.");
     } finally { setSaving(false); }
   };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,32 +16,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus, ShieldX, ShieldCheck } from "lucide-react";
 
-/**
- * @deprecated Use invokeWithAuth() que já faz esse parsing internamente.
- * Mantido apenas para compatibilidade durante migração.
- * Lê o corpo real do erro de uma Edge Function.
- */
-async function readEdgeFunctionError(error: unknown): Promise<string> {
-  try {
-    const e = error as { context?: Response; message?: string };
-    if (e?.context instanceof Response) {
-      try {
-        const body = await e.context.clone().json() as { error?: string; message?: string };
-        if (body?.error) return body.error;
-        if (body?.message) return body.message;
-      } catch {
-        try {
-          const text = await e.context.clone().text();
-          if (text) return text.slice(0, 300);
-        } catch { /* ignore */ }
-      }
-    }
-    return (e?.message) ?? "Erro desconhecido";
-  } catch {
-    return "Erro desconhecido";
-  }
-}
-
 interface UserProfile {
   user_id: string;
   display_name: string | null;
@@ -57,6 +31,8 @@ export function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { user: currentUser } = useAuth();
+  // FIX: ref para cancelar fetch se o componente desmontar durante a requisição
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   const [passwordDialog, setPasswordDialog] = useState<UserProfile | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -69,13 +45,20 @@ export function AdminUsers() {
   const [newUserRole, setNewUserRole] = useState<"admin" | "client">("client");
   const [creatingUser, setCreatingUser] = useState(false);
 
-  const fetchUsers = async () => {
+  // FIX: useCallback + AbortController — evita atualizar estado em componente
+  // desmontado e cancela fetches duplicados se chamado várias vezes seguidas.
+  const fetchUsers = useCallback(async () => {
+    if (fetchAbortRef.current) fetchAbortRef.current.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
     setLoading(true);
     try {
       const [{ data: profiles, error: pErr }, { data: roles, error: rErr }] = await Promise.all([
         supabase.from("profiles").select("*"),
         supabase.from("user_roles").select("*"),
       ]);
+      if (controller.signal.aborted) return;
       if (pErr || rErr) { toast.error("Erro ao carregar usuários"); return; }
       const roleMap = new Map((roles ?? []).map(r => [r.user_id, r.role]));
       setUsers((profiles ?? []).map(p => ({
@@ -88,14 +71,18 @@ export function AdminUsers() {
         blocked: (p as { blocked?: boolean }).blocked ?? false,
       })));
     } catch (err) {
+      if (controller.signal.aborted) return;
       console.error("fetchUsers:", err);
       toast.error("Erro inesperado ao carregar usuários");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => {
+    fetchUsers();
+    return () => { fetchAbortRef.current?.abort(); };
+  }, [fetchUsers]);
 
   const changeRole = async (userId: string, newRole: "admin" | "client") => {
     // SEGURANÇA: admin não pode rebaixar a si mesmo — evita lock-out acidental

@@ -92,9 +92,11 @@ Deno.serve(async (req) => {
     }
 
     if (roleData?.role !== "admin") {
-      console.error("Access denied. user.id:", user.id, "role found:", roleData?.role ?? "none");
+      // SECURITY: não expor o papel do usuário no corpo do erro —
+      // informação desnecessária para o chamador não-admin.
+      console.error("Access denied in delete-account. user.id:", user.id, "role found:", roleData?.role ?? "none");
       return new Response(
-        JSON.stringify({ error: "Acesso negado. Papel encontrado: " + (roleData?.role ?? "nenhum") + ". Apenas administradores podem excluir usuários." }),
+        JSON.stringify({ error: "Acesso negado. Apenas administradores podem excluir usuários." }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -153,7 +155,8 @@ Deno.serve(async (req) => {
     if (deleteError) {
       console.error("deleteUser error:", deleteError.message);
       return new Response(
-        JSON.stringify({ error: "Não foi possível excluir o usuário: " + deleteError.message }),
+        // SECURITY: não expor mensagem interna do Supabase ao cliente
+        JSON.stringify({ error: "Não foi possível excluir o usuário." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

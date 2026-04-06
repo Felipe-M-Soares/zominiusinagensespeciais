@@ -291,6 +291,7 @@ export function AdminDevices() {
 
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [deleteAllTyped, setDeleteAllTyped] = useState("");
 
   const handleDeleteAllDevices = async () => {
     setDeletingAll(true);
@@ -426,7 +427,7 @@ export function AdminDevices() {
       )}
 
       {/* Dialog confirmar exclusão de TODAS as peças */}
-      <AlertDialog open={deleteAllConfirm} onOpenChange={setDeleteAllConfirm}>
+      <AlertDialog open={deleteAllConfirm} onOpenChange={(open) => { setDeleteAllConfirm(open); if (!open) setDeleteAllTyped(""); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir TODAS as peças?</AlertDialogTitle>
@@ -436,11 +437,24 @@ export function AdminDevices() {
               permanentemente do catálogo.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* SAFETY: exige digitação da palavra "EXCLUIR" para confirmar operação destrutiva */}
+          <div className="px-1 space-y-1.5">
+            <p className="text-sm text-muted-foreground">
+              Digite <strong className="text-destructive font-mono">EXCLUIR</strong> para confirmar:
+            </p>
+            <Input
+              value={deleteAllTyped}
+              onChange={e => setDeleteAllTyped(e.target.value)}
+              placeholder="EXCLUIR"
+              className="font-mono"
+              disabled={deletingAll}
+            />
+          </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingAll}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteAllDevices}
-              disabled={deletingAll}
+              disabled={deletingAll || deleteAllTyped !== "EXCLUIR"}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deletingAll
