@@ -468,7 +468,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("import-devices error:", msg);
-    return new Response(JSON.stringify({ error: "Erro interno na importação: " + msg }), {
+    return new Response(JSON.stringify({ error: "Erro interno na importação. Verifique o arquivo e tente novamente." }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

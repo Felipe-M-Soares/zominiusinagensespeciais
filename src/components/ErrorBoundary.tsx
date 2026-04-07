@@ -44,9 +44,14 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-sm text-muted-foreground">
               Ocorreu um erro inesperado. Tente recarregar a página.
             </p>
-            <p className="text-xs text-muted-foreground font-mono bg-muted px-3 py-2 rounded-lg">
-              {this.state.error?.message ?? "Unknown error"}
-            </p>
+            {/* SECURITY: exibe detalhes do erro apenas em desenvolvimento.
+                Em produção, error.message pode vazar caminhos internos,
+                nomes de variáveis e mensagens de bibliotecas terceiras. */}
+            {import.meta.env.DEV && this.state.error?.message && (
+              <p className="text-xs text-muted-foreground font-mono bg-muted px-3 py-2 rounded-lg text-left break-all">
+                {this.state.error.message}
+              </p>
+            )}
             <button
               onClick={() => window.location.reload()}
               className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"

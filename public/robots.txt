@@ -1,14 +1,4 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# Este site requer autenticação — não há conteúdo público para indexar.
+# O meta "noindex" no HTML é um hint; este arquivo é a diretiva autoritativa.
 User-agent: *
-Allow: /
+Disallow: /

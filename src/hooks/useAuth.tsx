@@ -76,15 +76,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [approved, setApproved] = useState<boolean | null>(null);
   const [blocked, setBlocked] = useState<boolean>(false);
 
-  // SECURITY: rate limiting client-side — evita que código automatizado faça
-  // dezenas de tentativas de login por segundo antes que o Supabase bloqueie.
-  // Não substitui o rate limiting server-side, mas reduz a carga e melhora UX.
-  const lastSignInAttemptRef = useRef<number>(0);
+  // SECURITY: rate limiting client-side — evita automação trivial no browser.
+  // Não substitui rate limiting server-side do Supabase.
+  const signInWindowStartRef = useRef<number>(0); // início da janela de 60s atual
   const signInAttemptsRef = useRef<number>(0);
 
   const fetchRoleAndApproval = useCallback(async (userId: string) => {
     try {
-      // Query principal: role + approved — campos que sempre existem
+      // Query unificada: role + approved + blocked em paralelo, mas profiles em UMA query
+      // SECURITY: duas queries separadas (approved e blocked) criavam uma janela TOCTOU —
+      // entre setApproved(true) e setBlocked(true), o ProtectedRoute rendia acesso brevemente
+      // a um usuário bloqueado. Uma query única elimina essa janela.
       const [{ data: roleData }, { data: profileData, error: profileError }] = await Promise.all([
         supabase
           .from("user_roles")
@@ -93,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle(),
         supabase
           .from("profiles")
-          .select("approved")
+          .select("approved, blocked")
           .eq("user_id", userId)
           .maybeSingle(),
       ]);
@@ -101,32 +103,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole(roleData?.role ?? "client");
 
       if (profileError) {
-        // Erro na query de profiles — assume aprovado para não travar o acesso
         console.error("fetchRoleAndApproval profiles error:", profileError.message);
+        // Erro de rede/banco: assume aprovado para não bloquear acesso,
+        // mas mantém blocked=false (nunca assume bloqueado por falha de rede)
         setApproved(true);
-      } else {
-        // profileData === null → perfil ainda não existe (race condition pós-cadastro)
-        // → null = aguarda, App.tsx só redireciona se === false explícito
-        setApproved(profileData == null ? null : (profileData.approved ?? true));
-      }
-
-      // Query separada e tolerante para blocked — se a coluna não existir ainda, não quebra nada
-      try {
-        const { data: blockedData } = await supabase
-          .from("profiles")
-          .select("blocked")
-          .eq("user_id", userId)
-          .maybeSingle();
-        setBlocked(blockedData?.blocked ?? false);
-      } catch {
-        // Coluna blocked ainda não existe no banco (migration pendente) — ignora
         setBlocked(false);
+      } else if (profileData == null) {
+        // Perfil ainda não existe — race condition pós-cadastro; aguarda
+        setApproved(null);
+        setBlocked(false);
+      } else {
+        // Atualiza ambos de uma vez, sem janela entre as duas chamadas
+        setBlocked(profileData.blocked ?? false);
+        setApproved(profileData.approved ?? true);
       }
 
     } catch (err) {
       console.error("Failed to fetch role/approval:", err);
       setRole("client");
-      // Em erro geral, assume aprovado para não bloquear acesso indevidamente
       setApproved(true);
       setBlocked(false);
     }
@@ -200,20 +194,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: "Email e senha são obrigatórios." };
       }
 
-      // SECURITY: rate limiting client-side.
-      // Permite no máximo 5 tentativas a cada 60s.
-      // O Supabase bloqueia no servidor após N falhas, mas este guard
-      // reduz a carga e impede automação trivial no browser.
+      // SECURITY: rate limiting — máx 5 tentativas por janela de 60s.
       const now = Date.now();
       const ONE_MINUTE = 60_000;
-      if (now - lastSignInAttemptRef.current > ONE_MINUTE) {
-        signInAttemptsRef.current = 0; // reseta janela após 1 min sem tentativas
+      // Abre nova janela se a anterior já expirou
+      if (now - signInWindowStartRef.current >= ONE_MINUTE) {
+        signInWindowStartRef.current = now;
+        signInAttemptsRef.current = 0;
       }
       signInAttemptsRef.current += 1;
-      lastSignInAttemptRef.current = now;
       if (signInAttemptsRef.current > 5) {
-        const waitSec = Math.ceil((ONE_MINUTE - (now - (lastSignInAttemptRef.current - ONE_MINUTE))) / 1000);
-        return { error: `Muitas tentativas de login. Aguarde ${waitSec > 0 ? waitSec : 60} segundos antes de tentar novamente.` };
+        const elapsed = now - signInWindowStartRef.current;
+        const waitSec = Math.ceil((ONE_MINUTE - elapsed) / 1000);
+        return { error: `Muitas tentativas de login. Aguarde ${waitSec > 0 ? waitSec : 1} segundos antes de tentar novamente.` };
       }
 
       const { data, error } = await supabase.auth.signInWithPassword({

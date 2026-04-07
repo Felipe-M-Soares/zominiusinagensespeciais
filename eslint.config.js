@@ -21,7 +21,9 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": "off",
       "@typescript-eslint/no-unused-vars": "off",
-      "@typescript-eslint/no-explicit-any": "off",
+      // SECURITY: no-explicit-any ativado — força tipagem explícita.
+      // Suprime individualmente com eslint-disable onde realmente necessário (ex: interop libs).
+      "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-empty-object-type": "off",
     },
   },

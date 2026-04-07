@@ -149,7 +149,7 @@ export function AdminDevices() {
           : win1252;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let body: Record<string, any>;
+      let body: Record<string, unknown>;
 
       if (isCsv) {
         const firstLine = text.split("\n")[0] ?? "";

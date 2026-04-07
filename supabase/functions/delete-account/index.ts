@@ -165,9 +165,10 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    // SECURITY: loga internamente mas não expõe detalhes ao chamador
     const msg = err instanceof Error ? err.message : String(err);
     console.error("delete-account error:", msg);
-    return new Response(JSON.stringify({ error: "Erro interno: " + msg }), {
+    return new Response(JSON.stringify({ error: "Erro interno." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

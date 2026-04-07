@@ -117,9 +117,19 @@ export default function Manuals() {
       updateQueueItem(item.id, { status: "done" });
       return true;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      // SECURITY: não exibir mensagem interna do Supabase/storage na UI.
+      // Loga para debug mas mostra mensagem genérica ao usuário.
       console.error("uploadOne error:", item.file.name, err);
-      updateQueueItem(item.id, { status: "error", errorMsg: msg });
+      const isPermission = err instanceof Error &&
+        (err.message.toLowerCase().includes("unauthorized") ||
+         err.message.toLowerCase().includes("row-level security") ||
+         err.message.toLowerCase().includes("403"));
+      updateQueueItem(item.id, {
+        status: "error",
+        errorMsg: isPermission
+          ? "Sem permissão para enviar. Contate o administrador."
+          : "Falha no upload. Verifique o arquivo e tente novamente.",
+      });
       return false;
     }
   };
