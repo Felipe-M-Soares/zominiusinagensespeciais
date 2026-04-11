@@ -266,7 +266,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         options: {
           data: { display_name: cleanName },
-          emailRedirectTo: window.location.origin,
+          // FIX: usa VITE_SITE_URL quando disponível — mesmo padrão de Login.tsx.
+          emailRedirectTo: import.meta.env.VITE_SITE_URL ?? window.location.origin,
         },
       });
       if (error) return { error: translateError(error.message) };

@@ -51,7 +51,9 @@ export function CatalogButton() {
 
   const fetchAbortRef = useRef<AbortController | null>(null);
 
-  // FIX: useCallback + AbortController — cancela fetch se componente desmontar.
+  // FIX: useCallback + AbortController — cancela setState se componente desmontar.
+  // Nota: o Supabase JS client v2 não suporta AbortSignal nativamente na query,
+  // então a requisição HTTP ainda completa em background, mas o setState é suprimido.
   const fetchCatalogs = useCallback(async () => {
     if (fetchAbortRef.current) fetchAbortRef.current.abort();
     const controller = new AbortController();

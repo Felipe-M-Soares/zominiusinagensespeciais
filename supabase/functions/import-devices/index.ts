@@ -283,7 +283,7 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Não autenticado" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -380,9 +380,9 @@ Deno.serve(async (req) => {
       }
 
     } else if (Array.isArray(body.dispositivos_medicos) && body.dispositivos_medicos.length > 0) {
-      mapped = (body.dispositivos_medicos as any[]).map(mapAnvisaDevice).filter(d => d.udi_di);
+      mapped = (body.dispositivos_medicos as Record<string, unknown>[]).map(mapAnvisaDevice).filter(d => d.udi_di);
     } else if (Array.isArray(body.devices) && body.devices.length > 0) {
-      mapped = (body.devices as any[]).map(mapJSONDevice).filter(d => d.udi_di);
+      mapped = (body.devices as Record<string, unknown>[]).map(mapJSONDevice).filter(d => d.udi_di);
     } else {
       return new Response(JSON.stringify({ error: "Envie 'csv', 'devices' ou 'dispositivos_medicos'" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -402,14 +402,19 @@ Deno.serve(async (req) => {
     }
 
     // ── Deduplicação ─────────────────────────────────────────────────────────
-    // Se UDI-DIs repetidos, sufixar com internal_code ou índice
+    // Se UDI-DIs repetidos, sufixar com internal_code ou índice ordinal.
+    // FIX BUG: a versão anterior mutava d.udi_di antes de incrementar o contador
+    // da chave original, fazendo o contador original sempre ficar em 1.
+    // Para uma 3ª ocorrência: seen.get(original)=1, count=1, sufixo="-1",
+    // colide com a 2ª ocorrência. Agora salvamos a chave original antes de mutá-la.
     const seen = new Map<string, number>();
     for (const d of mapped) {
-      const count = seen.get(d.udi_di) ?? 0;
+      const originalKey = d.udi_di;
+      const count = seen.get(originalKey) ?? 0;
+      seen.set(originalKey, count + 1); // incrementa o contador ANTES de mutar
       if (count > 0) {
-        d.udi_di = `${d.udi_di}-${d.internal_code || count}`;
+        d.udi_di = `${originalKey}-${d.internal_code || count}`;
       }
-      seen.set(d.udi_di, (seen.get(d.udi_di) ?? 0) + 1);
     }
     // Dedup final por mapa
     const deduped = new Map<string, typeof mapped[0]>();
@@ -443,9 +448,12 @@ Deno.serve(async (req) => {
     }
 
     // ── Upsert em batches ────────────────────────────────────────────────────
+    // FIX: se replace_all=true e algum batch falhar, abortamos e retornamos erro.
+    // Continuando após falha com replace_all poderíamos deixar o catálogo parcialmente vazio.
     const BATCH = 500;
     let inserted = 0;
     let skipped = 0;
+    const wasReplaceAll = body.replace_all === true;
 
     for (let i = 0; i < finalMapped.length; i += BATCH) {
       const batch = finalMapped.slice(i, i + BATCH);
@@ -455,6 +463,14 @@ Deno.serve(async (req) => {
 
       if (error) {
         console.error(`Batch ${i / BATCH + 1} error:`, error.message);
+        if (wasReplaceAll) {
+          // Catálogo já foi deletado e a importação falhou — informa claramente
+          return new Response(JSON.stringify({
+            error: `Falha no batch ${i / BATCH + 1}. O catálogo pode estar incompleto. Reimporte novamente. Detalhe: ${error.message}`
+          }), {
+            status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
         skipped += batch.length;
       } else {
         inserted += batch.length;

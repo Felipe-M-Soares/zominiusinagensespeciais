@@ -35,8 +35,12 @@ export default function ForgotPassword() {
 
     setLoading(true);
     try {
+      // FIX: usa VITE_SITE_URL quando disponível — mesmo padrão de Login.tsx.
+      // window.location.origin pode retornar http:// em dev ou um hostname errado
+      // quando a app está atrás de proxy/CDN, quebrando o link de reset em produção.
+      const siteUrl = import.meta.env.VITE_SITE_URL ?? window.location.origin;
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: `${siteUrl}/reset-password`,
       });
       if (error) {
         // Não revelar se o email existe ou não (prevenção de enumeração de usuários).

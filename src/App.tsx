@@ -71,7 +71,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { user, loading, approved } = useAuth();
-  if (loading) return null;
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
   // Só redireciona para pending-approval se approved for explicitamente false
   // null = perfil ainda carregando, não deve bloquear
   if (user && approved === false) return <Navigate to="/pending-approval" replace />;
