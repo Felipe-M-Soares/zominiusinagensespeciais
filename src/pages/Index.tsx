@@ -62,6 +62,18 @@ const Index = () => {
     [filters, activeLetter, triggerDebounce]
   );
 
+  // Disparo imediato (sem debounce) — usado pelo leitor de código de barras (Enter)
+  const handleSearchSubmit = useCallback(
+    (v: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      setSearch(v);
+      setQuerySearch(v);
+      setQueryFilters(filters);
+      setQueryLetter(activeLetter);
+    },
+    [filters, activeLetter]
+  );
+
   const handleFilterChange = useCallback(
     (key: string, value: string) => {
       setFilters((prev) => {
@@ -183,6 +195,7 @@ const Index = () => {
             <SearchFilters
               search={search}
               onSearchChange={handleSearchChange}
+              onSearchSubmit={handleSearchSubmit}
               materials={options.materials}
               classifications={options.classifications}
               exocadOptions={options.exocadOptions}
