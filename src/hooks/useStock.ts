@@ -45,8 +45,8 @@ function sanitize(raw: string): string {
   return raw
     .trim()
     .slice(0, 200)
-    .replace(/[\u0000-\u001F\u007F]/g, "")   // strip control chars
-    .replace(/[(),;'"\`]/g, "")                  // strip SQL meta chars
+    .replace(/[\x00-\x1F\x7F]/g, "")        // strip control chars
+    .replace(/[(),;'"` + "`" + r`]/g, "")               // strip SQL meta chars
     .replace(/[%_\\]/g, "\\$&");              // escape LIKE wildcards
 }
 
@@ -85,7 +85,7 @@ export function useStock(search: string) {
       const s = sanitize(q);
       if (s) {
         // Detecta se é busca por lote (padrão: DDMMAA-TT ou DDMMAA-TT/X)
-        const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase());
+        const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase()); // eslint-disable-line no-useless-escape
 
         if (isLoteSearch) {
           // Busca stock_item_ids que têm movimentos com este lote

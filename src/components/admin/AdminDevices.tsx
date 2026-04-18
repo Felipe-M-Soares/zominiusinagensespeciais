@@ -148,7 +148,6 @@ export function AdminDevices() {
           ? await readFileWithEncoding(file, "ISO-8859-1")
           : win1252;
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let body: Record<string, unknown>;
 
       if (isCsv) {
