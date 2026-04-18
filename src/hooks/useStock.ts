@@ -229,3 +229,55 @@ export async function addDeviceToStock(deviceId: string): Promise<{ ok: boolean;
     .upsert({ device_id: deviceId, quantity: 0, min_quantity: 0 }, { onConflict: "device_id", ignoreDuplicates: true });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+/** Cancela (desfaz) um movimento: reverte a qty e deleta o registro */
+export async function cancelMovement(
+  movementId: string,
+  stockItemId: string,
+  type: "entrada" | "saida",
+  quantity: number
+): Promise<{ ok: boolean; error?: string }> {
+  // Busca qty atual
+  const { data: item } = await supabase
+    .from("stock_items")
+    .select("quantity")
+    .eq("id", stockItemId)
+    .single();
+
+  if (!item) return { ok: false, error: "Item não encontrado." };
+
+  // Inverte o movimento: entrada vira saída e vice-versa
+  const newQty = type === "entrada" ? item.quantity - quantity : item.quantity + quantity;
+
+  if (newQty < 0) {
+    return { ok: false, error: `Não é possível cancelar: estoque ficaria negativo (${newQty}).` };
+  }
+
+  // Deleta o movimento
+  const { error: delErr } = await supabase
+    .from("stock_movements")
+    .delete()
+    .eq("id", movementId);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  // Atualiza quantidade
+  const { error: upErr } = await supabase
+    .from("stock_items")
+    .update({ quantity: newQty })
+    .eq("id", stockItemId);
+  if (upErr) return { ok: false, error: upErr.message };
+
+  return { ok: true };
+}
+
+/** Remove uma peça completamente do sistema de estoque */
+export async function deleteStockItem(
+  stockItemId: string
+): Promise<{ ok: boolean; error?: string }> {
+  // Os movimentos são deletados em cascata pela FK
+  const { error } = await supabase
+    .from("stock_items")
+    .delete()
+    .eq("id", stockItemId);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}

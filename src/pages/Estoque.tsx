@@ -21,10 +21,14 @@ import {
   TrendingDown,
   TrendingUp,
   Boxes,
+  List,
+  Trash2,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
 import { AddToStockModal } from "@/components/stock/AddToStockModal";
+import { StockListModal } from "@/components/stock/StockListModal";
+import { deleteStockItem } from "@/hooks/useStock";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { cn } from "@/lib/utils";
 
@@ -34,9 +38,10 @@ interface StockCardProps {
   item: StockItem;
   onMovement: (item: StockItem, type: "entrada" | "saida") => void;
   onHistory: (item: StockItem) => void;
+  onDelete: (item: StockItem) => void;
 }
 
-function StockCard({ item, onMovement, onHistory }: StockCardProps) {
+function StockCard({ item, onMovement, onHistory, onDelete }: StockCardProps) {
   const d = item.device;
   const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
   const isEmpty = item.quantity === 0;
@@ -152,6 +157,14 @@ function StockCard({ item, onMovement, onHistory }: StockCardProps) {
           >
             <Clock className="h-3.5 w-3.5" />
           </button>
+          <button
+            type="button"
+            onClick={() => onDelete(item)}
+            className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+            title="Remover peça do estoque"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
     </div>
@@ -180,6 +193,9 @@ export default function Estoque() {
   const [movementState, setMovementState] = useState<{ item: StockItem; type: "entrada" | "saida" } | null>(null);
   const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
+  const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const { items, totalCount, loading, error, refetch } = useStock(querySearch);
 
@@ -237,6 +253,15 @@ export default function Estoque() {
             </div>
           </div>
           <nav className="flex items-center gap-1">
+              <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 px-3 text-xs rounded-xl"
+              onClick={() => setListOpen(true)}
+            >
+              <List className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Lista</span>
+            </Button>
             {isAdmin && (
               <Button
                 size="sm"
@@ -363,6 +388,7 @@ export default function Estoque() {
                 item={item}
                 onMovement={(item, type) => setMovementState({ item, type })}
                 onHistory={setHistoryItem}
+                onDelete={setDeleteItem}
               />
             ))}
           </div>
@@ -381,12 +407,72 @@ export default function Estoque() {
         item={historyItem}
         open={!!historyItem}
         onClose={() => setHistoryItem(null)}
+        onSuccess={refetch}
       />
       <AddToStockModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onSuccess={refetch}
       />
+      <StockListModal
+        open={listOpen}
+        onClose={() => setListOpen(false)}
+        items={items}
+      />
+      {/* Confirmação de exclusão de peça */}
+      {deleteItem && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Remover do estoque?</p>
+                <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
+                  {deleteItem.device.model}
+                </p>
+                <p className="text-[11px] text-destructive/80 mt-1">
+                  Todo o histórico de movimentos será apagado.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="flex-1 h-10 rounded-xl border border-border text-sm font-medium hover:bg-muted/30 transition-colors"
+                onClick={() => setDeleteItem(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="flex-1 h-10 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors flex items-center justify-center gap-2"
+                disabled={deleting}
+                onClick={async () => {
+                  if (!deleteItem) return;
+                  setDeleting(true);
+                  const { toast: t } = await import("sonner");
+                  const result = await deleteStockItem(deleteItem.id);
+                  setDeleting(false);
+                  if (result.ok) {
+                    t.success("Peça removida do estoque.", { description: deleteItem.device.model });
+                    setDeleteItem(null);
+                    refetch();
+                  } else {
+                    t.error(result.error ?? "Erro ao remover peça.");
+                  }
+                }}
+              >
+                {deleting
+                  ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  : <Trash2 className="h-4 w-4" />}
+                Remover
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
