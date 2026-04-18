@@ -56,7 +56,7 @@ return (
                 <Shield className="h-3 w-3 mr-1" /> Estéril
               </Badge>
             ) : (
-              <Badge variant="secondary" className="text-muted-foreground/60 text-[11px] rounded-lg">Não Estéril</Badge>
+              <Badge variant="outline" className="text-[11px] rounded-lg border-muted-foreground/30 text-muted-foreground bg-muted/20">Não Estéril</Badge>
             )}
             {device.single_use && (
               <Badge className="bg-warning/10 text-warning border-0 text-[11px] rounded-lg">

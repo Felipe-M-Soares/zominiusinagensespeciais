@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useStock } from "@/hooks/useStock";
 import type { StockItem } from "@/hooks/useStock";
-import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -23,13 +22,16 @@ import {
   Boxes,
   List,
   Trash2,
+  History,
+  DatabaseBackup,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
 import { AddToStockModal } from "@/components/stock/AddToStockModal";
 import { StockListModal } from "@/components/stock/StockListModal";
+import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
+import { BackupPanel } from "@/components/stock/BackupPanel";
 import { deleteStockItem } from "@/hooks/useStock";
-import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { cn } from "@/lib/utils";
 
 // ─── Componente de card de item do estoque ────────────────────────────────────
@@ -177,12 +179,6 @@ export default function Estoque() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
-  const [isDark] = useState(() => {
-    const theme = getStoredTheme();
-    if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return theme === "dark";
-  });
-
   // Pesquisa
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
@@ -194,6 +190,8 @@ export default function Estoque() {
   const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const [allMovOpen, setAllMovOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -245,8 +243,6 @@ export default function Estoque() {
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <Logo className="h-8 sm:h-10 object-contain shrink-0" />
-            <div className="hidden sm:block h-6 w-px bg-border" />
             <div className="flex items-center gap-1.5">
               <Boxes className="h-4 w-4 text-primary" />
               <p className="text-sm font-semibold text-foreground">Controle de Estoque</p>
@@ -257,11 +253,32 @@ export default function Estoque() {
               variant="outline"
               size="sm"
               className="h-8 gap-1.5 px-3 text-xs rounded-xl"
+              onClick={() => setAllMovOpen(true)}
+            >
+              <History className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Histórico</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 px-3 text-xs rounded-xl"
               onClick={() => setListOpen(true)}
             >
               <List className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Lista</span>
             </Button>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-3 text-xs rounded-xl"
+                onClick={() => setBackupOpen(true)}
+                title="Backup do estoque"
+              >
+                <DatabaseBackup className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Backup</span>
+              </Button>
+            )}
             {isAdmin && (
               <Button
                 size="sm"
@@ -418,6 +435,14 @@ export default function Estoque() {
         open={listOpen}
         onClose={() => setListOpen(false)}
         items={items}
+      />
+      <AllMovementsModal
+        open={allMovOpen}
+        onClose={() => setAllMovOpen(false)}
+      />
+      <BackupPanel
+        open={backupOpen}
+        onClose={() => setBackupOpen(false)}
       />
       {/* Confirmação de exclusão de peça */}
       {deleteItem && (

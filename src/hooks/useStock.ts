@@ -24,6 +24,7 @@ export interface StockMovement {
   quantity: number;
   reason: string | null;
   user_id: string | null;
+  user_display_name: string | null;
   created_at: string;
 }
 
@@ -184,7 +185,8 @@ export async function registerMovement(
   type: "entrada" | "saida",
   quantity: number,
   reason: string,
-  userId: string | null
+  userId: string | null,
+  userDisplayName?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   // Busca quantidade atual
   const { data: item } = await supabase
@@ -209,6 +211,7 @@ export async function registerMovement(
     quantity,
     reason: reason || null,
     user_id: userId,
+    user_display_name: userDisplayName ?? null,
   });
   if (mvErr) return { ok: false, error: mvErr.message };
 
@@ -280,4 +283,156 @@ export async function deleteStockItem(
     .delete()
     .eq("id", stockItemId);
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// ─── Backup ──────────────────────────────────────────────────────────────────
+
+export type BackupSchedule = "mon_thu" | "tue_fri" | "wed_sat" | "mon_fri";
+
+export interface BackupConfig {
+  id: string;
+  schedule: BackupSchedule;
+  last_backup: string | null;
+  updated_at: string;
+}
+
+export interface StockBackup {
+  id: string;
+  created_by: string | null;
+  created_name: string | null;
+  item_count: number;
+  created_at: string;
+}
+
+export const SCHEDULE_LABELS: Record<BackupSchedule, string> = {
+  mon_thu: "Segunda e Quinta",
+  tue_fri: "Terça e Sexta",
+  wed_sat: "Quarta e Sábado",
+  mon_fri: "Segunda e Sexta",
+};
+
+export async function getBackupConfig(): Promise<BackupConfig | null> {
+  const { data } = await supabase
+    .from("backup_configs")
+    .select("*")
+    .maybeSingle();
+  return data as BackupConfig | null;
+}
+
+export async function saveBackupConfig(
+  schedule: BackupSchedule
+): Promise<{ ok: boolean; error?: string }> {
+  // upsert na única linha
+  const { data: existing } = await supabase
+    .from("backup_configs")
+    .select("id")
+    .maybeSingle();
+
+  const op = existing
+    ? supabase.from("backup_configs").update({ schedule, updated_at: new Date().toISOString() }).eq("id", existing.id)
+    : supabase.from("backup_configs").insert({ schedule });
+
+  const { error } = await op;
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function runBackup(
+  userId: string | null,
+  userName: string | null
+): Promise<{ ok: boolean; error?: string }> {
+  // Snapshot completo: stock_items + devices + últimos 200 movimentos
+  const [itemsRes, movRes] = await Promise.all([
+    supabase
+      .from("stock_items")
+      .select("id, quantity, min_quantity, location, notes, updated_at, device:devices(model,reference,udi_di,internal_code)"),
+    supabase
+      .from("stock_movements")
+      .select("id, stock_item_id, type, quantity, reason, user_display_name, created_at")
+      .order("created_at", { ascending: false })
+      .limit(500),
+  ]);
+
+  const payload = {
+    generated_at: new Date().toISOString(),
+    items: itemsRes.data ?? [],
+    recent_movements: movRes.data ?? [],
+  };
+
+  const { error } = await supabase.from("stock_backups").insert({
+    created_by: userId,
+    created_name: userName,
+    item_count: (itemsRes.data ?? []).length,
+    payload,
+  });
+
+  if (error) return { ok: false, error: error.message };
+
+  // Atualiza last_backup na config
+  const { data: cfg } = await supabase.from("backup_configs").select("id").maybeSingle();
+  if (cfg) {
+    await supabase.from("backup_configs").update({ last_backup: new Date().toISOString() }).eq("id", cfg.id);
+  }
+
+  return { ok: true };
+}
+
+export async function listBackups(limit = 20): Promise<StockBackup[]> {
+  const { data } = await supabase
+    .from("stock_backups")
+    .select("id, created_by, created_name, item_count, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return (data as StockBackup[]) ?? [];
+}
+
+export async function downloadBackup(backupId: string): Promise<object | null> {
+  const { data } = await supabase
+    .from("stock_backups")
+    .select("payload, created_at")
+    .eq("id", backupId)
+    .single();
+  return data ?? null;
+}
+
+// Fetch all movements (histórico geral) com join de device via stock_items
+export interface AllMovement {
+  id: string;
+  stock_item_id: string;
+  type: "entrada" | "saida";
+  quantity: number;
+  reason: string | null;
+  user_display_name: string | null;
+  created_at: string;
+  device_model: string;
+  device_reference: string;
+}
+
+export async function fetchAllMovements(limit = 100): Promise<AllMovement[]> {
+  const { data } = await supabase
+    .from("stock_movements")
+    .select(`
+      id, stock_item_id, type, quantity, reason, user_display_name, created_at,
+      stock_item:stock_items(
+        device:devices(model, reference)
+      )
+    `)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => {
+    const si = row.stock_item as Record<string, unknown> | null;
+    const dev = (Array.isArray(si) ? si[0] : si)?.device as Record<string, unknown> | null;
+    const d = Array.isArray(dev) ? dev[0] : dev;
+    return {
+      id: row.id as string,
+      stock_item_id: row.stock_item_id as string,
+      type: row.type as "entrada" | "saida",
+      quantity: row.quantity as number,
+      reason: row.reason as string | null,
+      user_display_name: row.user_display_name as string | null,
+      created_at: row.created_at as string,
+      device_model: (d?.model as string) ?? "—",
+      device_reference: (d?.reference as string) ?? "—",
+    };
+  });
 }

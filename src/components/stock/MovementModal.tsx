@@ -38,7 +38,9 @@ interface Props {
 }
 
 export function MovementModal({ item, open, initialType = "entrada", onClose, onSuccess }: Props) {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
+  // display_name comes from auth metadata
+  const displayName: string | null = (user?.user_metadata?.display_name as string) ?? (user?.email ?? null);
   const [type, setType] = useState<"entrada" | "saida">(initialType);
   const [saidaType, setSaidaType] = useState<"retirada" | "venda">("retirada");
   const [qty, setQty] = useState<number | "">(1);
@@ -50,7 +52,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
     if (open) {
       setType(initialType);
       setSaidaType("retirada");
-      setQty(1);
+      setQty(1);    // começa em 1, zera só ao clicar
       setReason("");
       setTimeout(() => qtyRef.current?.select(), 80);
     }
@@ -74,7 +76,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
   async function handleSubmit() {
     if (!item || resolvedQty < 1) return;
     setLoading(true);
-    const result = await registerMovement(item.id, type, resolvedQty, buildReason(), user?.id ?? null);
+    const result = await registerMovement(item.id, type, resolvedQty, buildReason(), user?.id ?? null, displayName);
     setLoading(false);
     if (result.ok) {
       toast.success(
