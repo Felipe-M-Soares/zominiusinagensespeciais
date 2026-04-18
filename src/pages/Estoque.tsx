@@ -4,6 +4,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { useStock } from "@/hooks/useStock";
 import type { StockItem } from "@/hooks/useStock";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,6 +37,7 @@ import {
   DatabaseBackup,
   Tag,
   FileSpreadsheet,
+  Trash2 as Trash2Icon,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
@@ -35,6 +47,7 @@ import { LotesPanel } from "@/components/stock/LotesPanel";
 import { StockCsvImport } from "@/components/stock/StockCsvImport";
 import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { BackupPanel } from "@/components/stock/BackupPanel";
+import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummary } from "@/hooks/useStock";
 import type { LoteSummary } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
@@ -224,6 +237,9 @@ export default function Estoque() {
   const [deleting, setDeleting] = useState(false);
   const [lotesItem, setLotesItem] = useState<StockItem | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deleteAllTyped, setDeleteAllTyped] = useState("");
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const { items, totalCount, loading, error, refetch } = useStock(querySearch);
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
@@ -253,6 +269,42 @@ export default function Estoque() {
     setSearch(v);
     setQuerySearch(v);
   }, []);
+
+  const handleDeleteAll = async () => {
+    setDeletingAll(true);
+    try {
+      let deleted = 0;
+      const MAX = 200;
+      let iter = 0;
+      while (iter < MAX) {
+        iter++;
+        const { data: rows, error: fetchErr } = await supabase
+          .from("stock_items")
+          .select("id")
+          .limit(500);
+        if (fetchErr) throw fetchErr;
+        if (!rows || rows.length === 0) break;
+        const ids = rows.map((r: { id: string }) => r.id);
+        const { error: delErr } = await supabase
+          .from("stock_items")
+          .delete()
+          .in("id", ids);
+        if (delErr) throw delErr;
+        deleted += ids.length;
+      }
+      const { toast: t } = await import("sonner");
+      t.success(`${deleted.toLocaleString("pt-BR")} peça${deleted !== 1 ? "s" : ""} removida${deleted !== 1 ? "s" : ""} do estoque.`);
+      refetch();
+    } catch (err) {
+      console.error("deleteAll stock error:", err);
+      const { toast: t } = await import("sonner");
+      t.error("Erro ao excluir o estoque.");
+    } finally {
+      setDeletingAll(false);
+      setDeleteAllOpen(false);
+      setDeleteAllTyped("");
+    }
+  };
 
   const handleFocus = useCallback(() => {
     requestAnimationFrame(() => inputRef.current?.select());
@@ -343,6 +395,16 @@ export default function Estoque() {
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Adicionar Peça</span>
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 gap-1.5 px-3 text-xs rounded-xl"
+                  onClick={() => { setDeleteAllTyped(""); setDeleteAllOpen(true); }}
+                  title="Excluir todo o estoque"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Excluir Tudo</span>
                 </Button>
               </>
             )}
@@ -521,6 +583,52 @@ export default function Estoque() {
         onClose={() => setCsvOpen(false)}
         onSuccess={refetch}
       />
+
+      {/* Excluir todo o estoque */}
+      <AlertDialog open={deleteAllOpen} onOpenChange={(v) => { if (!v) { setDeleteAllOpen(false); setDeleteAllTyped(""); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-4 w-4" />
+              Excluir todo o estoque?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                Isso irá remover <strong>todas as {totalCount.toLocaleString("pt-BR")} peça{totalCount !== 1 ? "s" : ""}</strong> do
+                estoque e <strong>todo o histórico de movimentos</strong>. Esta ação não pode ser desfeita.
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                💡 Considere fazer um Backup antes de continuar.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="px-1 space-y-1.5">
+            <p className="text-sm text-muted-foreground">
+              Digite <strong className="text-destructive font-mono">EXCLUIR</strong> para confirmar:
+            </p>
+            <Input
+              value={deleteAllTyped}
+              onChange={(e) => setDeleteAllTyped(e.target.value)}
+              placeholder="EXCLUIR"
+              className="font-mono"
+              disabled={deletingAll}
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAll}
+              disabled={deletingAll || deleteAllTyped !== "EXCLUIR"}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingAll ? "Excluindo..." : `Excluir tudo (${totalCount.toLocaleString("pt-BR")})`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Confirmação de exclusão de peça */}
       {deleteItem && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
