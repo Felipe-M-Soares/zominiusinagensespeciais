@@ -20,10 +20,12 @@ interface UserProfile {
   user_id: string;
   display_name: string | null;
   email: string | null;
+  login: string | null;
   created_at: string;
   role: "admin" | "client";
   approved: boolean;
   blocked: boolean;
+  must_change_password: boolean;
 }
 
 export function AdminUsers() {
@@ -39,7 +41,7 @@ export function AdminUsers() {
   const [resettingPassword, setResettingPassword] = useState(false);
 
   const [createDialog, setCreateDialog] = useState(false);
-  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserLogin, setNewUserLogin] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<"admin" | "client">("client");
@@ -65,10 +67,12 @@ export function AdminUsers() {
         user_id: p.user_id,
         display_name: p.display_name,
         email: p.email,
+        login: (p as { login?: string | null }).login ?? null,
         created_at: p.created_at,
         role: (roleMap.get(p.user_id) as "admin" | "client") ?? "client",
         approved: p.approved ?? false,
         blocked: (p as { blocked?: boolean }).blocked ?? false,
+        must_change_password: (p as { must_change_password?: boolean }).must_change_password ?? false,
       })));
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -181,7 +185,7 @@ export function AdminUsers() {
   };
 
   const createUser = async () => {
-    if (!newUserEmail.trim() || !newUserName.trim() || newUserPassword.length < 8) {
+    if (!newUserLogin.trim() || !newUserName.trim() || newUserPassword.length < 6) {
       toast.error("Preencha todos os campos. Senha: mínimo 8 caracteres."); return;
     }
     if (newUserPassword.length > 72) { toast.error("Senha máximo 72 caracteres."); return; }
@@ -233,7 +237,7 @@ export function AdminUsers() {
             </div>
             <div className="space-y-2">
               <Label>Email *</Label>
-              <Input type="email" placeholder="email@empresa.com" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} />
+              <Input type="text" placeholder="ex: joao.silva" value={newUserLogin} onChange={e => setNewUserLogin(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,""))} autoComplete="off" />
             </div>
             <div className="space-y-2">
               <Label>Senha * (mínimo 8 caracteres)</Label>
@@ -251,7 +255,7 @@ export function AdminUsers() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setCreateDialog(false)}>Cancelar</Button>
-              <Button onClick={createUser} disabled={creatingUser || !newUserEmail.trim() || !newUserName.trim() || newUserPassword.length < 8}>
+              <Button onClick={createUser} disabled={creatingUser || !newUserLogin.trim() || !newUserName.trim() || newUserPassword.length < 6}>
                 {creatingUser ? "Criando..." : "Criar Conta"}
               </Button>
             </div>
@@ -264,7 +268,7 @@ export function AdminUsers() {
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
-              <TableHead>Email</TableHead>
+              <TableHead>Login</TableHead>
               <TableHead>Cadastro</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Ações</TableHead>
@@ -276,7 +280,7 @@ export function AdminUsers() {
               return (
                 <TableRow key={u.user_id}>
                   <TableCell className="font-medium">{u.display_name ?? "—"}</TableCell>
-                  <TableCell className="text-sm">{u.email}</TableCell>
+                  <TableCell className="text-sm">{u.login ?? u.email?.split("@")[0] ?? "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{new Date(u.created_at).toLocaleDateString("pt-BR")}</TableCell>
                   <TableCell>
                     {u.blocked
@@ -324,7 +328,7 @@ export function AdminUsers() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Bloquear acesso de {u.display_name || u.email}?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                O email <strong>{u.email}</strong> será bloqueado imediatamente.
+                                O email <strong>{u.login ?? u.email?.split("@")[0] ?? "—"}</strong> será bloqueado imediatamente.
                                 O usuário verá uma mensagem de "Acesso Bloqueado" ao tentar entrar e não conseguirá acessar o sistema até que um administrador o desbloqueie.
                               </AlertDialogDescription>
                             </AlertDialogHeader>

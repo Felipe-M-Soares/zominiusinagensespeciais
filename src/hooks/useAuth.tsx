@@ -18,7 +18,7 @@ interface AuthContext {
   isAdmin: boolean;
   approved: boolean | null;
   blocked: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (login: string, password: string) => Promise<{ error: string | null }>;
   signUp: (
     email: string,
     password: string,
@@ -188,7 +188,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(
-    async (email: string, password: string): Promise<{ error: string | null }> => {
+    async (login: string, password: string): Promise<{ error: string | null }> => {
+      // Resolve login (username) → internal email used by Supabase Auth
+      const email = `${login.trim().toLowerCase()}@interno.conceptus`;
       const cleanEmail = email.trim().toLowerCase();
       if (!cleanEmail || !password) {
         return { error: "Email e senha são obrigatórios." };
