@@ -13,6 +13,7 @@ import Admin from "./pages/Admin";
 import SettingsPage from "./pages/Settings";
 import Contacts from "./pages/Contacts";
 import Manuals from "./pages/Manuals";
+import Estoque from "./pages/Estoque";
 import PendingApproval from "./pages/PendingApproval";
 import NotFound from "./pages/NotFound";
 
@@ -97,6 +98,7 @@ const App = () => (
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
             <Route path="/contacts" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
             <Route path="/manuals" element={<ProtectedRoute><Manuals /></ProtectedRoute>} />
+            <Route path="/estoque" element={<ProtectedRoute><Estoque /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

@@ -6,7 +6,7 @@ import { DeviceCard } from "@/components/DeviceCard";
 import { DeviceDetail } from "@/components/DeviceDetail";
 import type { Device } from "@/types/device";
 import { Button } from "@/components/ui/button";
-import { LogOut, Settings, Phone, BookOpen, ChevronDown, Loader2 } from "lucide-react";
+import { LogOut, Settings, Phone, BookOpen, ChevronDown, Loader2, Boxes } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { CatalogButton } from "@/components/CatalogButton";
@@ -138,6 +138,16 @@ const Index = () => {
                 <span className="hidden sm:inline">Admin</span>
               </Button>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/estoque")}
+              className="h-8 px-2 sm:px-3 text-xs"
+              title="Controle de Estoque"
+            >
+              <Boxes className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Estoque</span>
+            </Button>
             <CatalogButton />
             <Button
               variant="ghost"
