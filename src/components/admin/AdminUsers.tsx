@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
 import { useAuth } from "@/hooks/useAuth";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -199,11 +198,11 @@ export function AdminUsers() {
         return;
       }
 
-      // 2. Invalida a sessão ativa gerando uma senha aleatória temporária
-      //    (força logout do usuário em até ~60s quando o token expirar ou na próxima requisição)
+      // 2. Invalida a sessão ativa gerando uma senha aleatória (força logout)
       const tempPassword = crypto.randomUUID() + crypto.randomUUID();
-      await invokeWithAuth("admin-reset-password", {
-        body: { target_user_id: userId, new_password: tempPassword },
+      await supabase.rpc("admin_reset_password", {
+        p_target_user_id: userId,
+        p_new_password:   tempPassword,
       });
 
       toast.success(
@@ -248,11 +247,12 @@ export function AdminUsers() {
   const deleteUser = async (userId: string) => {
     setDeletingId(userId);
     try {
-      const { errorMsg } = await invokeWithAuth("delete-account", {
-        body: { target_user_id: userId },
+      const { data: rpcData3, error: rpcErr3 } = await supabase.rpc("admin_delete_user", {
+        p_target_user_id: userId,
       });
-      if (errorMsg) {
-        toast.error("Erro ao excluir: " + errorMsg);
+      const errMsg3 = rpcErr3?.message ?? (rpcData3 as {error?: string} | null)?.error ?? null;
+      if (errMsg3) {
+        toast.error("Erro ao excluir: " + errMsg3);
       } else {
         toast.success("Conta excluída");
         fetchUsers();
@@ -270,16 +270,15 @@ export function AdminUsers() {
     if (pwErr) { toast.error(pwErr); return; }
     setCreatingUser(true);
     try {
-      const { errorMsg } = await invokeWithAuth("admin-create-user", {
-        body: {
-          login: newUserLogin.trim().toLowerCase(),
-          password: newUserPassword,
-          display_name: newUserName.trim(),
-          role: newUserRole,
-        },
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_create_user", {
+        p_login:        newUserLogin.trim().toLowerCase(),
+        p_password:     newUserPassword,
+        p_display_name: newUserName.trim(),
+        p_role:         newUserRole,
       });
-      if (errorMsg) {
-        toast.error("Erro ao criar conta: " + errorMsg);
+      const errMsg = rpcErr?.message ?? (rpcData as {error?: string} | null)?.error ?? null;
+      if (errMsg) {
+        toast.error("Erro ao criar conta: " + errMsg);
       } else {
         toast.success("Conta criada!");
         setCreateDialog(false);
