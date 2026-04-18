@@ -42,7 +42,12 @@ export interface LoteSummary {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function sanitize(raw: string): string {
-  return raw.trim().slice(0, 200).replace(/[(),]/g, "").replace(/[%_\\]/g, "\\$&");
+  return raw
+    .trim()
+    .slice(0, 200)
+    .replace(/[\u0000-\u001F\u007F]/g, "")   // strip control chars
+    .replace(/[(),;'"\`]/g, "")                  // strip SQL meta chars
+    .replace(/[%_\\]/g, "\\$&");              // escape LIKE wildcards
 }
 
 // ─── Hook principal de estoque ────────────────────────────────────────────────
@@ -301,6 +306,20 @@ export async function cancelMovement(
   type: "entrada" | "saida",
   quantity: number
 ): Promise<{ ok: boolean; error?: string }> {
+  // SECURITY: verifica que o movimento realmente pertence ao stock_item informado
+  // (previne IDOR — alguém passando um movementId de outro item)
+  const { data: mv } = await supabase
+    .from("stock_movements")
+    .select("stock_item_id, type, quantity")
+    .eq("id", movementId)
+    .maybeSingle();
+
+  if (!mv) return { ok: false, error: "Movimento não encontrado." };
+  if (mv.stock_item_id !== stockItemId) return { ok: false, error: "Movimento não pertence a este item." };
+  // Usa os valores do banco, não os passados pelo cliente
+  type = mv.type as "entrada" | "saida";
+  quantity = mv.quantity;
+
   // Busca qty atual
   const { data: item } = await supabase
     .from("stock_items")

@@ -7,6 +7,7 @@ import {
   useContext,
   type ReactNode,
 } from "react";
+import { useNavigate as useRouterNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 
@@ -178,6 +179,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, [fetchRoleAndApproval]);
+
+  // SECURITY: Realtime polling — detecta bloqueio pelo admin enquanto o usuário está ativo.
+  // Usa polling a cada 30s em vez de Supabase Realtime para evitar expor a tabela profiles
+  // via websocket sem RLS adequado no canal realtime.
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("blocked, approved")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (data?.blocked === true && !blocked) {
+          // Admin bloqueou enquanto o usuário estava ativo
+          setBlocked(true);
+          setApproved(false);
+          // Força signout imediato
+          await supabase.auth.signOut();
+        }
+      } catch {
+        // Silencioso — não interrompe fluxo normal
+      }
+    };
+
+    const interval = setInterval(poll, 30_000); // a cada 30 segundos
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user?.id, blocked]);
 
   const clearLocalState = useCallback(() => {
     setUser(null);

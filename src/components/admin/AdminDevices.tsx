@@ -274,9 +274,29 @@ export function AdminDevices() {
     setSaving(true);
     try {
       if (isNew) {
-        const { error } = await supabase.from("devices").insert(parseResult.data as TablesInsert<"devices">);
+        const { data: newDevice, error } = await supabase
+          .from("devices")
+          .insert(parseResult.data as TablesInsert<"devices">)
+          .select("id")
+          .single();
         if (error) { console.error("Device insert error:", error); toast.error("Erro ao criar o dispositivo."); }
-        else { toast.success("Dispositivo criado"); setEditDevice(null); fetchDevices(debouncedSearch, page); }
+        else {
+          // Adiciona automaticamente ao controle de estoque com quantidade 0
+          if (newDevice?.id) {
+            await supabase.from("stock_items").insert({
+              device_id: newDevice.id,
+              quantity: 0,
+              min_quantity: 0,
+            }).then(({ error: sErr }) => {
+              if (sErr && !sErr.message.includes("duplicate")) {
+                console.warn("Auto stock insert warning:", sErr.message);
+              }
+            });
+          }
+          toast.success("Dispositivo criado e adicionado ao estoque");
+          setEditDevice(null);
+          fetchDevices(debouncedSearch, page);
+        }
       } else {
         const { id } = editDevice as Device;
         const { id: _omittedId, ...updates } = parseResult.data as TablesInsert<"devices"> & { id?: string };

@@ -59,7 +59,7 @@ export default function PendingApproval() {
             <div className="space-y-2">
               <h1 className="text-lg font-semibold text-destructive">Acesso Bloqueado</h1>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                O acesso da conta <strong>{user?.email}</strong> foi bloqueado pelo administrador.
+                O seu acesso foi bloqueado pelo administrador.
               </p>
               <p className="text-xs text-muted-foreground/70">
                 Entre em contato com o suporte para mais informações.
@@ -96,7 +96,7 @@ export default function PendingApproval() {
           <div className="space-y-2">
             <h1 className="text-lg font-semibold">Aguardando Aprovação</h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Sua conta <strong>{user?.email}</strong> foi criada com sucesso.
+              A sua conta foi criada com sucesso.
             </p>
             <p className="text-xs text-muted-foreground/70">
               Você receberá acesso assim que o administrador aprovar seu cadastro.

@@ -276,7 +276,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
                 value={qty}
                 onChange={(e) => {
                   const raw = e.target.value.replace(/\D/g, "");
-                  setQty(raw === "" ? "" : Math.max(1, parseInt(raw)));
+                  setQty(raw === "" ? "" : Math.min(Math.max(1, parseInt(raw)), 999_999));
                 }}
                 onFocus={() => setQty("")}
                 onBlur={() => { if (qty === "") setQty(1); }}
@@ -284,7 +284,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
               />
               <Button type="button" variant="outline" size="icon"
                 className="h-10 w-10 shrink-0 rounded-xl"
-                onClick={() => setQty((q) => (q === "" ? 1 : q) + 1)}>
+                onClick={() => setQty((q) => Math.min((q === "" ? 1 : q) + 1, 999_999))}>
                 <Plus className="h-3.5 w-3.5" />
               </Button>
             </div>

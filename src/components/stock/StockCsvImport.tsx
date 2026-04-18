@@ -197,14 +197,14 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
         if (idx.model     !== undefined) row.model        = cells[idx.model]     ?? "";
         if (idx.quantity  !== undefined) {
           const n = parseInt(cells[idx.quantity] ?? "0");
-          row.quantity = isNaN(n) ? 0 : Math.max(0, n);
+          row.quantity = isNaN(n) ? 0 : Math.min(Math.max(0, n), 999_999);
         }
         if (idx.min_quantity !== undefined) {
           const n = parseInt(cells[idx.min_quantity] ?? "0");
-          row.min_quantity = isNaN(n) ? 0 : Math.max(0, n);
+          row.min_quantity = isNaN(n) ? 0 : Math.min(Math.max(0, n), 999_999);
         }
-        if (idx.location !== undefined) row.location = cells[idx.location] ?? "";
-        if (idx.notes    !== undefined) row.notes    = cells[idx.notes]    ?? "";
+        if (idx.location !== undefined) row.location = (cells[idx.location] ?? "").slice(0, 200).replace(/[<>"']/g, "");
+        if (idx.notes    !== undefined) row.notes    = (cells[idx.notes] ?? "").slice(0, 500).replace(/[<>"']/g, "");
         rows.push(row);
       }
 
