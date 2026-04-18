@@ -28,6 +28,84 @@ interface UserProfile {
   must_change_password: boolean;
 }
 
+// ── Validação de senha forte ─────────────────────────────────────────────────
+function validatePassword(pwd: string): string | null {
+  if (pwd.length < 8)           return "Senha muito curta — mínimo 8 caracteres.";
+  if (pwd.length > 72)          return "Senha longa demais — máximo 72 caracteres.";
+  if (!/[A-Z]/.test(pwd))       return "Precisa de ao menos 1 letra maiúscula.";
+  if (!/[a-z]/.test(pwd))       return "Precisa de ao menos 1 letra minúscula.";
+  if (!/[0-9]/.test(pwd))       return "Precisa de ao menos 1 número.";
+  if (!/[^A-Za-z0-9]/.test(pwd))return "Precisa de ao menos 1 caractere especial (!@#$%...).";
+  return null;
+}
+
+function passwordStrength(pwd: string): { score: number; label: string; color: string } {
+  let score = 0;
+  if (pwd.length >= 8)  score++;
+  if (pwd.length >= 12) score++;
+  if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
+  if (/[0-9]/.test(pwd)) score++;
+  if (/[^A-Za-z0-9]/.test(pwd)) score++;
+  const levels = [
+    { label: "",         color: "" },
+    { label: "Muito fraca", color: "bg-destructive" },
+    { label: "Fraca",    color: "bg-orange-400" },
+    { label: "Razoável", color: "bg-warning" },
+    { label: "Boa",      color: "bg-success" },
+    { label: "Forte",    color: "bg-success" },
+  ];
+  return { score, ...levels[score] };
+}
+
+function PasswordStrengthInput({
+  value, onChange,
+}: { value: string; onChange: (v: string) => void }) {
+  const [show, setShow] = useState(false);
+  const strength = value ? passwordStrength(value) : null;
+  const err = value.length > 0 ? validatePassword(value) : null;
+  return (
+    <div className="space-y-1.5">
+      <div className="relative">
+        <Input
+          type={show ? "text" : "password"}
+          placeholder="Crie uma senha segura"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          maxLength={72}
+          autoComplete="new-password"
+          className="pr-10"
+        />
+        <button
+          type="button"
+          onClick={() => setShow(s => !s)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground"
+        >
+          {show
+            ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
+        </button>
+      </div>
+      {strength && strength.score > 0 && (
+        <div className="space-y-1">
+          <div className="flex gap-1">
+            {[1,2,3,4,5].map(i => (
+              <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= strength.score ? strength.color : "bg-muted"}`} />
+            ))}
+          </div>
+          <p className={`text-[10px] font-medium ${err ? "text-destructive" : "text-muted-foreground"}`}>
+            {err ?? strength.label}
+          </p>
+        </div>
+      )}
+      {value.length === 0 && (
+        <p className="text-[10px] text-muted-foreground/60">
+          Mín. 8 chars · maiúscula · minúscula · número · especial
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function AdminUsers() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,7 +236,7 @@ export function AdminUsers() {
       if (errorMsg) {
         toast.error("Erro ao redefinir senha: " + errorMsg);
       } else {
-        toast.success(`Senha de ${passwordDialog.display_name || passwordDialog.email} alterada`);
+        toast.success(`Senha de ${passwordDialog.display_name ?? passwordDialog.login ?? "usuário"} redefinida`);
         setPasswordDialog(null);
         setNewPassword("");
       }
@@ -185,15 +263,16 @@ export function AdminUsers() {
   };
 
   const createUser = async () => {
-    if (!newUserLogin.trim() || !newUserName.trim() || newUserPassword.length < 6) {
-      toast.error("Preencha todos os campos. Senha: mínimo 8 caracteres."); return;
+    if (!newUserLogin.trim() || !newUserName.trim() || !newUserPassword) {
+      toast.error("Preencha todos os campos."); return;
     }
-    if (newUserPassword.length > 72) { toast.error("Senha máximo 72 caracteres."); return; }
+    const pwErr = validatePassword(newUserPassword);
+    if (pwErr) { toast.error(pwErr); return; }
     setCreatingUser(true);
     try {
       const { errorMsg } = await invokeWithAuth("admin-create-user", {
         body: {
-          email: newUserEmail.trim().toLowerCase(),
+          login: newUserLogin.trim().toLowerCase(),
           password: newUserPassword,
           display_name: newUserName.trim(),
           role: newUserRole,
@@ -204,7 +283,7 @@ export function AdminUsers() {
       } else {
         toast.success("Conta criada!");
         setCreateDialog(false);
-        setNewUserEmail(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("client");
+        setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("client");
         fetchUsers();
       }
     } finally {
@@ -230,18 +309,18 @@ export function AdminUsers() {
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Criar Conta de Usuário</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Conta criada já aprovada, sem confirmação de email.</p>
+            <p className="text-sm text-muted-foreground">Conta criada já aprovada. O usuário definirá sua senha no primeiro acesso.</p>
             <div className="space-y-2">
               <Label>Nome completo *</Label>
               <Input placeholder="Nome" value={newUserName} onChange={e => setNewUserName(e.target.value)} maxLength={100} />
             </div>
             <div className="space-y-2">
-              <Label>Email *</Label>
+              <Label>Login *</Label>
               <Input type="text" placeholder="ex: joao.silva" value={newUserLogin} onChange={e => setNewUserLogin(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,""))} autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label>Senha * (mínimo 8 caracteres)</Label>
-              <Input type="password" placeholder="Senha inicial" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} minLength={8} maxLength={72} />
+              <Label>Senha inicial *</Label>
+              <PasswordStrengthInput value={newUserPassword} onChange={setNewUserPassword} />
             </div>
             <div className="space-y-2">
               <Label>Perfil</Label>
@@ -255,7 +334,7 @@ export function AdminUsers() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setCreateDialog(false)}>Cancelar</Button>
-              <Button onClick={createUser} disabled={creatingUser || !newUserLogin.trim() || !newUserName.trim() || newUserPassword.length < 6}>
+              <Button onClick={createUser} disabled={creatingUser || !newUserLogin.trim() || !newUserName.trim() || !!validatePassword(newUserPassword)}>
                 {creatingUser ? "Criando..." : "Criar Conta"}
               </Button>
             </div>
@@ -326,9 +405,9 @@ export function AdminUsers() {
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Bloquear acesso de {u.display_name || u.email}?</AlertDialogTitle>
+                              <AlertDialogTitle>Bloquear acesso de {u.display_name ?? u.login ?? "usuário"}?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                O email <strong>{u.login ?? u.email?.split("@")[0] ?? "—"}</strong> será bloqueado imediatamente.
+                                O login <strong>{u.login ?? "usuário"}</strong> será bloqueado imediatamente.
                                 O usuário verá uma mensagem de "Acesso Bloqueado" ao tentar entrar e não conseguirá acessar o sistema até que um administrador o desbloqueie.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
@@ -359,7 +438,7 @@ export function AdminUsers() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Excluir conta de {u.display_name || u.email}?</AlertDialogTitle>
+                            <AlertDialogTitle>Excluir conta de {u.display_name ?? u.login ?? "usuário"}?</AlertDialogTitle>
                             <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -385,7 +464,7 @@ export function AdminUsers() {
           <DialogHeader><DialogTitle>Alterar senha</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Nova senha para <strong>{passwordDialog?.display_name || passwordDialog?.email}</strong>
+              Nova senha para <strong>{passwordDialog?.display_name ?? passwordDialog?.login ?? "usuário"}</strong>
             </p>
             <div className="space-y-2">
               <Label>Nova senha</Label>
