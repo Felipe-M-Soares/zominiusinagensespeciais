@@ -1,4 +1,9 @@
 -- ============================================================
+-- PASSO 1: Ativa a extensão pgcrypto (necessária para crypt/gen_salt)
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- ============================================================
 -- Funções SQL que substituem todas as Edge Functions do admin
 -- Cole este arquivo inteiro no SQL Editor do Supabase e clique Run
 -- ============================================================
@@ -16,7 +21,7 @@ CREATE OR REPLACE FUNCTION public.admin_create_user(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER          -- roda como o dono da função (postgres) com acesso à auth schema
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_caller_id   uuid := auth.uid();
@@ -66,7 +71,7 @@ BEGIN
   END IF;
 
   -- 6. Define role válido
-  v_valid_role := CASE WHEN p_role = 'admin' THEN 'admin' ELSE 'client' END;
+  v_valid_role := CASE WHEN p_role = 'admin' THEN 'admin' ELSE 'client' END; -- cast happens at insert
 
   -- 7. Gera email interno
   v_email := v_clean_login || '@interno.conceptus';
@@ -92,7 +97,7 @@ BEGIN
     gen_random_uuid(),
     '00000000-0000-0000-0000-000000000000',
     v_email,
-    crypt(p_password, gen_salt('bf')),
+    extensions.crypt(p_password, extensions.gen_salt('bf')),
     now(),
     jsonb_build_object('display_name', trim(p_display_name)),
     jsonb_build_object('provider', 'email', 'providers', ARRAY['email']),
@@ -123,7 +128,7 @@ BEGIN
 
   -- 10. Role
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (v_new_uid, v_valid_role)
+  VALUES (v_new_uid, v_valid_role::public.app_role)
   ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
 
   RETURN jsonb_build_object(
@@ -145,7 +150,7 @@ CREATE OR REPLACE FUNCTION public.admin_reset_password(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_caller_id   uuid := auth.uid();
@@ -171,7 +176,7 @@ BEGIN
 
   -- Atualiza senha diretamente em auth.users
   UPDATE auth.users
-     SET encrypted_password = crypt(p_new_password, gen_salt('bf')),
+     SET encrypted_password = extensions.crypt(p_new_password, extensions.gen_salt('bf')),
          updated_at          = now()
    WHERE id = p_target_user_id;
 

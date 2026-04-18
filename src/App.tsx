@@ -14,6 +14,7 @@ import SettingsPage from "./pages/Settings";
 import Contacts from "./pages/Contacts";
 import Manuals from "./pages/Manuals";
 import Estoque from "./pages/Estoque";
+import SetPassword from "./pages/SetPassword";
 import PendingApproval from "./pages/PendingApproval";
 import NotFound from "./pages/NotFound";
 
@@ -92,6 +93,7 @@ const App = () => (
             <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
             <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/set-password" element={<SetPassword />} />
             <Route path="/pending-approval" element={<PendingApprovalRoute />} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
