@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ArrowDownCircle, ArrowUpCircle, Clock, Trash2, AlertTriangle, User } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, Clock, Trash2, AlertTriangle, User, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -104,6 +104,11 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
                     </span>
                     <span className="text-[10px] text-muted-foreground shrink-0">{fmtDate(mv.created_at)}</span>
                   </div>
+                  {mv.lote && (
+                    <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-primary/80 mt-0.5">
+                      <Tag className="h-2.5 w-2.5" />Lote {mv.lote}
+                    </p>
+                  )}
                   {mv.reason && (
                     <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{mv.reason}</p>
                   )}

@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowDownCircle, ArrowUpCircle, History, User, RefreshCw } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, History, User, RefreshCw, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
@@ -108,6 +108,13 @@ export function AllMovementsModal({ open, onClose }: Props) {
                     {mv.device_model}
                   </p>
                   <p className="text-[10px] text-muted-foreground font-mono">{mv.device_reference}</p>
+
+                  {/* Lote */}
+                  {mv.lote && (
+                    <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-primary/80">
+                      <Tag className="h-2.5 w-2.5" />Lote {mv.lote}
+                    </p>
+                  )}
 
                   {/* Motivo */}
                   {mv.reason && (

@@ -23,6 +23,7 @@ export interface StockMovement {
   type: "entrada" | "saida";
   quantity: number;
   reason: string | null;
+  lote: string | null;
   user_id: string | null;
   user_display_name: string | null;
   created_at: string;
@@ -131,7 +132,7 @@ export function useStockMovements(stockItemId: string | null) {
     setLoading(true);
     const { data } = await supabase
       .from("stock_movements")
-      .select("*")
+      .select("id, stock_item_id, type, quantity, reason, lote, user_id, user_display_name, created_at")
       .eq("stock_item_id", id)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -186,7 +187,8 @@ export async function registerMovement(
   quantity: number,
   reason: string,
   userId: string | null,
-  userDisplayName?: string | null
+  userDisplayName?: string | null,
+  lote?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   // Busca quantidade atual
   const { data: item } = await supabase
@@ -210,6 +212,7 @@ export async function registerMovement(
     type,
     quantity,
     reason: reason || null,
+    lote: lote?.trim() || null,
     user_id: userId,
     user_display_name: userDisplayName ?? null,
   });
@@ -401,6 +404,7 @@ export interface AllMovement {
   type: "entrada" | "saida";
   quantity: number;
   reason: string | null;
+  lote: string | null;
   user_display_name: string | null;
   created_at: string;
   device_model: string;
@@ -411,7 +415,7 @@ export async function fetchAllMovements(limit = 100): Promise<AllMovement[]> {
   const { data } = await supabase
     .from("stock_movements")
     .select(`
-      id, stock_item_id, type, quantity, reason, user_display_name, created_at,
+      id, stock_item_id, type, quantity, reason, lote, user_display_name, created_at,
       stock_item:stock_items(
         device:devices(model, reference)
       )
@@ -429,6 +433,7 @@ export async function fetchAllMovements(limit = 100): Promise<AllMovement[]> {
       type: row.type as "entrada" | "saida",
       quantity: row.quantity as number,
       reason: row.reason as string | null,
+      lote: row.lote as string | null,
       user_display_name: row.user_display_name as string | null,
       created_at: row.created_at as string,
       device_model: (d?.model as string) ?? "—",
