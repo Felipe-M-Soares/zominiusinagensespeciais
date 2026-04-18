@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useStock } from "@/hooks/useStock";
@@ -24,14 +24,17 @@ import {
   Trash2,
   History,
   DatabaseBackup,
+  Tag,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
 import { AddToStockModal } from "@/components/stock/AddToStockModal";
 import { StockListModal } from "@/components/stock/StockListModal";
+import { LotesPanel } from "@/components/stock/LotesPanel";
 import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { BackupPanel } from "@/components/stock/BackupPanel";
-import { deleteStockItem } from "@/hooks/useStock";
+import { deleteStockItem, fetchLotesSummary } from "@/hooks/useStock";
+import type { LoteSummary } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 
 // ─── Componente de card de item do estoque ────────────────────────────────────
@@ -41,9 +44,11 @@ interface StockCardProps {
   onMovement: (item: StockItem, type: "entrada" | "saida") => void;
   onHistory: (item: StockItem) => void;
   onDelete: (item: StockItem) => void;
+  onLotes: (item: StockItem) => void;
+  loteCount: number;
 }
 
-function StockCard({ item, onMovement, onHistory, onDelete }: StockCardProps) {
+function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount }: StockCardProps) {
   const d = item.device;
   const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
   const isEmpty = item.quantity === 0;
@@ -125,6 +130,19 @@ function StockCard({ item, onMovement, onHistory, onDelete }: StockCardProps) {
           </div>
         </div>
 
+        {/* Lotes registrados */}
+        {loteCount > 0 && (
+          <button
+            type="button"
+            onClick={() => onLotes(item)}
+            className="flex items-center gap-1.5 text-[11px] text-primary/70 hover:text-primary transition-colors -mt-1"
+          >
+            <Tag className="h-3 w-3" />
+            <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""} registrado{loteCount > 1 ? "s" : ""}</span>
+            <span className="text-muted-foreground/40">→</span>
+          </button>
+        )}
+
         {/* Min e localização */}
         <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
           <span>Mín: {item.min_quantity} un.</span>
@@ -161,6 +179,14 @@ function StockCard({ item, onMovement, onHistory, onDelete }: StockCardProps) {
           </button>
           <button
             type="button"
+            onClick={() => onLotes(item)}
+            className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors"
+            title="Lotes"
+          >
+            <Tag className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
             onClick={() => onDelete(item)}
             className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
             title="Remover peça do estoque"
@@ -194,8 +220,24 @@ export default function Estoque() {
   const [backupOpen, setBackupOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [lotesItem, setLotesItem] = useState<StockItem | null>(null);
 
   const { items, totalCount, loading, error, refetch } = useStock(querySearch);
+  const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
+
+  // Carrega contagem de lotes para cada item
+  useEffect(() => {
+    if (items.length === 0) { setLotesSummary(new Map()); return; }
+    (async () => {
+      const entries = await Promise.all(
+        items.map(async (item) => {
+          const lotes = await fetchLotesSummary(item.id);
+          return [item.id, lotes.length] as [string, number];
+        })
+      );
+      setLotesSummary(new Map(entries));
+    })();
+  }, [items]);
 
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
@@ -335,6 +377,14 @@ export default function Estoque() {
             </Button>
           </div>
 
+          {/* Dica de busca por lote */}
+          {/^\d{6}/.test(search.trim()) && (
+            <p className="text-[11px] text-primary/70 flex items-center gap-1.5">
+              <Tag className="h-3 w-3" />
+              Pesquisando por lote — formato: <span className="font-mono font-semibold">DDMMAA-TT</span> ou <span className="font-mono font-semibold">DDMMAA-TT/A</span>
+            </p>
+          )}
+
           {/* Resumo */}
           {!loading && (
             <div className="flex flex-wrap items-center gap-3">
@@ -406,6 +456,8 @@ export default function Estoque() {
                 onMovement={(item, type) => setMovementState({ item, type })}
                 onHistory={setHistoryItem}
                 onDelete={setDeleteItem}
+                onLotes={setLotesItem}
+                loteCount={lotesSummary.get(item.id) ?? 0}
               />
             ))}
           </div>
@@ -443,6 +495,11 @@ export default function Estoque() {
       <BackupPanel
         open={backupOpen}
         onClose={() => setBackupOpen(false)}
+      />
+      <LotesPanel
+        item={lotesItem}
+        open={!!lotesItem}
+        onClose={() => setLotesItem(null)}
       />
       {/* Confirmação de exclusão de peça */}
       {deleteItem && (

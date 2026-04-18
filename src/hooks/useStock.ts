@@ -29,6 +29,16 @@ export interface StockMovement {
   created_at: string;
 }
 
+
+// ─── Resumo de lotes de uma peça ─────────────────────────────────────────────
+export interface LoteSummary {
+  lote: string;
+  total_entrada: number;
+  total_saida: number;
+  saldo: number;         // entradas - saídas
+  last_movement: string; // ISO date
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function sanitize(raw: string): string {
@@ -69,29 +79,49 @@ export function useStock(search: string) {
 
       const s = sanitize(q);
       if (s) {
-        // Filtra via devices relacionado — usa subquery via in
-        const { data: matched } = await supabase
-          .from("devices")
-          .select("id")
-          .or(
-            [
-              `model.ilike.%${s}%`,
-              `reference.ilike.%${s}%`,
-              `udi_di.ilike.%${s}%`,
-              `internal_code.ilike.%${s}%`,
-              `anvisa_registration.ilike.%${s}%`,
-              `brand_name.ilike.%${s}%`,
-            ].join(",")
-          );
+        // Detecta se é busca por lote (padrão: DDMMAA-TT ou DDMMAA-TT/X)
+        const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase());
 
-        if (!matched || matched.length === 0) {
-          setItems([]);
-          setTotalCount(0);
-          setLoading(false);
-          return;
+        if (isLoteSearch) {
+          // Busca stock_item_ids que têm movimentos com este lote
+          const { data: loteMov } = await supabase
+            .from("stock_movements")
+            .select("stock_item_id")
+            .ilike("lote", s.toUpperCase());
+
+          if (!loteMov || loteMov.length === 0) {
+            setItems([]);
+            setTotalCount(0);
+            setLoading(false);
+            return;
+          }
+          const itemIds = [...new Set(loteMov.map((m) => m.stock_item_id))];
+          query = query.in("id", itemIds);
+        } else {
+          // Busca normal por modelo/referência/UDI
+          const { data: matched } = await supabase
+            .from("devices")
+            .select("id")
+            .or(
+              [
+                `model.ilike.%${s}%`,
+                `reference.ilike.%${s}%`,
+                `udi_di.ilike.%${s}%`,
+                `internal_code.ilike.%${s}%`,
+                `anvisa_registration.ilike.%${s}%`,
+                `brand_name.ilike.%${s}%`,
+              ].join(",")
+            );
+
+          if (!matched || matched.length === 0) {
+            setItems([]);
+            setTotalCount(0);
+            setLoading(false);
+            return;
+          }
+          const ids = matched.map((d) => d.id);
+          query = query.in("device_id", ids);
         }
-        const ids = matched.map((d) => d.id);
-        query = query.in("device_id", ids);
       }
 
       const { data, count, error: err } = await query;
@@ -236,6 +266,34 @@ export async function addDeviceToStock(deviceId: string): Promise<{ ok: boolean;
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+
+// ─── Lotes de um item de estoque ─────────────────────────────────────────────
+export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummary[]> {
+  const { data } = await supabase
+    .from("stock_movements")
+    .select("lote, type, quantity, created_at")
+    .eq("stock_item_id", stockItemId)
+    .not("lote", "is", null)
+    .order("created_at", { ascending: false });
+
+  if (!data || data.length === 0) return [];
+
+  // Agrupa por lote
+  const map = new Map<string, LoteSummary>();
+  for (const row of data as { lote: string; type: string; quantity: number; created_at: string }[]) {
+    const key = row.lote.toUpperCase();
+    if (!map.has(key)) {
+      map.set(key, { lote: key, total_entrada: 0, total_saida: 0, saldo: 0, last_movement: row.created_at });
+    }
+    const entry = map.get(key)!;
+    if (row.type === "entrada") entry.total_entrada += row.quantity;
+    else entry.total_saida += row.quantity;
+    entry.saldo = entry.total_entrada - entry.total_saida;
+    if (row.created_at > entry.last_movement) entry.last_movement = row.created_at;
+  }
+
+  return [...map.values()].sort((a, b) => b.last_movement.localeCompare(a.last_movement));
+}
 /** Cancela (desfaz) um movimento: reverte a qty e deleta o registro */
 export async function cancelMovement(
   movementId: string,
