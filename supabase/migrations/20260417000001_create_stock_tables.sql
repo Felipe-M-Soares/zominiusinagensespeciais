@@ -35,54 +35,63 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_stock_items_updated_at ON public.stock_items;
 CREATE TRIGGER trg_stock_items_updated_at
   BEFORE UPDATE ON public.stock_items
   FOR EACH ROW EXECUTE FUNCTION public.touch_stock_items_updated_at();
 
 -- RLS
-ALTER TABLE public.stock_items    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock_items     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_movements ENABLE ROW LEVEL SECURITY;
 
--- Políticas: usuários aprovados leem; admins escrevem
--- (reusa a lógica de approved/blocked do sistema existente)
+-- ── Helper: verifica se o usuário autenticado é admin ──────────────────────
+-- Usa a tabela user_roles com enum app_role ('admin' | 'client')
+CREATE OR REPLACE FUNCTION public.is_admin_user()
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = auth.uid()
+      AND role = 'admin'
+  );
+$$;
 
--- stock_items: leitura para aprovados
+-- ── Helper: verifica se o usuário é aprovado e não bloqueado ───────────────
+CREATE OR REPLACE FUNCTION public.is_approved_user()
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE user_id = auth.uid()
+      AND approved = true
+  );
+$$;
+
+-- ── Políticas: stock_items ─────────────────────────────────────────────────
+
+DROP POLICY IF EXISTS "stock_items_select"      ON public.stock_items;
+DROP POLICY IF EXISTS "stock_items_write_admin" ON public.stock_items;
+
+-- Leitura: qualquer usuário aprovado
 CREATE POLICY "stock_items_select" ON public.stock_items
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND approved = true AND (blocked IS NULL OR blocked = false)
-    )
-  );
+  FOR SELECT USING (public.is_approved_user());
 
--- stock_items: insert/update/delete para admins
+-- Escrita (insert/update/delete): apenas admins
 CREATE POLICY "stock_items_write_admin" ON public.stock_items
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND is_admin = true AND approved = true
-    )
-  );
+  FOR ALL USING (public.is_admin_user());
 
--- stock_movements: leitura para aprovados
+-- ── Políticas: stock_movements ─────────────────────────────────────────────
+
+DROP POLICY IF EXISTS "stock_movements_select" ON public.stock_movements;
+DROP POLICY IF EXISTS "stock_movements_insert" ON public.stock_movements;
+
+-- Leitura: qualquer aprovado
 CREATE POLICY "stock_movements_select" ON public.stock_movements
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND approved = true AND (blocked IS NULL OR blocked = false)
-    )
-  );
+  FOR SELECT USING (public.is_approved_user());
 
--- stock_movements: qualquer aprovado pode registrar movimentos
+-- Inserção: qualquer aprovado pode registrar movimentos
 CREATE POLICY "stock_movements_insert" ON public.stock_movements
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND approved = true AND (blocked IS NULL OR blocked = false)
-    )
-  );
+  FOR INSERT WITH CHECK (public.is_approved_user());
 
--- Índices de performance
-CREATE INDEX IF NOT EXISTS idx_stock_items_device_id    ON public.stock_items(device_id);
-CREATE INDEX IF NOT EXISTS idx_stock_movements_item_id  ON public.stock_movements(stock_item_id);
-CREATE INDEX IF NOT EXISTS idx_stock_movements_created  ON public.stock_movements(created_at DESC);
+-- ── Índices de performance ─────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_stock_items_device_id   ON public.stock_items(device_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_item_id ON public.stock_movements(stock_item_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON public.stock_movements(created_at DESC);
