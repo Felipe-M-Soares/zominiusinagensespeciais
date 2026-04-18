@@ -76,7 +76,7 @@ export default function Login() {
             <div>
               <p className="text-sm font-semibold text-red-700 dark:text-red-300">Acesso Bloqueado</p>
               <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
-                Seu acesso foi bloqueado pelo administrador. Entre em contato para regularizar sua conta.
+                Seu acesso foi bloqueado pelo administrador. Entre em contato para regularizar sua situação.
               </p>
             </div>
           </div>

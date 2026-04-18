@@ -18,7 +18,6 @@ import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus, ShieldX, ShieldCheck 
 interface UserProfile {
   user_id: string;
   display_name: string | null;
-  email: string | null;
   login: string | null;
   created_at: string;
   role: "admin" | "client";
@@ -143,7 +142,6 @@ export function AdminUsers() {
       setUsers((profiles ?? []).map(p => ({
         user_id: p.user_id,
         display_name: p.display_name,
-        email: p.email,
         login: (p as { login?: string | null }).login ?? null,
         created_at: p.created_at,
         role: (roleMap.get(p.user_id) as "admin" | "client") ?? "client",
@@ -185,7 +183,7 @@ export function AdminUsers() {
   // REVOGAR: bloqueia o email do usuário (blocked=true + approved=false)
   // A sessão ativa é invalidada via Edge Function admin-reset-password com senha aleatória,
   // forçando logout imediato. Usuário vê mensagem de bloqueio ao tentar logar novamente.
-  const revokeAccess = async (userId: string, userEmail: string | null) => {
+  const revokeAccess = async (userId: string, userLogin: string | null) => {
     try {
       // 1. Marca como bloqueado E não aprovado no banco
       const { error: profileErr } = await supabase
@@ -206,7 +204,7 @@ export function AdminUsers() {
       });
 
       toast.success(
-        `Acesso de ${userEmail ?? "usuário"} bloqueado. Ele não conseguirá mais entrar no sistema.`
+        `Acesso de ${userLogin ?? "usuário"} bloqueado.`
       );
       fetchUsers();
     } catch (err) {
@@ -358,7 +356,7 @@ export function AdminUsers() {
               return (
                 <TableRow key={u.user_id}>
                   <TableCell className="font-medium">{u.display_name ?? "—"}</TableCell>
-                  <TableCell className="text-sm">{u.login ?? u.email?.split("@")[0] ?? "—"}</TableCell>
+                  <TableCell className="text-sm">{u.login ?? "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{new Date(u.created_at).toLocaleDateString("pt-BR")}</TableCell>
                   <TableCell>
                     {u.blocked
@@ -394,7 +392,7 @@ export function AdminUsers() {
                         </Button>
                       )}
 
-                      {/* Usuário aprovado e não bloqueado: botão Revogar (bloqueia o email) */}
+                      {/* Usuário aprovado e não bloqueado: botão Revogar */}
                       {u.approved && !u.blocked && !isSelf && u.role !== "admin" && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -413,7 +411,7 @@ export function AdminUsers() {
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancelar</AlertDialogCancel>
                               <AlertDialogAction
-                                onClick={() => revokeAccess(u.user_id, u.email)}
+                                onClick={() => revokeAccess(u.user_id, u.login)}
                                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                                 Bloquear Acesso
                               </AlertDialogAction>

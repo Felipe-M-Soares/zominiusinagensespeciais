@@ -31,7 +31,6 @@ export function LotesPanel({ item, open, onClose }: Props) {
   useEffect(() => {
     if (open && item) load(item.id);
     else setLotes([]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item]);
 
   if (!item) return null;

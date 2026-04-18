@@ -6,9 +6,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
-import Register from "./pages/Register";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
 import Admin from "./pages/Admin";
 import SettingsPage from "./pages/Settings";
 import Contacts from "./pages/Contacts";
@@ -90,9 +87,6 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-            <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
-            <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
-            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/set-password" element={<SetPassword />} />
             <Route path="/pending-approval" element={<PendingApprovalRoute />} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />

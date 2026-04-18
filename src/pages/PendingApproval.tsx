@@ -4,15 +4,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
-import { Clock, LogOut, Loader2, ShieldOff } from "lucide-react";
-
-const POLL_INTERVAL_MS = 5_000;
+import { Clock, LogOut, ShieldOff } from "lucide-react";
 
 export default function PendingApproval() {
   const { signOut, user, refreshApproval, approved, blocked } = useAuth();
   const navigate = useNavigate();
   const navigatedRef = useRef(false);
-  const [checking, setChecking] = useState(false);
 
   // Quando aprovado, redireciona
   useEffect(() => {
@@ -24,24 +21,14 @@ export default function PendingApproval() {
 
   const checkApproval = useCallback(async () => {
     if (!user?.id || navigatedRef.current) return;
-    setChecking(true);
     try {
       await refreshApproval();
     } catch (err) {
       console.error("checkApproval error:", err);
-    } finally {
-      setChecking(false);
     }
   }, [user?.id, refreshApproval]);
 
-  // Polling enquanto aguarda aprovação
-  useEffect(() => {
-    if (blocked) return; // não faz polling se estiver bloqueado
-    const interval = setInterval(() => {
-      if (!navigatedRef.current) checkApproval();
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [checkApproval, blocked]);
+
 
   // ── TELA DE BLOQUEADO ──────────────────────────────────────────────────────
   if (blocked) {
@@ -103,14 +90,7 @@ export default function PendingApproval() {
             </p>
           </div>
 
-          {checking && (
-            <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Verificando status...
-            </p>
-          )}
-
-          <Button
+<Button
             variant="outline"
             size="sm"
             className="w-full text-xs h-8"
