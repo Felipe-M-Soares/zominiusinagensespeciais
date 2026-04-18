@@ -25,12 +25,14 @@ import {
   History,
   DatabaseBackup,
   Tag,
+  FileSpreadsheet,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
 import { AddToStockModal } from "@/components/stock/AddToStockModal";
 import { StockListModal } from "@/components/stock/StockListModal";
 import { LotesPanel } from "@/components/stock/LotesPanel";
+import { StockCsvImport } from "@/components/stock/StockCsvImport";
 import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { BackupPanel } from "@/components/stock/BackupPanel";
 import { deleteStockItem, fetchLotesSummary } from "@/hooks/useStock";
@@ -221,6 +223,7 @@ export default function Estoque() {
   const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [lotesItem, setLotesItem] = useState<StockItem | null>(null);
+  const [csvOpen, setCsvOpen] = useState(false);
 
   const { items, totalCount, loading, error, refetch } = useStock(querySearch);
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
@@ -322,14 +325,26 @@ export default function Estoque() {
               </Button>
             )}
             {isAdmin && (
-              <Button
-                size="sm"
-                className="h-8 gap-1.5 px-3 text-xs rounded-xl"
-                onClick={() => setAddOpen(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Adicionar Peça</span>
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 px-3 text-xs rounded-xl"
+                  onClick={() => setCsvOpen(true)}
+                  title="Importar via CSV"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">CSV</span>
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 gap-1.5 px-3 text-xs rounded-xl"
+                  onClick={() => setAddOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Adicionar Peça</span>
+                </Button>
+              </>
             )}
           </nav>
         </div>
@@ -500,6 +515,11 @@ export default function Estoque() {
         item={lotesItem}
         open={!!lotesItem}
         onClose={() => setLotesItem(null)}
+      />
+      <StockCsvImport
+        open={csvOpen}
+        onClose={() => setCsvOpen(false)}
+        onSuccess={refetch}
       />
       {/* Confirmação de exclusão de peça */}
       {deleteItem && (
