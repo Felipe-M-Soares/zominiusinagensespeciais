@@ -35,11 +35,11 @@ const SAIDA_TYPES = [
 // ─── Validação e formatação do lote ──────────────────────────────────────────
 // Formato padrão:   DDMMAA-TT-NN   ex: 010126-01    (data-turno-numero)
 // Formato com barra: DDMMAA-TT-NN/X  ex: 010126-01/A
-const LOTE_REGEX = /^\d{6}-\d{2}(\/[A-Za-z])?$/;
+const LOTE_REGEX = /^\d{6}-\d{2}([/][A-Za-z])?$/;
 
 function formatLote(raw: string): string {
   // Remove tudo que não é dígito, hífen ou barra+letra
-  let v = raw.toUpperCase().replace(/[^0-9\-\/A-Z]/g, "");
+  let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");
 
   // Auto-insere hífen após 6 dígitos (data)
   if (/^\d{7,}/.test(v)) {
