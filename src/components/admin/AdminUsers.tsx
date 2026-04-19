@@ -185,7 +185,9 @@ export function AdminUsers() {
   // forçando logout imediato. Usuário vê mensagem de bloqueio ao tentar logar novamente.
   const revokeAccess = async (userId: string, userLogin: string | null) => {
     try {
-      // 1. Marca como bloqueado E não aprovado no banco
+      // Marca blocked=true e approved=false no banco.
+      // O polling de 30s em useAuth detecta e faz signOut + mostra tela de bloqueio.
+      // NÃO alteramos a senha — assim o admin pode desbloquear sem precisar redefinir.
       const { error: profileErr } = await supabase
         .from("profiles")
         .update({ approved: false, blocked: true })
@@ -196,16 +198,7 @@ export function AdminUsers() {
         return;
       }
 
-      // 2. Invalida a sessão ativa gerando uma senha aleatória (força logout)
-      const tempPassword = crypto.randomUUID() + crypto.randomUUID();
-      await supabase.rpc("admin_reset_password", {
-        p_target_user_id: userId,
-        p_new_password:   tempPassword,
-      });
-
-      toast.success(
-        `Acesso de ${userLogin ?? "usuário"} bloqueado.`
-      );
+      toast.success(`Acesso de ${userLogin ?? "usuário"} bloqueado.`);
       fetchUsers();
     } catch (err) {
       console.error("revokeAccess error:", err);
@@ -224,18 +217,25 @@ export function AdminUsers() {
 
   const resetPassword = async () => {
     if (!passwordDialog || newPassword.length < 8) return;
-    if (newPassword.length > 72) { toast.error("Senha deve ter no máximo 72 caracteres"); return; }
+    if (newPassword.length > 72) { toast.error("Senha deve ter no máximo 72 caracteres."); return; }
     setResettingPassword(true);
     try {
-      const { errorMsg } = await invokeWithAuth("admin-reset-password", {
-        body: { target_user_id: passwordDialog.user_id, new_password: newPassword },
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_reset_password", {
+        p_target_user_id: passwordDialog.user_id,
+        p_new_password:   newPassword,
       });
-      if (errorMsg) {
-        toast.error("Erro ao redefinir senha: " + errorMsg);
+      const errMsg = rpcErr?.message ?? (rpcData as { error?: string } | null)?.error ?? null;
+      if (errMsg) {
+        toast.error("Erro ao redefinir senha: " + errMsg);
       } else {
-        toast.success(`Senha de ${passwordDialog.display_name ?? passwordDialog.login ?? "usuário"} redefinida`);
+        // Marca must_change_password para o usuário trocar no próximo acesso
+        await supabase.from("profiles")
+          .update({ must_change_password: true })
+          .eq("user_id", passwordDialog.user_id);
+        toast.success(`Senha de ${passwordDialog.display_name ?? passwordDialog.login ?? "usuário"} redefinida. Usuário deverá criar nova senha no próximo acesso.`);
         setPasswordDialog(null);
         setNewPassword("");
+        fetchUsers();
       }
     } finally {
       setResettingPassword(false);

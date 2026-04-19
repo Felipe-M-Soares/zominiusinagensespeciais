@@ -179,12 +179,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (cancelled) return;
 
-        if (data?.blocked === true && !blocked) {
-          // Admin bloqueou enquanto o usuário estava ativo
+        if (data?.blocked === true) {
+          // Admin bloqueou enquanto o usuário estava ativo.
+          // Seta blocked=true PRIMEIRO para mostrar a tela de "Conta Bloqueada"
+          // via PendingApproval. O usuário vê a mensagem e sai manualmente.
           setBlocked(true);
           setApproved(false);
-          // Força signout imediato
-          await supabase.auth.signOut();
+          // Não chamamos signOut() aqui — o usuário vê a tela e clica em "Voltar para o login"
         }
       } catch {
         // Silencioso — não interrompe fluxo normal

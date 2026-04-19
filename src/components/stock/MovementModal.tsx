@@ -8,60 +8,39 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  ArrowDownCircle,
-  ArrowUpCircle,
-  Minus,
-  Plus,
-  Package,
-  Barcode,
-  ShoppingCart,
-  Wrench,
-  Tag,
-  CheckCircle2,
-  XCircle,
+  ArrowDownCircle, ArrowUpCircle, Minus, Plus, Package,
+  Barcode, ShoppingCart, Wrench, Tag, CheckCircle2, XCircle,
+  ChevronDown,
 } from "lucide-react";
-import type { StockItem } from "@/hooks/useStock";
-import { registerMovement } from "@/hooks/useStock";
+import type { StockItem, LoteSummary } from "@/hooks/useStock";
+import { registerMovement, fetchLotesSummary } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-// Tipos de saída
+// ─── Tipos de saída ────────────────────────────────────────────────────────────
 const SAIDA_TYPES = [
   { value: "retirada", label: "Retirada", icon: Wrench },
   { value: "venda",    label: "Venda",    icon: ShoppingCart },
 ] as const;
 
-// ─── Validação e formatação do lote ──────────────────────────────────────────
-// Formato padrão:   DDMMAA-TT-NN   ex: 010126-01    (data-turno-numero)
-// Formato com barra: DDMMAA-TT-NN/X  ex: 010126-01/A
+// ─── Validação do lote (entrada manual) ──────────────────────────────────────
 const LOTE_REGEX = /^\d{6}-\d{2}([/][A-Za-z])?$/;
 
 function formatLote(raw: string): string {
-  // Remove tudo que não é dígito, hífen ou barra+letra
   let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");
-
-  // Auto-insere hífen após 6 dígitos (data)
-  if (/^\d{7,}/.test(v)) {
-    v = v.slice(0, 6) + "-" + v.slice(6);
-  }
-
-  // Após o hífen, auto-insere outro hífen implicitamente (turno tem 2 dígitos)
-  // Ex: 010126-01 → fica pronto; 010126-01/A → ok
-  return v.slice(0, 12); // máx: 010126-01/A = 12 chars
+  if (/^\d{7,}/.test(v)) v = v.slice(0, 6) + "-" + v.slice(6);
+  return v.slice(0, 12);
 }
 
 function loteStatus(lote: string): "empty" | "valid" | "invalid" {
   if (!lote) return "empty";
-  if (LOTE_REGEX.test(lote)) return "valid";
-  return "invalid";
+  return LOTE_REGEX.test(lote) ? "valid" : "invalid";
 }
 
 function loteHint(lote: string): string {
   if (!lote) return "Ex: 010126-01  ou  010126-01/A";
-  const st = loteStatus(lote);
-  if (st === "valid") return "Lote válido ✓";
-  // Hints progressivos
+  if (loteStatus(lote) === "valid") return "Lote válido ✓";
   if (lote.length < 6) return "Digite os 6 dígitos da data (DDMMAA)";
   if (lote.length === 6 && !lote.includes("-")) return "Adicione o hífen após a data";
   if (/^\d{6}-\d$/.test(lote)) return "Digite os 2 dígitos do turno";
@@ -90,7 +69,28 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
   const [lote, setLote]           = useState("");
   const [reason, setReason]       = useState("");
   const [loading, setLoading]     = useState(false);
+
+  // Lotes existentes para seleção na saída
+  const [existingLotes, setExistingLotes] = useState<LoteSummary[]>([]);
+  const [lotesLoading, setLotesLoading]   = useState(false);
+  const [loteDropdownOpen, setLoteDropdownOpen] = useState(false);
+
   const qtyRef = useRef<HTMLInputElement>(null);
+
+  // Carrega lotes existentes quando abre para saída
+  useEffect(() => {
+    if (open && item && type === "saida") {
+      setLotesLoading(true);
+      fetchLotesSummary(item.id).then((data) => {
+        // Só mostra lotes com saldo > 0
+        setExistingLotes(data.filter((l) => l.saldo > 0));
+        setLotesLoading(false);
+      });
+    }
+    if (!open || type === "entrada") {
+      setExistingLotes([]);
+    }
+  }, [open, item, type]);
 
   useEffect(() => {
     if (open) {
@@ -99,6 +99,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
       setQty(1);
       setLote("");
       setReason("");
+      setLoteDropdownOpen(false);
       setTimeout(() => qtyRef.current?.select(), 80);
     }
   }, [open, initialType]);
@@ -109,26 +110,29 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
   const resolvedQty = qty === "" ? 0 : qty;
   const afterQty = type === "entrada" ? item.quantity + resolvedQty : item.quantity - resolvedQty;
   const loteOk = loteStatus(lote);
+  const isSaidaMode = type === "saida";
 
   function buildReason(): string {
-    if (type === "saida") {
+    if (isSaidaMode) {
       const label = SAIDA_TYPES.find(t => t.value === saidaType)?.label ?? "";
       return reason.trim() ? `${label} — ${reason.trim()}` : label;
     }
     return reason.trim();
   }
 
+  function selectExistingLote(l: LoteSummary) {
+    setLote(l.lote);
+    setLoteDropdownOpen(false);
+    // Auto-fill qty with available saldo
+    setQty(l.saldo);
+    setTimeout(() => qtyRef.current?.select(), 50);
+  }
+
   async function handleSubmit() {
     if (!item || resolvedQty < 1) return;
-    // Lote obrigatório
-    if (!lote.trim()) {
-      toast.error("Informe o número do lote.");
-      return;
-    }
-    if (loteOk === "invalid") {
-      toast.error("Lote inválido. Use o formato DDMMAA-TT ou DDMMAA-TT/A");
-      return;
-    }
+    if (!lote.trim()) { toast.error("Informe o número do lote."); return; }
+    if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMAA-TT ou DDMMAA-TT/A"); return; }
+
     setLoading(true);
     const result = await registerMovement(
       item.id, type, resolvedQty, buildReason(),
@@ -182,7 +186,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
           {/* Tipo: Entrada / Saída */}
           <div className="grid grid-cols-2 gap-2">
             {(["entrada", "saida"] as const).map((t) => (
-              <button key={t} type="button" onClick={() => setType(t)}
+              <button key={t} type="button" onClick={() => { setType(t); setLote(""); setLoteDropdownOpen(false); }}
                 className={cn(
                   "flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-all",
                   type === t
@@ -191,16 +195,14 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
                       : "bg-destructive/10 border-destructive/40 text-destructive"
                     : "bg-background border-border text-muted-foreground hover:bg-muted/30"
                 )}>
-                {t === "entrada"
-                  ? <ArrowDownCircle className="h-4 w-4" />
-                  : <ArrowUpCircle className="h-4 w-4" />}
+                {t === "entrada" ? <ArrowDownCircle className="h-4 w-4" /> : <ArrowUpCircle className="h-4 w-4" />}
                 {t === "entrada" ? "Entrada" : "Saída"}
               </button>
             ))}
           </div>
 
           {/* Sub-tipo de saída */}
-          {type === "saida" && (
+          {isSaidaMode && (
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Tipo de saída
@@ -221,48 +223,124 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
             </div>
           )}
 
-          {/* Lote — campo obrigatório com validação visual */}
+          {/* ── LOTE ────────────────────────────────────────────────────────── */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Tag className="h-3 w-3" />
-              Número do Lote <span className="text-destructive">*</span>
+              {isSaidaMode ? "Selecionar Lote *" : "Número do Lote *"}
             </label>
-            <div className="relative">
-              <Input
-                placeholder="010126-01"
-                value={lote}
-                onChange={(e) => setLote(formatLote(e.target.value))}
-                onFocus={() => { if (!lote) setLote(""); }}
-                maxLength={12}
-                className={cn(
-                  "pr-8 h-11 rounded-xl font-mono text-sm tracking-widest uppercase transition-colors",
-                  lote && loteOk === "valid"   && "border-success/50 bg-success/5 focus-visible:ring-success/30",
-                  lote && loteOk === "invalid" && "border-destructive/50 bg-destructive/5 focus-visible:ring-destructive/30"
+
+            {/* SAÍDA: dropdown de lotes existentes com saldo */}
+            {isSaidaMode ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setLoteDropdownOpen(!loteDropdownOpen)}
+                  className={cn(
+                    "w-full flex items-center justify-between h-11 px-3 rounded-xl border text-sm font-mono tracking-widest transition-colors",
+                    lote
+                      ? "border-success/50 bg-success/5 text-foreground"
+                      : "border-border bg-background text-muted-foreground",
+                    "hover:bg-muted/20"
+                  )}
+                >
+                  <span className={lote ? "text-foreground font-semibold" : "text-muted-foreground text-xs font-sans tracking-normal"}>
+                    {lote || (lotesLoading ? "Carregando lotes..." : existingLotes.length === 0 ? "Nenhum lote disponível" : "Selecione o lote...")}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {lote && <CheckCircle2 className="h-3.5 w-3.5 text-success" />}
+                    <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", loteDropdownOpen && "rotate-180")} />
+                  </div>
+                </button>
+
+                {/* Dropdown list */}
+                {loteDropdownOpen && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+                    {lotesLoading ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+                      </div>
+                    ) : existingLotes.length === 0 ? (
+                      <div className="px-3 py-3 text-[12px] text-muted-foreground text-center">
+                        Nenhum lote com saldo disponível
+                      </div>
+                    ) : (
+                      <div className="max-h-[180px] overflow-y-auto">
+                        {existingLotes.map((l) => (
+                          <button
+                            key={l.lote}
+                            type="button"
+                            onClick={() => selectExistingLote(l)}
+                            className={cn(
+                              "w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-accent/50 transition-colors border-b border-border/30 last:border-0",
+                              lote === l.lote && "bg-success/10"
+                            )}
+                          >
+                            <div>
+                              <span className="text-[13px] font-mono font-bold text-foreground tracking-wider">
+                                {l.lote}
+                              </span>
+                              <p className="text-[10px] text-muted-foreground">
+                                Último mov.: {new Date(l.last_movement).toLocaleDateString("pt-BR")}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1 text-success">
+                              <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
+                              <span className="text-[10px] opacity-70">un.</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
-              />
-              {/* Ícone de status */}
-              {lote && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                  {loteOk === "valid"
-                    ? <CheckCircle2 className="h-4 w-4 text-success" />
-                    : <XCircle className="h-4 w-4 text-destructive/60" />}
-                </div>
-              )}
-            </div>
-            <p className={cn(
-              "text-[10px] leading-relaxed",
-              loteOk === "valid"   ? "text-success" :
-              loteOk === "invalid" ? "text-destructive/70" :
-              "text-muted-foreground/60"
-            )}>
-              {loteHint(lote)}
-            </p>
+              </div>
+            ) : (
+              /* ENTRADA: campo livre com validação */
+              <div className="relative">
+                <Input
+                  placeholder="010126-01"
+                  value={lote}
+                  onChange={(e) => setLote(formatLote(e.target.value))}
+                  maxLength={12}
+                  className={cn(
+                    "pr-8 h-11 rounded-xl font-mono text-sm tracking-widest uppercase transition-colors",
+                    lote && loteOk === "valid"   && "border-success/50 bg-success/5",
+                    lote && loteOk === "invalid" && "border-destructive/50 bg-destructive/5"
+                  )}
+                />
+                {lote && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                    {loteOk === "valid"
+                      ? <CheckCircle2 className="h-4 w-4 text-success" />
+                      : <XCircle className="h-4 w-4 text-destructive/60" />}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Hint — só para entrada */}
+            {!isSaidaMode && (
+              <p className={cn(
+                "text-[10px] leading-relaxed",
+                loteOk === "valid"   ? "text-success" :
+                loteOk === "invalid" ? "text-destructive/70" :
+                "text-muted-foreground/60"
+              )}>
+                {loteHint(lote)}
+              </p>
+            )}
           </div>
 
           {/* Quantidade */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Quantidade
+              {isSaidaMode && lote && existingLotes.find(l => l.lote === lote) && (
+                <span className="ml-1.5 text-success/70 normal-case">
+                  (disponível: {existingLotes.find(l => l.lote === lote)?.saldo} un.)
+                </span>
+              )}
             </label>
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="icon"
@@ -296,7 +374,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
               Observação <span className="normal-case text-muted-foreground/50">(opcional)</span>
             </label>
             <Input
-              placeholder={type === "entrada" ? "Ex: NF 1234, fornecedor..." : "Ex: paciente, cirurgia..."}
+              placeholder={isSaidaMode ? "Ex: paciente, cirurgia..." : "Ex: NF 1234, fornecedor..."}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
@@ -304,7 +382,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
             />
           </div>
 
-          {/* Preview do resultado */}
+          {/* Preview */}
           <div className={cn(
             "flex items-center justify-between rounded-xl px-4 py-2.5 text-sm border",
             afterQty < 0

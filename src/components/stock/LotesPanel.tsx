@@ -41,8 +41,10 @@ export function LotesPanel({ item, open, onClose }: Props) {
     });
   }
 
+  const activeLotes  = lotes.filter((l) => l.saldo > 0);
   const totalEntrada = lotes.reduce((s, l) => s + l.total_entrada, 0);
   const totalSaida   = lotes.reduce((s, l) => s + l.total_saida, 0);
+  const activeLotesCount = activeLotes.length;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -78,7 +80,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2 text-center">
                 <p className="text-[10px] text-muted-foreground">Lotes</p>
-                <p className="text-[15px] font-bold text-foreground">{lotes.length}</p>
+                <p className="text-[15px] font-bold text-foreground">{activeLotesCount}</p>
               </div>
               <div className="rounded-xl bg-success/8 border border-success/20 px-3 py-2 text-center">
                 <p className="text-[10px] text-success/70">Entradas</p>
@@ -103,16 +105,16 @@ export function LotesPanel({ item, open, onClose }: Props) {
           {!loading && lotes.length === 0 && (
             <div className="text-center py-10 space-y-1">
               <Tag className="h-8 w-8 text-muted-foreground/30 mx-auto" />
-              <p className="text-sm text-muted-foreground">Nenhum lote registrado</p>
+              <p className="text-sm text-muted-foreground">Nenhum lote com saldo ativo</p>
               <p className="text-[11px] text-muted-foreground/60">
                 Os lotes aparecerão após registrar movimentos
               </p>
             </div>
           )}
 
-          {lotes.map((l) => {
-            const isActive = l.saldo > 0;
-            const isZero   = l.saldo === 0;
+          {lotes.filter((l) => l.saldo > 0).map((l) => {
+            const isActive = true;
+            const isZero   = false;
             return (
               <div key={l.lote}
                 className={cn(
