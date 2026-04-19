@@ -61,9 +61,10 @@ interface StockCardProps {
   onDelete: (item: StockItem) => void;
   onLotes: (item: StockItem) => void;
   loteCount: number;
+  isAdmin: boolean;
 }
 
-function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount }: StockCardProps) {
+function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, isAdmin }: StockCardProps) {
   const d = item.device;
   const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
   const isEmpty = item.quantity === 0;
@@ -200,14 +201,16 @@ function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount }
           >
             <Tag className="h-3.5 w-3.5" />
           </button>
-          <button
-            type="button"
-            onClick={() => onDelete(item)}
-            className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-            title="Remover peça do estoque"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => onDelete(item)}
+              className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+              title="Remover peça do estoque"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -535,6 +538,7 @@ export default function Estoque() {
                 onDelete={setDeleteItem}
                 onLotes={setLotesItem}
                 loteCount={lotesSummary.get(item.id) ?? 0}
+                isAdmin={isAdmin}
               />
             ))}
           </div>

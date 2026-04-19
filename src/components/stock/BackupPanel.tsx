@@ -7,7 +7,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
-  DatabaseBackup, Download, RefreshCw, Calendar, CheckCircle2, Clock, User
+  DatabaseBackup, Download, RefreshCw, Calendar,
+  CheckCircle2, Clock, User, FileSpreadsheet,
 } from "lucide-react";
 import {
   getBackupConfig, saveBackupConfig, runBackup, listBackups, downloadBackup,
@@ -15,6 +16,7 @@ import {
 } from "@/hooks/useStock";
 import type { BackupConfig, BackupSchedule, StockBackup } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -23,17 +25,71 @@ interface Props {
   onClose: () => void;
 }
 
+// ─── Export Excel ─────────────────────────────────────────────────────────────
+async function exportExcel() {
+  // Busca todas as peças com quantidade
+  const { data: items, error } = await supabase
+    .from("stock_items")
+    .select(`
+      quantity, min_quantity, location, notes, updated_at,
+      device:devices(model, reference, udi_di, internal_code,
+        classification_code, risk_class, primary_material, sterile, single_use)
+    `)
+    .order("updated_at", { ascending: false });
+
+  if (error || !items) {
+    toast.error("Erro ao buscar dados do estoque.");
+    return;
+  }
+
+  // Monta CSV com BOM UTF-8 para Excel abrir corretamente
+  const BOM = "\uFEFF";
+  const SEP = ";"; // ponto-vírgula funciona melhor no Excel PT-BR
+  const headers = [
+    "Modelo", "Referência", "UDI-DI", "Código Interno",
+    "Classificação", "Classe de Risco", "Material",
+    "Estéril", "Uso Único", "Quantidade", "Estoque Mínimo",
+    "Localização", "Observações", "Última Atualização",
+  ].join(SEP);
+
+  const rows = (items as Record<string, unknown>[]).map((row) => {
+    const d = (Array.isArray(row.device) ? row.device[0] : row.device) as Record<string, unknown> | null ?? {};
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const bool = (v: unknown) => v === true ? "Sim" : v === false ? "Não" : "";
+    return [
+      esc(d.model), esc(d.reference), esc(d.udi_di), esc(d.internal_code),
+      esc(d.classification_code), esc(d.risk_class), esc(d.primary_material),
+      bool(d.sterile), bool(d.single_use),
+      String(row.quantity ?? 0), String(row.min_quantity ?? 0),
+      esc(row.location), esc(row.notes),
+      new Date(row.updated_at as string).toLocaleDateString("pt-BR"),
+    ].join(SEP);
+  });
+
+  const csv = BOM + headers + "\n" + rows.join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `estoque-${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast.success(`${items.length} peça${items.length !== 1 ? "s" : ""} exportada${items.length !== 1 ? "s" : ""} para Excel.`);
+}
+
+// ─── Componente ───────────────────────────────────────────────────────────────
 export function BackupPanel({ open, onClose }: Props) {
   const { user, isAdmin } = useAuth();
   const displayName: string | null =
     (user?.user_metadata?.display_name as string) ?? user?.email ?? null;
 
-  const [config, setConfig]       = useState<BackupConfig | null>(null);
-  const [schedule, setSchedule]   = useState<BackupSchedule>("mon_thu");
-  const [backups, setBackups]     = useState<StockBackup[]>([]);
-  const [loading, setLoading]     = useState(false);
-  const [saving, setSaving]       = useState(false);
-  const [running, setRunning]     = useState(false);
+  const [config, setConfig]     = useState<BackupConfig | null>(null);
+  const [schedule, setSchedule] = useState<BackupSchedule>("mon_thu");
+  const [backups, setBackups]   = useState<StockBackup[]>([]);
+  const [loading, setLoading]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [running, setRunning]   = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
 
   async function load() {
@@ -63,6 +119,12 @@ export function BackupPanel({ open, onClose }: Props) {
     else toast.error(result.error ?? "Erro ao criar backup.");
   }
 
+  async function handleExportExcel() {
+    setExporting(true);
+    await exportExcel();
+    setExporting(false);
+  }
+
   async function handleDownload(b: StockBackup) {
     setDownloading(b.id);
     const data = await downloadBackup(b.id);
@@ -72,7 +134,7 @@ export function BackupPanel({ open, onClose }: Props) {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = `backup-estoque-${new Date(b.created_at).toLocaleDateString("pt-BR").replace(/\//g,"-")}.json`;
+    a.download = `backup-estoque-${new Date(b.created_at).toLocaleDateString("pt-BR").replace(/\//g, "-")}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -94,11 +156,11 @@ export function BackupPanel({ open, onClose }: Props) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                 <DatabaseBackup className="h-4 w-4 text-primary" />
-                Backup do Estoque
+                Backup e Exportação
               </DialogTitle>
             </DialogHeader>
             <p className="text-[12px] text-muted-foreground mt-0.5">
-              Snapshots salvos no banco de dados Supabase
+              Snapshots e planilha do estoque atual
             </p>
           </div>
         </div>
@@ -112,25 +174,51 @@ export function BackupPanel({ open, onClose }: Props) {
 
           {!loading && (
             <>
-              {/* Agendamento — apenas admin */}
+              {/* ── Exportar Excel ────────────────────────────────────────── */}
+              <div className="rounded-xl border border-border/40 bg-muted/10 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-semibold text-foreground flex items-center gap-1.5">
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-success" />
+                      Exportar Planilha Excel
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Todas as peças com quantidade atual, localização e dados do dispositivo.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 text-xs rounded-xl shrink-0 border-success/30 hover:bg-success/10 hover:text-success hover:border-success"
+                    onClick={handleExportExcel}
+                    disabled={exporting}
+                  >
+                    {exporting
+                      ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      : <Download className="h-3.5 w-3.5" />}
+                    {exporting ? "Exportando..." : "Baixar .csv"}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground/50">
+                  Arquivo .csv com separador ponto-vírgula — abre diretamente no Excel em português.
+                </p>
+              </div>
+
+              {/* ── Agendamento — admin apenas ────────────────────────────── */}
               {isAdmin && (
                 <div className="space-y-2.5">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5" /> Agendamento automático
+                    <Calendar className="h-3.5 w-3.5" /> Backup automático
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {(Object.keys(SCHEDULE_LABELS) as BackupSchedule[]).map((key) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setSchedule(key)}
+                      <button key={key} type="button" onClick={() => setSchedule(key)}
                         className={cn(
                           "h-9 px-3 rounded-xl border text-[12px] font-medium transition-all text-left",
                           schedule === key
                             ? "bg-primary/10 border-primary/40 text-primary"
                             : "bg-background border-border text-muted-foreground hover:bg-muted/30"
-                        )}
-                      >
+                        )}>
                         {SCHEDULE_LABELS[key]}
                       </button>
                     ))}
@@ -144,24 +232,15 @@ export function BackupPanel({ open, onClose }: Props) {
                   )}
 
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 h-9 rounded-xl text-xs"
-                      onClick={handleSaveSchedule}
-                      disabled={saving}
-                    >
+                    <Button variant="outline" size="sm" className="flex-1 h-9 rounded-xl text-xs"
+                      onClick={handleSaveSchedule} disabled={saving}>
                       {saving
                         ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
                         : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
                       Salvar agendamento
                     </Button>
-                    <Button
-                      size="sm"
-                      className="flex-1 h-9 rounded-xl text-xs gap-1.5"
-                      onClick={handleRunNow}
-                      disabled={running}
-                    >
+                    <Button size="sm" className="flex-1 h-9 rounded-xl text-xs gap-1.5"
+                      onClick={handleRunNow} disabled={running}>
                       {running
                         ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                         : <RefreshCw className="h-3.5 w-3.5" />}
@@ -171,52 +250,47 @@ export function BackupPanel({ open, onClose }: Props) {
                 </div>
               )}
 
-              {/* Lista de backups */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Backups salvos ({backups.length})
-                </p>
-
-                {backups.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Nenhum backup criado ainda
+              {/* ── Lista de backups ──────────────────────────────────────── */}
+              {isAdmin && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Backups salvos ({backups.length})
                   </p>
-                )}
 
-                <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
-                  {backups.map((b) => (
-                    <div
-                      key={b.id}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border/40 bg-card hover:bg-accent/20 transition-colors"
-                    >
-                      <DatabaseBackup className="h-4 w-4 text-primary/60 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[12px] font-medium">{fmtDate(b.created_at)}</p>
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <span>{b.item_count} peça{b.item_count !== 1 ? "s" : ""}</span>
-                          {b.created_name && (
-                            <span className="flex items-center gap-0.5">
-                              <User className="h-2.5 w-2.5" />{b.created_name}
-                            </span>
-                          )}
+                  {backups.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Nenhum backup criado ainda
+                    </p>
+                  )}
+
+                  <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
+                    {backups.map((b) => (
+                      <div key={b.id}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border/40 bg-card hover:bg-accent/20 transition-colors">
+                        <DatabaseBackup className="h-4 w-4 text-primary/60 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[12px] font-medium">{fmtDate(b.created_at)}</p>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            <span>{b.item_count} peça{b.item_count !== 1 ? "s" : ""}</span>
+                            {b.created_name && (
+                              <span className="flex items-center gap-0.5">
+                                <User className="h-2.5 w-2.5" />{b.created_name}
+                              </span>
+                            )}
+                          </div>
                         </div>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+                          title="Baixar JSON" onClick={() => handleDownload(b)}
+                          disabled={downloading === b.id}>
+                          {downloading === b.id
+                            ? <div className="h-3.5 w-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                            : <Download className="h-3.5 w-3.5" />}
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0"
-                        title="Baixar JSON"
-                        onClick={() => handleDownload(b)}
-                        disabled={downloading === b.id}
-                      >
-                        {downloading === b.id
-                          ? <div className="h-3.5 w-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                          : <Download className="h-3.5 w-3.5" />}
-                      </Button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
         </div>
