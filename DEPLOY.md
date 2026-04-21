@@ -16,6 +16,7 @@ No painel da Vercel → seu projeto → **Settings → Environment Variables**, 
 |------|-------|
 | `VITE_SUPABASE_URL` | `https://SEU_PROJECT_ID.supabase.co` |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | sua `anon key` do Supabase |
+| `VITE_SITE_URL` | URL canônica do site, ex: `https://conceptusinagensespeciais.vercel.app` |
 
 > ⚠️ Nunca commite o arquivo `.env` no repositório. Use sempre as env vars da Vercel.
 

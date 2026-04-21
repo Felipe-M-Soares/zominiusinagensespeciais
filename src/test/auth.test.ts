@@ -1,18 +1,26 @@
 /**
  * ARCH-002 FIX: Unit tests for critical authentication and business logic.
  * These cover the functions most impacted by the security audit findings.
+ *
+ * FIX: translateError aqui espelha EXATAMENTE o mapa de useAuth.tsx.
+ * Manter sincronizado — se alterar as mensagens lá, atualizar aqui também.
  */
 import { describe, it, expect } from "vitest";
 
-// ─── translateError (extracted for testability) ───────────────────────────────
+// ─── translateError (espelha useAuth.tsx) ────────────────────────────────────
 function translateError(message: string): string {
   const errors: Record<string, string> = {
-    "Invalid login credentials": "Email ou senha incorretos.",
-    "Email not confirmed": "Confirme seu email antes de entrar. Verifique sua caixa de entrada.",
-    "User already registered": "Este email já está cadastrado.",
+    "Invalid login credentials": "Login ou senha incorretos.",
+    "Invalid email or password": "Login ou senha incorretos.",
+    "invalid_credentials": "Login ou senha incorretos.",
+    "Password should be at least 6 characters": "A senha deve ter no mínimo 6 caracteres.",
     "Password should be at least 8 characters": "A senha deve ter no mínimo 8 caracteres.",
-    "Too many requests": "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+    "User not found": "Usuário não encontrado.",
+    "Too many requests": "Muitas tentativas. Aguarde alguns minutos.",
     "Session expired": "Sua sessão expirou. Faça login novamente.",
+    "User is not authorized": "Sem permissão para realizar esta ação.",
+    "New password should be different from the old password": "A nova senha deve ser diferente da atual.",
+    "Auth session missing": "Sessão não encontrada. Faça login novamente.",
   };
   if (errors[message]) return errors[message];
   for (const [key, value] of Object.entries(errors)) {
@@ -22,13 +30,23 @@ function translateError(message: string): string {
 }
 
 describe("translateError", () => {
-  it("translates exact match", () => {
-    expect(translateError("Invalid login credentials")).toBe("Email ou senha incorretos.");
+  it("translates Invalid login credentials", () => {
+    expect(translateError("Invalid login credentials")).toBe("Login ou senha incorretos.");
   });
 
-  it("translates partial match (case-insensitive)", () => {
+  it("translates invalid_credentials (Supabase v2 code)", () => {
+    expect(translateError("invalid_credentials")).toBe("Login ou senha incorretos.");
+  });
+
+  it("translates partial match Too many requests (case-insensitive)", () => {
     expect(translateError("Error: Too many requests from this IP")).toBe(
-      "Muitas tentativas. Aguarde alguns minutos e tente novamente."
+      "Muitas tentativas. Aguarde alguns minutos."
+    );
+  });
+
+  it("translates Auth session missing", () => {
+    expect(translateError("Auth session missing")).toBe(
+      "Sessão não encontrada. Faça login novamente."
     );
   });
 
@@ -42,7 +60,7 @@ describe("translateError", () => {
   });
 });
 
-// ─── Password validation (mirrors useAuth signUp logic) ──────────────────────
+// ─── Password validation ─────────────────────────────────────────────────────
 function validatePassword(password: string): string | null {
   if (password.length < 8) return "A senha deve ter no mínimo 8 caracteres.";
   return null;

@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    sourcemap: false, // Never expose source maps in production
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -48,42 +48,19 @@ export default defineConfig(({ mode }) => ({
         start_url: "/",
         scope: "/",
         icons: [
-          {
-            src: "/android-chrome-192x192.png",
-            sizes: "192x192",
-            type: "image/png",
-          },
-          {
-            src: "/android-chrome-512x512.png",
-            sizes: "512x512",
-            type: "image/png",
-          },
-          {
-            src: "/android-chrome-512x512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "maskable",
-          },
+          { src: "/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
+          { src: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
+          { src: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/~oauth/, /^\/api\//],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "supabase-api-cache",
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24,
-              },
-              networkTimeoutSeconds: 5,
-            },
-          },
-        ],
+        // SECURITY: API do Supabase usa autenticação por sessão — cachear respostas
+        // no service worker vazaria dados entre usuários em dispositivos compartilhados.
+        // O React Query já faz cache em memória com escopo de sessão (staleTime 5min).
+        runtimeCaching: [],
       },
     }),
   ].filter(Boolean),
