@@ -192,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const interval = setInterval(poll, 30_000); // a cada 30 segundos
+    const interval = setInterval(poll, 15_000); // a cada 15 segundos
     return () => {
       cancelled = true;
       clearInterval(interval);

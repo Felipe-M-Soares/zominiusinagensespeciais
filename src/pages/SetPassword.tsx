@@ -22,8 +22,8 @@ export default function SetPassword() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < 6) {
-      toast.error("Senha deve ter no mínimo 6 caracteres.");
+    if (password.length < 8) {
+      toast.error("Senha deve ter no mínimo 8 caracteres.");
       return;
     }
     if (password !== confirm) {
@@ -101,7 +101,7 @@ export default function SetPassword() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
                 <Input
                   type={showPwd ? "text" : "password"}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mínimo 8 caracteres"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -149,7 +149,7 @@ export default function SetPassword() {
                     <div
                       key={i}
                       className={`h-1 flex-1 rounded-full transition-colors ${
-                        password.length >= [6, 8, 10, 14][i]
+                        password.length >= [8, 10, 12, 14][i]
                           ? i < 2 ? "bg-warning" : "bg-success"
                           : "bg-muted"
                       }`}
@@ -157,10 +157,9 @@ export default function SetPassword() {
                   ))}
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  {password.length < 6 ? "Muito curta" :
-                   password.length < 8 ? "Fraca" :
+                  {password.length < 8 ? "Muito curta" :
                    password.length < 10 ? "Razoável" :
-                   password.length < 14 ? "Boa" : "Forte"}
+                   password.length < 12 ? "Boa" : "Forte"}
                 </p>
               </div>
             )}
@@ -168,7 +167,7 @@ export default function SetPassword() {
             <Button
               type="submit"
               className="w-full h-11 rounded-xl font-medium text-sm"
-              disabled={loading || password.length < 6 || password !== confirm}
+              disabled={loading || password.length < 8 || password !== confirm}
             >
               {loading ? "Salvando..." : "Definir senha e entrar"}
             </Button>

@@ -123,6 +123,9 @@ export function AdminUsers() {
   const [newUserRole, setNewUserRole] = useState<"admin" | "client">("client");
   const [creatingUser, setCreatingUser] = useState(false);
 
+  // Confirmação para rebaixar outro admin
+  const [downgradeConfirm, setDowngradeConfirm] = useState<{ userId: string; userName: string } | null>(null);
+
   // FIX: useCallback + AbortController — evita atualizar estado em componente
   // desmontado e cancela fetches duplicados se chamado várias vezes seguidas.
   const fetchUsers = useCallback(async () => {
@@ -169,6 +172,16 @@ export function AdminUsers() {
       toast.error("Você não pode remover sua própria permissão de administrador.");
       return;
     }
+    // SEGURANÇA: rebaixar outro admin exige confirmação explícita
+    const target = users.find(u => u.user_id === userId);
+    if (target?.role === "admin" && newRole === "client") {
+      setDowngradeConfirm({ userId, userName: target.display_name ?? target.login ?? "este admin" });
+      return;
+    }
+    await applyRoleChange(userId, newRole);
+  };
+
+  const applyRoleChange = async (userId: string, newRole: "admin" | "client") => {
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
     if (error) toast.error("Erro ao alterar função: " + error.message);
     else { toast.success("Função atualizada"); fetchUsers(); }
@@ -477,6 +490,37 @@ export function AdminUsers() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmação de rebaixamento de admin */}
+      <AlertDialog open={!!downgradeConfirm} onOpenChange={(v) => { if (!v) setDowngradeConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <ShieldX className="h-4 w-4" />
+              Rebaixar administrador?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Você está prestes a remover o acesso de administrador de{" "}
+              <strong>{downgradeConfirm?.userName}</strong>. O usuário passará a ter perfil de
+              Cliente e perderá acesso ao painel Admin imediatamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDowngradeConfirm(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (downgradeConfirm) {
+                  await applyRoleChange(downgradeConfirm.userId, "client");
+                  setDowngradeConfirm(null);
+                }
+              }}
+            >
+              Sim, rebaixar para Cliente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

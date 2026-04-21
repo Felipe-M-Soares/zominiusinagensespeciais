@@ -87,7 +87,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-            <Route path="/set-password" element={<SetPassword />} />
+            <Route path="/set-password" element={<ProtectedRoute><SetPassword /></ProtectedRoute>} />
             <Route path="/pending-approval" element={<PendingApprovalRoute />} />
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />

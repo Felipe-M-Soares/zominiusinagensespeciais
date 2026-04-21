@@ -216,7 +216,12 @@ export async function upsertStockItem(
   }
 }
 
-/** Registra um movimento (entrada ou saída) e atualiza a quantidade */
+/** Registra um movimento (entrada ou saída) e atualiza a quantidade.
+ *
+ * SEGURANÇA / CONSISTÊNCIA: idealmente isso seria uma única transação SQL via RPC.
+ * Como compensação client-side, se o update de quantidade falhar após o insert do
+ * movimento, fazemos rollback deletando o movimento inserido para evitar inconsistência.
+ */
 export async function registerMovement(
   stockItemId: string,
   type: "entrada" | "saida",
@@ -242,16 +247,21 @@ export async function registerMovement(
     return { ok: false, error: `Estoque insuficiente. Disponível: ${item.quantity}` };
   }
 
-  // Insere movimento
-  const { error: mvErr } = await supabase.from("stock_movements").insert({
-    stock_item_id: stockItemId,
-    type,
-    quantity,
-    reason: reason || null,
-    lote: lote?.trim() || null,
-    user_id: userId,
-    user_display_name: userDisplayName ?? null,
-  });
+  // Insere movimento e captura o id para rollback se necessário
+  const { data: mvData, error: mvErr } = await supabase
+    .from("stock_movements")
+    .insert({
+      stock_item_id: stockItemId,
+      type,
+      quantity,
+      reason: reason || null,
+      lote: lote?.trim() || null,
+      user_id: userId,
+      user_display_name: userDisplayName ?? null,
+    })
+    .select("id")
+    .single();
+
   if (mvErr) return { ok: false, error: mvErr.message };
 
   // Atualiza quantidade
@@ -259,7 +269,12 @@ export async function registerMovement(
     .from("stock_items")
     .update({ quantity: newQty })
     .eq("id", stockItemId);
-  if (upErr) return { ok: false, error: upErr.message };
+
+  if (upErr) {
+    // ROLLBACK: remove o movimento inserido para manter consistência
+    await supabase.from("stock_movements").delete().eq("id", mvData.id);
+    return { ok: false, error: "Erro ao atualizar estoque. Operação cancelada para evitar inconsistência." };
+  }
 
   return { ok: true };
 }
