@@ -38,6 +38,7 @@ import {
   Tag,
   FileSpreadsheet,
   Trash2 as Trash2Icon,
+  Menu,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
@@ -229,6 +230,9 @@ export default function Estoque() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Menu hambúrguer admin (mobile)
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+
   // Modais
   const [movementState, setMovementState] = useState<{ item: StockItem; type: "entrada" | "saida" } | null>(null);
   const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
@@ -349,7 +353,8 @@ export default function Estoque() {
             </div>
           </div>
           <nav className="flex items-center gap-1">
-              <Button
+            {/* Histórico e Lista: sempre visíveis */}
+            <Button
               variant="outline"
               size="sm"
               className="h-8 gap-1.5 px-3 text-xs rounded-xl"
@@ -367,48 +372,109 @@ export default function Estoque() {
               <List className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Lista</span>
             </Button>
-            {isAdmin && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 px-3 text-xs rounded-xl"
-                onClick={() => setBackupOpen(true)}
-                title="Backup do estoque"
-              >
-                <DatabaseBackup className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Backup</span>
-              </Button>
-            )}
+
+            {/* Botões admin no desktop: visíveis normalmente */}
             {isAdmin && (
               <>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1.5 px-3 text-xs rounded-xl"
+                  className="hidden sm:flex h-8 gap-1.5 px-3 text-xs rounded-xl"
+                  onClick={() => setBackupOpen(true)}
+                  title="Backup do estoque"
+                >
+                  <DatabaseBackup className="h-3.5 w-3.5" />
+                  Backup
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="hidden sm:flex h-8 gap-1.5 px-3 text-xs rounded-xl"
                   onClick={() => setCsvOpen(true)}
                   title="Importar via CSV"
                 >
                   <FileSpreadsheet className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">CSV</span>
+                  CSV
                 </Button>
                 <Button
                   size="sm"
-                  className="h-8 gap-1.5 px-3 text-xs rounded-xl"
+                  className="hidden sm:flex h-8 gap-1.5 px-3 text-xs rounded-xl"
                   onClick={() => setAddOpen(true)}
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Adicionar Peça</span>
+                  Adicionar Peça
                 </Button>
                 <Button
                   variant="destructive"
                   size="sm"
-                  className="h-8 gap-1.5 px-3 text-xs rounded-xl"
+                  className="hidden sm:flex h-8 gap-1.5 px-3 text-xs rounded-xl"
                   onClick={() => { setDeleteAllTyped(""); setDeleteAllOpen(true); }}
                   title="Excluir todo o estoque"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Excluir Tudo</span>
+                  Excluir Tudo
                 </Button>
+
+                {/* Mobile: hambúrguer para botões admin */}
+                <div className="relative sm:hidden">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-xl"
+                    onClick={() => setAdminMenuOpen((v) => !v)}
+                    title="Ações admin"
+                    aria-expanded={adminMenuOpen}
+                  >
+                    {adminMenuOpen
+                      ? <X className="h-4 w-4" />
+                      : <Menu className="h-4 w-4" />
+                    }
+                  </Button>
+
+                  {adminMenuOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-20"
+                        onClick={() => setAdminMenuOpen(false)}
+                      />
+                      <div className="absolute right-0 top-full mt-1 z-30 min-w-[180px] rounded-xl border border-border/50 bg-card/95 backdrop-blur-md shadow-lg py-1 overflow-hidden">
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-foreground hover:bg-muted/50 transition-colors"
+                          onClick={() => { setAdminMenuOpen(false); setAddOpen(true); }}
+                        >
+                          <Plus className="h-3.5 w-3.5 text-primary" />
+                          Adicionar Peça
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-foreground hover:bg-muted/50 transition-colors"
+                          onClick={() => { setAdminMenuOpen(false); setCsvOpen(true); }}
+                        >
+                          <FileSpreadsheet className="h-3.5 w-3.5 text-muted-foreground" />
+                          Importar CSV
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-foreground hover:bg-muted/50 transition-colors"
+                          onClick={() => { setAdminMenuOpen(false); setBackupOpen(true); }}
+                        >
+                          <DatabaseBackup className="h-3.5 w-3.5 text-muted-foreground" />
+                          Backup
+                        </button>
+                        <div className="border-t border-border/30 my-1" />
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+                          onClick={() => { setAdminMenuOpen(false); setDeleteAllTyped(""); setDeleteAllOpen(true); }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Excluir Tudo
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </>
             )}
           </nav>

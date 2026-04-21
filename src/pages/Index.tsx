@@ -6,7 +6,7 @@ import { DeviceCard } from "@/components/DeviceCard";
 import { DeviceDetail } from "@/components/DeviceDetail";
 import type { Device } from "@/types/device";
 import { Button } from "@/components/ui/button";
-import { LogOut, Settings, Phone, BookOpen, ChevronDown, Loader2, Boxes } from "lucide-react";
+import { LogOut, Settings, Phone, BookOpen, ChevronDown, Loader2, Boxes, Menu, X as XIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { CatalogButton } from "@/components/CatalogButton";
@@ -107,6 +107,14 @@ const Index = () => {
 
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Fecha menu ao navegar
+  const handleAdminNav = useCallback((path: string) => {
+    setMenuOpen(false);
+    navigate(path);
+  }, [navigate]);
+
   const { devices, totalCount, loading, loadingMore, error, loadMore, hasMore } =
     useDevices(querySearch, queryFilters, queryLetter);
 
@@ -127,17 +135,7 @@ const Index = () => {
             </p>
           </div>
           <nav className="flex items-center gap-0.5">
-            {isAdmin && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/admin")}
-                className="h-8 px-2 sm:px-3 text-xs"
-              >
-                <Settings className="h-4 w-4 sm:mr-1" />
-                <span className="hidden sm:inline">Admin</span>
-              </Button>
-            )}
+            {/* Itens sempre visíveis (web e mobile) */}
             <Button
               variant="ghost"
               size="sm"
@@ -179,11 +177,76 @@ const Index = () => {
                 : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               }
             </Button>
+
+            {/* Admin: botão direto no desktop, hambúrguer no mobile */}
+            {isAdmin && (
+              <>
+                {/* Desktop: botão Admin visível normalmente */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/admin")}
+                  className="hidden sm:flex h-8 px-3 text-xs"
+                >
+                  <Settings className="h-4 w-4 mr-1" />
+                  Admin
+                </Button>
+
+                {/* Mobile: botão hambúrguer */}
+                <div className="relative sm:hidden">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setMenuOpen((v) => !v)}
+                    title="Menu admin"
+                    aria-expanded={menuOpen}
+                  >
+                    {menuOpen
+                      ? <XIcon className="h-4 w-4" />
+                      : <Menu className="h-4 w-4" />
+                    }
+                  </Button>
+
+                  {menuOpen && (
+                    <>
+                      {/* Overlay para fechar ao clicar fora */}
+                      <div
+                        className="fixed inset-0 z-20"
+                        onClick={() => setMenuOpen(false)}
+                      />
+                      {/* Dropdown menu */}
+                      <div className="absolute right-0 top-full mt-1 z-30 min-w-[160px] rounded-xl border border-border/50 bg-card/95 backdrop-blur-md shadow-lg py-1 overflow-hidden">
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-foreground hover:bg-muted/50 transition-colors"
+                          onClick={() => handleAdminNav("/admin")}
+                        >
+                          <Settings className="h-3.5 w-3.5 text-primary" />
+                          Admin
+                        </button>
+                        <div className="border-t border-border/30 my-1" />
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-foreground hover:bg-muted/50 transition-colors"
+                          onClick={() => { setMenuOpen(false); signOut(); }}
+                        >
+                          <LogOut className="h-3.5 w-3.5 text-muted-foreground" />
+                          Sair
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Sair: visível no desktop ou quando não é admin (mobile) */}
             <Button
               variant="ghost"
               size="sm"
               onClick={signOut}
-              className="h-8 px-2 sm:px-3 text-xs"
+              className={isAdmin ? "hidden sm:flex h-8 px-3 text-xs" : "h-8 px-2 text-xs"}
             >
               <LogOut className="h-4 w-4 sm:mr-1" />
               <span className="hidden sm:inline">Sair</span>
