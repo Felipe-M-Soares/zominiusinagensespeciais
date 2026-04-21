@@ -6,7 +6,6 @@ import { AdminUsers } from "@/components/admin/AdminUsers";
 import { Button } from "@/components/ui/button";
 import { LogOut, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Logo } from "@/components/Logo";
 
 export default function Admin() {
 const { signOut } = useAuth();
@@ -17,7 +16,6 @@ return (
     <header className="border-b border-border bg-card sticky top-0 z-10">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Logo className="h-8 object-contain" />
           <span className="text-sm font-bold tracking-widest text-primary">ADMIN</span>
         </div>
         <div className="flex items-center gap-2">
