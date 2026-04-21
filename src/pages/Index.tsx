@@ -8,7 +8,6 @@ import type { Device } from "@/types/device";
 import { Button } from "@/components/ui/button";
 import { LogOut, Settings, Phone, BookOpen, ChevronDown, Loader2, Boxes, Menu, X as XIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Logo } from "@/components/Logo";
 import { CatalogButton } from "@/components/CatalogButton";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 
@@ -128,8 +127,6 @@ const Index = () => {
       <header className="border-b border-border/50 bg-card/80 backdrop-blur-md sticky top-0 z-10">
         <div className="container mx-auto px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            <Logo className="h-8 sm:h-10 object-contain shrink-0" />
-            <div className="hidden sm:block h-6 w-px bg-border" />
             <p className="text-xs text-muted-foreground hidden sm:block">
               Base de dados ANVISA
             </p>
