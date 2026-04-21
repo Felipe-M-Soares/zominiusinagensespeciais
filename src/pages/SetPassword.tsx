@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +16,27 @@ export default function SetPassword() {
   const [showPwd, setShowPwd]       = useState(false);
   const [showConf, setShowConf]     = useState(false);
   const [loading, setLoading]       = useState(false);
+  // FIX: Verifica se o usuário realmente precisa trocar a senha.
+  // Sem essa verificação, qualquer usuário autenticado podia acessar /set-password
+  // diretamente pela URL e trocar a senha à vontade, ignorando o fluxo normal.
+  const [mustChange, setMustChange] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from("profiles")
+      .select("must_change_password")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.must_change_password === false) {
+          // Não precisa trocar senha — redireciona para home
+          navigate("/", { replace: true });
+        } else {
+          setMustChange(true);
+        }
+      });
+  }, [user?.id, navigate]);
 
   const displayName =
     (user?.user_metadata?.display_name as string) ?? "Usuário";
@@ -63,6 +84,15 @@ export default function SetPassword() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Aguarda verificação do must_change_password antes de renderizar
+  if (mustChange === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   return (

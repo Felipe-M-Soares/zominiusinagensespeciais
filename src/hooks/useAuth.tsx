@@ -260,50 +260,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const signUp = useCallback(
-    async (
-      email: string,
-      password: string,
-      displayName: string
-    ): Promise<{ error: string | null }> => {
-      const cleanEmail = email.trim().toLowerCase();
-      const cleanName = displayName
-        .trim()
-        // eslint-disable-next-line no-control-regex
-        .replace(/[\u0000-\u001F\u007F]|\u200B|\u200C|\u200D|\uFEFF/g, "")
-        .slice(0, 100);
-
-      if (!cleanEmail || !password || !cleanName) {
-        return { error: "Todos os campos são obrigatórios." };
-      }
-      if (password.length < 8) {
-        return { error: "A senha deve ter no mínimo 8 caracteres." };
-      }
-      if (password.length > 72) {
-        return { error: "A senha deve ter no máximo 72 caracteres." };
-      }
-
-      const { data, error } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password,
-        options: {
-          data: { display_name: cleanName },
-          // FIX: usa VITE_SITE_URL quando disponível — mesmo padrão de Login.tsx.
-          emailRedirectTo: import.meta.env.VITE_SITE_URL ?? window.location.origin,
-        },
-      });
-      if (error) return { error: translateError(error.message) };
-
-      if (data.session) {
-        clearLocalState();
-        await supabase.auth.signOut();
-      }
-
-      return { error: null };
-    },
-    [clearLocalState]
-  );
-
   const signOut = useCallback(async () => {
     clearLocalState();
     await supabase.auth.signOut();

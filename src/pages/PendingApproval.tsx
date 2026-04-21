@@ -1,15 +1,17 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
-import { Clock, LogOut, ShieldOff } from "lucide-react";
+import { Clock, LogOut, ShieldOff, Loader2 } from "lucide-react";
 
 export default function PendingApproval() {
   const { signOut, user, refreshApproval, approved, blocked } = useAuth();
   const navigate = useNavigate();
   const navigatedRef = useRef(false);
+  // FIX: variável `checking` e `Loader2` estavam sendo usados no JSX mas nunca declarados,
+  // causando erro de build (ReferenceError). Declarados aqui corretamente.
+  const [checking, setChecking] = useState(false);
 
   // Quando aprovado, redireciona
   useEffect(() => {
@@ -21,10 +23,13 @@ export default function PendingApproval() {
 
   const checkApproval = useCallback(async () => {
     if (!user?.id || navigatedRef.current) return;
+    setChecking(true);
     try {
       await refreshApproval();
     } catch (err) {
       console.error("checkApproval error:", err);
+    } finally {
+      setChecking(false);
     }
   }, [user?.id, refreshApproval]);
 
