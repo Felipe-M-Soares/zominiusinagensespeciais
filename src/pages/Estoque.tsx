@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft,
   ArrowDownCircle,
+  ArrowUpCircle,
   Clock,
   Plus,
   ScanBarcode,
@@ -34,29 +35,33 @@ import {
   History,
   DatabaseBackup,
   Tag,
-  Trash2 as Trash2Icon,
   Menu,
   Shield,
   Activity,
   Globe,
+  Truck,
+  PackageCheck,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
 import { AddToStockModal } from "@/components/stock/AddToStockModal";
 import { StockListModal } from "@/components/stock/StockListModal";
 import { LotesPanel } from "@/components/stock/LotesPanel";
-import { StockCsvImport } from "@/components/stock/StockCsvImport";import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
+import { StockCsvImport } from "@/components/stock/StockCsvImport";
+import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { BackupPanel } from "@/components/stock/BackupPanel";
+import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicaoModal";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummary } from "@/hooks/useStock";
 import type { LoteSummary } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 
-// ─── Componente de card de item do estoque ────────────────────────────────────
+// ─── Card de Intermediária ────────────────────────────────────────────────────
 
-interface StockCardProps {
+interface IntermediaryCardProps {
   item: StockItem;
-  onMovement: (item: StockItem, type: "entrada" | "saida") => void;
+  onEntrada: (item: StockItem) => void;
+  onTransfer: (item: StockItem) => void;
   onHistory: (item: StockItem) => void;
   onDelete: (item: StockItem) => void;
   onLotes: (item: StockItem) => void;
@@ -64,7 +69,9 @@ interface StockCardProps {
   isAdmin: boolean;
 }
 
-function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, isAdmin }: StockCardProps) {
+function IntermediaryCard({
+  item, onEntrada, onTransfer, onHistory, onDelete, onLotes, loteCount, isAdmin,
+}: IntermediaryCardProps) {
   const d = item.device;
   const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
   const isEmpty = item.quantity === 0;
@@ -77,98 +84,64 @@ function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, 
           "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
       }}
     >
-      {/* Top accent bar — vermelho se zerado, amarelo se baixo, verde normal */}
-      <div
-        className={cn(
-          "h-0.5 bg-gradient-to-r from-transparent to-transparent transition-opacity group-hover:opacity-100",
-          isEmpty
-            ? "via-destructive opacity-80"
-            : isLow
-            ? "via-warning opacity-70"
-            : "via-success opacity-50"
-        )}
-      />
+      <div className={cn(
+        "h-0.5 bg-gradient-to-r from-transparent to-transparent transition-opacity group-hover:opacity-100",
+        isEmpty ? "via-destructive opacity-80" : isLow ? "via-warning opacity-70" : "via-primary opacity-50"
+      )} />
 
       <div className="p-4 space-y-3">
         {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-0.5">
-            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">
-              {d.model}
-            </h3>
+            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
             <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
           </div>
-          <Badge
-            variant="outline"
-            className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-primary/25 text-primary/80 bg-primary/5 rounded-lg"
-          >
+          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-primary/25 text-primary/80 bg-primary/5 rounded-lg">
             {d.classification_code}
           </Badge>
         </div>
 
-        {/* Marca */}
-        {d.brand_name && (
-          <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>
-        )}
+        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
 
-        {/* Badges de status */}
+        {/* Badges */}
         <div className="flex flex-wrap gap-1 -mt-1">
           {d.sterile && (
             <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
-              <Shield className="h-2.5 w-2.5" />
-              Estéril
+              <Shield className="h-2.5 w-2.5" /> Estéril
             </span>
           )}
           {d.single_use && (
             <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
-              <Package className="h-2.5 w-2.5" />
-              Uso único
+              <Package className="h-2.5 w-2.5" /> Uso único
             </span>
           )}
           {d.implantable && (
             <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-medium text-primary">
-              <Activity className="h-2.5 w-2.5" />
-              Implantável
+              <Activity className="h-2.5 w-2.5" /> Implantável
             </span>
           )}
         </div>
 
-        {/* Quantidade — destaque visual */}
-        <div
-          className={cn(
-            "flex items-center justify-between rounded-xl px-3 py-2 border",
-            isEmpty
-              ? "bg-destructive/8 border-destructive/25"
-              : isLow
-              ? "bg-warning/8 border-warning/25"
-              : "bg-success/8 border-success/25"
-          )}
-        >
+        {/* Quantidade */}
+        <div className={cn(
+          "flex items-center justify-between rounded-xl px-3 py-2 border",
+          isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-muted/20 border-border/30"
+        )}>
           <div className="flex items-center gap-1.5">
-            <Package
-              className={cn(
-                "h-3.5 w-3.5",
-                isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success"
-              )}
-            />
-            <span className="text-[11px] font-medium text-muted-foreground">Estoque</span>
+            <Package className={cn("h-3.5 w-3.5", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-muted-foreground")} />
+            <span className="text-[11px] font-medium text-muted-foreground">Intermediária</span>
           </div>
           <div className="flex items-center gap-1.5">
             {isEmpty && <AlertTriangle className="h-3 w-3 text-destructive" />}
             {isLow && !isEmpty && <TrendingDown className="h-3 w-3 text-warning" />}
-            <span
-              className={cn(
-                "text-[15px] font-bold tabular-nums",
-                isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-foreground"
-              )}
-            >
+            <span className={cn("text-[15px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-foreground")}>
               {item.quantity}
             </span>
             <span className="text-[10px] text-muted-foreground">un.</span>
           </div>
         </div>
 
-        {/* Lotes registrados */}
+        {/* Lotes */}
         {loteCount > 0 && (
           <button
             type="button"
@@ -176,7 +149,7 @@ function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, 
             className="flex items-center gap-1.5 text-[11px] text-primary/70 hover:text-primary transition-colors -mt-1"
           >
             <Tag className="h-3 w-3" />
-            <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""} registrado{loteCount > 1 ? "s" : ""}</span>
+            <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""}</span>
             <span className="text-muted-foreground/40">→</span>
           </button>
         )}
@@ -184,58 +157,225 @@ function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, 
         {/* Min e localização */}
         <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
           <span>Mín: {item.min_quantity} un.</span>
-          {item.location && (
-            <span className="truncate ml-2">📍 {item.location}</span>
-          )}
+          {item.location && <span className="truncate ml-2">📍 {item.location}</span>}
         </div>
 
-        {/* UDI e país — rodapé igual ao DeviceCard */}
         <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
           <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
           {d.manufacturer_country && (
             <span className="flex items-center gap-0.5 shrink-0 ml-2">
-              <Globe className="h-2.5 w-2.5" />
-              {d.manufacturer_country}
+              <Globe className="h-2.5 w-2.5" />{d.manufacturer_country}
             </span>
           )}
         </div>
 
-        {/* Botões de ação */}
-        <div className="flex gap-1.5 pt-1 border-t border-border/20">
+        {/* Botões */}
+        <div className="space-y-1.5 pt-1 border-t border-border/20">
+          {/* Entrada */}
           <button
             type="button"
-            onClick={() => onMovement(item, "entrada")}
-            className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-primary/8 hover:bg-primary/15 text-primary text-[11px] font-medium transition-colors"
+            onClick={() => onEntrada(item)}
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-primary/8 hover:bg-primary/15 text-primary text-[11px] font-medium transition-colors"
           >
             <ArrowDownCircle className="h-3.5 w-3.5" />
-            Movimentar
+            Registrar Entrada
           </button>
+          {/* Mover para Expedição */}
           <button
             type="button"
-            onClick={() => onHistory(item)}
-            className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground transition-colors"
-            title="Histórico"
+            onClick={() => onTransfer(item)}
+            disabled={item.quantity === 0}
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
-            <Clock className="h-3.5 w-3.5" />
+            <Truck className="h-3.5 w-3.5" />
+            Mover para Expedição
           </button>
+          {/* Histórico / Lotes / Excluir */}
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => onHistory(item)}
+              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
+              title="Histórico"
+            >
+              <Clock className="h-3 w-3" /> Histórico
+            </button>
+            <button
+              type="button"
+              onClick={() => onLotes(item)}
+              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-primary/10 hover:text-primary text-muted-foreground text-[10px] transition-colors"
+              title="Lotes"
+            >
+              <Tag className="h-3 w-3" /> Lotes
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => onDelete(item)}
+                className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                title="Remover"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Card de Expedição ────────────────────────────────────────────────────────
+
+interface ExpedicaoCardProps {
+  item: StockItem;
+  onSaida: (item: StockItem) => void;
+  onHistory: (item: StockItem) => void;
+  onDelete: (item: StockItem) => void;
+  onLotes: (item: StockItem) => void;
+  loteCount: number;
+  isAdmin: boolean;
+}
+
+function ExpedicaoCard({
+  item, onSaida, onHistory, onDelete, onLotes, loteCount, isAdmin,
+}: ExpedicaoCardProps) {
+  const d = item.device;
+  const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
+  const isEmpty = item.quantity === 0;
+
+  return (
+    <div
+      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
+      style={{
+        boxShadow:
+          "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
+      }}
+    >
+      <div className={cn(
+        "h-0.5 bg-gradient-to-r from-transparent to-transparent transition-opacity group-hover:opacity-100",
+        isEmpty ? "via-destructive opacity-80" : isLow ? "via-warning opacity-70" : "via-success opacity-50"
+      )} />
+
+      <div className="p-4 space-y-3">
+        {/* Cabeçalho */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-0.5">
+            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
+            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
+          </div>
+          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-success/25 text-success/80 bg-success/5 rounded-lg">
+            {d.classification_code}
+          </Badge>
+        </div>
+
+        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
+
+        {/* Badges */}
+        <div className="flex flex-wrap gap-1 -mt-1">
+          {d.sterile && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
+              <Shield className="h-2.5 w-2.5" /> Estéril
+            </span>
+          )}
+          {d.single_use && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
+              <Package className="h-2.5 w-2.5" /> Uso único
+            </span>
+          )}
+          {d.implantable && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <Activity className="h-2.5 w-2.5" /> Implantável
+            </span>
+          )}
+        </div>
+
+        {/* Quantidade Expedição */}
+        <div className={cn(
+          "flex items-center justify-between rounded-xl px-3 py-2 border",
+          isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-success/8 border-success/25"
+        )}>
+          <div className="flex items-center gap-1.5">
+            <PackageCheck className={cn("h-3.5 w-3.5", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")} />
+            <span className="text-[11px] font-medium text-muted-foreground">Expedição</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {isEmpty && <AlertTriangle className="h-3 w-3 text-destructive" />}
+            {isLow && !isEmpty && <TrendingDown className="h-3 w-3 text-warning" />}
+            <span className={cn("text-[15px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")}>
+              {item.quantity}
+            </span>
+            <span className="text-[10px] text-muted-foreground">un.</span>
+          </div>
+        </div>
+
+        {/* Lotes */}
+        {loteCount > 0 && (
           <button
             type="button"
             onClick={() => onLotes(item)}
-            className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors"
-            title="Lotes"
+            className="flex items-center gap-1.5 text-[11px] text-success/70 hover:text-success transition-colors -mt-1"
           >
-            <Tag className="h-3.5 w-3.5" />
+            <Tag className="h-3 w-3" />
+            <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""} prontos</span>
+            <span className="text-muted-foreground/40">→</span>
           </button>
-          {isAdmin && (
+        )}
+
+        {/* Min e localização */}
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
+          <span>Mín: {item.min_quantity} un.</span>
+          {item.location && <span className="truncate ml-2">📍 {item.location}</span>}
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
+          <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
+          {d.manufacturer_country && (
+            <span className="flex items-center gap-0.5 shrink-0 ml-2">
+              <Globe className="h-2.5 w-2.5" />{d.manufacturer_country}
+            </span>
+          )}
+        </div>
+
+        {/* Botões */}
+        <div className="space-y-1.5 pt-1 border-t border-border/20">
+          {/* Saída */}
+          <button
+            type="button"
+            onClick={() => onSaida(item)}
+            disabled={item.quantity === 0}
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <ArrowUpCircle className="h-3.5 w-3.5" />
+            Retirada / Venda
+          </button>
+          {/* Histórico / Lotes / Excluir */}
+          <div className="flex gap-1.5">
             <button
               type="button"
-              onClick={() => onDelete(item)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-              title="Remover peça do estoque"
+              onClick={() => onHistory(item)}
+              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Clock className="h-3 w-3" /> Histórico
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => onLotes(item)}
+              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-success/10 hover:text-success text-muted-foreground text-[10px] transition-colors"
+            >
+              <Tag className="h-3 w-3" /> Lotes
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => onDelete(item)}
+                className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                title="Remover"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -248,6 +388,9 @@ export default function Estoque() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
+  // Aba ativa: intermediária ou expedição
+  const [activeTab, setActiveTab] = useState<"intermediaria" | "expedicao">("intermediaria");
+
   // Pesquisa
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
@@ -258,7 +401,11 @@ export default function Estoque() {
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
   // Modais
-  const [movementState, setMovementState] = useState<{ item: StockItem; type: "entrada" | "saida" } | null>(null);
+  const [movementState, setMovementState] = useState<{
+    item: StockItem;
+    type: "entrada" | "saida";
+    lockedType: "entrada" | "saida";
+  } | null>(null);
   const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
@@ -271,24 +418,30 @@ export default function Estoque() {
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deleteAllTyped, setDeleteAllTyped] = useState("");
   const [deletingAll, setDeletingAll] = useState(false);
+  const [transferItem, setTransferItem] = useState<StockItem | null>(null);
 
   const ITEMS_PER_PAGE = 60;
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { items, totalCount, loading, error, refetch } = useStock(querySearch);
+  const { items: allItems, totalCount, loading, error, refetch } = useStock(querySearch);
+
+  // Separa por fase
+  const intermediariaItems = allItems.filter((i) => i.fase === "intermediaria");
+  const expedicaoItems = allItems.filter((i) => i.fase === "expedicao");
+
+  const items = activeTab === "intermediaria" ? intermediariaItems : expedicaoItems;
+
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
 
-  // Carrega contagem de lotes para cada item
+  // Carrega contagem de lotes para cada item visível
   useEffect(() => {
     if (items.length === 0) { setLotesSummary(new Map()); return; }
-    // FIX MEMORY LEAK: flag `cancelled` evita setState em componente desmontado.
-    // Se o efeito limpar antes das promises resolverem, o setState é ignorado.
     let cancelled = false;
     (async () => {
       const entries = await Promise.all(
         items.map(async (item) => {
           const lotes = await fetchLotesSummary(item.id);
-          return [item.id, lotes.length] as [string, number];
+          return [item.id, lotes.filter((l) => l.saldo > 0).length] as [string, number];
         })
       );
       if (!cancelled) setLotesSummary(new Map(entries));
@@ -298,219 +451,196 @@ export default function Estoque() {
 
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
-    setCurrentPage(1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setQuerySearch(v), 350);
-  }, []);
-
-  const handleSearchSubmit = useCallback((v: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    setSearch(v);
-    setQuerySearch(v);
-  }, []);
-
-  const handleDeleteAll = async () => {
-    setDeletingAll(true);
-    try {
-      let deleted = 0;
-      const MAX = 200;
-      let iter = 0;
-      while (iter < MAX) {
-        iter++;
-        const { data: rows, error: fetchErr } = await supabase
-          .from("stock_items")
-          .select("id")
-          .limit(500);
-        if (fetchErr) throw fetchErr;
-        if (!rows || rows.length === 0) break;
-        const ids = rows.map((r: { id: string }) => r.id);
-        const { error: delErr } = await supabase
-          .from("stock_items")
-          .delete()
-          .in("id", ids);
-        if (delErr) throw delErr;
-        deleted += ids.length;
-      }
-      const { toast: t } = await import("sonner");
-      t.success(`${deleted.toLocaleString("pt-BR")} peça${deleted !== 1 ? "s" : ""} removida${deleted !== 1 ? "s" : ""} do estoque.`);
-      refetch();
-    } catch (err) {
-      console.error("deleteAll stock error:", err);
-      const { toast: t } = await import("sonner");
-      t.error("Erro ao excluir o estoque.");
-    } finally {
-      setDeletingAll(false);
-      setDeleteAllOpen(false);
-      setDeleteAllTyped("");
+    if (!v.trim()) {
+      setQuerySearch("");
+      setCurrentPage(1);
+      return;
     }
-  };
-
-  const handleFocus = useCallback(() => {
-    requestAnimationFrame(() => inputRef.current?.select());
+    debounceRef.current = setTimeout(() => {
+      setQuerySearch(v.trim());
+      setCurrentPage(1);
+    }, 400);
   }, []);
 
-  const handlePaste = useCallback(
-    (e: React.ClipboardEvent<HTMLInputElement>) => {
-      e.preventDefault();
-      const pasted = e.clipboardData.getData("text").trim();
-      handleSearchChange(pasted);
-      requestAnimationFrame(() => inputRef.current?.setSelectionRange(0, pasted.length));
-    },
-    [handleSearchChange]
-  );
+  function handleSearchSubmit(v: string) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setQuerySearch(v);
+    setCurrentPage(1);
+  }
 
-  // Resumo do estoque
+  // Estatísticas
   const statsLow = items.filter((i) => i.quantity > 0 && i.quantity <= i.min_quantity).length;
   const statsOk = items.filter((i) => i.quantity > i.min_quantity).length;
+  const statsEmpty = items.filter((i) => i.quantity === 0).length;
 
-  // Paginação client-side: 60 itens por página
+  // Paginação
   const totalPages = Math.ceil(items.length / ITEMS_PER_PAGE);
   const pagedItems = items.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
+  async function handleDeleteAll() {
+    setDeletingAll(true);
+    const { toast: t } = await import("sonner");
+    const { error } = await supabase.from("stock_items").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    setDeletingAll(false);
+    if (error) {
+      t.error("Erro ao excluir estoque.");
+    } else {
+      t.success("Todo o estoque foi excluído.");
+      setDeleteAllOpen(false);
+      setDeleteAllTyped("");
+      refetch();
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header — mesmo estilo da tela principal */}
-      <header className="border-b border-border/50 bg-card/80 backdrop-blur-md sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
+      {/* Header */}
+      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
+        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
               onClick={() => navigate("/")}
-              title="Voltar"
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-1.5">
+            </button>
+            <div className="flex items-center gap-2">
               <Boxes className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold text-foreground">Controle de Estoque</p>
+              <h1 className="text-sm font-semibold">Estoque</h1>
             </div>
           </div>
-          <nav className="flex items-center gap-1">
-            {/* Histórico e Lista: sempre visíveis */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 px-3 text-xs rounded-xl"
-              onClick={() => setAllMovOpen(true)}
-            >
-              <History className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Histórico</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 px-3 text-xs rounded-xl"
-              onClick={() => setListOpen(true)}
-            >
-              <List className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Lista</span>
-            </Button>
 
-            {/* Botões admin no desktop: visíveis normalmente */}
+          {/* Ações admin */}
+          <div className="flex items-center gap-1.5">
             {isAdmin && (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="hidden sm:flex h-8 gap-1.5 px-3 text-xs rounded-xl"
-                  onClick={() => setBackupOpen(true)}
-                  title="Backup do estoque"
-                >
-                  <DatabaseBackup className="h-3.5 w-3.5" />
-                  Backup
-                </Button>
-                <Button
-                  size="sm"
-                  className="hidden sm:flex h-8 gap-1.5 px-3 text-xs rounded-xl"
-                  onClick={() => setAddOpen(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Adicionar Peça
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="hidden sm:flex h-8 gap-1.5 px-3 text-xs rounded-xl"
-                  onClick={() => { setDeleteAllTyped(""); setDeleteAllOpen(true); }}
-                  title="Excluir todo o estoque"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Excluir Tudo
-                </Button>
-
-                {/* Mobile: hambúrguer para botões admin */}
+                {/* Desktop */}
+                <div className="hidden sm:flex items-center gap-1.5">
+                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setListOpen(true)}>
+                    <List className="h-3.5 w-3.5" /> Lista
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setAllMovOpen(true)}>
+                    <History className="h-3.5 w-3.5" /> Histórico
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
+                    <DatabaseBackup className="h-3.5 w-3.5" /> Backup
+                  </Button>
+                  <Button size="sm" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setAddOpen(true)}>
+                    <Plus className="h-3.5 w-3.5" /> Adicionar
+                  </Button>
+                </div>
+                {/* Mobile hamburger */}
                 <div className="relative sm:hidden">
                   <Button
+                    size="sm"
                     variant="outline"
-                    size="icon"
-                    className="h-8 w-8 rounded-xl"
+                    className="h-8 w-8 p-0 rounded-lg"
                     onClick={() => setAdminMenuOpen((v) => !v)}
-                    title="Ações admin"
-                    aria-expanded={adminMenuOpen}
                   >
-                    {adminMenuOpen
-                      ? <X className="h-4 w-4" />
-                      : <Menu className="h-4 w-4" />
-                    }
+                    <Menu className="h-4 w-4" />
                   </Button>
-
                   {adminMenuOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-20"
-                        onClick={() => setAdminMenuOpen(false)}
-                      />
-                      <div className="absolute right-0 top-full mt-1 z-30 min-w-[180px] rounded-xl border border-border/50 bg-card/95 backdrop-blur-md shadow-lg py-1 overflow-hidden">
+                    <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-border bg-card shadow-xl z-50 overflow-hidden">
+                      {[
+                        { label: "Adicionar Peça", icon: Plus, action: () => setAddOpen(true) },
+                        { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
+                        { label: "Histórico Geral", icon: History, action: () => setAllMovOpen(true) },
+                        { label: "Importar CSV", icon: ScanBarcode, action: () => setCsvOpen(true) },
+                        { label: "Backup", icon: DatabaseBackup, action: () => setBackupOpen(true) },
+                        { label: "Excluir Todo Estoque", icon: Trash2, action: () => setDeleteAllOpen(true), danger: true },
+                      ].map(({ label, icon: Icon, action, danger }) => (
                         <button
+                          key={label}
                           type="button"
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-foreground hover:bg-muted/50 transition-colors"
-                          onClick={() => { setAdminMenuOpen(false); setAddOpen(true); }}
+                          className={cn(
+                            "w-full flex items-center gap-2 px-3 py-2.5 text-[13px] hover:bg-accent/50 transition-colors border-b border-border/30 last:border-0",
+                            danger ? "text-destructive" : "text-foreground"
+                          )}
+                          onClick={() => { action(); setAdminMenuOpen(false); }}
                         >
-                          <Plus className="h-3.5 w-3.5 text-primary" />
-                          Adicionar Peça
+                          <Icon className="h-3.5 w-3.5" /> {label}
                         </button>
-                        <button
-                          type="button"
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-foreground hover:bg-muted/50 transition-colors"
-                          onClick={() => { setAdminMenuOpen(false); setBackupOpen(true); }}
-                        >
-                          <DatabaseBackup className="h-3.5 w-3.5 text-muted-foreground" />
-                          Backup
-                        </button>
-                        <div className="border-t border-border/30 my-1" />
-                        <button
-                          type="button"
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-destructive hover:bg-destructive/10 transition-colors"
-                          onClick={() => { setAdminMenuOpen(false); setDeleteAllTyped(""); setDeleteAllOpen(true); }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Excluir Tudo
-                        </button>
-                      </div>
-                    </>
+                      ))}
+                    </div>
                   )}
                 </div>
               </>
             )}
-          </nav>
+          </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-5 space-y-5">
-        {/* Barra de pesquisa */}
-        <div className="space-y-3">
+      <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+        {/* Tabs Intermediária / Expedição */}
+        <div className="flex items-stretch gap-2">
+          <button
+            type="button"
+            onClick={() => { setActiveTab("intermediaria"); setCurrentPage(1); }}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-all",
+              activeTab === "intermediaria"
+                ? "bg-primary/10 border-primary/40 text-primary"
+                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
+            )}
+          >
+            <Package className="h-4 w-4" />
+            <span>Intermediárias</span>
+            {!loading && (
+              <span className={cn(
+                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
+                activeTab === "intermediaria" ? "bg-primary/15 text-primary" : "bg-muted/50 text-muted-foreground"
+              )}>
+                {intermediariaItems.length}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab("expedicao"); setCurrentPage(1); }}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-all",
+              activeTab === "expedicao"
+                ? "bg-success/10 border-success/40 text-success"
+                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
+            )}
+          >
+            <Truck className="h-4 w-4" />
+            <span>Expedição</span>
+            {!loading && (
+              <span className={cn(
+                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
+                activeTab === "expedicao" ? "bg-success/15 text-success" : "bg-muted/50 text-muted-foreground"
+              )}>
+                {expedicaoItems.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Descrição da aba */}
+        <div className={cn(
+          "rounded-xl border px-4 py-3 text-[12px]",
+          activeTab === "intermediaria"
+            ? "bg-primary/5 border-primary/20 text-primary/80"
+            : "bg-success/5 border-success/20 text-success/80"
+        )}>
+          {activeTab === "intermediaria"
+            ? "Peças desenbaladas recebidas no estoque. Registre a entrada por lote e mova para Expedição após embalar."
+            : "Peças embaladas e prontas para retirada ou venda. Registre a saída aqui."}
+        </div>
+
+        {/* Busca */}
+        <div className="space-y-2">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
                 ref={inputRef}
-                placeholder="Bipe o código de barras ou pesquise aqui..."
+                placeholder="Buscar por modelo, referência, UDI ou lote..."
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                onFocus={handleFocus}
-                onPaste={handlePaste}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     handleSearchSubmit((e.target as HTMLInputElement).value.trim());
@@ -540,11 +670,10 @@ export default function Estoque() {
             </Button>
           </div>
 
-          {/* Dica de busca por lote */}
           {/^\d{6}/.test(search.trim()) && (
             <p className="text-[11px] text-primary/70 flex items-center gap-1.5">
               <Tag className="h-3 w-3" />
-              Pesquisando por lote — formato: <span className="font-mono font-semibold">DDMMAA-TT</span> ou <span className="font-mono font-semibold">DDMMAA-TT/A</span>
+              Pesquisando por lote — formato: <span className="font-mono font-semibold">DDMMAA-TT</span>
             </p>
           )}
 
@@ -552,9 +681,7 @@ export default function Estoque() {
           {!loading && (
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-xs text-muted-foreground">
-                {items.length === totalCount
-                  ? `${totalCount} peça${totalCount !== 1 ? "s" : ""} no estoque`
-                  : `${items.length} de ${totalCount} peças`}
+                {items.length} peça{items.length !== 1 ? "s" : ""} em {activeTab === "intermediaria" ? "intermediária" : "expedição"}
               </p>
               {statsOk > 0 && (
                 <span className="flex items-center gap-1 text-[11px] text-success font-medium">
@@ -566,11 +693,16 @@ export default function Estoque() {
                   <TrendingDown className="h-3 w-3" /> {statsLow} baixo
                 </span>
               )}
+              {statsEmpty > 0 && (
+                <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
+                  <AlertTriangle className="h-3 w-3" /> {statsEmpty} vazio
+                </span>
+              )}
             </div>
           )}
         </div>
 
-        {/* Estados de carregamento / erro / vazio */}
+        {/* Loading / Erro / Vazio */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
@@ -584,20 +716,25 @@ export default function Estoque() {
 
         {!loading && !error && items.length === 0 && (
           <div className="text-center py-20 space-y-3">
-            <Boxes className="h-10 w-10 text-muted-foreground/40 mx-auto" />
-            <p className="text-muted-foreground font-display font-medium">
-              {querySearch ? "Nenhuma peça encontrada" : "Estoque vazio"}
+            {activeTab === "intermediaria"
+              ? <Package className="h-10 w-10 text-muted-foreground/40 mx-auto" />
+              : <Truck className="h-10 w-10 text-muted-foreground/40 mx-auto" />}
+            <p className="text-muted-foreground font-medium">
+              {querySearch
+                ? "Nenhuma peça encontrada"
+                : activeTab === "intermediaria"
+                  ? "Nenhuma peça intermediária"
+                  : "Nenhuma peça na expedição"}
             </p>
             <p className="text-sm text-muted-foreground/60">
               {querySearch
                 ? "Tente outro termo de busca"
-                : "Adicione peças ao estoque usando o botão acima"}
+                : activeTab === "intermediaria"
+                  ? "Adicione peças ao estoque e registre a entrada por lote"
+                  : "Mova peças da aba Intermediárias para cá após embalar"}
             </p>
-            {isAdmin && !querySearch && (
-              <Button
-                className="mt-2 gap-1.5 rounded-xl"
-                onClick={() => setAddOpen(true)}
-              >
+            {isAdmin && !querySearch && activeTab === "intermediaria" && (
+              <Button className="mt-2 gap-1.5 rounded-xl" onClick={() => setAddOpen(true)}>
                 <Plus className="h-4 w-4" /> Adicionar primeira peça
               </Button>
             )}
@@ -608,18 +745,32 @@ export default function Estoque() {
         {!loading && !error && items.length > 0 && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {pagedItems.map((item) => (
-                <StockCard
-                  key={item.id}
-                  item={item}
-                  onMovement={(item, type) => setMovementState({ item, type })}
-                  onHistory={setHistoryItem}
-                  onDelete={setDeleteItem}
-                  onLotes={setLotesItem}
-                  loteCount={lotesSummary.get(item.id) ?? 0}
-                  isAdmin={isAdmin}
-                />
-              ))}
+              {pagedItems.map((item) =>
+                activeTab === "intermediaria" ? (
+                  <IntermediaryCard
+                    key={item.id}
+                    item={item}
+                    onEntrada={(i) => setMovementState({ item: i, type: "entrada", lockedType: "entrada" })}
+                    onTransfer={setTransferItem}
+                    onHistory={setHistoryItem}
+                    onDelete={setDeleteItem}
+                    onLotes={setLotesItem}
+                    loteCount={lotesSummary.get(item.id) ?? 0}
+                    isAdmin={isAdmin}
+                  />
+                ) : (
+                  <ExpedicaoCard
+                    key={item.id}
+                    item={item}
+                    onSaida={(i) => setMovementState({ item: i, type: "saida", lockedType: "saida" })}
+                    onHistory={setHistoryItem}
+                    onDelete={setDeleteItem}
+                    onLotes={setLotesItem}
+                    loteCount={lotesSummary.get(item.id) ?? 0}
+                    isAdmin={isAdmin}
+                  />
+                )
+              )}
             </div>
 
             {/* Paginação */}
@@ -674,59 +825,80 @@ export default function Estoque() {
         )}
       </main>
 
-      {/* Modais */}
+      {/* ─── Modais ──────────────────────────────────────────────────────────── */}
+
       <MovementModal
         item={movementState?.item ?? null}
         open={!!movementState}
         initialType={movementState?.type ?? "entrada"}
+        lockedType={movementState?.lockedType}
         onClose={() => setMovementState(null)}
         onSuccess={refetch}
       />
+
+      <TransferirExpedicaoModal
+        item={transferItem}
+        open={!!transferItem}
+        onClose={() => setTransferItem(null)}
+        onSuccess={refetch}
+      />
+
       <StockHistoryPanel
         item={historyItem}
         open={!!historyItem}
         onClose={() => setHistoryItem(null)}
         onSuccess={refetch}
       />
+
       <AddToStockModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onSuccess={refetch}
       />
+
       <StockListModal
         open={listOpen}
         onClose={() => setListOpen(false)}
-        items={items}
+        items={allItems}
       />
+
       <AllMovementsModal
         open={allMovOpen}
         onClose={() => setAllMovOpen(false)}
       />
+
       <BackupPanel
         open={backupOpen}
         onClose={() => setBackupOpen(false)}
       />
+
       <LotesPanel
         item={lotesItem}
         open={!!lotesItem}
         onClose={() => setLotesItem(null)}
       />
+
+      <StockCsvImport
+        open={csvOpen}
+        onClose={() => setCsvOpen(false)}
+        onSuccess={refetch}
+      />
+
       {/* Excluir todo o estoque */}
-      <AlertDialog open={deleteAllOpen} onOpenChange={(v) => { if (!v) { setDeleteAllOpen(false); setDeleteAllTyped(""); } }}>
+      <AlertDialog
+        open={deleteAllOpen}
+        onOpenChange={(v) => { if (!v) { setDeleteAllOpen(false); setDeleteAllTyped(""); } }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <Trash2 className="h-4 w-4" />
-              Excluir todo o estoque?
+              <Trash2 className="h-4 w-4" /> Excluir todo o estoque?
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <span className="block">
-                Isso irá remover <strong>todas as {totalCount.toLocaleString("pt-BR")} peça{totalCount !== 1 ? "s" : ""}</strong> do
-                estoque e <strong>todo o histórico de movimentos</strong>. Esta ação não pode ser desfeita.
+                Isso irá remover <strong>todas as peças</strong> do estoque (intermediária + expedição) e <strong>todo o histórico</strong>. Ação irreversível.
               </span>
-              <span className="block text-xs text-muted-foreground">
-                💡 Considere fazer um Backup antes de continuar.
-              </span>
+              <span className="block text-xs text-muted-foreground">💡 Faça um Backup antes de continuar.</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="px-1 space-y-1.5">
@@ -743,19 +915,18 @@ export default function Estoque() {
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>
-              Cancelar
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteAll}
               disabled={deletingAll || deleteAllTyped !== "EXCLUIR"}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingAll ? "Excluindo..." : `Excluir tudo (${totalCount.toLocaleString("pt-BR")})`}
+              {deletingAll ? "Excluindo..." : "Excluir tudo"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
       {/* Confirmação de exclusão de peça */}
       {deleteItem && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -768,6 +939,9 @@ export default function Estoque() {
                 <p className="text-sm font-semibold">Remover do estoque?</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
                   {deleteItem.device.model}
+                </p>
+                <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+                  Fase: {deleteItem.fase === "intermediaria" ? "Intermediária" : "Expedição"}
                 </p>
                 <p className="text-[11px] text-destructive/80 mt-1">
                   Todo o histórico de movimentos será apagado.

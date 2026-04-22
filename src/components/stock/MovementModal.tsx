@@ -54,11 +54,13 @@ interface Props {
   item: StockItem | null;
   open: boolean;
   initialType?: "entrada" | "saida";
+  /** Quando definido, trava o modal neste tipo e oculta o seletor de tipo */
+  lockedType?: "entrada" | "saida";
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export function MovementModal({ item, open, initialType = "entrada", onClose, onSuccess }: Props) {
+export function MovementModal({ item, open, initialType = "entrada", lockedType, onClose, onSuccess }: Props) {
   const { user } = useAuth();
   const displayName: string | null =
     (user?.user_metadata?.display_name as string) ?? user?.email ?? null;
@@ -94,7 +96,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
 
   useEffect(() => {
     if (open) {
-      setType(initialType);
+      setType(lockedType ?? initialType);
       setSaidaType("retirada");
       setQty(1);
       setLote("");
@@ -102,7 +104,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
       setLoteDropdownOpen(false);
       setTimeout(() => qtyRef.current?.select(), 80);
     }
-  }, [open, initialType]);
+  }, [open, initialType, lockedType]);
 
   if (!item) return null;
 
@@ -186,7 +188,8 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
         </div>
 
         <div className="px-5 pb-5 space-y-4">
-          {/* Tipo: Entrada / Saída */}
+          {/* Tipo: Entrada / Saída — só exibe quando não há travamento */}
+          {!lockedType && (
           <div className="grid grid-cols-2 gap-2">
             {(["entrada", "saida"] as const).map((t) => (
               <button key={t} type="button" onClick={() => { setType(t); setLote(""); setLoteDropdownOpen(false); }}
@@ -203,6 +206,7 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
               </button>
             ))}
           </div>
+          )}
 
           {/* Sub-tipo de saída */}
           {isSaidaMode && (

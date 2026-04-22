@@ -4,6 +4,8 @@ import type { Device } from "@/types/device";
 
 // ─── Tipos locais ────────────────────────────────────────────────────────────
 
+export type StockFase = "intermediaria" | "expedicao";
+
 export interface StockItem {
   id: string;
   device_id: string;
@@ -11,9 +13,9 @@ export interface StockItem {
   min_quantity: number;
   location: string | null;
   notes: string | null;
+  fase: StockFase;
   created_at: string;
   updated_at: string;
-  // join de devices
   device: Device & { id: string };
 }
 
@@ -29,14 +31,12 @@ export interface StockMovement {
   created_at: string;
 }
 
-
-// ─── Resumo de lotes de uma peça ─────────────────────────────────────────────
 export interface LoteSummary {
   lote: string;
   total_entrada: number;
   total_saida: number;
-  saldo: number;         // entradas - saídas
-  last_movement: string; // ISO date
+  saldo: number;
+  last_movement: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -45,10 +45,9 @@ function sanitize(raw: string): string {
   return raw
     .trim()
     .slice(0, 200)
-    // Strip non-printable ASCII chars (code < 32 or = 127) without triggering no-control-regex
     .split("").filter(ch => ch.charCodeAt(0) > 31 && ch.charCodeAt(0) !== 127).join("")
-    .replace(/[(),;'"`]/g, "")               // strip SQL meta chars
-    .replace(/[%_\\]/g, "\\$&");              // escape LIKE wildcards
+    .replace(/[(),;'"`]/g, "")
+    .replace(/[%_\\]/g, "\\$&");
 }
 
 // ─── Hook principal de estoque ────────────────────────────────────────────────
@@ -67,11 +66,10 @@ export function useStock(search: string) {
     setError(null);
 
     try {
-      // Traz stock_items + join de devices em uma única query
       let query = supabase
         .from("stock_items")
         .select(
-          `id, device_id, quantity, min_quantity, location, notes, created_at, updated_at,
+          `id, device_id, quantity, min_quantity, location, notes, fase, created_at, updated_at,
            device:devices(
              id, udi_di, reference, model, brand_name, internal_code,
              anvisa_registration, manufacturer_country, classification_code,
@@ -85,11 +83,9 @@ export function useStock(search: string) {
 
       const s = sanitize(q);
       if (s) {
-        // Detecta se é busca por lote (padrão: DDMMAA-TT ou DDMMAA-TT/X)
         const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase());
 
         if (isLoteSearch) {
-          // Busca stock_item_ids que têm movimentos com este lote
           const { data: loteMov } = await supabase
             .from("stock_movements")
             .select("stock_item_id")
@@ -104,7 +100,6 @@ export function useStock(search: string) {
           const itemIds = [...new Set(loteMov.map((m) => m.stock_item_id))];
           query = query.in("id", itemIds);
         } else {
-          // Busca normal por modelo/referência/UDI
           const { data: matched } = await supabase
             .from("devices")
             .select("id")
@@ -133,9 +128,9 @@ export function useStock(search: string) {
       const { data, count, error: err } = await query;
       if (err) throw err;
 
-      // O PostgREST retorna device como array de 1 no join to-one — normaliza
       const normalized: StockItem[] = (data ?? []).map((row: Record<string, unknown>) => ({
         ...row,
+        fase: (row.fase as StockFase) ?? "intermediaria",
         device: Array.isArray(row.device) ? row.device[0] : row.device,
       } as StockItem));
 
@@ -186,16 +181,16 @@ export function useStockMovements(stockItemId: string | null) {
 
 // ─── Ações de escrita ─────────────────────────────────────────────────────────
 
-/** Cria ou atualiza um item de estoque (upsert por device_id) */
 export async function upsertStockItem(
   deviceId: string,
-  patch: { quantity?: number; min_quantity?: number; location?: string; notes?: string }
+  patch: { quantity?: number; min_quantity?: number; location?: string; notes?: string },
+  fase: StockFase = "intermediaria"
 ): Promise<{ id: string } | null> {
-  // Verifica se já existe
   const { data: existing } = await supabase
     .from("stock_items")
     .select("id, quantity")
     .eq("device_id", deviceId)
+    .eq("fase", fase)
     .maybeSingle();
 
   if (existing) {
@@ -209,19 +204,13 @@ export async function upsertStockItem(
   } else {
     const { data } = await supabase
       .from("stock_items")
-      .insert({ device_id: deviceId, quantity: 0, min_quantity: 0, ...patch })
+      .insert({ device_id: deviceId, quantity: 0, min_quantity: 0, fase, ...patch })
       .select("id")
       .single();
     return data;
   }
 }
 
-/** Registra um movimento (entrada ou saída) e atualiza a quantidade.
- *
- * SEGURANÇA / CONSISTÊNCIA: idealmente isso seria uma única transação SQL via RPC.
- * Como compensação client-side, se o update de quantidade falhar após o insert do
- * movimento, fazemos rollback deletando o movimento inserido para evitar inconsistência.
- */
 export async function registerMovement(
   stockItemId: string,
   type: "entrada" | "saida",
@@ -231,7 +220,6 @@ export async function registerMovement(
   userDisplayName?: string | null,
   lote?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  // Busca quantidade atual
   const { data: item } = await supabase
     .from("stock_items")
     .select("quantity")
@@ -247,7 +235,6 @@ export async function registerMovement(
     return { ok: false, error: `Estoque insuficiente. Disponível: ${item.quantity}` };
   }
 
-  // Insere movimento e captura o id para rollback se necessário
   const { data: mvData, error: mvErr } = await supabase
     .from("stock_movements")
     .insert({
@@ -264,14 +251,12 @@ export async function registerMovement(
 
   if (mvErr) return { ok: false, error: mvErr.message };
 
-  // Atualiza quantidade
   const { error: upErr } = await supabase
     .from("stock_items")
     .update({ quantity: newQty })
     .eq("id", stockItemId);
 
   if (upErr) {
-    // ROLLBACK: remove o movimento inserido para manter consistência
     await supabase.from("stock_movements").delete().eq("id", mvData.id);
     return { ok: false, error: "Erro ao atualizar estoque. Operação cancelada para evitar inconsistência." };
   }
@@ -279,14 +264,105 @@ export async function registerMovement(
   return { ok: true };
 }
 
-/** Adiciona uma peça ao estoque a partir de um device (cria com qty 0 se não existir) */
 export async function addDeviceToStock(deviceId: string): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabase
     .from("stock_items")
-    .upsert({ device_id: deviceId, quantity: 0, min_quantity: 0 }, { onConflict: "device_id", ignoreDuplicates: true });
+    .upsert(
+      { device_id: deviceId, quantity: 0, min_quantity: 0, fase: "intermediaria" },
+      { onConflict: "device_id,fase", ignoreDuplicates: true }
+    );
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/**
+ * Transfere unidades de um lote da fase Intermediária para Expedição.
+ * Fluxo: saída da intermediária → cria/localiza item de expedição → entrada na expedição.
+ */
+export async function transferToExpedicao(
+  intermediariaItemId: string,
+  deviceId: string,
+  lote: string,
+  quantity: number,
+  userId: string | null,
+  userDisplayName: string | null
+): Promise<{ ok: boolean; error?: string }> {
+  // 1. Saída da intermediária
+  const saidaResult = await registerMovement(
+    intermediariaItemId,
+    "saida",
+    quantity,
+    "Transferência para Expedição",
+    userId,
+    userDisplayName,
+    lote
+  );
+  if (!saidaResult.ok) return saidaResult;
+
+  // 2. Localiza ou cria item de expedição para o mesmo device
+  let expedicaoItemId: string | null = null;
+
+  const { data: existing } = await supabase
+    .from("stock_items")
+    .select("id")
+    .eq("device_id", deviceId)
+    .eq("fase", "expedicao")
+    .maybeSingle();
+
+  if (existing) {
+    expedicaoItemId = existing.id;
+  } else {
+    const { data: srcItem } = await supabase
+      .from("stock_items")
+      .select("min_quantity, location, notes")
+      .eq("id", intermediariaItemId)
+      .single();
+
+    const { data: created, error: createErr } = await supabase
+      .from("stock_items")
+      .insert({
+        device_id: deviceId,
+        quantity: 0,
+        min_quantity: srcItem?.min_quantity ?? 0,
+        location: srcItem?.location ?? null,
+        notes: srcItem?.notes ?? null,
+        fase: "expedicao",
+      })
+      .select("id")
+      .single();
+
+    if (createErr || !created) {
+      await registerMovement(
+        intermediariaItemId, "entrada", quantity,
+        "Rollback — falha ao criar item de expedição",
+        userId, userDisplayName, lote
+      );
+      return { ok: false, error: "Erro ao criar item na expedição." };
+    }
+    expedicaoItemId = created.id;
+  }
+
+  // 3. Entrada na expedição
+  const entradaResult = await registerMovement(
+    expedicaoItemId,
+    "entrada",
+    quantity,
+    "Recebido de Intermediária",
+    userId,
+    userDisplayName,
+    lote
+  );
+
+  if (!entradaResult.ok) {
+    await registerMovement(
+      intermediariaItemId, "entrada", quantity,
+      "Rollback — falha ao registrar entrada na expedição",
+      userId, userDisplayName, lote
+    );
+    return { ok: false, error: "Erro ao registrar entrada na expedição." };
+  }
+
+  return { ok: true };
+}
 
 // ─── Lotes de um item de estoque ─────────────────────────────────────────────
 export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummary[]> {
@@ -299,7 +375,6 @@ export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummar
 
   if (!data || data.length === 0) return [];
 
-  // Agrupa por lote
   const map = new Map<string, LoteSummary>();
   for (const row of data as { lote: string; type: string; quantity: number; created_at: string }[]) {
     const key = row.lote.toUpperCase();
@@ -315,15 +390,13 @@ export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummar
 
   return [...map.values()].sort((a, b) => b.last_movement.localeCompare(a.last_movement));
 }
-/** Cancela (desfaz) um movimento: reverte a qty e deleta o registro */
+
 export async function cancelMovement(
   movementId: string,
   stockItemId: string,
   type: "entrada" | "saida",
   quantity: number
 ): Promise<{ ok: boolean; error?: string }> {
-  // SECURITY: verifica que o movimento realmente pertence ao stock_item informado
-  // (previne IDOR — alguém passando um movementId de outro item)
   const { data: mv } = await supabase
     .from("stock_movements")
     .select("stock_item_id, type, quantity")
@@ -332,11 +405,9 @@ export async function cancelMovement(
 
   if (!mv) return { ok: false, error: "Movimento não encontrado." };
   if (mv.stock_item_id !== stockItemId) return { ok: false, error: "Movimento não pertence a este item." };
-  // Usa os valores do banco, não os passados pelo cliente
   type = mv.type as "entrada" | "saida";
   quantity = mv.quantity;
 
-  // Busca qty atual
   const { data: item } = await supabase
     .from("stock_items")
     .select("quantity")
@@ -345,21 +416,18 @@ export async function cancelMovement(
 
   if (!item) return { ok: false, error: "Item não encontrado." };
 
-  // Inverte o movimento: entrada vira saída e vice-versa
   const newQty = type === "entrada" ? item.quantity - quantity : item.quantity + quantity;
 
   if (newQty < 0) {
     return { ok: false, error: `Não é possível cancelar: estoque ficaria negativo (${newQty}).` };
   }
 
-  // Deleta o movimento
   const { error: delErr } = await supabase
     .from("stock_movements")
     .delete()
     .eq("id", movementId);
   if (delErr) return { ok: false, error: delErr.message };
 
-  // Atualiza quantidade
   const { error: upErr } = await supabase
     .from("stock_items")
     .update({ quantity: newQty })
@@ -369,11 +437,9 @@ export async function cancelMovement(
   return { ok: true };
 }
 
-/** Remove uma peça completamente do sistema de estoque */
 export async function deleteStockItem(
   stockItemId: string
 ): Promise<{ ok: boolean; error?: string }> {
-  // Os movimentos são deletados em cascata pela FK
   const { error } = await supabase
     .from("stock_items")
     .delete()
@@ -418,7 +484,6 @@ export async function getBackupConfig(): Promise<BackupConfig | null> {
 export async function saveBackupConfig(
   schedule: BackupSchedule
 ): Promise<{ ok: boolean; error?: string }> {
-  // upsert na única linha
   const { data: existing } = await supabase
     .from("backup_configs")
     .select("id")
@@ -436,11 +501,10 @@ export async function runBackup(
   userId: string | null,
   userName: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  // Snapshot completo: stock_items + devices + últimos 200 movimentos
   const [itemsRes, movRes] = await Promise.all([
     supabase
       .from("stock_items")
-      .select("id, quantity, min_quantity, location, notes, updated_at, device:devices(model,reference,udi_di,internal_code)"),
+      .select("id, quantity, min_quantity, location, notes, fase, updated_at, device:devices(model,reference,udi_di,internal_code)"),
     supabase
       .from("stock_movements")
       .select("id, stock_item_id, type, quantity, reason, user_display_name, created_at")
@@ -463,7 +527,6 @@ export async function runBackup(
 
   if (error) return { ok: false, error: error.message };
 
-  // Atualiza last_backup na config
   const { data: cfg } = await supabase.from("backup_configs").select("id").maybeSingle();
   if (cfg) {
     await supabase.from("backup_configs").update({ last_backup: new Date().toISOString() }).eq("id", cfg.id);
@@ -490,7 +553,8 @@ export async function downloadBackup(backupId: string): Promise<object | null> {
   return data ?? null;
 }
 
-// Fetch all movements (histórico geral) com join de device via stock_items
+export type AllMovementFase = StockFase;
+
 export interface AllMovement {
   id: string;
   stock_item_id: string;
@@ -502,6 +566,7 @@ export interface AllMovement {
   created_at: string;
   device_model: string;
   device_reference: string;
+  fase: StockFase;
 }
 
 export async function fetchAllMovements(limit = 100): Promise<AllMovement[]> {
@@ -510,6 +575,7 @@ export async function fetchAllMovements(limit = 100): Promise<AllMovement[]> {
     .select(`
       id, stock_item_id, type, quantity, reason, lote, user_display_name, created_at,
       stock_item:stock_items(
+        fase,
         device:devices(model, reference)
       )
     `)
@@ -518,7 +584,8 @@ export async function fetchAllMovements(limit = 100): Promise<AllMovement[]> {
 
   return ((data ?? []) as Record<string, unknown>[]).map((row) => {
     const si = row.stock_item as Record<string, unknown> | null;
-    const dev = (Array.isArray(si) ? si[0] : si)?.device as Record<string, unknown> | null;
+    const siObj = Array.isArray(si) ? si[0] : si;
+    const dev = siObj?.device as Record<string, unknown> | null;
     const d = Array.isArray(dev) ? dev[0] : dev;
     return {
       id: row.id as string,
@@ -531,6 +598,7 @@ export async function fetchAllMovements(limit = 100): Promise<AllMovement[]> {
       created_at: row.created_at as string,
       device_model: (d?.model as string) ?? "—",
       device_reference: (d?.reference as string) ?? "—",
+      fase: ((siObj?.fase as StockFase) ?? "intermediaria"),
     };
   });
 }
