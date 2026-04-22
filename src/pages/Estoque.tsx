@@ -37,6 +37,9 @@ import {
   Tag,
   Trash2 as Trash2Icon,
   Menu,
+  Shield,
+  Activity,
+  Globe,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
@@ -104,10 +107,32 @@ function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, 
           </Badge>
         </div>
 
-        {/* UDI */}
-        <p className="text-[10px] text-muted-foreground/60 font-mono truncate -mt-1">
-          {d.udi_di}
-        </p>
+        {/* Marca */}
+        {d.brand_name && (
+          <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>
+        )}
+
+        {/* Badges de status */}
+        <div className="flex flex-wrap gap-1 -mt-1">
+          {d.sterile && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
+              <Shield className="h-2.5 w-2.5" />
+              Estéril
+            </span>
+          )}
+          {d.single_use && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning/8 px-2 py-0.5 text-[10px] font-medium text-warning">
+              <Package className="h-2.5 w-2.5" />
+              Uso único
+            </span>
+          )}
+          {d.implantable && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <Activity className="h-2.5 w-2.5" />
+              Implantável
+            </span>
+          )}
+        </div>
 
         {/* Quantidade — destaque visual */}
         <div
@@ -162,6 +187,17 @@ function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, 
           <span>Mín: {item.min_quantity} un.</span>
           {item.location && (
             <span className="truncate ml-2">📍 {item.location}</span>
+          )}
+        </div>
+
+        {/* UDI e país — rodapé igual ao DeviceCard */}
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
+          <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
+          {d.manufacturer_country && (
+            <span className="flex items-center gap-0.5 shrink-0 ml-2">
+              <Globe className="h-2.5 w-2.5" />
+              {d.manufacturer_country}
+            </span>
           )}
         </div>
 
