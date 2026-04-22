@@ -47,19 +47,19 @@ return (
       <div className="flex flex-wrap gap-1">
         {device.sterile && (
           <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
-            <Shield className="h-2.5 w-2.5 text-brand" />
+            <Shield className="h-2.5 w-2.5" />
             Estéril
           </span>
         )}
         {device.single_use && (
           <span className="inline-flex items-center gap-1 rounded-full bg-warning/8 px-2 py-0.5 text-[10px] font-medium text-warning">
-            <Package className="h-2.5 w-2.5 text-brand" />
+            <Package className="h-2.5 w-2.5" />
             Uso único
           </span>
         )}
         {device.implantable && (
           <span className="inline-flex items-center gap-1 rounded-full bg-brand/8 px-2 py-0.5 text-[10px] font-medium text-brand">
-            <Activity className="h-2.5 w-2.5 text-brand" />
+            <Activity className="h-2.5 w-2.5" />
             Implantável
           </span>
         )}
@@ -67,8 +67,8 @@ return (
 
       {/* Footer */}
       <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-2 border-t border-border/20">
-        <span className="font-mono truncate">{device.anvisa_registration}</span>
-        <div className="flex items-center gap-2 shrink-0">
+        <span className="font-mono truncate">{device.anvisa_registration || device.udi_di}</span>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
           {device.manufacturer_country && (
             <span className="flex items-center gap-0.5">
               <Globe className="h-2.5 w-2.5 text-brand" />

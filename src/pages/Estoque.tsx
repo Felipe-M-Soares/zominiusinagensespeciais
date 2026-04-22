@@ -19,7 +19,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft,
   ArrowDownCircle,
-  ArrowUpCircle,
   Clock,
   Plus,
   ScanBarcode,
@@ -209,15 +208,7 @@ function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, 
             className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-primary/8 hover:bg-primary/15 text-primary text-[11px] font-medium transition-colors"
           >
             <ArrowDownCircle className="h-3.5 w-3.5" />
-            Entrada
-          </button>
-          <button
-            type="button"
-            onClick={() => onMovement(item, "saida")}
-            className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-destructive/8 hover:bg-destructive/15 text-destructive text-[11px] font-medium transition-colors"
-          >
-            <ArrowUpCircle className="h-3.5 w-3.5" />
-            Saída
+            Movimentar
           </button>
           <button
             type="button"
