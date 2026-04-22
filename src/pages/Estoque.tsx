@@ -120,7 +120,7 @@ function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, 
             </span>
           )}
           {d.single_use && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-warning/8 px-2 py-0.5 text-[10px] font-medium text-warning">
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
               <Package className="h-2.5 w-2.5" />
               Uso único
             </span>
@@ -272,12 +272,18 @@ export default function Estoque() {
   const [deleteAllTyped, setDeleteAllTyped] = useState("");
   const [deletingAll, setDeletingAll] = useState(false);
 
+  const ITEMS_PER_PAGE = 60;
+  const [currentPage, setCurrentPage] = useState(1);
+
   const { items, totalCount, loading, error, refetch } = useStock(querySearch);
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
 
   // Carrega contagem de lotes para cada item
   useEffect(() => {
     if (items.length === 0) { setLotesSummary(new Map()); return; }
+    // FIX MEMORY LEAK: flag `cancelled` evita setState em componente desmontado.
+    // Se o efeito limpar antes das promises resolverem, o setState é ignorado.
+    let cancelled = false;
     (async () => {
       const entries = await Promise.all(
         items.map(async (item) => {
@@ -285,12 +291,14 @@ export default function Estoque() {
           return [item.id, lotes.length] as [string, number];
         })
       );
-      setLotesSummary(new Map(entries));
+      if (!cancelled) setLotesSummary(new Map(entries));
     })();
+    return () => { cancelled = true; };
   }, [items]);
 
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
+    setCurrentPage(1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => setQuerySearch(v), 350);
   }, []);
@@ -352,9 +360,12 @@ export default function Estoque() {
   );
 
   // Resumo do estoque
-  const statsEmpty = items.filter((i) => i.quantity === 0).length;
   const statsLow = items.filter((i) => i.quantity > 0 && i.quantity <= i.min_quantity).length;
   const statsOk = items.filter((i) => i.quantity > i.min_quantity).length;
+
+  // Paginação client-side: 60 itens por página
+  const totalPages = Math.ceil(items.length / ITEMS_PER_PAGE);
+  const pagedItems = items.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
     <div className="min-h-screen bg-background">
@@ -555,11 +566,6 @@ export default function Estoque() {
                   <TrendingDown className="h-3 w-3" /> {statsLow} baixo
                 </span>
               )}
-              {statsEmpty > 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
-                  <AlertTriangle className="h-3 w-3" /> {statsEmpty} zerado
-                </span>
-              )}
             </div>
           )}
         </div>
@@ -600,20 +606,71 @@ export default function Estoque() {
 
         {/* Grid de cards */}
         {!loading && !error && items.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {items.map((item) => (
-              <StockCard
-                key={item.id}
-                item={item}
-                onMovement={(item, type) => setMovementState({ item, type })}
-                onHistory={setHistoryItem}
-                onDelete={setDeleteItem}
-                onLotes={setLotesItem}
-                loteCount={lotesSummary.get(item.id) ?? 0}
-                isAdmin={isAdmin}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {pagedItems.map((item) => (
+                <StockCard
+                  key={item.id}
+                  item={item}
+                  onMovement={(item, type) => setMovementState({ item, type })}
+                  onHistory={setHistoryItem}
+                  onDelete={setDeleteItem}
+                  onLotes={setLotesItem}
+                  loteCount={lotesSummary.get(item.id) ?? 0}
+                  isAdmin={isAdmin}
+                />
+              ))}
+            </div>
+
+            {/* Paginação */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-2 pb-4">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 px-3 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  ← Anterior
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                    .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                      if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("...");
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, idx) =>
+                      p === "..." ? (
+                        <span key={`ellipsis-${idx}`} className="px-1 text-xs text-muted-foreground/50">…</span>
+                      ) : (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setCurrentPage(p as number)}
+                          className={`h-8 w-8 rounded-lg text-xs font-medium transition-colors ${
+                            currentPage === p
+                              ? "bg-primary text-primary-foreground"
+                              : "border border-border text-muted-foreground hover:bg-muted/40"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 px-3 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  Próxima →
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
 
