@@ -39,6 +39,8 @@ import {
   Shield,
   Activity,
   Globe,
+  Loader2,
+  ChevronDown,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
@@ -74,7 +76,7 @@ function StockCard({ item, onMovement, onHistory, onDelete, onLotes, loteCount, 
       className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
       style={{
         boxShadow:
-          "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
+          "0 2px 4px hsl(var(--border) / 0.5), 0 8px 24px -4px hsl(var(--border) / 0.35), 0 16px 40px -8px hsl(0 0% 0% / 0.12), inset 0 1px 0 hsl(0 0% 100% / 0.08)",
       }}
     >
       {/* Top accent bar — vermelho se zerado, amarelo se baixo, verde normal */}
@@ -272,7 +274,7 @@ export default function Estoque() {
   const [deleteAllTyped, setDeleteAllTyped] = useState("");
   const [deletingAll, setDeletingAll] = useState(false);
 
-  const { items, totalCount, loading, error, refetch } = useStock(querySearch);
+  const { items, totalCount, loading, loadingMore, hasMore, loadMore, error, refetch } = useStock(querySearch);
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
 
   // Carrega contagem de lotes para cada item
@@ -352,7 +354,7 @@ export default function Estoque() {
   );
 
   // Resumo do estoque
-  const statsEmpty = items.filter((i) => i.quantity === 0).length;
+
   const statsLow = items.filter((i) => i.quantity > 0 && i.quantity <= i.min_quantity).length;
   const statsOk = items.filter((i) => i.quantity > i.min_quantity).length;
 
@@ -555,11 +557,7 @@ export default function Estoque() {
                   <TrendingDown className="h-3 w-3" /> {statsLow} baixo
                 </span>
               )}
-              {statsEmpty > 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
-                  <AlertTriangle className="h-3 w-3" /> {statsEmpty} zerado
-                </span>
-              )}
+
             </div>
           )}
         </div>
@@ -613,6 +611,30 @@ export default function Estoque() {
                 isAdmin={isAdmin}
               />
             ))}
+          </div>
+        )}
+
+        {/* Carregar mais */}
+        {!loading && !error && hasMore && (
+          <div className="flex justify-center pt-2 pb-4">
+            <Button
+              variant="outline"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="gap-2"
+            >
+              {loadingMore ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Carregando...
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-4 w-4" />
+                  Carregar mais ({(totalCount - items.length).toLocaleString("pt-BR")} restantes)
+                </>
+              )}
+            </Button>
           </div>
         )}
       </main>

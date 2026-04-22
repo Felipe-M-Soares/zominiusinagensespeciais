@@ -53,145 +53,109 @@ function sanitize(raw: string): string {
 
 // ─── Hook principal de estoque ────────────────────────────────────────────────
 
-const STOCK_PAGE_SIZE = 60;
-
-async function queryStock(
-  q: string,
-  offset: number,
-  signal: AbortSignal
-): Promise<{ data: StockItem[]; count: number }> {
-  const SELECT = `id, device_id, quantity, min_quantity, location, notes, created_at, updated_at,
-    device:devices(
-      id, udi_di, reference, model, brand_name, internal_code,
-      anvisa_registration, manufacturer_country, classification_code,
-      risk_class, sterile, single_use, implantable, intended_use,
-      body_region, primary_material, secondary_material,
-      surface_treatment, exocad_compatibility, compatible_systems, icon_url
-    )`;
-
-  let query = supabase
-    .from("stock_items")
-    .select(SELECT, { count: "exact" })
-    .order("updated_at", { ascending: false })
-    .range(offset, offset + STOCK_PAGE_SIZE - 1);
-
-  const s = sanitize(q);
-  if (s) {
-    const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase());
-
-    if (isLoteSearch) {
-      const { data: loteMov } = await supabase
-        .from("stock_movements")
-        .select("stock_item_id")
-        .ilike("lote", s.toUpperCase());
-
-      if (!loteMov || loteMov.length === 0) return { data: [], count: 0 };
-      const itemIds = [...new Set(loteMov.map((m) => m.stock_item_id))];
-      query = query.in("id", itemIds);
-    } else {
-      const { data: matched } = await supabase
-        .from("devices")
-        .select("id")
-        .or(
-          [
-            `model.ilike.%${s}%`,
-            `reference.ilike.%${s}%`,
-            `udi_di.ilike.%${s}%`,
-            `internal_code.ilike.%${s}%`,
-            `anvisa_registration.ilike.%${s}%`,
-            `brand_name.ilike.%${s}%`,
-          ].join(",")
-        );
-
-      if (!matched || matched.length === 0) return { data: [], count: 0 };
-      const ids = matched.map((d) => d.id);
-      query = query.in("device_id", ids);
-    }
-  }
-
-  const { data, count, error: err } = await query;
-  if (signal.aborted) return { data: [], count: 0 };
-  if (err) throw err;
-
-  const normalized: StockItem[] = (data ?? []).map((row: Record<string, unknown>) => ({
-    ...row,
-    device: Array.isArray(row.device) ? row.device[0] : row.device,
-  } as StockItem));
-
-  return { data: normalized, count: count ?? 0 };
-}
-
 export function useStock(search: string) {
   const [items, setItems] = useState<StockItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const offsetRef = useRef(0);
-  const searchRef = useRef(search);
-  useEffect(() => { searchRef.current = search; }, [search]);
+  const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    offsetRef.current = 0;
-    setItems([]);
-    setTotalCount(0);
+  const fetch = useCallback(async (q: string) => {
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    setLoading(true);
     setError(null);
-    setLoading(true);
 
-    queryStock(search, 0, controller.signal)
-      .then(({ data, count }) => {
-        if (controller.signal.aborted) return;
-        setItems(data);
-        setTotalCount(count);
-        offsetRef.current = data.length;
-      })
-      .catch((e: unknown) => {
-        if (controller.signal.aborted) return;
-        if ((e as { name?: string })?.name !== "AbortError")
-          setError("Erro ao carregar estoque.");
-      })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    try {
+      // Traz stock_items + join de devices em uma única query
+      let query = supabase
+        .from("stock_items")
+        .select(
+          `id, device_id, quantity, min_quantity, location, notes, created_at, updated_at,
+           device:devices(
+             id, udi_di, reference, model, brand_name, internal_code,
+             anvisa_registration, manufacturer_country, classification_code,
+             risk_class, sterile, single_use, implantable, intended_use,
+             body_region, primary_material, secondary_material,
+             surface_treatment, exocad_compatibility, compatible_systems, icon_url
+           )`,
+          { count: "exact" }
+        )
+        .order("updated_at", { ascending: false });
 
-    return () => controller.abort();
-  }, [search]);
+      const s = sanitize(q);
+      if (s) {
+        // Detecta se é busca por lote (padrão: DDMMAA-TT ou DDMMAA-TT/X)
+        const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase());
 
-  const loadMore = useCallback(() => {
-    if (loadingMore) return;
-    setLoadingMore(true);
-    const controller = new AbortController();
+        if (isLoteSearch) {
+          // Busca stock_item_ids que têm movimentos com este lote
+          const { data: loteMov } = await supabase
+            .from("stock_movements")
+            .select("stock_item_id")
+            .ilike("lote", s.toUpperCase());
 
-    queryStock(searchRef.current, offsetRef.current, controller.signal)
-      .then(({ data, count }) => {
-        if (controller.signal.aborted) return;
-        setItems((prev) => [...prev, ...data]);
-        setTotalCount(count);
-        offsetRef.current += data.length;
-      })
-      .catch((e: unknown) => {
-        if (controller.signal.aborted) return;
-        console.error("loadMore stock error:", e);
-      })
-      .finally(() => { if (!controller.signal.aborted) setLoadingMore(false); });
-  }, [loadingMore]);
+          if (!loteMov || loteMov.length === 0) {
+            setItems([]);
+            setTotalCount(0);
+            setLoading(false);
+            return;
+          }
+          const itemIds = [...new Set(loteMov.map((m) => m.stock_item_id))];
+          query = query.in("id", itemIds);
+        } else {
+          // Busca normal por modelo/referência/UDI
+          const { data: matched } = await supabase
+            .from("devices")
+            .select("id")
+            .or(
+              [
+                `model.ilike.%${s}%`,
+                `reference.ilike.%${s}%`,
+                `udi_di.ilike.%${s}%`,
+                `internal_code.ilike.%${s}%`,
+                `anvisa_registration.ilike.%${s}%`,
+                `brand_name.ilike.%${s}%`,
+              ].join(",")
+            );
 
-  const hasMore = items.length < totalCount;
+          if (!matched || matched.length === 0) {
+            setItems([]);
+            setTotalCount(0);
+            setLoading(false);
+            return;
+          }
+          const ids = matched.map((d) => d.id);
+          query = query.in("device_id", ids);
+        }
+      }
 
-  const refetch = useCallback(() => {
-    const controller = new AbortController();
-    offsetRef.current = 0;
-    setItems([]);
-    setLoading(true);
-    queryStock(searchRef.current, 0, controller.signal)
-      .then(({ data, count }) => {
-        setItems(data);
-        setTotalCount(count);
-        offsetRef.current = data.length;
-      })
-      .finally(() => setLoading(false));
+      const { data, count, error: err } = await query;
+      if (err) throw err;
+
+      // O PostgREST retorna device como array de 1 no join to-one — normaliza
+      const normalized: StockItem[] = (data ?? []).map((row: Record<string, unknown>) => ({
+        ...row,
+        device: Array.isArray(row.device) ? row.device[0] : row.device,
+      } as StockItem));
+
+      setItems(normalized);
+      setTotalCount(count ?? 0);
+    } catch (e: unknown) {
+      if ((e as { name?: string })?.name !== "AbortError") {
+        setError("Erro ao carregar estoque.");
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return { items, totalCount, loading, loadingMore, hasMore, loadMore, error, refetch };
+  useEffect(() => {
+    fetch(search);
+    return () => abortRef.current?.abort();
+  }, [search, fetch]);
+
+  return { items, totalCount, loading, error, refetch: () => fetch(search) };
 }
 
 // ─── Hook de movimentos de um item ────────────────────────────────────────────
