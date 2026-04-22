@@ -229,7 +229,11 @@ export function AdminUsers() {
   };
 
   const resetPassword = async () => {
-    if (!passwordDialog || newPassword.length < 8) return;
+    if (!passwordDialog) return;
+    // SECURITY: usa validatePassword() que já existe neste arquivo — garante
+    // complexidade igual à criação de usuário (maiúscula, minúscula, número, especial).
+    const pwdError = validatePassword(newPassword);
+    if (pwdError) { toast.error(pwdError); return; }
     if (newPassword.length > 72) { toast.error("Senha deve ter no máximo 72 caracteres."); return; }
     setResettingPassword(true);
     try {

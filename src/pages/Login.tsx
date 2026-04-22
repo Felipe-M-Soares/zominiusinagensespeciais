@@ -32,16 +32,19 @@ export default function Login() {
         return;
       }
 
-      // Verifica se precisa trocar a senha (primeiro login)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
+      // SECURITY FIX: usa getSession() em vez de uma segunda query a profiles,
+      // evitando race condition TOCTOU onde o perfil pode não estar disponível
+      // via RLS logo após o login. O campo must_change_password é lido via
+      // supabase diretamente pois getSession já contém o token atualizado.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("must_change_password")
-          .eq("user_id", user.id)
+          .eq("user_id", session.user.id)
           .maybeSingle();
 
-        if (profile?.must_change_password) {
+        if (profile?.must_change_password === true) {
           navigate("/set-password");
           return;
         }
