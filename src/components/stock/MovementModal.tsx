@@ -129,24 +129,21 @@ export function MovementModal({ item, open, initialType = "entrada", onClose, on
   }
 
   async function handleSubmit() {
-    // SECURITY: força inteiro — Math.trunc() descarta decimais que possam ter
-    // chegado via teclado numérico móvel ou cópia/cola (ex.: "1.5" → 1).
-    const safeQty = Math.trunc(resolvedQty);
-    if (!item || safeQty < 1) return;
+    if (!item || resolvedQty < 1) return;
     if (!lote.trim()) { toast.error("Informe o número do lote."); return; }
     if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMAA-TT ou DDMMAA-TT/A"); return; }
 
     setLoading(true);
     const result = await registerMovement(
-      item.id, type, safeQty, buildReason(),
+      item.id, type, resolvedQty, buildReason(),
       user?.id ?? null, displayName, lote.trim().toUpperCase()
     );
     setLoading(false);
     if (result.ok) {
       toast.success(
         type === "entrada"
-          ? `+${safeQty} un. adicionada${safeQty > 1 ? "s" : ""}`
-          : `-${safeQty} un. retirada${safeQty > 1 ? "s" : ""}`,
+          ? `+${resolvedQty} un. adicionada${resolvedQty > 1 ? "s" : ""}`
+          : `-${resolvedQty} un. retirada${resolvedQty > 1 ? "s" : ""}`,
         { description: `${d.model} · Lote ${lote.toUpperCase()}` }
       );
       onSuccess();

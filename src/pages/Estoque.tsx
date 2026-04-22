@@ -281,9 +281,6 @@ export default function Estoque() {
   // Carrega contagem de lotes para cada item
   useEffect(() => {
     if (items.length === 0) { setLotesSummary(new Map()); return; }
-    // FIX MEMORY LEAK: flag `cancelled` evita setState em componente desmontado.
-    // Se o efeito limpar antes das promises resolverem, o setState é ignorado.
-    let cancelled = false;
     (async () => {
       const entries = await Promise.all(
         items.map(async (item) => {
@@ -291,9 +288,8 @@ export default function Estoque() {
           return [item.id, lotes.length] as [string, number];
         })
       );
-      if (!cancelled) setLotesSummary(new Map(entries));
+      setLotesSummary(new Map(entries));
     })();
-    return () => { cancelled = true; };
   }, [items]);
 
   const handleSearchChange = useCallback((v: string) => {
@@ -360,6 +356,7 @@ export default function Estoque() {
   );
 
   // Resumo do estoque
+  const statsEmpty = items.filter((i) => i.quantity === 0).length;
   const statsLow = items.filter((i) => i.quantity > 0 && i.quantity <= i.min_quantity).length;
   const statsOk = items.filter((i) => i.quantity > i.min_quantity).length;
 
