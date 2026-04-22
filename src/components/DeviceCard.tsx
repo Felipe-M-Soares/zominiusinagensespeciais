@@ -52,7 +52,7 @@ return (
           </span>
         )}
         {device.single_use && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-warning/8 px-2 py-0.5 text-[10px] font-medium text-warning">
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
             <Package className="h-2.5 w-2.5" />
             Uso único
           </span>
