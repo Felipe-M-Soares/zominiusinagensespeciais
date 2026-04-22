@@ -4,8 +4,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import type { StockItem } from "@/hooks/useStock";
-import { Package, AlertTriangle, TrendingDown, CheckCircle2, List } from "lucide-react";
+import { Package, AlertTriangle, TrendingDown, CheckCircle2, List, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -19,6 +20,70 @@ export function StockListModal({ open, onClose, items }: Props) {
   const available = [...items]
     .filter((i) => i.quantity > 0)
     .sort((a, b) => a.device.model.localeCompare(b.device.model, "pt-BR"));
+
+  function handlePrint() {
+    const now = new Date().toLocaleDateString("pt-BR", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+
+    const rows = available.map((item) => {
+      const isLow = item.quantity <= item.min_quantity;
+      const status = isLow ? "⚠ Baixo" : "✓ OK";
+      return `
+        <tr>
+          <td>${item.device.model}</td>
+          <td>${item.device.reference}</td>
+          <td>${item.device.udi_di ?? ""}</td>
+          <td style="text-align:center; font-weight:bold; color:${isLow ? "#d97706" : "#16a34a"}">${item.quantity}</td>
+          <td style="text-align:center">${item.min_quantity}</td>
+          <td style="text-align:center; color:${isLow ? "#d97706" : "#16a34a"}">${status}</td>
+          <td>${item.location ?? ""}</td>
+        </tr>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Estoque — ${now}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
+    h2 { font-size: 14px; margin-bottom: 4px; }
+    p.sub { color: #555; font-size: 10px; margin: 0 0 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 5px 8px; text-align: left; font-size: 10px; }
+    td { border: 1px solid #e2e8f0; padding: 4px 8px; vertical-align: middle; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    @media print { body { margin: 10px; } button { display: none; } }
+  </style>
+</head>
+<body>
+  <h2>Relatório de Estoque</h2>
+  <p class="sub">Gerado em: ${now} &nbsp;|&nbsp; Total: ${available.length} peça${available.length !== 1 ? "s" : ""}</p>
+  <button onclick="window.print()" style="margin-bottom:14px;padding:6px 14px;cursor:pointer;font-size:11px;">🖨 Imprimir</button>
+  <table>
+    <thead>
+      <tr>
+        <th>Modelo</th>
+        <th>Referência</th>
+        <th>UDI-DI</th>
+        <th style="text-align:center">Qtd.</th>
+        <th style="text-align:center">Mín.</th>
+        <th style="text-align:center">Status</th>
+        <th>Localização</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+  }
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -79,6 +144,21 @@ export function StockListModal({ open, onClose, items }: Props) {
             );
           })}
         </div>
+
+        {/* Botão exportar tabela */}
+        {available.length > 0 && (
+          <div className="px-5 pb-5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full h-9 gap-2 rounded-xl text-xs"
+              onClick={handlePrint}
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Exportar Tabela para Impressão
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

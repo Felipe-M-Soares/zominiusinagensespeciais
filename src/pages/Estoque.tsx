@@ -35,7 +35,6 @@ import {
   History,
   DatabaseBackup,
   Tag,
-  FileSpreadsheet,
   Trash2 as Trash2Icon,
   Menu,
 } from "lucide-react";
@@ -44,8 +43,7 @@ import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
 import { AddToStockModal } from "@/components/stock/AddToStockModal";
 import { StockListModal } from "@/components/stock/StockListModal";
 import { LotesPanel } from "@/components/stock/LotesPanel";
-import { StockCsvImport } from "@/components/stock/StockCsvImport";
-import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
+import { StockCsvImport } from "@/components/stock/StockCsvImport";import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { BackupPanel } from "@/components/stock/BackupPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummary } from "@/hooks/useStock";
@@ -386,16 +384,6 @@ export default function Estoque() {
                   Backup
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="hidden sm:flex h-8 gap-1.5 px-3 text-xs rounded-xl"
-                  onClick={() => setCsvOpen(true)}
-                  title="Importar via CSV"
-                >
-                  <FileSpreadsheet className="h-3.5 w-3.5" />
-                  CSV
-                </Button>
-                <Button
                   size="sm"
                   className="hidden sm:flex h-8 gap-1.5 px-3 text-xs rounded-xl"
                   onClick={() => setAddOpen(true)}
@@ -444,14 +432,6 @@ export default function Estoque() {
                         >
                           <Plus className="h-3.5 w-3.5 text-primary" />
                           Adicionar Peça
-                        </button>
-                        <button
-                          type="button"
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-foreground hover:bg-muted/50 transition-colors"
-                          onClick={() => { setAdminMenuOpen(false); setCsvOpen(true); }}
-                        >
-                          <FileSpreadsheet className="h-3.5 w-3.5 text-muted-foreground" />
-                          Importar CSV
                         </button>
                         <button
                           type="button"
@@ -647,12 +627,6 @@ export default function Estoque() {
         open={!!lotesItem}
         onClose={() => setLotesItem(null)}
       />
-      <StockCsvImport
-        open={csvOpen}
-        onClose={() => setCsvOpen(false)}
-        onSuccess={refetch}
-      />
-
       {/* Excluir todo o estoque */}
       <AlertDialog open={deleteAllOpen} onOpenChange={(v) => { if (!v) { setDeleteAllOpen(false); setDeleteAllTyped(""); } }}>
         <AlertDialogContent>

@@ -223,6 +223,22 @@ export function AdminDevices() {
         toast.success(`Importação concluída: ${importData.inserted} dispositivos importados de ${importData.total}`);
         setPage(0);
         fetchDevices(debouncedSearch, 0);
+
+        // Auto-adicionar ao estoque: busca todos os devices sem stock_item e insere com qty 0
+        try {
+          const { data: allDevices } = await supabase.from("devices").select("id");
+          const { data: existingStock } = await supabase.from("stock_items").select("device_id");
+          const existingIds = new Set((existingStock ?? []).map((s: { device_id: string }) => s.device_id));
+          const toInsert = (allDevices ?? [])
+            .filter((d: { id: string }) => !existingIds.has(d.id))
+            .map((d: { id: string }) => ({ device_id: d.id, quantity: 0, min_quantity: 0 }));
+          if (toInsert.length > 0) {
+            await supabase.from("stock_items").insert(toInsert);
+            toast.success(`${toInsert.length} dispositivo${toInsert.length > 1 ? "s" : ""} adicionado${toInsert.length > 1 ? "s" : ""} ao estoque automaticamente`);
+          }
+        } catch (stockErr) {
+          console.warn("Erro ao auto-inserir no estoque:", stockErr);
+        }
       }
     } catch (err) {
       console.error("Import parse error:", err);
