@@ -47,30 +47,12 @@ export default function SetPassword() {
       toast.error("Senha deve ter no mínimo 8 caracteres.");
       return;
     }
-    if (password.length > 72) {
-      toast.error("Senha deve ter no máximo 72 caracteres.");
-      return;
-    }
-    // SECURITY: valida complexidade — igual ao AdminUsers.validatePassword(),
-    // evita que usuário defina senha fraca como "12345678" no primeiro login.
-    if (!/[A-Z]/.test(password)) {
-      toast.error("A senha deve conter ao menos 1 letra maiúscula.");
-      return;
-    }
-    if (!/[a-z]/.test(password)) {
-      toast.error("A senha deve conter ao menos 1 letra minúscula.");
-      return;
-    }
-    if (!/[0-9]/.test(password)) {
-      toast.error("A senha deve conter ao menos 1 número.");
-      return;
-    }
-    if (!/[^A-Za-z0-9]/.test(password)) {
-      toast.error("A senha deve conter ao menos 1 caractere especial (!@#$%...).");
-      return;
-    }
     if (password !== confirm) {
       toast.error("As senhas não coincidem.");
+      return;
+    }
+    if (password.length > 72) {
+      toast.error("Senha deve ter no máximo 72 caracteres.");
       return;
     }
 
