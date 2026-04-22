@@ -104,7 +104,7 @@ export function AdminDevices() {
 
   const normalizeKey = (s: string) =>
     s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-      .replace(/[\s\-]+/g, "_").replace(/[^a-z0-9_]/g, "");
+      .replace(/[\s-]+/g, "_").replace(/[^a-z0-9_]/g, "");
 
   function parseCSVBrowser(text: string): Record<string, string>[] {
     const clean = text.replace(/^\uFEFF/, "");
