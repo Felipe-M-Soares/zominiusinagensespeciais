@@ -41,6 +41,32 @@ export interface LoteSummary {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Normaliza campos booleanos que no banco podem estar como texto
+ * (ex: "Labeled As A Single-Use Device?" em vez de true/false).
+ */
+function parseBoolField(val: unknown): boolean {
+  if (typeof val === "boolean") return val;
+  if (typeof val === "string") {
+    const lower = val.toLowerCase().trim();
+    return lower !== "" && lower !== "no" && lower !== "false" && lower !== "0";
+  }
+  return !!val;
+}
+
+/**
+ * Normaliza campos booleanos que no banco podem estar como texto
+ * (ex: "Labeled As A Single-Use Device?" em vez de true/false).
+ */
+function parseBoolField(val: unknown): boolean {
+  if (typeof val === "boolean") return val;
+  if (typeof val === "string") {
+    const lower = val.toLowerCase().trim();
+    return lower !== "" && lower !== "no" && lower !== "false" && lower !== "0";
+  }
+  return !!val;
+}
+
 function sanitize(raw: string): string {
   return raw
     .trim()
@@ -113,10 +139,18 @@ async function queryStock(
   if (signal.aborted) return { data: [], count: 0 };
   if (err) throw err;
 
-  const normalized: StockItem[] = (data ?? []).map((row: Record<string, unknown>) => ({
-    ...row,
-    device: Array.isArray(row.device) ? row.device[0] : row.device,
-  } as StockItem));
+  const normalized: StockItem[] = (data ?? []).map((row: Record<string, unknown>) => {
+    const rawDevice = Array.isArray(row.device) ? row.device[0] : row.device;
+    const device = rawDevice
+      ? {
+          ...(rawDevice as Record<string, unknown>),
+          single_use:  parseBoolField((rawDevice as Record<string, unknown>).single_use),
+          sterile:     parseBoolField((rawDevice as Record<string, unknown>).sterile),
+          implantable: parseBoolField((rawDevice as Record<string, unknown>).implantable),
+        }
+      : rawDevice;
+    return { ...row, device } as StockItem;
+  });
 
   return { data: normalized, count: count ?? 0 };
 }

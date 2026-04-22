@@ -14,6 +14,19 @@ export type Filters = {
 
 const PAGE_SIZE = 60;
 
+/**
+ * Normaliza campos booleanos que no banco podem estar armazenados como texto
+ * (ex: "Labeled As A Single-Use Device?" em vez de true/false).
+ */
+function parseBoolField(val: unknown): boolean {
+  if (typeof val === "boolean") return val;
+  if (typeof val === "string") {
+    const lower = val.toLowerCase().trim();
+    return lower !== "" && lower !== "no" && lower !== "false" && lower !== "0";
+  }
+  return !!val;
+}
+
 function toDevice(d: DbDevice): Device {
   return {
     udi_di: d.udi_di,
@@ -25,9 +38,9 @@ function toDevice(d: DbDevice): Device {
     manufacturer_country: d.manufacturer_country,
     classification_code: d.classification_code,
     risk_class: d.risk_class,
-    sterile: d.sterile,
-    single_use: d.single_use,
-    implantable: d.implantable,
+    sterile: parseBoolField(d.sterile),
+    single_use: parseBoolField(d.single_use),
+    implantable: parseBoolField(d.implantable),
     intended_use: d.intended_use,
     body_region: d.body_region,
     primary_material: d.primary_material,
