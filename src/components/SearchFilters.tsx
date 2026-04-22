@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, X, SlidersHorizontal, ScanBarcode } from "lucide-react";
+import { Search, X, SlidersHorizontal, ScanBarcode, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");

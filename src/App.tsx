@@ -8,7 +8,6 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Admin from "./pages/Admin";
 import SettingsPage from "./pages/Settings";
-import Contacts from "./pages/Contacts";
 import Manuals from "./pages/Manuals";
 import Estoque from "./pages/Estoque";
 import SetPassword from "./pages/SetPassword";
@@ -92,7 +91,6 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
-            <Route path="/contacts" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
             <Route path="/manuals" element={<ProtectedRoute><Manuals /></ProtectedRoute>} />
             <Route path="/estoque" element={<ProtectedRoute><Estoque /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />

@@ -6,10 +6,11 @@ import { DeviceCard } from "@/components/DeviceCard";
 import { DeviceDetail } from "@/components/DeviceDetail";
 import type { Device } from "@/types/device";
 import { Button } from "@/components/ui/button";
-import { LogOut, Settings, Phone, BookOpen, ChevronDown, Loader2, Boxes, Menu, X as XIcon } from "lucide-react";
+import { LogOut, Settings, BookOpen, ChevronDown, Loader2, Boxes, Menu, X as XIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { CatalogButton } from "@/components/CatalogButton";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
+import { supabase } from "@/integrations/supabase/client";
 
 const EMPTY_FILTERS: Filters = { material: "", classification: "", sterile: "", single_use: "", exocad: "" };
 
@@ -152,15 +153,6 @@ const Index = () => {
               title="Manuais"
             >
               <BookOpen className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => navigate("/contacts")}
-              title="Contatos"
-            >
-              <Phone className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"

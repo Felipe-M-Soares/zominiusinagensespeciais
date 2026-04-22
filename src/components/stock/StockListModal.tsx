@@ -21,6 +21,17 @@ export function StockListModal({ open, onClose, items }: Props) {
     .filter((i) => i.quantity > 0)
     .sort((a, b) => a.device.model.localeCompare(b.device.model, "pt-BR"));
 
+  // SECURITY: escapa caracteres HTML especiais para evitar XSS ao injetar
+  // dados do banco (model, reference, udi_di, location) em HTML via document.write().
+  function escHtml(s: string | null | undefined): string {
+    return (s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function handlePrint() {
     const now = new Date().toLocaleDateString("pt-BR", {
       day: "2-digit", month: "2-digit", year: "numeric",
@@ -30,15 +41,17 @@ export function StockListModal({ open, onClose, items }: Props) {
     const rows = available.map((item) => {
       const isLow = item.quantity <= item.min_quantity;
       const status = isLow ? "⚠ Baixo" : "✓ OK";
+      // SECURITY: todos os campos de texto do banco passam por escHtml() antes
+      // de serem interpolados no HTML — evita XSS se algum campo contiver tags.
       return `
         <tr>
-          <td>${item.device.model}</td>
-          <td>${item.device.reference}</td>
-          <td>${item.device.udi_di ?? ""}</td>
+          <td>${escHtml(item.device.model)}</td>
+          <td>${escHtml(item.device.reference)}</td>
+          <td>${escHtml(item.device.udi_di)}</td>
           <td style="text-align:center; font-weight:bold; color:${isLow ? "#d97706" : "#16a34a"}">${item.quantity}</td>
           <td style="text-align:center">${item.min_quantity}</td>
-          <td style="text-align:center; color:${isLow ? "#d97706" : "#16a34a"}">${status}</td>
-          <td>${item.location ?? ""}</td>
+          <td style="text-align:center; color:${isLow ? "#d97706" : "#16a34a"}">${escHtml(status)}</td>
+          <td>${escHtml(item.location)}</td>
         </tr>`;
     }).join("");
 
