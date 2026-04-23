@@ -129,7 +129,7 @@ function IntermediaryCard({
         )}>
           <div className="flex items-center gap-1.5">
             <Package className={cn("h-3.5 w-3.5", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-muted-foreground")} />
-            <span className="text-[11px] font-medium text-muted-foreground">Intermediária</span>
+            <span className="text-[11px] font-medium text-muted-foreground">Intermediário</span>
           </div>
           <div className="flex items-center gap-1.5">
             {isEmpty && <AlertTriangle className="h-3 w-3 text-destructive" />}
@@ -388,7 +388,7 @@ export default function Estoque() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
-  // Aba ativa: intermediária ou expedição
+  // Aba ativa: intermediário ou expedição
   const [activeTab, setActiveTab] = useState<"intermediaria" | "expedicao">("intermediaria");
 
   // Pesquisa
@@ -430,6 +430,9 @@ export default function Estoque() {
   const expedicaoItems = allItems.filter((i) => i.fase === "expedicao");
 
   const items = activeTab === "intermediaria" ? intermediariaItems : expedicaoItems;
+
+  // Quando há pesquisa ativa, mostra resultados em ambas as áreas
+  const hasSearch = !!querySearch.trim();
 
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
 
@@ -573,65 +576,7 @@ export default function Estoque() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
-        {/* Tabs Intermediária / Expedição */}
-        <div className="flex items-stretch gap-2">
-          <button
-            type="button"
-            onClick={() => { setActiveTab("intermediaria"); setCurrentPage(1); }}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-all",
-              activeTab === "intermediaria"
-                ? "bg-primary/10 border-primary/40 text-primary"
-                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
-            )}
-          >
-            <Package className="h-4 w-4" />
-            <span>Intermediárias</span>
-            {!loading && (
-              <span className={cn(
-                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
-                activeTab === "intermediaria" ? "bg-primary/15 text-primary" : "bg-muted/50 text-muted-foreground"
-              )}>
-                {intermediariaItems.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveTab("expedicao"); setCurrentPage(1); }}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-all",
-              activeTab === "expedicao"
-                ? "bg-success/10 border-success/40 text-success"
-                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
-            )}
-          >
-            <Truck className="h-4 w-4" />
-            <span>Expedição</span>
-            {!loading && (
-              <span className={cn(
-                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
-                activeTab === "expedicao" ? "bg-success/15 text-success" : "bg-muted/50 text-muted-foreground"
-              )}>
-                {expedicaoItems.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Descrição da aba */}
-        <div className={cn(
-          "rounded-xl border px-4 py-3 text-[12px]",
-          activeTab === "intermediaria"
-            ? "bg-primary/5 border-primary/20 text-primary/80"
-            : "bg-success/5 border-success/20 text-success/80"
-        )}>
-          {activeTab === "intermediaria"
-            ? "Peças desenbaladas recebidas no estoque. Registre a entrada por lote e mova para Expedição após embalar."
-            : "Peças embaladas e prontas para retirada ou venda. Registre a saída aqui."}
-        </div>
-
-        {/* Busca */}
+        {/* Busca — ACIMA das tabs */}
         <div className="space-y-2">
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -677,30 +622,106 @@ export default function Estoque() {
             </p>
           )}
 
-          {/* Resumo */}
-          {!loading && (
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-xs text-muted-foreground">
-                {items.length} peça{items.length !== 1 ? "s" : ""} em {activeTab === "intermediaria" ? "intermediária" : "expedição"}
-              </p>
-              {statsOk > 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-success font-medium">
-                  <TrendingUp className="h-3 w-3" /> {statsOk} ok
+          {/* Indicador de resultados em ambas as áreas quando pesquisando */}
+          {hasSearch && !loading && (intermediariaItems.length > 0 || expedicaoItems.length > 0) && (
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              {intermediariaItems.length > 0 && (
+                <span className="flex items-center gap-1 bg-primary/8 text-primary px-2 py-0.5 rounded-full font-medium">
+                  <Package className="h-3 w-3" />
+                  {intermediariaItems.length} em Intermediário
                 </span>
               )}
-              {statsLow > 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-warning font-medium">
-                  <TrendingDown className="h-3 w-3" /> {statsLow} baixo
-                </span>
-              )}
-              {statsEmpty > 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
-                  <AlertTriangle className="h-3 w-3" /> {statsEmpty} vazio
+              {expedicaoItems.length > 0 && (
+                <span className="flex items-center gap-1 bg-success/8 text-success px-2 py-0.5 rounded-full font-medium">
+                  <Truck className="h-3 w-3" />
+                  {expedicaoItems.length} em Expedição
                 </span>
               )}
             </div>
           )}
         </div>
+
+        {/* Tabs Intermediário / Expedição */}
+        <div className="flex items-stretch gap-2">
+          <button
+            type="button"
+            onClick={() => { setActiveTab("intermediaria"); setCurrentPage(1); }}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-all",
+              activeTab === "intermediaria"
+                ? "bg-primary/10 border-primary/40 text-primary"
+                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
+            )}
+          >
+            <Package className="h-4 w-4" />
+            <span>Intermediário</span>
+            {!loading && (
+              <span className={cn(
+                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
+                activeTab === "intermediaria" ? "bg-primary/15 text-primary" : "bg-muted/50 text-muted-foreground"
+              )}>
+                {intermediariaItems.length}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab("expedicao"); setCurrentPage(1); }}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-all",
+              activeTab === "expedicao"
+                ? "bg-success/10 border-success/40 text-success"
+                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
+            )}
+          >
+            <Truck className="h-4 w-4" />
+            <span>Expedição</span>
+            {!loading && (
+              <span className={cn(
+                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
+                activeTab === "expedicao" ? "bg-success/15 text-success" : "bg-muted/50 text-muted-foreground"
+              )}>
+                {expedicaoItems.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Descrição da aba */}
+        <div className={cn(
+          "rounded-xl border px-4 py-3 text-[12px]",
+          activeTab === "intermediaria"
+            ? "bg-primary/5 border-primary/20 text-primary/80"
+            : "bg-success/5 border-success/20 text-success/80"
+        )}>
+          {activeTab === "intermediaria"
+            ? "Peças desenbaladas recebidas no estoque. Registre a entrada por lote e mova para Expedição após embalar."
+            : "Peças embaladas e prontas para retirada ou venda. Registre a saída aqui."}
+        </div>
+
+        {/* Resumo */}
+        {!loading && (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs text-muted-foreground">
+              {items.length} peça{items.length !== 1 ? "s" : ""} em {activeTab === "intermediaria" ? "intermediário" : "expedição"}
+            </p>
+            {statsOk > 0 && (
+              <span className="flex items-center gap-1 text-[11px] text-success font-medium">
+                <TrendingUp className="h-3 w-3" /> {statsOk} ok
+              </span>
+            )}
+            {statsLow > 0 && (
+              <span className="flex items-center gap-1 text-[11px] text-warning font-medium">
+                <TrendingDown className="h-3 w-3" /> {statsLow} baixo
+              </span>
+            )}
+            {statsEmpty > 0 && (
+              <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
+                <AlertTriangle className="h-3 w-3" /> {statsEmpty} vazio
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Loading / Erro / Vazio */}
         {loading && (
@@ -723,7 +744,7 @@ export default function Estoque() {
               {querySearch
                 ? "Nenhuma peça encontrada"
                 : activeTab === "intermediaria"
-                  ? "Nenhuma peça intermediária"
+                  ? "Nenhuma peça no intermediário"
                   : "Nenhuma peça na expedição"}
             </p>
             <p className="text-sm text-muted-foreground/60">
@@ -731,7 +752,7 @@ export default function Estoque() {
                 ? "Tente outro termo de busca"
                 : activeTab === "intermediaria"
                   ? "Adicione peças ao estoque e registre a entrada por lote"
-                  : "Mova peças da aba Intermediárias para cá após embalar"}
+                  : "Mova peças da aba Intermediário para cá após embalar"}
             </p>
             {isAdmin && !querySearch && activeTab === "intermediaria" && (
               <Button className="mt-2 gap-1.5 rounded-xl" onClick={() => setAddOpen(true)}>
@@ -896,7 +917,7 @@ export default function Estoque() {
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <span className="block">
-                Isso irá remover <strong>todas as peças</strong> do estoque (intermediária + expedição) e <strong>todo o histórico</strong>. Ação irreversível.
+                Isso irá remover <strong>todas as peças</strong> do estoque (intermediário + expedição) e <strong>todo o histórico</strong>. Ação irreversível.
               </span>
               <span className="block text-xs text-muted-foreground">💡 Faça um Backup antes de continuar.</span>
             </AlertDialogDescription>
@@ -941,7 +962,7 @@ export default function Estoque() {
                   {deleteItem.device.model}
                 </p>
                 <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-                  Fase: {deleteItem.fase === "intermediaria" ? "Intermediária" : "Expedição"}
+                  Fase: {deleteItem.fase === "intermediaria" ? "Intermediário" : "Expedição"}
                 </p>
                 <p className="text-[11px] text-destructive/80 mt-1">
                   Todo o histórico de movimentos será apagado.

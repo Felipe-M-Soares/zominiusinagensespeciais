@@ -125,7 +125,7 @@ export function useStock(search: string) {
         }
       }
 
-      const { data, count, error: err } = await query;
+      const { data, count, error: err } = await query.limit(10000);
       if (err) throw err;
 
       const normalized: StockItem[] = (data ?? []).map((row: Record<string, unknown>) => ({
@@ -346,7 +346,7 @@ export async function transferToExpedicao(
     expedicaoItemId,
     "entrada",
     quantity,
-    "Recebido de Intermediária",
+    "Recebido de Intermediário",
     userId,
     userDisplayName,
     lote

@@ -89,7 +89,15 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
         setLotesLoading(false);
       });
     }
-    if (!open || type === "entrada") {
+    if (open && item && type === "entrada") {
+      // Carrega lotes existentes para detectar duplicatas
+      setLotesLoading(true);
+      fetchLotesSummary(item.id).then((data) => {
+        setExistingLotes(data);
+        setLotesLoading(false);
+      });
+    }
+    if (!open) {
       setExistingLotes([]);
     }
   }, [open, item, type]);
@@ -328,14 +336,21 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
 
             {/* Hint — só para entrada */}
             {!isSaidaMode && (
-              <p className={cn(
-                "text-[10px] leading-relaxed",
-                loteOk === "valid"   ? "text-success" :
-                loteOk === "invalid" ? "text-destructive/70" :
-                "text-muted-foreground/60"
-              )}>
-                {loteHint(lote)}
-              </p>
+              <>
+                <p className={cn(
+                  "text-[10px] leading-relaxed",
+                  loteOk === "valid"   ? "text-success" :
+                  loteOk === "invalid" ? "text-destructive/70" :
+                  "text-muted-foreground/60"
+                )}>
+                  {loteHint(lote)}
+                </p>
+                {loteOk === "valid" && existingLotes.some(l => l.lote === lote.toUpperCase()) && (
+                  <p className="text-[10px] text-warning font-medium flex items-center gap-1">
+                    ⚠️ Este lote já existe para este item. A entrada será somada ao lote existente.
+                  </p>
+                )}
+              </>
             )}
           </div>
 

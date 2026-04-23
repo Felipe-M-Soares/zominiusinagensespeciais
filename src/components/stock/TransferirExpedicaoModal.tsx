@@ -115,7 +115,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
               <div className="flex items-center gap-2 pt-0.5">
                 <Package className="h-3.5 w-3.5 text-primary" />
                 <span className="text-[12px] font-medium">
-                  Intermediária:{" "}
+                  Intermediário:{" "}
                   <span className={item.quantity === 0 ? "text-destructive" : ""}>
                     {item.quantity} un.
                   </span>
@@ -130,7 +130,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
           <div className="flex items-center justify-center gap-3 py-1">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/30 border border-border/30">
               <Package className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-[11px] font-medium text-muted-foreground">Intermediária</span>
+              <span className="text-[11px] font-medium text-muted-foreground">Intermediário</span>
             </div>
             <ArrowRight className="h-4 w-4 text-blue-500" />
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30">
@@ -180,7 +180,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
                     </div>
                   ) : existingLotes.length === 0 ? (
                     <div className="px-3 py-3 text-[12px] text-muted-foreground text-center">
-                      Nenhum lote com saldo disponível na intermediária
+                      Nenhum lote com saldo disponível no intermediário
                     </div>
                   ) : (
                     <div className="max-h-[180px] overflow-y-auto">
@@ -268,7 +268,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <Package className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground text-[12px]">Intermediária ficará com</span>
+                  <span className="text-muted-foreground text-[12px]">Intermediário ficará com</span>
                 </div>
                 <span className={cn(
                   "font-bold text-[13px]",
