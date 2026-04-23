@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Device } from "@/types/device";
 import {
 Dialog,
@@ -7,7 +8,8 @@ DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Shield, FlaskConical, Package, Barcode, FileText, Globe, Hash, Cpu, Activity, Layers } from "lucide-react";
+import { Shield, FlaskConical, Package, Barcode, FileText, Hash, Cpu, Activity, Layers, Copy, Check } from "lucide-react";
+import { countryFlag } from "@/components/DeviceCard";
 
 interface Props {
 device: Device | null;
@@ -15,19 +17,56 @@ open: boolean;
 onClose: () => void;
 }
 
-function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
-if (!value) return null;
-return (
+function InfoRow({ icon: Icon, label, value, copyable }: { icon: React.ElementType; label: string; value: string; copyable?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  if (!value) return null;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  };
+
+  return (
   <div className="flex items-start gap-3 py-2 px-2 rounded-xl hover:bg-muted/10 transition-colors group/row">
     <div className="h-7 w-7 rounded-lg bg-primary/8 flex items-center justify-center shrink-0 group-hover/row:bg-primary/15 transition-colors">
       <Icon className="h-3.5 w-3.5 text-primary/70" />
     </div>
-    <div className="min-w-0 pt-0.5">
+    <div className="min-w-0 pt-0.5 flex-1">
       <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium">{label}</p>
-      <p className="text-sm text-foreground break-words leading-snug">{value}</p>
+      <div className="flex items-center gap-2">
+        <p className="text-sm text-foreground break-words leading-snug flex-1">{value}</p>
+        {copyable && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            title="Copiar"
+            className="shrink-0 text-muted-foreground/40 hover:text-primary transition-colors"
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+        )}
+      </div>
     </div>
   </div>
 );
+}
+
+function CountryRow({ country }: { country: string }) {
+  if (!country) return null;
+  const flag = countryFlag(country);
+  return (
+    <div className="flex items-start gap-3 py-2 px-2 rounded-xl hover:bg-muted/10 transition-colors group/row">
+      <div className="h-7 w-7 rounded-lg bg-primary/8 flex items-center justify-center shrink-0 group-hover/row:bg-primary/15 transition-colors">
+        <span className="text-base">{flag}</span>
+      </div>
+      <div className="min-w-0 pt-0.5">
+        <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium">País do Fabricante</p>
+        <p className="text-sm text-foreground leading-snug">{country}</p>
+      </div>
+    </div>
+  );
 }
 
 export function DeviceDetail({ device, open, onClose }: Props) {
@@ -75,10 +114,10 @@ return (
       <Separator className="opacity-30" />
 
       <div className="px-5 pb-6 pt-2 space-y-0.5">
-        <InfoRow icon={Barcode} label="UDI-DI" value={device.udi_di} />
-        <InfoRow icon={Hash} label="Código Interno" value={device.internal_code} />
-        <InfoRow icon={FileText} label="Registro ANVISA" value={device.anvisa_registration} />
-        <InfoRow icon={Globe} label="País do Fabricante" value={device.manufacturer_country} />
+        <InfoRow icon={Barcode} label="UDI-DI" value={device.udi_di} copyable />
+        <InfoRow icon={Hash} label="Código Interno" value={device.internal_code} copyable />
+        <InfoRow icon={FileText} label="Registro ANVISA" value={device.anvisa_registration} copyable />
+        <CountryRow country={device.manufacturer_country} />
         <InfoRow icon={FlaskConical} label="Material Principal" value={device.primary_material} />
         <InfoRow icon={Layers} label="Material Secundário" value={device.secondary_material ?? ""} />
         <InfoRow icon={Layers} label="Tratamento de Superfície" value={device.surface_treatment ?? ""} />

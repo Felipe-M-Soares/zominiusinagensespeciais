@@ -41,6 +41,8 @@ import {
   Globe,
   Truck,
   PackageCheck,
+  Filter,
+  LayoutDashboard,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
@@ -51,10 +53,12 @@ import { StockCsvImport } from "@/components/stock/StockCsvImport";
 import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { BackupPanel } from "@/components/stock/BackupPanel";
 import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicaoModal";
+import { StockDashboard } from "@/components/stock/StockDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummary } from "@/hooks/useStock";
 import type { LoteSummary } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
+import { countryFlag } from "@/components/DeviceCard";
 
 // ─── Card de Intermediária ────────────────────────────────────────────────────
 
@@ -163,15 +167,14 @@ function IntermediaryCard({
         <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
           <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
           {d.manufacturer_country && (
-            <span className="flex items-center gap-0.5 shrink-0 ml-2">
-              <Globe className="h-2.5 w-2.5" />{d.manufacturer_country}
+            <span className="flex items-center gap-0.5 shrink-0 ml-2" title={d.manufacturer_country}>
+              <span>{countryFlag(d.manufacturer_country)}</span>
             </span>
           )}
         </div>
 
         {/* Botões */}
         <div className="space-y-1.5 pt-1 border-t border-border/20">
-          {/* Entrada */}
           <button
             type="button"
             onClick={() => onEntrada(item)}
@@ -180,7 +183,6 @@ function IntermediaryCard({
             <ArrowDownCircle className="h-3.5 w-3.5" />
             Registrar Entrada
           </button>
-          {/* Mover para Expedição */}
           <button
             type="button"
             onClick={() => onTransfer(item)}
@@ -190,7 +192,6 @@ function IntermediaryCard({
             <Truck className="h-3.5 w-3.5" />
             Mover para Expedição
           </button>
-          {/* Histórico / Lotes / Excluir */}
           <div className="flex gap-1.5">
             <button
               type="button"
@@ -258,7 +259,6 @@ function ExpedicaoCard({
       )} />
 
       <div className="p-4 space-y-3">
-        {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-0.5">
             <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
@@ -271,7 +271,6 @@ function ExpedicaoCard({
 
         {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
 
-        {/* Badges */}
         <div className="flex flex-wrap gap-1 -mt-1">
           {d.sterile && (
             <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
@@ -290,7 +289,6 @@ function ExpedicaoCard({
           )}
         </div>
 
-        {/* Quantidade Expedição */}
         <div className={cn(
           "flex items-center justify-between rounded-xl px-3 py-2 border",
           isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-success/8 border-success/25"
@@ -309,7 +307,6 @@ function ExpedicaoCard({
           </div>
         </div>
 
-        {/* Lotes */}
         {loteCount > 0 && (
           <button
             type="button"
@@ -322,7 +319,6 @@ function ExpedicaoCard({
           </button>
         )}
 
-        {/* Min e localização */}
         <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
           <span>Mín: {item.min_quantity} un.</span>
           {item.location && <span className="truncate ml-2">📍 {item.location}</span>}
@@ -331,15 +327,13 @@ function ExpedicaoCard({
         <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
           <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
           {d.manufacturer_country && (
-            <span className="flex items-center gap-0.5 shrink-0 ml-2">
-              <Globe className="h-2.5 w-2.5" />{d.manufacturer_country}
+            <span className="flex items-center gap-0.5 shrink-0 ml-2" title={d.manufacturer_country}>
+              <span>{countryFlag(d.manufacturer_country)}</span>
             </span>
           )}
         </div>
 
-        {/* Botões */}
         <div className="space-y-1.5 pt-1 border-t border-border/20">
-          {/* Saída */}
           <button
             type="button"
             onClick={() => onSaida(item)}
@@ -349,7 +343,6 @@ function ExpedicaoCard({
             <ArrowUpCircle className="h-3.5 w-3.5" />
             Retirada / Venda
           </button>
-          {/* Histórico / Lotes / Excluir */}
           <div className="flex gap-1.5">
             <button
               type="button"
@@ -384,23 +377,35 @@ function ExpedicaoCard({
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
+type FilterStatus = "all" | "ok" | "baixo" | "zerado";
+type ActiveView = "dashboard" | "intermediaria" | "expedicao";
+
 export default function Estoque() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
-  // Aba ativa: intermediário ou expedição
-  const [activeTab, setActiveTab] = useState<"intermediaria" | "expedicao">("intermediaria");
-
-  // Pesquisa
+  const [activeView, setActiveView] = useState<ActiveView>("dashboard");
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Menu hambúrguer admin (mobile)
-  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  // Filtros
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [filterLocation, setFilterLocation] = useState("");
+  const [filterBrand, setFilterBrand] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Modais
+  // Autocomplete
+  const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+
+  // Alerta de estoque baixo: mostra apenas ao entrar (desaparece após 6s)
+  const [showLowStockAlert, setShowLowStockAlert] = useState(false);
+  const alertShownRef = useRef(false);
+
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const [movementState, setMovementState] = useState<{
     item: StockItem;
     type: "entrada" | "saida";
@@ -425,24 +430,76 @@ export default function Estoque() {
 
   const { items: allItems, totalCount, loading, error, refetch } = useStock(querySearch);
 
-  // Separa por fase
   const intermediariaItems = allItems.filter((i) => i.fase === "intermediaria");
   const expedicaoItems = allItems.filter((i) => i.fase === "expedicao");
 
-  const items = activeTab === "intermediaria" ? intermediariaItems : expedicaoItems;
+  // Alerta de estoque baixo — aparece só ao carregar pela primeira vez
+  useEffect(() => {
+    if (!loading && !alertShownRef.current && allItems.length > 0) {
+      const hasLow = allItems.some(i => i.quantity > 0 && i.quantity <= i.min_quantity);
+      const hasEmpty = allItems.some(i => i.quantity === 0);
+      if (hasLow || hasEmpty) {
+        alertShownRef.current = true;
+        setShowLowStockAlert(true);
+        const t = setTimeout(() => setShowLowStockAlert(false), 6000);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [loading, allItems]);
 
-  // Quando há pesquisa ativa, mostra resultados em ambas as áreas
+  // Autocomplete: busca sugestões de modelo
+  useEffect(() => {
+    if (!search.trim() || search.trim().length < 2) {
+      setAutocompleteItems([]);
+      setShowAutocomplete(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const q = search.trim().toLowerCase();
+      const suggestions = allItems
+        .map(i => i.device.model)
+        .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
+        .slice(0, 6);
+      setAutocompleteItems(suggestions);
+      setShowAutocomplete(suggestions.length > 0);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [search, allItems]);
+
+  // Fecha autocomplete ao clicar fora
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
+        setShowAutocomplete(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Items da aba ativa, com filtros aplicados
+  const rawItems = activeView === "expedicao" ? expedicaoItems : intermediariaItems;
+
+  const filteredItems = rawItems.filter(item => {
+    if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
+    if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
+    if (filterStatus === "zerado" && item.quantity !== 0) return false;
+    if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
+    if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
+    return true;
+  });
+
   const hasSearch = !!querySearch.trim();
+  const hasActiveFilters = filterStatus !== "all" || !!filterLocation || !!filterBrand;
 
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
 
-  // Carrega contagem de lotes para cada item visível
   useEffect(() => {
-    if (items.length === 0) { setLotesSummary(new Map()); return; }
+    if (filteredItems.length === 0) { setLotesSummary(new Map()); return; }
     let cancelled = false;
     (async () => {
       const entries = await Promise.all(
-        items.map(async (item) => {
+        filteredItems.map(async (item) => {
           const lotes = await fetchLotesSummary(item.id);
           return [item.id, lotes.filter((l) => l.saldo > 0).length] as [string, number];
         })
@@ -450,7 +507,7 @@ export default function Estoque() {
       if (!cancelled) setLotesSummary(new Map(entries));
     })();
     return () => { cancelled = true; };
-  }, [items]);
+  }, [filteredItems]);
 
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
@@ -470,16 +527,28 @@ export default function Estoque() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setQuerySearch(v);
     setCurrentPage(1);
+    setShowAutocomplete(false);
   }
 
-  // Estatísticas
-  const statsLow = items.filter((i) => i.quantity > 0 && i.quantity <= i.min_quantity).length;
-  const statsOk = items.filter((i) => i.quantity > i.min_quantity).length;
-  const statsEmpty = items.filter((i) => i.quantity === 0).length;
+  function handleSelectSuggestion(suggestion: string) {
+    setSearch(suggestion);
+    setQuerySearch(suggestion);
+    setShowAutocomplete(false);
+    setCurrentPage(1);
+  }
 
-  // Paginação
-  const totalPages = Math.ceil(items.length / ITEMS_PER_PAGE);
-  const pagedItems = items.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  // Stats da aba atual (filtrados)
+  const statsLow = filteredItems.filter((i) => i.quantity > 0 && i.quantity <= i.min_quantity).length;
+  const statsOk = filteredItems.filter((i) => i.quantity > i.min_quantity).length;
+  const statsEmpty = filteredItems.filter((i) => i.quantity === 0).length;
+
+  // Alerta global de estoque baixo (badge no header)
+  const globalLowCount = allItems.filter(i => i.quantity > 0 && i.quantity <= i.min_quantity).length;
+  const globalEmptyCount = allItems.filter(i => i.quantity === 0).length;
+  const totalAlertCount = globalLowCount + globalEmptyCount;
+
+  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+  const pagedItems = filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   async function handleDeleteAll() {
     setDeletingAll(true);
@@ -496,8 +565,27 @@ export default function Estoque() {
     }
   }
 
+  const activeTab = activeView === "expedicao" ? "expedicao" : "intermediaria";
+
   return (
     <div className="min-h-screen bg-background">
+      {/* Banner de alerta — aparece ao entrar e desaparece */}
+      {showLowStockAlert && (
+        <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between gap-3 bg-warning/90 text-warning-foreground px-4 py-2.5 text-sm font-medium shadow-lg">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>
+              {globalEmptyCount > 0 && `${globalEmptyCount} item(s) zerado(s)`}
+              {globalEmptyCount > 0 && globalLowCount > 0 && " e "}
+              {globalLowCount > 0 && `${globalLowCount} item(s) com estoque baixo`}
+            </span>
+          </div>
+          <button type="button" onClick={() => setShowLowStockAlert(false)} className="text-warning-foreground/70 hover:text-warning-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
@@ -512,14 +600,19 @@ export default function Estoque() {
             <div className="flex items-center gap-2">
               <Boxes className="h-4 w-4 text-primary" />
               <h1 className="text-sm font-semibold">Estoque</h1>
+              {/* Badge de alerta no header */}
+              {!loading && totalAlertCount > 0 && (
+                <span className="flex items-center gap-0.5 bg-warning/15 text-warning border border-warning/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  <AlertTriangle className="h-2.5 w-2.5" />
+                  {totalAlertCount}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Ações admin */}
           <div className="flex items-center gap-1.5">
             {isAdmin && (
               <>
-                {/* Desktop */}
                 <div className="hidden sm:flex items-center gap-1.5">
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setListOpen(true)}>
                     <List className="h-3.5 w-3.5" /> Lista
@@ -534,7 +627,6 @@ export default function Estoque() {
                     <Plus className="h-3.5 w-3.5" /> Adicionar
                   </Button>
                 </div>
-                {/* Mobile hamburger */}
                 <div className="relative sm:hidden">
                   <Button
                     size="sm"
@@ -576,79 +668,28 @@ export default function Estoque() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
-        {/* Busca — ACIMA das tabs */}
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                ref={inputRef}
-                placeholder="Buscar por modelo, referência, UDI ou lote..."
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleSearchSubmit((e.target as HTMLInputElement).value.trim());
-                    requestAnimationFrame(() => inputRef.current?.select());
-                  }
-                }}
-                className="pl-10 pr-10 h-11 text-sm bg-card"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => { setSearch(""); setQuerySearch(""); inputRef.current?.focus(); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-11 w-11 shrink-0"
-              onClick={() => search.trim() && handleSearchSubmit(search.trim())}
-            >
-              <Search className="h-4 w-4" />
-            </Button>
-          </div>
 
-          {/^\d{6}/.test(search.trim()) && (
-            <p className="text-[11px] text-primary/70 flex items-center gap-1.5">
-              <Tag className="h-3 w-3" />
-              Pesquisando por lote — formato: <span className="font-mono font-semibold">DDMMAA-TT</span>
-            </p>
-          )}
-
-          {/* Indicador de resultados em ambas as áreas quando pesquisando */}
-          {hasSearch && !loading && (intermediariaItems.length > 0 || expedicaoItems.length > 0) && (
-            <div className="flex flex-wrap gap-2 text-[11px]">
-              {intermediariaItems.length > 0 && (
-                <span className="flex items-center gap-1 bg-primary/8 text-primary px-2 py-0.5 rounded-full font-medium">
-                  <Package className="h-3 w-3" />
-                  {intermediariaItems.length} em Intermediário
-                </span>
-              )}
-              {expedicaoItems.length > 0 && (
-                <span className="flex items-center gap-1 bg-success/8 text-success px-2 py-0.5 rounded-full font-medium">
-                  <Truck className="h-3 w-3" />
-                  {expedicaoItems.length} em Expedição
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Tabs Intermediário / Expedição */}
+        {/* Tabs de navegação: Dashboard / Intermediário / Expedição */}
         <div className="flex items-stretch gap-2">
           <button
             type="button"
-            onClick={() => { setActiveTab("intermediaria"); setCurrentPage(1); }}
+            onClick={() => setActiveView("dashboard")}
             className={cn(
-              "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-all",
-              activeTab === "intermediaria"
+              "flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl border text-sm font-medium transition-all",
+              activeView === "dashboard"
+                ? "bg-primary/10 border-primary/40 text-primary"
+                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
+            )}
+          >
+            <LayoutDashboard className="h-4 w-4" />
+            <span className="hidden sm:inline">Dashboard</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveView("intermediaria"); setCurrentPage(1); }}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-medium transition-all",
+              activeView === "intermediaria"
                 ? "bg-primary/10 border-primary/40 text-primary"
                 : "bg-background border-border text-muted-foreground hover:bg-muted/30"
             )}
@@ -658,7 +699,7 @@ export default function Estoque() {
             {!loading && (
               <span className={cn(
                 "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
-                activeTab === "intermediaria" ? "bg-primary/15 text-primary" : "bg-muted/50 text-muted-foreground"
+                activeView === "intermediaria" ? "bg-primary/15 text-primary" : "bg-muted/50 text-muted-foreground"
               )}>
                 {intermediariaItems.length}
               </span>
@@ -666,10 +707,10 @@ export default function Estoque() {
           </button>
           <button
             type="button"
-            onClick={() => { setActiveTab("expedicao"); setCurrentPage(1); }}
+            onClick={() => { setActiveView("expedicao"); setCurrentPage(1); }}
             className={cn(
-              "flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border text-sm font-medium transition-all",
-              activeTab === "expedicao"
+              "flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-medium transition-all",
+              activeView === "expedicao"
                 ? "bg-success/10 border-success/40 text-success"
                 : "bg-background border-border text-muted-foreground hover:bg-muted/30"
             )}
@@ -679,7 +720,7 @@ export default function Estoque() {
             {!loading && (
               <span className={cn(
                 "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
-                activeTab === "expedicao" ? "bg-success/15 text-success" : "bg-muted/50 text-muted-foreground"
+                activeView === "expedicao" ? "bg-success/15 text-success" : "bg-muted/50 text-muted-foreground"
               )}>
                 {expedicaoItems.length}
               </span>
@@ -687,23 +728,195 @@ export default function Estoque() {
           </button>
         </div>
 
+        {/* Dashboard View */}
+        {activeView === "dashboard" && (
+          <StockDashboard items={allItems} loading={loading} />
+        )}
+
+        {/* Busca + Filtros — apenas nas abas de lista */}
+        {activeView !== "dashboard" && (
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <div className="relative flex-1" ref={autocompleteRef}>
+                <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  ref={inputRef}
+                  placeholder="Buscar por modelo, referência, UDI ou lote..."
+                  value={search}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  onFocus={() => { if (autocompleteItems.length > 0) setShowAutocomplete(true); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleSearchSubmit((e.target as HTMLInputElement).value.trim());
+                      requestAnimationFrame(() => inputRef.current?.select());
+                    }
+                    if (e.key === "Escape") setShowAutocomplete(false);
+                  }}
+                  className="pl-10 pr-10 h-11 text-sm bg-card"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearch(""); setQuerySearch(""); setShowAutocomplete(false); inputRef.current?.focus(); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {/* Autocomplete dropdown */}
+                {showAutocomplete && autocompleteItems.length > 0 && (
+                  <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+                    {autocompleteItems.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => handleSelectSuggestion(s)}
+                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-11 w-11 shrink-0"
+                onClick={() => search.trim() && handleSearchSubmit(search.trim())}
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+              {/* Botão de filtros */}
+              <Button
+                type="button"
+                variant={hasActiveFilters ? "default" : "outline"}
+                size="icon"
+                className="h-11 w-11 shrink-0 relative"
+                onClick={() => setShowFilters(v => !v)}
+                title="Filtros"
+              >
+                <Filter className="h-4 w-4" />
+                {hasActiveFilters && (
+                  <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-destructive" />
+                )}
+              </Button>
+            </div>
+
+            {/* Painel de filtros */}
+            {showFilters && (
+              <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filtros</p>
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={() => { setFilterStatus("all"); setFilterLocation(""); setFilterBrand(""); }}
+                      className="text-[11px] text-destructive hover:underline"
+                    >
+                      Limpar filtros
+                    </button>
+                  )}
+                </div>
+
+                {/* Status */}
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-muted-foreground font-medium">Status</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      { value: "all", label: "Todos" },
+                      { value: "ok", label: "✅ OK" },
+                      { value: "baixo", label: "⚠️ Baixo" },
+                      { value: "zerado", label: "🔴 Zerado" },
+                    ] as { value: FilterStatus; label: string }[]).map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setFilterStatus(opt.value)}
+                        className={cn(
+                          "h-7 px-3 rounded-full text-[11px] font-medium border transition-colors",
+                          filterStatus === opt.value
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/60"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Localização */}
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-muted-foreground font-medium">Localização</p>
+                  <Input
+                    placeholder="Filtrar por localização..."
+                    value={filterLocation}
+                    onChange={e => setFilterLocation(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+
+                {/* Marca */}
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-muted-foreground font-medium">Marca</p>
+                  <Input
+                    placeholder="Filtrar por marca..."
+                    value={filterBrand}
+                    onChange={e => setFilterBrand(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/^\d{6}/.test(search.trim()) && (
+              <p className="text-[11px] text-primary/70 flex items-center gap-1.5">
+                <Tag className="h-3 w-3" />
+                Pesquisando por lote — formato: <span className="font-mono font-semibold">DDMMAA-TT</span>
+              </p>
+            )}
+
+            {hasSearch && !loading && (intermediariaItems.length > 0 || expedicaoItems.length > 0) && (
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                {intermediariaItems.length > 0 && (
+                  <span className="flex items-center gap-1 bg-primary/8 text-primary px-2 py-0.5 rounded-full font-medium">
+                    <Package className="h-3 w-3" />
+                    {intermediariaItems.length} em Intermediário
+                  </span>
+                )}
+                {expedicaoItems.length > 0 && (
+                  <span className="flex items-center gap-1 bg-success/8 text-success px-2 py-0.5 rounded-full font-medium">
+                    <Truck className="h-3 w-3" />
+                    {expedicaoItems.length} em Expedição
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Descrição da aba */}
-        <div className={cn(
-          "rounded-xl border px-4 py-3 text-[12px]",
-          activeTab === "intermediaria"
-            ? "bg-primary/5 border-primary/20 text-primary/80"
-            : "bg-success/5 border-success/20 text-success/80"
-        )}>
-          {activeTab === "intermediaria"
-            ? "Peças desenbaladas recebidas no estoque. Registre a entrada por lote e mova para Expedição após embalar."
-            : "Peças embaladas e prontas para retirada ou venda. Registre a saída aqui."}
-        </div>
+        {activeView !== "dashboard" && (
+          <div className={cn(
+            "rounded-xl border px-4 py-3 text-[12px]",
+            activeView === "intermediaria"
+              ? "bg-primary/5 border-primary/20 text-primary/80"
+              : "bg-success/5 border-success/20 text-success/80"
+          )}>
+            {activeView === "intermediaria"
+              ? "Peças desenbaladas recebidas no estoque. Registre a entrada por lote e mova para Expedição após embalar."
+              : "Peças embaladas e prontas para retirada ou venda. Registre a saída aqui."}
+          </div>
+        )}
 
         {/* Resumo */}
-        {!loading && (
+        {activeView !== "dashboard" && !loading && (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs text-muted-foreground">
-              {items.length} peça{items.length !== 1 ? "s" : ""} em {activeTab === "intermediaria" ? "intermediário" : "expedição"}
+              {filteredItems.length} peça{filteredItems.length !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : "expedição"}
+              {hasActiveFilters && <span className="text-primary/70"> (filtrado)</span>}
             </p>
             {statsOk > 0 && (
               <span className="flex items-center gap-1 text-[11px] text-success font-medium">
@@ -724,37 +937,39 @@ export default function Estoque() {
         )}
 
         {/* Loading / Erro / Vazio */}
-        {loading && (
+        {activeView !== "dashboard" && loading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
             <p className="text-sm text-muted-foreground">Carregando estoque...</p>
           </div>
         )}
 
-        {!loading && error && (
+        {activeView !== "dashboard" && !loading && error && (
           <div className="text-center py-20 text-destructive text-sm">{error}</div>
         )}
 
-        {!loading && !error && items.length === 0 && (
+        {activeView !== "dashboard" && !loading && !error && filteredItems.length === 0 && (
           <div className="text-center py-20 space-y-3">
-            {activeTab === "intermediaria"
+            {activeView === "intermediaria"
               ? <Package className="h-10 w-10 text-muted-foreground/40 mx-auto" />
               : <Truck className="h-10 w-10 text-muted-foreground/40 mx-auto" />}
             <p className="text-muted-foreground font-medium">
-              {querySearch
+              {querySearch || hasActiveFilters
                 ? "Nenhuma peça encontrada"
-                : activeTab === "intermediaria"
+                : activeView === "intermediaria"
                   ? "Nenhuma peça no intermediário"
                   : "Nenhuma peça na expedição"}
             </p>
             <p className="text-sm text-muted-foreground/60">
               {querySearch
                 ? "Tente outro termo de busca"
-                : activeTab === "intermediaria"
-                  ? "Adicione peças ao estoque e registre a entrada por lote"
-                  : "Mova peças da aba Intermediário para cá após embalar"}
+                : hasActiveFilters
+                  ? "Tente remover alguns filtros"
+                  : activeView === "intermediaria"
+                    ? "Adicione peças ao estoque e registre a entrada por lote"
+                    : "Mova peças da aba Intermediário para cá após embalar"}
             </p>
-            {isAdmin && !querySearch && activeTab === "intermediaria" && (
+            {isAdmin && !querySearch && !hasActiveFilters && activeView === "intermediaria" && (
               <Button className="mt-2 gap-1.5 rounded-xl" onClick={() => setAddOpen(true)}>
                 <Plus className="h-4 w-4" /> Adicionar primeira peça
               </Button>
@@ -763,11 +978,11 @@ export default function Estoque() {
         )}
 
         {/* Grid de cards */}
-        {!loading && !error && items.length > 0 && (
+        {activeView !== "dashboard" && !loading && !error && filteredItems.length > 0 && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {pagedItems.map((item) =>
-                activeTab === "intermediaria" ? (
+                activeView === "intermediaria" ? (
                   <IntermediaryCard
                     key={item.id}
                     item={item}

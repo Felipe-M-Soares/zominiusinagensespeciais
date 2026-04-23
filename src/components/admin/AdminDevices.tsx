@@ -288,51 +288,19 @@ export function AdminDevices() {
       setPage(0);
       fetchDevices(debouncedSearch, 0);
 
-      // 6. Auto-adicionar ao estoque (com paginação — Supabase limita 1000/query)
+      // 6. Auto-adicionar ao estoque via RPC server-side
+      // Usa função SQL para evitar o limite de 1000 linhas da API REST do Supabase.
+      // A função insere um stock_item para cada device que ainda não tem um.
       try {
-        // Busca todos os device IDs paginando de 1000 em 1000
-        const PAGE_SIZE_IDS = 1000;
-        let allDeviceIds: string[] = [];
-        let pageIdx = 0;
-        while (true) {
-          const { data: chunk, error: chunkErr } = await supabase
-            .from("devices")
-            .select("id")
-            .range(pageIdx * PAGE_SIZE_IDS, (pageIdx + 1) * PAGE_SIZE_IDS - 1);
-          if (chunkErr) { console.warn("Erro ao paginar devices:", chunkErr.message); break; }
-          if (!chunk || chunk.length === 0) break;
-          allDeviceIds = allDeviceIds.concat(chunk.map((d: { id: string }) => d.id));
-          if (chunk.length < PAGE_SIZE_IDS) break;
-          pageIdx++;
-        }
-
-        // Busca todos os device_ids já no estoque (paginando também)
-        let existingDeviceIds: string[] = [];
-        pageIdx = 0;
-        while (true) {
-          const { data: chunk, error: chunkErr } = await supabase
-            .from("stock_items")
-            .select("device_id")
-            .range(pageIdx * PAGE_SIZE_IDS, (pageIdx + 1) * PAGE_SIZE_IDS - 1);
-          if (chunkErr) { console.warn("Erro ao paginar stock_items:", chunkErr.message); break; }
-          if (!chunk || chunk.length === 0) break;
-          existingDeviceIds = existingDeviceIds.concat(chunk.map((s: { device_id: string }) => s.device_id));
-          if (chunk.length < PAGE_SIZE_IDS) break;
-          pageIdx++;
-        }
-
-        const existingIds = new Set(existingDeviceIds);
-        const toInsert = allDeviceIds
-          .filter(id => !existingIds.has(id))
-          .map(id => ({ device_id: id, quantity: 0, min_quantity: 0 }));
-
-        if (toInsert.length > 0) {
-          // Insere em batches de 500
-          const STOCK_BATCH = 500;
-          for (let i = 0; i < toInsert.length; i += STOCK_BATCH) {
-            await supabase.from("stock_items").insert(toInsert.slice(i, i + STOCK_BATCH));
+        const { data: rpcResult, error: rpcErr } = await supabase.rpc("sync_stock_items_from_devices");
+        if (rpcErr) {
+          console.warn("Erro ao sincronizar estoque via RPC:", rpcErr.message);
+        } else {
+          const syncData = rpcResult as { inserted?: number } | null;
+          const syncInserted = syncData?.inserted ?? 0;
+          if (syncInserted > 0) {
+            toast.success(`${syncInserted} dispositivo${syncInserted > 1 ? "s" : ""} adicionado${syncInserted > 1 ? "s" : ""} ao estoque automaticamente`);
           }
-          toast.success(`${toInsert.length} dispositivo${toInsert.length > 1 ? "s" : ""} adicionado${toInsert.length > 1 ? "s" : ""} ao estoque automaticamente`);
         }
       } catch (stockErr) {
         console.warn("Erro ao auto-inserir no estoque:", stockErr);

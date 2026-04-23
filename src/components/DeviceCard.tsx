@@ -1,14 +1,62 @@
+import { useState } from "react";
 import type { Device } from "@/types/device";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Package, Globe, Cpu, Activity } from "lucide-react";
+import { Shield, Package, Globe, Cpu, Activity, Copy, Check } from "lucide-react";
 
 interface Props {
 device: Device;
 onClick: (device: Device) => void;
 }
 
+// Mapa de país → emoji de bandeira
+export function countryFlag(country: string): string {
+  const map: Record<string, string> = {
+    "Brasil": "🇧🇷", "Brazil": "🇧🇷", "BR": "🇧🇷",
+    "Estados Unidos": "🇺🇸", "United States": "🇺🇸", "USA": "🇺🇸", "US": "🇺🇸",
+    "Alemanha": "🇩🇪", "Germany": "🇩🇪", "DE": "🇩🇪",
+    "França": "🇫🇷", "France": "🇫🇷", "FR": "🇫🇷",
+    "Itália": "🇮🇹", "Italy": "🇮🇹", "IT": "🇮🇹",
+    "Suíça": "🇨🇭", "Switzerland": "🇨🇭", "CH": "🇨🇭",
+    "Israel": "🇮🇱", "IL": "🇮🇱",
+    "Suécia": "🇸🇪", "Sweden": "🇸🇪", "SE": "🇸🇪",
+    "Coreia do Sul": "🇰🇷", "South Korea": "🇰🇷", "KR": "🇰🇷",
+    "Japão": "🇯🇵", "Japan": "🇯🇵", "JP": "🇯🇵",
+    "China": "🇨🇳", "CN": "🇨🇳",
+    "Reino Unido": "🇬🇧", "United Kingdom": "🇬🇧", "UK": "🇬🇧", "GB": "🇬🇧",
+    "Canadá": "🇨🇦", "Canada": "🇨🇦", "CA": "🇨🇦",
+    "Austrália": "🇦🇺", "Australia": "🇦🇺", "AU": "🇦🇺",
+    "Holanda": "🇳🇱", "Netherlands": "🇳🇱", "NL": "🇳🇱",
+    "Bélgica": "🇧🇪", "Belgium": "🇧🇪", "BE": "🇧🇪",
+    "Espanha": "🇪🇸", "Spain": "🇪🇸", "ES": "🇪🇸",
+    "Portugal": "🇵🇹", "PT": "🇵🇹",
+    "Argentina": "🇦🇷", "AR": "🇦🇷",
+    "México": "🇲🇽", "Mexico": "🇲🇽", "MX": "🇲🇽",
+    "Índia": "🇮🇳", "India": "🇮🇳", "IN": "🇮🇳",
+    "Turquia": "🇹🇷", "Turkey": "🇹🇷", "TR": "🇹🇷",
+    "Polônia": "🇵🇱", "Poland": "🇵🇱", "PL": "🇵🇱",
+    "Áustria": "🇦🇹", "Austria": "🇦🇹", "AT": "🇦🇹",
+    "Dinamarca": "🇩🇰", "Denmark": "🇩🇰", "DK": "🇩🇰",
+    "Finlândia": "🇫🇮", "Finland": "🇫🇮", "FI": "🇫🇮",
+    "Noruega": "🇳🇴", "Norway": "🇳🇴", "NO": "🇳🇴",
+  };
+  const trimmed = country.trim();
+  return map[trimmed] ?? "🌐";
+}
+
 export function DeviceCard({ device, onClick }: Props) {
-return (
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyUDI = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = device.udi_di || device.anvisa_registration;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  };
+
+  return (
   <button
     type="button"
     className="w-full text-left group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -67,12 +115,26 @@ return (
 
       {/* Footer */}
       <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-2 border-t border-border/20">
-        <span className="font-mono truncate">{device.anvisa_registration || device.udi_di}</span>
+        {/* UDI-DI clicável para copiar */}
+        <button
+          type="button"
+          title="Clique para copiar UDI-DI"
+          onClick={handleCopyUDI}
+          className="font-mono truncate flex items-center gap-1 hover:text-brand transition-colors group/copy"
+        >
+          {copied
+            ? <Check className="h-2.5 w-2.5 text-success shrink-0" />
+            : <Copy className="h-2.5 w-2.5 shrink-0 opacity-0 group-hover/copy:opacity-100 transition-opacity" />}
+          <span className={copied ? "text-success" : ""}>
+            {device.anvisa_registration || device.udi_di}
+          </span>
+        </button>
+
         <div className="flex items-center gap-2 shrink-0 ml-2">
           {device.manufacturer_country && (
-            <span className="flex items-center gap-0.5">
-              <Globe className="h-2.5 w-2.5 text-brand" />
-              {device.manufacturer_country}
+            <span className="flex items-center gap-0.5" title={device.manufacturer_country}>
+              <span>{countryFlag(device.manufacturer_country)}</span>
+              <span className="hidden sm:inline">{device.manufacturer_country}</span>
             </span>
           )}
           {device.exocad_compatibility && device.exocad_compatibility !== "N.A" && (
