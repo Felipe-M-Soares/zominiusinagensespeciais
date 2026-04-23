@@ -288,18 +288,45 @@ export function AdminDevices() {
       setPage(0);
       fetchDevices(debouncedSearch, 0);
 
-      // 6. Auto-adicionar ao estoque via RPC server-side
-      // Usa função SQL para evitar o limite de 1000 linhas da API REST do Supabase.
-      // A função insere um stock_item para cada device que ainda não tem um.
+      // 6. Auto-adicionar ao intermediário todos os devices que ainda não têm stock_item
+      // Busca todos os device IDs importados e cria stock_item para os que não têm
       try {
-        const { data: rpcResult, error: rpcErr } = await supabase.rpc("sync_stock_items_from_devices");
-        if (rpcErr) {
-          console.warn("Erro ao sincronizar estoque via RPC:", rpcErr.message);
-        } else {
-          const syncData = rpcResult as { inserted?: number } | null;
-          const syncInserted = syncData?.inserted ?? 0;
-          if (syncInserted > 0) {
-            toast.success(`${syncInserted} dispositivo${syncInserted > 1 ? "s" : ""} adicionado${syncInserted > 1 ? "s" : ""} ao estoque automaticamente`);
+        // Pega todos os device IDs do catálogo
+        const { data: allDevices } = await supabase
+          .from("devices")
+          .select("id");
+        const allIds = (allDevices ?? []).map((d: { id: string }) => d.id);
+
+        if (allIds.length > 0) {
+          // Pega quais já têm stock_item intermediário
+          const { data: existingItems } = await supabase
+            .from("stock_items")
+            .select("device_id")
+            .eq("fase", "intermediaria")
+            .in("device_id", allIds);
+
+          const existingSet = new Set((existingItems ?? []).map((i: { device_id: string }) => i.device_id));
+          const toCreate = allIds.filter(id => !existingSet.has(id));
+
+          if (toCreate.length > 0) {
+            // Insere em batches de 500
+            const STOCK_BATCH = 500;
+            let syncInserted = 0;
+            for (let i = 0; i < toCreate.length; i += STOCK_BATCH) {
+              const batch = toCreate.slice(i, i + STOCK_BATCH).map(device_id => ({
+                device_id,
+                quantity: 0,
+                min_quantity: 0,
+                fase: "intermediaria",
+              }));
+              const { error: stockErr } = await supabase
+                .from("stock_items")
+                .upsert(batch, { onConflict: "device_id,fase", ignoreDuplicates: true });
+              if (!stockErr) syncInserted += batch.length;
+            }
+            if (syncInserted > 0) {
+              toast.success(`${syncInserted} dispositivo${syncInserted > 1 ? "s" : ""} adicionado${syncInserted > 1 ? "s" : ""} ao estoque intermediário`);
+            }
           }
         }
       } catch (stockErr) {
@@ -370,17 +397,16 @@ export function AdminDevices() {
         else {
           // Adiciona automaticamente ao controle de estoque com quantidade 0
           if (newDevice?.id) {
-            await supabase.from("stock_items").insert({
+            await supabase.from("stock_items").upsert({
               device_id: newDevice.id,
               quantity: 0,
               min_quantity: 0,
-            }).then(({ error: sErr }) => {
-              if (sErr && !sErr.message.includes("duplicate")) {
-                console.warn("Auto stock insert warning:", sErr.message);
-              }
+              fase: "intermediaria",
+            }, { onConflict: "device_id,fase", ignoreDuplicates: true }).then(({ error: sErr }) => {
+              if (sErr) console.warn("Auto stock insert warning:", sErr.message);
             });
           }
-          toast.success("Dispositivo criado e adicionado ao estoque");
+          toast.success("Dispositivo criado e adicionado ao estoque intermediário");
           setEditDevice(null);
           fetchDevices(debouncedSearch, page);
         }
