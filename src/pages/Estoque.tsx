@@ -43,6 +43,7 @@ import {
   PackageCheck,
   Filter,
   LayoutDashboard,
+  Wrench,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
@@ -53,6 +54,7 @@ import { StockCsvImport } from "@/components/stock/StockCsvImport";
 import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { BackupPanel } from "@/components/stock/BackupPanel";
 import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicaoModal";
+import { RetrabalhoModal } from "@/components/stock/RetrabalhoModal";
 import { StockDashboard } from "@/components/stock/StockDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummary } from "@/hooks/useStock";
@@ -234,12 +236,13 @@ interface ExpedicaoCardProps {
   onHistory: (item: StockItem) => void;
   onDelete: (item: StockItem) => void;
   onLotes: (item: StockItem) => void;
+  onRetrabalho: (item: StockItem) => void;
   loteCount: number;
   isAdmin: boolean;
 }
 
 function ExpedicaoCard({
-  item, onSaida, onHistory, onDelete, onLotes, loteCount, isAdmin,
+  item, onSaida, onHistory, onDelete, onLotes, onRetrabalho, loteCount, isAdmin,
 }: ExpedicaoCardProps) {
   const d = item.device;
   const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
@@ -343,6 +346,15 @@ function ExpedicaoCard({
             <ArrowUpCircle className="h-3.5 w-3.5" />
             Retirada / Venda
           </button>
+          <button
+            type="button"
+            onClick={() => onRetrabalho(item)}
+            disabled={item.quantity === 0}
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <Wrench className="h-3.5 w-3.5" />
+            Retrabalho
+          </button>
           <div className="flex gap-1.5">
             <button
               type="button"
@@ -424,6 +436,7 @@ export default function Estoque() {
   const [deleteAllTyped, setDeleteAllTyped] = useState("");
   const [deletingAll, setDeletingAll] = useState(false);
   const [transferItem, setTransferItem] = useState<StockItem | null>(null);
+  const [retrabalhoItem, setRetrabalhoItem] = useState<StockItem | null>(null);
 
   const ITEMS_PER_PAGE = 60;
   const [currentPage, setCurrentPage] = useState(1);
@@ -928,7 +941,8 @@ export default function Estoque() {
                 <TrendingDown className="h-3 w-3" /> {statsLow} baixo
               </span>
             )}
-            {statsEmpty > 0 && (
+            {/* "vazio" só aparece no intermediário — na expedição zerado é normal após saídas */}
+            {activeView === "intermediaria" && statsEmpty > 0 && (
               <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
                 <AlertTriangle className="h-3 w-3" /> {statsEmpty} vazio
               </span>
@@ -1002,6 +1016,7 @@ export default function Estoque() {
                     onHistory={setHistoryItem}
                     onDelete={setDeleteItem}
                     onLotes={setLotesItem}
+                    onRetrabalho={setRetrabalhoItem}
                     loteCount={lotesSummary.get(item.id) ?? 0}
                     isAdmin={isAdmin}
                   />
@@ -1076,6 +1091,13 @@ export default function Estoque() {
         item={transferItem}
         open={!!transferItem}
         onClose={() => setTransferItem(null)}
+        onSuccess={refetch}
+      />
+
+      <RetrabalhoModal
+        item={retrabalhoItem}
+        open={!!retrabalhoItem}
+        onClose={() => setRetrabalhoItem(null)}
         onSuccess={refetch}
       />
 

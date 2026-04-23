@@ -4,7 +4,7 @@ import type { Device } from "@/types/device";
 
 // ─── Tipos locais ────────────────────────────────────────────────────────────
 
-export type StockFase = "intermediaria" | "expedicao";
+export type StockFase = "intermediaria" | "expedicao" | "retrabalho";
 
 export interface StockItem {
   id: string;
@@ -359,6 +359,86 @@ export async function transferToExpedicao(
       userId, userDisplayName, lote
     );
     return { ok: false, error: "Erro ao registrar entrada na expedição." };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Devolve unidades de um lote da Expedição para Retrabalho (intermediária).
+ * Fluxo: saída da expedição → entrada no intermediário com reason "Retrabalho".
+ */
+export async function transferToRetrabalho(
+  expedicaoItemId: string,
+  deviceId: string,
+  lote: string,
+  quantity: number,
+  userId: string | null,
+  userDisplayName: string | null
+): Promise<{ ok: boolean; error?: string }> {
+  // 1. Saída da expedição
+  const saidaResult = await registerMovement(
+    expedicaoItemId,
+    "saida",
+    quantity,
+    "Retrabalho — devolvido ao Intermediário",
+    userId,
+    userDisplayName,
+    lote
+  );
+  if (!saidaResult.ok) return saidaResult;
+
+  // 2. Localiza ou usa item intermediário existente para o mesmo device
+  const { data: existing } = await supabase
+    .from("stock_items")
+    .select("id")
+    .eq("device_id", deviceId)
+    .eq("fase", "intermediaria")
+    .maybeSingle();
+
+  let intermediariaItemId: string | null = existing?.id ?? null;
+
+  if (!intermediariaItemId) {
+    const { data: srcItem } = await supabase
+      .from("stock_items")
+      .select("min_quantity, location, notes")
+      .eq("id", expedicaoItemId)
+      .single();
+
+    const { data: created, error: createErr } = await supabase
+      .from("stock_items")
+      .insert({
+        device_id: deviceId,
+        quantity: 0,
+        min_quantity: srcItem?.min_quantity ?? 0,
+        location: srcItem?.location ?? null,
+        notes: srcItem?.notes ?? null,
+        fase: "intermediaria",
+      })
+      .select("id")
+      .single();
+
+    if (createErr || !created) {
+      await registerMovement(expedicaoItemId, "entrada", quantity, "Rollback — falha ao criar item intermediário", userId, userDisplayName, lote);
+      return { ok: false, error: "Erro ao criar item no intermediário." };
+    }
+    intermediariaItemId = created.id;
+  }
+
+  // 3. Entrada no intermediário
+  const entradaResult = await registerMovement(
+    intermediariaItemId,
+    "entrada",
+    quantity,
+    "Retrabalho — recebido da Expedição",
+    userId,
+    userDisplayName,
+    lote
+  );
+
+  if (!entradaResult.ok) {
+    await registerMovement(expedicaoItemId, "entrada", quantity, "Rollback — falha ao registrar entrada no intermediário", userId, userDisplayName, lote);
+    return { ok: false, error: "Erro ao registrar entrada no intermediário." };
   }
 
   return { ok: true };

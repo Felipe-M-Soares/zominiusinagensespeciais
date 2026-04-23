@@ -86,6 +86,7 @@ function looksCorrupted(s: string) {
 export function StockCsvImport({ open, onClose, onSuccess }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [results, setResults] = useState<ImportResult[]>([]);
   const [showDetails, setShowDetails] = useState(false);
   const [done, setDone] = useState(false);
@@ -94,6 +95,7 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
     setResults([]);
     setDone(false);
     setShowDetails(false);
+    setImportProgress(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -213,56 +215,95 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
         return;
       }
 
-      // 4. Processa cada linha
+      // 4. Processa em batches de 50 para suportar arquivos grandes (5000+ linhas)
+      const BATCH_SIZE = 50;
       const res: ImportResult[] = [];
-      for (const row of rows) {
-        // Busca o device pelo UDI ou referência
-        let deviceQuery = supabase.from("devices").select("id, model, reference");
-        if (row.udi_di) {
-          deviceQuery = deviceQuery.eq("udi_di", row.udi_di);
-        } else if (row.reference) {
-          deviceQuery = deviceQuery.ilike("reference", row.reference);
+      setImportProgress({ current: 0, total: rows.length });
+
+      for (let batchStart = 0; batchStart < rows.length; batchStart += BATCH_SIZE) {
+        const batch = rows.slice(batchStart, batchStart + BATCH_SIZE);
+
+        // Coleta todos os UDIs e referências do batch para busca em bloco
+        const udis = batch.filter(r => r.udi_di).map(r => r.udi_di!);
+        const refs = batch.filter(r => !r.udi_di && r.reference).map(r => r.reference!);
+
+        // Busca devices em bloco (uma query por batch, não uma por linha)
+        const deviceMap = new Map<string, { id: string; model: string; reference: string }>();
+
+        if (udis.length > 0) {
+          const { data: byUdi } = await supabase
+            .from("devices")
+            .select("id, model, reference, udi_di")
+            .in("udi_di", udis);
+          for (const d of byUdi ?? []) {
+            if (d.udi_di) deviceMap.set(`udi:${d.udi_di}`, d);
+          }
         }
 
-        const { data: devices } = await deviceQuery.limit(1);
-        const device = devices?.[0];
-
-        if (!device) {
-          res.push({
-            line: row.line,
-            model: row.model ?? row.reference ?? row.udi_di ?? "?",
-            reference: row.reference ?? row.udi_di ?? "?",
-            status: "notfound",
-            message: "Dispositivo não encontrado no catálogo",
-            quantity: row.quantity ?? 0,
-          });
-          continue;
+        if (refs.length > 0) {
+          const { data: byRef } = await supabase
+            .from("devices")
+            .select("id, model, reference")
+            .in("reference", refs);
+          for (const d of byRef ?? []) {
+            deviceMap.set(`ref:${d.reference.toLowerCase()}`, d);
+          }
         }
 
-        try {
-          // Upsert no stock_items
-          const { data: existing } = await supabase
+        // Busca stock_items existentes em bloco para o batch
+        const deviceIds = [...deviceMap.values()].map(d => d.id);
+        const existingItemsMap = new Map<string, { id: string; quantity: number }>();
+
+        if (deviceIds.length > 0) {
+          const { data: existingItems } = await supabase
             .from("stock_items")
-            .select("id, quantity")
-            .eq("device_id", device.id)
-            .maybeSingle();
+            .select("id, quantity, device_id")
+            .in("device_id", deviceIds)
+            .eq("fase", "intermediaria");
+          for (const item of existingItems ?? []) {
+            existingItemsMap.set(item.device_id, item);
+          }
+        }
+
+        // Separa inserções e atualizações
+        const toInsert: { device_id: string; quantity: number; min_quantity: number; location: string | null; notes: string | null; fase: string }[] = [];
+        const toUpdate: { id: string; patch: Record<string, unknown> }[] = [];
+
+        for (const row of batch) {
+          const lookupKey = row.udi_di
+            ? `udi:${row.udi_di}`
+            : `ref:${(row.reference ?? "").toLowerCase()}`;
+          const device = deviceMap.get(lookupKey);
+
+          if (!device) {
+            res.push({
+              line: row.line,
+              model: row.model ?? row.reference ?? row.udi_di ?? "?",
+              reference: row.reference ?? row.udi_di ?? "?",
+              status: "notfound",
+              message: "Dispositivo não encontrado no catálogo",
+              quantity: row.quantity ?? 0,
+            });
+            continue;
+          }
+
+          const existing = existingItemsMap.get(device.id);
 
           if (existing) {
-            // Atualiza campos opcionais sem sobrescrever quantidade se não fornecida
             const patch: Record<string, unknown> = {};
-            if (row.quantity   !== undefined) patch.quantity     = row.quantity;
+            if (row.quantity !== undefined) patch.quantity = row.quantity;
             if (row.min_quantity !== undefined) patch.min_quantity = row.min_quantity;
-            if (row.location)  patch.location = row.location;
-            if (row.notes)     patch.notes    = row.notes;
-
-            await supabase.from("stock_items").update(patch).eq("id", existing.id);
+            if (row.location) patch.location = row.location;
+            if (row.notes) patch.notes = row.notes;
+            toUpdate.push({ id: existing.id, patch });
           } else {
-            await supabase.from("stock_items").insert({
-              device_id:    device.id,
-              quantity:     row.quantity     ?? 0,
+            toInsert.push({
+              device_id: device.id,
+              quantity: row.quantity ?? 0,
               min_quantity: row.min_quantity ?? 0,
-              location:     row.location     || null,
-              notes:        row.notes        || null,
+              location: row.location || null,
+              notes: row.notes || null,
+              fase: "intermediaria",
             });
           }
 
@@ -273,16 +314,34 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
             status: "ok",
             quantity: row.quantity ?? 0,
           });
-        } catch (err: unknown) {
-          res.push({
-            line: row.line,
-            model: device.model ?? "?",
-            reference: device.reference ?? "?",
-            status: "error",
-            message: err instanceof Error ? err.message : "Erro desconhecido",
-            quantity: row.quantity ?? 0,
-          });
         }
+
+        // Executa inserções em bloco
+        if (toInsert.length > 0) {
+          const { error: insErr } = await supabase.from("stock_items").insert(toInsert);
+          if (insErr) {
+            // Marca as linhas inseridas como erro
+            const insertedModels = new Set(toInsert.map(i => i.device_id));
+            for (const r of res) {
+              if (r.status === "ok" && insertedModels.has(r.reference)) {
+                r.status = "error";
+                r.message = insErr.message;
+              }
+            }
+          }
+        }
+
+        // Executa atualizações individualmente (cada uma pode ter patch diferente)
+        for (const { id, patch } of toUpdate) {
+          const { error: upErr } = await supabase.from("stock_items").update(patch).eq("id", id);
+          if (upErr) {
+            // Apenas loga, não bloqueia o restante
+            console.warn("Erro ao atualizar item:", id, upErr.message);
+          }
+        }
+
+        // Atualiza progresso
+        setImportProgress({ current: Math.min(batchStart + BATCH_SIZE, rows.length), total: rows.length });
       }
 
       setResults(res);
@@ -421,6 +480,25 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
             </div>
           )}
 
+          {/* Barra de progresso — visível apenas durante importações grandes */}
+          {importing && importProgress && importProgress.total > 100 && (
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-[11px] text-muted-foreground">
+                <span>Processando linhas...</span>
+                <span>{Math.round((importProgress.current / importProgress.total) * 100)}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground/60">
+                {importProgress.current} de {importProgress.total} linhas processadas
+              </p>
+            </div>
+          )}
+
           {/* Botões */}
           <div className="flex gap-2 pt-1">
             <Button
@@ -444,7 +522,11 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
                 ) : (
                   <Upload className="h-3.5 w-3.5" />
                 )}
-                {importing ? "Importando..." : "Selecionar CSV"}
+                {importing
+                  ? importProgress
+                    ? `Importando... ${importProgress.current}/${importProgress.total}`
+                    : "Preparando..."
+                  : "Selecionar CSV"}
               </Button>
             ) : (
               <>
