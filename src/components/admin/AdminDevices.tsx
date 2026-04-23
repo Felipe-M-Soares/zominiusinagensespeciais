@@ -271,49 +271,52 @@ export function AdminDevices() {
         .neq("id", "00000000-0000-0000-0000-000000000000");
       if (delErr) { toast.error("Erro ao limpar catálogo: " + delErr.message); return; }
 
-      // 5. Upsert em batches de 500
+      // 5. Upsert em batches de 500 — retorna os IDs criados/atualizados para sync de estoque
       const BATCH = 500;
       let inserted = 0;
       let skipped = 0;
+      const upsertedIds: string[] = [];
+
       for (let i = 0; i < deduped.length; i += BATCH) {
         const batch = deduped.slice(i, i + BATCH);
-        const { error: upsErr } = await supabase
+        const { data: upserted, error: upsErr } = await supabase
           .from("devices")
-          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false });
+          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
+          .select("id");
         if (upsErr) { console.error("Batch error:", upsErr.message); skipped += batch.length; }
-        else inserted += batch.length;
+        else {
+          inserted += batch.length;
+          for (const d of upserted ?? []) upsertedIds.push(d.id);
+        }
       }
 
       toast.success(`Importação concluída: ${inserted} dispositivos importados${skipped > 0 ? ` (${skipped} com erro)` : ""}`);
       setPage(0);
       fetchDevices(debouncedSearch, 0);
 
-      // 6. Auto-adicionar ao intermediário todos os devices que ainda não têm stock_item
-      // Busca todos os device IDs importados e cria stock_item para os que não têm
+      // 6. Auto-adicionar ao intermediário usando os IDs retornados pelo upsert
+      // (evita query extra e o limite de 1000 linhas do Supabase REST)
       try {
-        // Pega todos os device IDs do catálogo
-        const { data: allDevices } = await supabase
-          .from("devices")
-          .select("id");
-        const allIds = (allDevices ?? []).map((d: { id: string }) => d.id);
+        if (upsertedIds.length > 0) {
+          // Verifica quais já têm stock_item para não sobrescrever dados existentes
+          const CHUNK = 500;
+          const existingSet = new Set<string>();
+          for (let i = 0; i < upsertedIds.length; i += CHUNK) {
+            const chunk = upsertedIds.slice(i, i + CHUNK);
+            const { data: existing } = await supabase
+              .from("stock_items")
+              .select("device_id")
+              .eq("fase", "intermediaria")
+              .in("device_id", chunk);
+            for (const row of existing ?? []) existingSet.add(row.device_id);
+          }
 
-        if (allIds.length > 0) {
-          // Pega quais já têm stock_item intermediário
-          const { data: existingItems } = await supabase
-            .from("stock_items")
-            .select("device_id")
-            .eq("fase", "intermediaria")
-            .in("device_id", allIds);
-
-          const existingSet = new Set((existingItems ?? []).map((i: { device_id: string }) => i.device_id));
-          const toCreate = allIds.filter(id => !existingSet.has(id));
+          const toCreate = upsertedIds.filter(id => !existingSet.has(id));
 
           if (toCreate.length > 0) {
-            // Insere em batches de 500
-            const STOCK_BATCH = 500;
             let syncInserted = 0;
-            for (let i = 0; i < toCreate.length; i += STOCK_BATCH) {
-              const batch = toCreate.slice(i, i + STOCK_BATCH).map(device_id => ({
+            for (let i = 0; i < toCreate.length; i += CHUNK) {
+              const batch = toCreate.slice(i, i + CHUNK).map(device_id => ({
                 device_id,
                 quantity: 0,
                 min_quantity: 0,
@@ -321,8 +324,9 @@ export function AdminDevices() {
               }));
               const { error: stockErr } = await supabase
                 .from("stock_items")
-                .upsert(batch, { onConflict: "device_id,fase", ignoreDuplicates: true });
+                .insert(batch);
               if (!stockErr) syncInserted += batch.length;
+              else console.warn("Stock insert batch error:", stockErr.message);
             }
             if (syncInserted > 0) {
               toast.success(`${syncInserted} dispositivo${syncInserted > 1 ? "s" : ""} adicionado${syncInserted > 1 ? "s" : ""} ao estoque intermediário`);
