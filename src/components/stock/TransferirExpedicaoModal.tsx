@@ -38,19 +38,22 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
 
   // Carrega lotes disponíveis ao abrir
   useEffect(() => {
+    let cancelled = false;
     if (open && item) {
       setLotesLoading(true);
       fetchLotesSummary(item.id).then((data) => {
-        setExistingLotes(data.filter((l) => l.saldo > 0));
-        setLotesLoading(false);
-      });
-    }
-    if (!open) {
+        if (!cancelled) {
+          setExistingLotes(data.filter((l) => l.saldo > 0));
+          setLotesLoading(false);
+        }
+      }).catch(() => { if (!cancelled) setLotesLoading(false); });
+    } else {
       setExistingLotes([]);
       setLote("");
       setQty(1);
       setDropdownOpen(false);
     }
+    return () => { cancelled = true; };
   }, [open, item]);
 
   if (!item) return null;

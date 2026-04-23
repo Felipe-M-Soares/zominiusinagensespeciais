@@ -315,30 +315,36 @@ export function AdminDevices() {
     }
   };
 
-  const fetchDevices = async (searchQuery = debouncedSearch, currentPage = page) => {
+  const fetchAbortDevicesRef = useRef<AbortController | null>(null);
+
+  const fetchDevices = useCallback(async (searchQuery: string, currentPage: number) => {
+    fetchAbortDevicesRef.current?.abort();
+    const ctrl = new AbortController();
+    fetchAbortDevicesRef.current = ctrl;
     setLoading(true);
     try {
       const { data, count } = await fetchDevicesPage<Device>(searchQuery, currentPage, PAGE_SIZE);
+      if (ctrl.signal.aborted) return;
       setDevices(data);
       setTotalCount(count);
     } catch (err) {
+      if (ctrl.signal.aborted) return;
       toast.error("Erro ao carregar dispositivos");
     } finally {
-      setLoading(false);
+      if (!ctrl.signal.aborted) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchDevices(debouncedSearch, 0);
     setPage(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch]);
+    fetchDevices(debouncedSearch, 0);
+    return () => { fetchAbortDevicesRef.current?.abort(); };
+  }, [debouncedSearch, fetchDevices]);
 
   useEffect(() => {
     if (page === 0) return;
     fetchDevices(debouncedSearch, page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, debouncedSearch, fetchDevices]);
 
   const filtered = devices;
 

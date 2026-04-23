@@ -79,27 +79,20 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
 
   const qtyRef = useRef<HTMLInputElement>(null);
 
-  // Carrega lotes existentes quando abre para saída
+  // Carrega lotes existentes ao abrir (saida=só com saldo; entrada=todos para detectar duplicatas)
   useEffect(() => {
-    if (open && item && type === "saida") {
+    let cancelled = false;
+    if (open && item) {
       setLotesLoading(true);
       fetchLotesSummary(item.id).then((data) => {
-        // Só mostra lotes com saldo > 0
-        setExistingLotes(data.filter((l) => l.saldo > 0));
+        if (cancelled) return;
+        setExistingLotes(type === "saida" ? data.filter((l) => l.saldo > 0) : data);
         setLotesLoading(false);
-      });
-    }
-    if (open && item && type === "entrada") {
-      // Carrega lotes existentes para detectar duplicatas
-      setLotesLoading(true);
-      fetchLotesSummary(item.id).then((data) => {
-        setExistingLotes(data);
-        setLotesLoading(false);
-      });
-    }
-    if (!open) {
+      }).catch(() => { if (!cancelled) setLotesLoading(false); });
+    } else {
       setExistingLotes([]);
     }
+    return () => { cancelled = true; };
   }, [open, item, type]);
 
   useEffect(() => {

@@ -29,8 +29,16 @@ export function LotesPanel({ item, open, onClose }: Props) {
   }
 
   useEffect(() => {
-    if (open && item) load(item.id);
-    else setLotes([]);
+    let cancelled = false;
+    if (open && item) {
+      setLoading(true);
+      fetchLotesSummary(item.id).then((data) => {
+        if (!cancelled) { setLotes(data); setLoading(false); }
+      }).catch(() => { if (!cancelled) setLoading(false); });
+    } else {
+      setLotes([]);
+    }
+    return () => { cancelled = true; };
   }, [open, item]);
 
   if (!item) return null;

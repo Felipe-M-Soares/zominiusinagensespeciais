@@ -39,11 +39,12 @@ export function StockDashboard({ items, loading }: Props) {
   const [movLoading, setMovLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setMovLoading(true);
-    fetchAllMovements(8).then(data => {
-      setMovements(data);
-      setMovLoading(false);
-    });
+    fetchAllMovements(10).then(data => {
+      if (!cancelled) { setMovements(data); setMovLoading(false); }
+    }).catch(() => { if (!cancelled) setMovLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const total = items.length;

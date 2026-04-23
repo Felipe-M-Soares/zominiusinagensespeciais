@@ -158,22 +158,28 @@ export function useStock(search: string) {
 export function useStockMovements(stockItemId: string | null) {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(false);
+  const cancelledRef = useRef<boolean>(false);
 
   const fetch = useCallback(async (id: string) => {
+    cancelledRef.current = false;
     setLoading(true);
     const { data } = await supabase
       .from("stock_movements")
       .select("id, stock_item_id, type, quantity, reason, lote, user_id, user_display_name, created_at")
       .eq("stock_item_id", id)
       .order("created_at", { ascending: false })
-      .limit(50);
-    setMovements((data as StockMovement[]) ?? []);
-    setLoading(false);
+      .limit(100);
+    if (!cancelledRef.current) {
+      setMovements((data as StockMovement[]) ?? []);
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
+    cancelledRef.current = false;
     if (stockItemId) fetch(stockItemId);
     else setMovements([]);
+    return () => { cancelledRef.current = true; };
   }, [stockItemId, fetch]);
 
   return { movements, loading, refetch: stockItemId ? () => fetch(stockItemId) : () => {} };

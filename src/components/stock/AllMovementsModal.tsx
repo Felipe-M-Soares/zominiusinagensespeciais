@@ -20,17 +20,25 @@ export function AllMovementsModal({ open, onClose }: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (open) {
+      setLoading(true);
+      fetchAllMovements(100).then((data) => {
+        if (!cancelled) { setMovements(data); setLoading(false); }
+      }).catch(() => { if (!cancelled) setLoading(false); });
+    } else {
+      setMovements([]);
+    }
+    return () => { cancelled = true; };
+  }, [open]);
+
   async function load() {
     setLoading(true);
     const data = await fetchAllMovements(100);
     setMovements(data);
     setLoading(false);
   }
-
-  useEffect(() => {
-    if (open) load();
-    else setMovements([]);
-  }, [open]);
 
   function fmtDate(iso: string) {
     const d = new Date(iso);

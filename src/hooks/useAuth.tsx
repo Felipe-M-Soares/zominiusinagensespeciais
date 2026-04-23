@@ -196,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [user?.id, blocked]);
+  }, [user?.id]);  // não incluir blocked: quando bloqueado, o intervalo segue até desmonte
 
   const clearLocalState = useCallback(() => {
     setUser(null);

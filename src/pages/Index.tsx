@@ -12,7 +12,7 @@ import { CatalogButton } from "@/components/CatalogButton";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { supabase } from "@/integrations/supabase/client";
 
-const EMPTY_FILTERS: Filters = { material: "", classification: "", sterile: "", single_use: "", exocad: "" };
+const EMPTY_FILTERS: Filters = Object.freeze({ material: "", classification: "", sterile: "", single_use: "", exocad: "" }) as Filters;
 
 const Index = () => {
   const { signOut, isAdmin } = useAuth();

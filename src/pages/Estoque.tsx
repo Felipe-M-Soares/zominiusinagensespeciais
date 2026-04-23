@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useStock } from "@/hooks/useStock";
@@ -392,6 +392,9 @@ function ExpedicaoCard({
 type FilterStatus = "all" | "ok" | "baixo" | "zerado";
 type ActiveView = "dashboard" | "intermediaria" | "expedicao";
 
+// Itens do intermediário com qty=0 são ocultados por padrão (sem estoque físico)
+const HIDE_EMPTY_INTERMEDIARIA = true;
+
 export default function Estoque() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -418,6 +421,19 @@ export default function Estoque() {
   const alertShownRef = useRef(false);
 
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const adminMenuRef = useRef<HTMLDivElement>(null);
+
+  // Fecha menu admin ao clicar fora
+  useEffect(() => {
+    if (!adminMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(e.target as Node)) {
+        setAdminMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [adminMenuOpen]);
   const [movementState, setMovementState] = useState<{
     item: StockItem;
     type: "entrada" | "saida";
@@ -443,7 +459,12 @@ export default function Estoque() {
 
   const { items: allItems, totalCount, loading, error, refetch } = useStock(querySearch);
 
-  const intermediariaItems = allItems.filter((i) => i.fase === "intermediaria");
+  // Todos os itens intermediários (para dashboard e stats globais)
+  const intermediariaItemsAll = allItems.filter((i) => i.fase === "intermediaria");
+  // Para exibição na aba: oculta itens com qty=0 (sem estoque físico cadastrado)
+  const intermediariaItems = HIDE_EMPTY_INTERMEDIARIA
+    ? intermediariaItemsAll.filter((i) => i.quantity > 0)
+    : intermediariaItemsAll;
   const expedicaoItems = allItems.filter((i) => i.fase === "expedicao");
 
   // Alerta de estoque baixo — aparece só ao carregar pela primeira vez
@@ -469,7 +490,8 @@ export default function Estoque() {
     }
     const timer = setTimeout(async () => {
       const q = search.trim().toLowerCase();
-      const suggestions = allItems
+      const sourceItems = filteredItems.length > 0 ? filteredItems : allItems;
+      const suggestions = sourceItems
         .map(i => i.device.model)
         .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
         .slice(0, 6);
@@ -491,36 +513,24 @@ export default function Estoque() {
   }, []);
 
   // Items da aba ativa, com filtros aplicados
-  const rawItems = activeView === "expedicao" ? expedicaoItems : intermediariaItems;
+  const rawItems = useMemo(
+    () => activeView === "expedicao" ? expedicaoItems : intermediariaItems,
+    [activeView, expedicaoItems, intermediariaItems]
+  );
 
-  const filteredItems = rawItems.filter(item => {
+  const filteredItems = useMemo(() => rawItems.filter(item => {
     if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
     if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
     if (filterStatus === "zerado" && item.quantity !== 0) return false;
     if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
     if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
     return true;
-  });
+  }), [rawItems, filterStatus, filterLocation, filterBrand]);
 
   const hasSearch = !!querySearch.trim();
   const hasActiveFilters = filterStatus !== "all" || !!filterLocation || !!filterBrand;
 
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
-
-  useEffect(() => {
-    if (filteredItems.length === 0) { setLotesSummary(new Map()); return; }
-    let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(
-        filteredItems.map(async (item) => {
-          const lotes = await fetchLotesSummary(item.id);
-          return [item.id, lotes.filter((l) => l.saldo > 0).length] as [string, number];
-        })
-      );
-      if (!cancelled) setLotesSummary(new Map(entries));
-    })();
-    return () => { cancelled = true; };
-  }, [filteredItems]);
 
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
@@ -557,11 +567,31 @@ export default function Estoque() {
 
   // Alerta global de estoque baixo (badge no header)
   const globalLowCount = allItems.filter(i => i.quantity > 0 && i.quantity <= i.min_quantity).length;
-  const globalEmptyCount = allItems.filter(i => i.quantity === 0).length;
+  // Zerados no intermediário — na expedição é normal ter zero após saídas
+  const globalEmptyCount = allItems.filter(i => i.quantity === 0 && i.fase === "intermediaria").length;
   const totalAlertCount = globalLowCount + globalEmptyCount;
 
   const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
-  const pagedItems = filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const pagedItems = useMemo(
+    () => filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
+    [filteredItems, currentPage]
+  );
+
+  // Busca lotes apenas para os cards visíveis (otimização: evita N requests desnecessários)
+  useEffect(() => {
+    if (pagedItems.length === 0) { setLotesSummary(new Map()); return; }
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        pagedItems.map(async (item) => {
+          const lotes = await fetchLotesSummary(item.id);
+          return [item.id, lotes.filter((l) => l.saldo > 0).length] as [string, number];
+        })
+      );
+      if (!cancelled) setLotesSummary(new Map(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [pagedItems]);
 
   async function handleDeleteAll() {
     setDeletingAll(true);
@@ -640,7 +670,7 @@ export default function Estoque() {
                     <Plus className="h-3.5 w-3.5" /> Adicionar
                   </Button>
                 </div>
-                <div className="relative sm:hidden">
+                <div className="relative sm:hidden" ref={adminMenuRef}>
                   <Button
                     size="sm"
                     variant="outline"
@@ -939,12 +969,6 @@ export default function Estoque() {
             {statsLow > 0 && (
               <span className="flex items-center gap-1 text-[11px] text-warning font-medium">
                 <TrendingDown className="h-3 w-3" /> {statsLow} baixo
-              </span>
-            )}
-            {/* "vazio" só aparece no intermediário — na expedição zerado é normal após saídas */}
-            {activeView === "intermediaria" && statsEmpty > 0 && (
-              <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
-                <AlertTriangle className="h-3 w-3" /> {statsEmpty} vazio
               </span>
             )}
           </div>

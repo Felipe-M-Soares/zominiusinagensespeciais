@@ -185,7 +185,19 @@ export function BackupPanel({ open, onClose }: Props) {
     setLoading(false);
   }
 
-  useEffect(() => { if (open) load(); }, [open]);
+  useEffect(() => {
+    let cancelled = false;
+    if (open) {
+      setLoading(true);
+      Promise.all([getBackupConfig(), listBackups(15)]).then(([cfg, list]) => {
+        if (cancelled) return;
+        if (cfg) { setConfig(cfg); setSchedule(cfg.schedule); }
+        setBackups(list);
+        setLoading(false);
+      }).catch(() => { if (!cancelled) setLoading(false); });
+    }
+    return () => { cancelled = true; };
+  }, [open]);
 
   async function handleSaveSchedule() {
     setSaving(true);
