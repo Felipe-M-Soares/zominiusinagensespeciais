@@ -264,29 +264,28 @@ export function AdminDevices() {
 
       toast.info(`Importando ${deduped.length} dispositivos...`);
 
-      // 4. Apaga catálogo existente
+      // 4. Apaga catálogo existente (CASCADE apaga stock_items também — recriamos logo abaixo)
       const { error: delErr } = await supabase
         .from("devices")
         .delete()
         .neq("id", "00000000-0000-0000-0000-000000000000");
       if (delErr) { toast.error("Erro ao limpar catálogo: " + delErr.message); return; }
 
-      // 5. Upsert em batches de 500 — retorna os IDs criados/atualizados para sync de estoque
+      // 5. Upsert em batches de 500 — busca os IDs logo após cada batch
       const BATCH = 500;
       let inserted = 0;
       let skipped = 0;
-      const upsertedIds: string[] = [];
+      const upsertedUdis: string[] = [];
 
       for (let i = 0; i < deduped.length; i += BATCH) {
         const batch = deduped.slice(i, i + BATCH);
-        const { data: upserted, error: upsErr } = await supabase
+        const { error: upsErr } = await supabase
           .from("devices")
-          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
-          .select("id");
+          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false });
         if (upsErr) { console.error("Batch error:", upsErr.message); skipped += batch.length; }
         else {
           inserted += batch.length;
-          for (const d of upserted ?? []) upsertedIds.push(d.id);
+          for (const d of batch) upsertedUdis.push(d.udi_di);
         }
       }
 
@@ -294,47 +293,54 @@ export function AdminDevices() {
       setPage(0);
       fetchDevices(debouncedSearch, 0);
 
-      // 6. Auto-adicionar ao intermediário usando os IDs retornados pelo upsert
-      // (evita query extra e o limite de 1000 linhas do Supabase REST)
+      // 6. Busca os IDs reais dos devices inseridos (por udi_di) e cria stock_items
+      // Fazemos isso em chunks de 500 para evitar o limite do Supabase
       try {
-        if (upsertedIds.length > 0) {
-          // Verifica quais já têm stock_item para não sobrescrever dados existentes
-          const CHUNK = 500;
-          const existingSet = new Set<string>();
-          for (let i = 0; i < upsertedIds.length; i += CHUNK) {
-            const chunk = upsertedIds.slice(i, i + CHUNK);
-            const { data: existing } = await supabase
-              .from("stock_items")
-              .select("device_id")
-              .eq("fase", "intermediaria")
-              .in("device_id", chunk);
-            for (const row of existing ?? []) existingSet.add(row.device_id);
-          }
+        if (upsertedUdis.length === 0) return;
 
-          const toCreate = upsertedIds.filter(id => !existingSet.has(id));
+        const CHUNK = 500;
+        const allDeviceIds: string[] = [];
 
-          if (toCreate.length > 0) {
-            let syncInserted = 0;
-            for (let i = 0; i < toCreate.length; i += CHUNK) {
-              const batch = toCreate.slice(i, i + CHUNK).map(device_id => ({
-                device_id,
-                quantity: 0,
-                min_quantity: 0,
-                fase: "intermediaria",
-              }));
-              const { error: stockErr } = await supabase
-                .from("stock_items")
-                .insert(batch);
-              if (!stockErr) syncInserted += batch.length;
-              else console.warn("Stock insert batch error:", stockErr.message);
-            }
-            if (syncInserted > 0) {
-              toast.success(`${syncInserted} dispositivo${syncInserted > 1 ? "s" : ""} adicionado${syncInserted > 1 ? "s" : ""} ao estoque intermediário`);
-            }
-          }
+        for (let i = 0; i < upsertedUdis.length; i += CHUNK) {
+          const chunk = upsertedUdis.slice(i, i + CHUNK);
+          const { data: devs, error: devErr } = await supabase
+            .from("devices")
+            .select("id")
+            .in("udi_di", chunk);
+          if (devErr) { console.warn("Erro ao buscar IDs dos devices:", devErr.message); continue; }
+          for (const d of devs ?? []) allDeviceIds.push(d.id);
+        }
+
+        if (allDeviceIds.length === 0) {
+          toast.warning("Dispositivos importados mas não foi possível adicionar ao estoque.");
+          return;
+        }
+
+        // Cria stock_items em batches — usa upsert com ignoreDuplicates para segurança
+        let syncInserted = 0;
+        let syncError = 0;
+        for (let i = 0; i < allDeviceIds.length; i += CHUNK) {
+          const batch = allDeviceIds.slice(i, i + CHUNK).map(device_id => ({
+            device_id,
+            quantity: 0,
+            min_quantity: 0,
+            fase: "intermediaria",
+          }));
+          const { error: stockErr } = await supabase
+            .from("stock_items")
+            .upsert(batch, { onConflict: "device_id,fase", ignoreDuplicates: true });
+          if (!stockErr) syncInserted += batch.length;
+          else { console.warn("Stock upsert error:", stockErr.message); syncError += batch.length; }
+        }
+
+        if (syncInserted > 0) {
+          toast.success(`${syncInserted} peça${syncInserted > 1 ? "s" : ""} adicionada${syncInserted > 1 ? "s" : ""} ao estoque intermediário`);
+        } else if (syncError > 0) {
+          toast.error(`Erro ao adicionar ao estoque intermediário (${syncError} falhas). Verifique permissões do banco.`);
         }
       } catch (stockErr) {
-        console.warn("Erro ao auto-inserir no estoque:", stockErr);
+        console.error("Erro ao sincronizar estoque:", stockErr);
+        toast.error("Dispositivos importados, mas erro ao adicionar ao estoque intermediário.");
       }
 
     } catch (err) {
