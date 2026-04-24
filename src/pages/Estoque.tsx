@@ -473,6 +473,7 @@ export default function Estoque() {
   }, [activeView, expedicaoItems, intermediariaItems]);
 
   const filteredItems = useMemo(() => rawItems.filter(item => {
+    if (!item.device) return false; // item órfão sem device associado
     if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
     if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
     if (filterStatus === "zerado" && item.quantity !== 0) return false;
@@ -508,6 +509,7 @@ export default function Estoque() {
       const q = search.trim().toLowerCase();
       const sourceItems = filteredItems.length > 0 ? filteredItems : allItems;
       const suggestions = sourceItems
+        .filter(i => i.device?.model)
         .map(i => i.device.model)
         .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
         .slice(0, 6);

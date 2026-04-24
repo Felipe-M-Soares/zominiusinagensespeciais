@@ -146,11 +146,14 @@ export function useStock(search: string) {
         page++;
       }
 
-      const normalized: StockItem[] = allRows.map((row: Record<string, unknown>) => ({
-        ...row,
-        fase: (row.fase as StockFase) ?? "intermediaria",
-        device: Array.isArray(row.device) ? row.device[0] : row.device,
-      } as StockItem));
+      const normalized: StockItem[] = allRows
+        .map((row: Record<string, unknown>) => ({
+          ...row,
+          fase: (row.fase as StockFase) ?? "intermediaria",
+          device: Array.isArray(row.device) ? (row.device[0] ?? null) : (row.device ?? null),
+        } as StockItem))
+        // Filtra itens órfãos: stock_items sem device associado causam crash no render
+        .filter((item) => item.device != null);
 
       setItems(normalized);
       setTotalCount(totalCount);
