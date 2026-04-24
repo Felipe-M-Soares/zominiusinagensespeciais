@@ -472,6 +472,44 @@ export async function transferToRetrabalho(
 }
 
 // ─── Lotes de um item de estoque ─────────────────────────────────────────────
+/**
+ * Versão batch: busca contagem de lotes com saldo > 0 para vários items em UMA só query.
+ * Substitui o padrão de N queries paralelas que causava ERR_INSUFFICIENT_RESOURCES.
+ */
+export async function fetchLotesSummaryBatch(
+  stockItemIds: string[]
+): Promise<Map<string, number>> {
+  if (stockItemIds.length === 0) return new Map();
+
+  const { data } = await supabase
+    .from("stock_movements")
+    .select("stock_item_id, lote, type, quantity")
+    .in("stock_item_id", stockItemIds)
+    .not("lote", "is", null);
+
+  if (!data || data.length === 0) return new Map();
+
+  // Agrupa por (stock_item_id, lote) e calcula saldo
+  type Row = { stock_item_id: string; lote: string; type: string; quantity: number };
+  const saldos = new Map<string, number>(); // chave: "itemId|lote"
+  for (const row of data as Row[]) {
+    const key = `${row.stock_item_id}|${row.lote.toUpperCase()}`;
+    const current = saldos.get(key) ?? 0;
+    saldos.set(key, row.type === "entrada" ? current + row.quantity : current - row.quantity);
+  }
+
+  // Conta lotes com saldo positivo por item
+  const result = new Map<string, number>();
+  for (const id of stockItemIds) result.set(id, 0);
+  for (const [key, saldo] of saldos) {
+    if (saldo > 0) {
+      const itemId = key.split("|")[0];
+      result.set(itemId, (result.get(itemId) ?? 0) + 1);
+    }
+  }
+  return result;
+}
+
 export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummary[]> {
   const { data } = await supabase
     .from("stock_movements")

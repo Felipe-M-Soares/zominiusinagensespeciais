@@ -58,7 +58,7 @@ import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicao
 import { RetrabalhoModal } from "@/components/stock/RetrabalhoModal";
 import { StockDashboard } from "@/components/stock/StockDashboard";
 import { supabase } from "@/integrations/supabase/client";
-import { deleteStockItem, fetchLotesSummary } from "@/hooks/useStock";
+import { deleteStockItem, fetchLotesSummary, fetchLotesSummaryBatch } from "@/hooks/useStock";
 import type { LoteSummary } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 import { countryFlag } from "@/components/DeviceCard";
@@ -591,21 +591,22 @@ export default function Estoque() {
     [filteredItems, visibleCount]
   );
 
-  // Busca lotes apenas para os cards visíveis (otimização: evita N requests desnecessários)
+  // IDs dos itens visíveis — string estabilizada para evitar re-render infinito
+  const pagedItemIds = useMemo(
+    () => pagedItems.map((i) => i.id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pagedItems.map((i) => i.id).join(",")]
+  );
+
+  // Busca contagem de lotes em UMA única query batch (evita N requests simultâneas)
   useEffect(() => {
-    if (pagedItems.length === 0) { setLotesSummary(new Map()); return; }
+    if (pagedItemIds.length === 0) { setLotesSummary(new Map()); return; }
     let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(
-        pagedItems.map(async (item) => {
-          const lotes = await fetchLotesSummary(item.id);
-          return [item.id, lotes.filter((l) => l.saldo > 0).length] as [string, number];
-        })
-      );
-      if (!cancelled) setLotesSummary(new Map(entries));
-    })();
+    fetchLotesSummaryBatch(pagedItemIds).then((result) => {
+      if (!cancelled) setLotesSummary(result);
+    });
     return () => { cancelled = true; };
-  }, [pagedItems]);
+  }, [pagedItemIds]);
 
   async function handleDeleteAll() {
     setDeletingAll(true);
