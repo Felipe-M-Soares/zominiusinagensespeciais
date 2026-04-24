@@ -392,8 +392,8 @@ function ExpedicaoCard({
 type FilterStatus = "all" | "ok" | "baixo" | "zerado";
 type ActiveView = "dashboard" | "intermediaria" | "expedicao";
 
-// Itens do intermediário com qty=0 são ocultados por padrão (sem estoque físico)
-const HIDE_EMPTY_INTERMEDIARIA = true;
+// Itens com qty=0 SÃO exibidos — novos devices importados começam com 0
+const HIDE_EMPTY_INTERMEDIARIA = false;
 
 export default function Estoque() {
   const navigate = useNavigate();
@@ -969,6 +969,11 @@ export default function Estoque() {
             {statsLow > 0 && (
               <span className="flex items-center gap-1 text-[11px] text-warning font-medium">
                 <TrendingDown className="h-3 w-3" /> {statsLow} baixo
+              </span>
+            )}
+            {activeView === "intermediaria" && statsEmpty > 0 && (
+              <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
+                <AlertTriangle className="h-3 w-3" /> {statsEmpty} vazio
               </span>
             )}
           </div>
