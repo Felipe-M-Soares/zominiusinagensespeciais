@@ -125,17 +125,35 @@ export function useStock(search: string) {
         }
       }
 
-      const { data, count, error: err } = await query.limit(10000);
-      if (err) throw err;
+      // Supabase PostgREST limita a 1000 linhas por request — paginamos até buscar tudo
+      const PAGE_SIZE = 1000;
+      let allRows: Record<string, unknown>[] = [];
+      let totalFetched = 0;
+      let totalCount = 0;
+      let page = 0;
 
-      const normalized: StockItem[] = (data ?? []).map((row: Record<string, unknown>) => ({
+      while (true) {
+        const from = page * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+        const { data: pageData, count: pageCount, error: err } = await query
+          .range(from, to);
+        if (err) throw err;
+        const rows = pageData ?? [];
+        allRows = allRows.concat(rows);
+        totalFetched += rows.length;
+        if (page === 0) totalCount = pageCount ?? rows.length;
+        if (rows.length < PAGE_SIZE) break; // última página
+        page++;
+      }
+
+      const normalized: StockItem[] = allRows.map((row: Record<string, unknown>) => ({
         ...row,
         fase: (row.fase as StockFase) ?? "intermediaria",
         device: Array.isArray(row.device) ? row.device[0] : row.device,
       } as StockItem));
 
       setItems(normalized);
-      setTotalCount(count ?? 0);
+      setTotalCount(totalCount);
     } catch (e: unknown) {
       if ((e as { name?: string })?.name !== "AbortError") {
         setError("Erro ao carregar estoque.");
