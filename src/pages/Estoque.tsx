@@ -481,6 +481,22 @@ export default function Estoque() {
     }
   }, [loading, allItems]);
 
+  // Items da aba ativa, com filtros aplicados
+  const rawItems = useMemo(() => {
+    if (activeView === "expedicao") return expedicaoItems;
+    if (activeView === "intermediaria") return intermediariaItems;
+    return []; // dashboard — rawItems não é usado nessa view
+  }, [activeView, expedicaoItems, intermediariaItems]);
+
+  const filteredItems = useMemo(() => rawItems.filter(item => {
+    if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
+    if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
+    if (filterStatus === "zerado" && item.quantity !== 0) return false;
+    if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
+    if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
+    return true;
+  }), [rawItems, filterStatus, filterLocation, filterBrand]);
+
   // Autocomplete: busca sugestões de modelo
   useEffect(() => {
     if (!search.trim() || search.trim().length < 2) {
@@ -499,7 +515,7 @@ export default function Estoque() {
       setShowAutocomplete(suggestions.length > 0);
     }, 150);
     return () => clearTimeout(timer);
-  }, [search, allItems]);
+  }, [search, allItems, filteredItems]);
 
   // Fecha autocomplete ao clicar fora
   useEffect(() => {
@@ -511,21 +527,6 @@ export default function Estoque() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
-
-  // Items da aba ativa, com filtros aplicados
-  const rawItems = useMemo(
-    () => activeView === "expedicao" ? expedicaoItems : intermediariaItems,
-    [activeView, expedicaoItems, intermediariaItems]
-  );
-
-  const filteredItems = useMemo(() => rawItems.filter(item => {
-    if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
-    if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
-    if (filterStatus === "zerado" && item.quantity !== 0) return false;
-    if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
-    if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
-    return true;
-  }), [rawItems, filterStatus, filterLocation, filterBrand]);
 
   const hasSearch = !!querySearch.trim();
   const hasActiveFilters = filterStatus !== "all" || !!filterLocation || !!filterBrand;
