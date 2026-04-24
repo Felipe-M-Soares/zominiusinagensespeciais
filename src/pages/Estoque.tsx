@@ -20,6 +20,7 @@ import {
   ArrowLeft,
   ArrowDownCircle,
   ArrowUpCircle,
+  ChevronDown,
   Clock,
   Plus,
   ScanBarcode,
