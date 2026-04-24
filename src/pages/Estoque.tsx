@@ -399,11 +399,10 @@ export default function Estoque() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
+  // ── Estado principal ──────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ActiveView>("dashboard");
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Filtros
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
@@ -414,26 +413,14 @@ export default function Estoque() {
   // Autocomplete
   const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const autocompleteRef = useRef<HTMLDivElement>(null);
 
-  // Alerta de estoque baixo: mostra apenas ao entrar (desaparece após 6s)
+  // Alertas
   const [showLowStockAlert, setShowLowStockAlert] = useState(false);
-  const alertShownRef = useRef(false);
 
+  // Menu admin
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
-  const adminMenuRef = useRef<HTMLDivElement>(null);
 
-  // Fecha menu admin ao clicar fora
-  useEffect(() => {
-    if (!adminMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (adminMenuRef.current && !adminMenuRef.current.contains(e.target as Node)) {
-        setAdminMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [adminMenuOpen]);
+  // Modais e painéis
   const [movementState, setMovementState] = useState<{
     item: StockItem;
     type: "entrada" | "saida";
@@ -453,33 +440,30 @@ export default function Estoque() {
   const [deletingAll, setDeletingAll] = useState(false);
   const [transferItem, setTransferItem] = useState<StockItem | null>(null);
   const [retrabalhoItem, setRetrabalhoItem] = useState<StockItem | null>(null);
+  const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
 
+  // Paginação
   const ITEMS_PER_PAGE = 60;
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
 
+  // ── Refs ──────────────────────────────────────────────────────────────────
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+  const alertShownRef = useRef(false);
+  const adminMenuRef = useRef<HTMLDivElement>(null);
+
+  // ── Dados do servidor ─────────────────────────────────────────────────────
   const { items: allItems, totalCount, loading, error, refetch } = useStock(querySearch);
 
-  // Todos os itens intermediários (para dashboard e stats globais)
+  // Derivados dos dados (não são hooks — apenas cálculos puros)
   const intermediariaItemsAll = allItems.filter((i) => i.fase === "intermediaria");
-  // Para exibição na aba: oculta itens com qty=0 (sem estoque físico cadastrado)
   const intermediariaItems = HIDE_EMPTY_INTERMEDIARIA
     ? intermediariaItemsAll.filter((i) => i.quantity > 0)
     : intermediariaItemsAll;
   const expedicaoItems = allItems.filter((i) => i.fase === "expedicao");
 
-  // Alerta de estoque baixo — aparece só ao carregar pela primeira vez
-  useEffect(() => {
-    if (!loading && !alertShownRef.current && allItems.length > 0) {
-      const hasLow = allItems.some(i => i.quantity > 0 && i.quantity <= i.min_quantity);
-      const hasEmpty = allItems.some(i => i.quantity === 0);
-      if (hasLow || hasEmpty) {
-        alertShownRef.current = true;
-        setShowLowStockAlert(true);
-        const t = setTimeout(() => setShowLowStockAlert(false), 6000);
-        return () => clearTimeout(t);
-      }
-    }
-  }, [loading, allItems]);
+  // ── useMemo ───────────────────────────────────────────────────────────────
 
   // Items da aba ativa, com filtros aplicados
   const rawItems = useMemo(() => {
@@ -496,6 +480,22 @@ export default function Estoque() {
     if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
     return true;
   }), [rawItems, filterStatus, filterLocation, filterBrand]);
+
+  // ── useEffect ─────────────────────────────────────────────────────────────
+
+  // Alerta de estoque baixo — aparece só ao carregar pela primeira vez
+  useEffect(() => {
+    if (!loading && !alertShownRef.current && allItems.length > 0) {
+      const hasLow = allItems.some(i => i.quantity > 0 && i.quantity <= i.min_quantity);
+      const hasEmpty = allItems.some(i => i.quantity === 0);
+      if (hasLow || hasEmpty) {
+        alertShownRef.current = true;
+        setShowLowStockAlert(true);
+        const t = setTimeout(() => setShowLowStockAlert(false), 6000);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [loading, allItems]);
 
   // Autocomplete: busca sugestões de modelo
   useEffect(() => {
@@ -528,10 +528,20 @@ export default function Estoque() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Fecha menu admin ao clicar fora
+  useEffect(() => {
+    if (!adminMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(e.target as Node)) {
+        setAdminMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [adminMenuOpen]);
+
   const hasSearch = !!querySearch.trim();
   const hasActiveFilters = filterStatus !== "all" || !!filterLocation || !!filterBrand;
-
-  const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
 
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
