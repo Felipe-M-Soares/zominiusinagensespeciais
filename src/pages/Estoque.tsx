@@ -455,7 +455,7 @@ export default function Estoque() {
   const [retrabalhoItem, setRetrabalhoItem] = useState<StockItem | null>(null);
 
   const ITEMS_PER_PAGE = 60;
-  const [currentPage, setCurrentPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
 
   const { items: allItems, totalCount, loading, error, refetch } = useStock(querySearch);
 
@@ -537,19 +537,19 @@ export default function Estoque() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!v.trim()) {
       setQuerySearch("");
-      setCurrentPage(1);
+      setVisibleCount(ITEMS_PER_PAGE);
       return;
     }
     debounceRef.current = setTimeout(() => {
       setQuerySearch(v.trim());
-      setCurrentPage(1);
+      setVisibleCount(ITEMS_PER_PAGE);
     }, 400);
   }, []);
 
   function handleSearchSubmit(v: string) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setQuerySearch(v);
-    setCurrentPage(1);
+    setVisibleCount(ITEMS_PER_PAGE);
     setShowAutocomplete(false);
   }
 
@@ -557,7 +557,7 @@ export default function Estoque() {
     setSearch(suggestion);
     setQuerySearch(suggestion);
     setShowAutocomplete(false);
-    setCurrentPage(1);
+    setVisibleCount(ITEMS_PER_PAGE);
   }
 
   // Stats da aba atual (filtrados)
@@ -571,10 +571,10 @@ export default function Estoque() {
   const globalEmptyCount = allItems.filter(i => i.quantity === 0 && i.fase === "intermediaria").length;
   const totalAlertCount = globalLowCount + globalEmptyCount;
 
-  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+  const hasMore = visibleCount < filteredItems.length;
   const pagedItems = useMemo(
-    () => filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
-    [filteredItems, currentPage]
+    () => filteredItems.slice(0, visibleCount),
+    [filteredItems, visibleCount]
   );
 
   // Busca lotes apenas para os cards visíveis (otimização: evita N requests desnecessários)
@@ -729,7 +729,7 @@ export default function Estoque() {
           </button>
           <button
             type="button"
-            onClick={() => { setActiveView("intermediaria"); setCurrentPage(1); }}
+            onClick={() => { setActiveView("intermediaria"); setVisibleCount(ITEMS_PER_PAGE); }}
             className={cn(
               "flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-medium transition-all",
               activeView === "intermediaria"
@@ -750,7 +750,7 @@ export default function Estoque() {
           </button>
           <button
             type="button"
-            onClick={() => { setActiveView("expedicao"); setCurrentPage(1); }}
+            onClick={() => { setActiveView("expedicao"); setVisibleCount(ITEMS_PER_PAGE); }}
             className={cn(
               "flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-medium transition-all",
               activeView === "expedicao"
@@ -1053,52 +1053,17 @@ export default function Estoque() {
               )}
             </div>
 
-            {/* Paginação */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-2 pb-4">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 px-3 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+            {/* Carregar mais */}
+            {hasMore && (
+              <div className="flex justify-center pt-2 pb-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setVisibleCount((c) => c + ITEMS_PER_PAGE)}
+                  className="gap-2"
                 >
-                  ← Anterior
-                </button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
-                    .reduce<(number | "...")[]>((acc, p, idx, arr) => {
-                      if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("...");
-                      acc.push(p);
-                      return acc;
-                    }, [])
-                    .map((p, idx) =>
-                      p === "..." ? (
-                        <span key={`ellipsis-${idx}`} className="px-1 text-xs text-muted-foreground/50">…</span>
-                      ) : (
-                        <button
-                          key={p}
-                          type="button"
-                          onClick={() => setCurrentPage(p as number)}
-                          className={`h-8 w-8 rounded-lg text-xs font-medium transition-colors ${
-                            currentPage === p
-                              ? "bg-primary text-primary-foreground"
-                              : "border border-border text-muted-foreground hover:bg-muted/40"
-                          }`}
-                        >
-                          {p}
-                        </button>
-                      )
-                    )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 px-3 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-                >
-                  Próxima →
-                </button>
+                  <ChevronDown className="h-4 w-4" />
+                  Carregar mais ({(filteredItems.length - visibleCount).toLocaleString("pt-BR")} restantes)
+                </Button>
               </div>
             )}
           </>
