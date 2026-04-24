@@ -271,56 +271,46 @@ export function AdminDevices() {
         .neq("id", "00000000-0000-0000-0000-000000000000");
       if (delErr) { toast.error("Erro ao limpar catálogo: " + delErr.message); return; }
 
-      // 5. Upsert em batches de 500 — busca os IDs logo após cada batch
-      const BATCH = 500;
+      // 5. Upsert em batches de 200 — .select("id") captura os UUIDs reais de cada batch
+      // O DELETE anterior (passo 4) apagou tudo via CASCADE — todos os devices são inserts novos
+      const BATCH = 200;
       let inserted = 0;
       let skipped = 0;
-      const upsertedUdis: string[] = [];
+      const allDeviceIds: string[] = [];
 
       for (let i = 0; i < deduped.length; i += BATCH) {
         const batch = deduped.slice(i, i + BATCH);
-        const { error: upsErr } = await supabase
+        const { data: upserted, error: upsErr } = await supabase
           .from("devices")
-          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false });
-        if (upsErr) { console.error("Batch error:", upsErr.message); skipped += batch.length; }
-        else {
+          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
+          .select("id");
+        if (upsErr) {
+          console.error("Batch upsert error:", upsErr.message);
+          skipped += batch.length;
+        } else {
           inserted += batch.length;
-          for (const d of batch) upsertedUdis.push(d.udi_di);
+          for (const d of upserted ?? []) allDeviceIds.push(d.id);
         }
       }
 
-      toast.success(`Importação concluída: ${inserted} dispositivos importados${skipped > 0 ? ` (${skipped} com erro)` : ""}`);
+      toast.success(`Importação concluída: ${inserted} dispositivos${skipped > 0 ? ` (${skipped} com erro)` : ""}`);
       setPage(0);
       fetchDevices(debouncedSearch, 0);
 
-      // 6. Busca os IDs reais dos devices inseridos (por udi_di) e cria stock_items
-      // Fazemos isso em chunks de 500 para evitar o limite do Supabase
+      // 6. Cria stock_items usando os IDs capturados no passo 5
+      // Como CASCADE limpou os stock_items antigos, usamos INSERT direto — sem conflito possível
       try {
-        if (upsertedUdis.length === 0) return;
-
-        const CHUNK = 500;
-        const allDeviceIds: string[] = [];
-
-        for (let i = 0; i < upsertedUdis.length; i += CHUNK) {
-          const chunk = upsertedUdis.slice(i, i + CHUNK);
-          const { data: devs, error: devErr } = await supabase
-            .from("devices")
-            .select("id")
-            .in("udi_di", chunk);
-          if (devErr) { console.warn("Erro ao buscar IDs dos devices:", devErr.message); continue; }
-          for (const d of devs ?? []) allDeviceIds.push(d.id);
-        }
-
         if (allDeviceIds.length === 0) {
-          toast.warning("Dispositivos importados mas não foi possível adicionar ao estoque.");
+          toast.warning(`Dispositivos importados mas IDs não retornados (${inserted} devices). Verifique RLS do Supabase.`);
           return;
         }
 
-        // Cria stock_items em batches — usa upsert com ignoreDuplicates para segurança
+        const STOCK_BATCH = 200;
         let syncInserted = 0;
         let syncError = 0;
-        for (let i = 0; i < allDeviceIds.length; i += CHUNK) {
-          const batch = allDeviceIds.slice(i, i + CHUNK).map(device_id => ({
+
+        for (let i = 0; i < allDeviceIds.length; i += STOCK_BATCH) {
+          const batch = allDeviceIds.slice(i, i + STOCK_BATCH).map(device_id => ({
             device_id,
             quantity: 0,
             min_quantity: 0,
@@ -328,19 +318,24 @@ export function AdminDevices() {
           }));
           const { error: stockErr } = await supabase
             .from("stock_items")
-            .upsert(batch, { onConflict: "device_id,fase", ignoreDuplicates: true });
-          if (!stockErr) syncInserted += batch.length;
-          else { console.warn("Stock upsert error:", stockErr.message); syncError += batch.length; }
+            .insert(batch);
+          if (!stockErr) {
+            syncInserted += batch.length;
+          } else {
+            console.error(`Stock insert batch ${i}-${i + STOCK_BATCH} error:`, stockErr.message);
+            syncError += batch.length;
+          }
         }
 
         if (syncInserted > 0) {
-          toast.success(`${syncInserted} peça${syncInserted > 1 ? "s" : ""} adicionada${syncInserted > 1 ? "s" : ""} ao estoque intermediário`);
-        } else if (syncError > 0) {
-          toast.error(`Erro ao adicionar ao estoque intermediário (${syncError} falhas). Verifique permissões do banco.`);
+          toast.success(`${syncInserted} peça${syncInserted > 1 ? "s" : ""} adicionada${syncInserted > 1 ? "s" : ""} ao intermediário`);
+        }
+        if (syncError > 0) {
+          toast.error(`${syncError} peças não adicionadas ao estoque — erro no banco.`);
         }
       } catch (stockErr) {
-        console.error("Erro ao sincronizar estoque:", stockErr);
-        toast.error("Dispositivos importados, mas erro ao adicionar ao estoque intermediário.");
+        console.error("Erro ao criar stock_items:", stockErr);
+        toast.error("Dispositivos importados, mas erro ao adicionar ao estoque.");
       }
 
     } catch (err) {
