@@ -73,12 +73,13 @@ interface IntermediaryCardProps {
   onHistory: (item: StockItem) => void;
   onDelete: (item: StockItem) => void;
   onLotes: (item: StockItem) => void;
+  onReset: (item: StockItem) => void;
   loteCount: number;
   isAdmin: boolean;
 }
 
 function IntermediaryCard({
-  item, onEntrada, onTransfer, onHistory, onDelete, onLotes, loteCount, isAdmin,
+  item, onEntrada, onTransfer, onHistory, onDelete, onLotes, onReset, loteCount, isAdmin,
 }: IntermediaryCardProps) {
   const d = item.device;
   const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
@@ -214,23 +215,25 @@ function IntermediaryCard({
               <Tag className="h-3 w-3" /> Lotes
             </button>
             {isAdmin && (
-              <button
-                type="button"
-                onClick={() => onDelete(item)}
-                className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-                title="Remover"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => onReset(item)}
+                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
+                  title="Zerar estoque e histórico"
+                >
+                  <PackageCheck className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(item)}
+                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                  title="Remover"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </>
             )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Card de Retrabalho ───────────────────────────────────────────────────────
 
 interface RetrabalhoCardProps {
   item: StockItem;
@@ -343,12 +346,13 @@ interface ExpedicaoCardProps {
   onDelete: (item: StockItem) => void;
   onLotes: (item: StockItem) => void;
   onRetrabalho: (item: StockItem) => void;
+  onReset: (item: StockItem) => void;
   loteCount: number;
   isAdmin: boolean;
 }
 
 function ExpedicaoCard({
-  item, onSaida, onHistory, onDelete, onLotes, onRetrabalho, loteCount, isAdmin,
+  item, onSaida, onHistory, onDelete, onLotes, onRetrabalho, onReset, loteCount, isAdmin,
 }: ExpedicaoCardProps) {
   const d = item.device;
   const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
@@ -477,14 +481,24 @@ function ExpedicaoCard({
               <Tag className="h-3 w-3" /> Lotes
             </button>
             {isAdmin && (
-              <button
-                type="button"
-                onClick={() => onDelete(item)}
-                className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-                title="Remover"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => onReset(item)}
+                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
+                  title="Zerar estoque e histórico"
+                >
+                  <PackageCheck className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(item)}
+                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                  title="Remover"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -520,8 +534,7 @@ export default function Estoque() {
   const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
 
-  // Alertas
-  const [showLowStockAlert, setShowLowStockAlert] = useState(false);
+  // Alertas — apenas no dashboard
 
   // Menu admin
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
@@ -548,6 +561,8 @@ export default function Estoque() {
   const [retrabalhoItem, setRetrabalhoItem] = useState<StockItem | null>(null);
   const [concluirRetrabalhoItem, setConcluirRetrabalhoItem] = useState<StockItem | null>(null);
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
+  const [resetItem, setResetItem] = useState<StockItem | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   // Paginação
   const ITEMS_PER_PAGE = 60;
@@ -557,7 +572,6 @@ export default function Estoque() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autocompleteRef = useRef<HTMLDivElement>(null);
-  const alertShownRef = useRef(false);
   const adminMenuRef = useRef<HTMLDivElement>(null);
 
   // ── Dados do servidor ─────────────────────────────────────────────────────
@@ -593,19 +607,7 @@ export default function Estoque() {
 
   // ── useEffect ─────────────────────────────────────────────────────────────
 
-  // Alerta de estoque baixo — aparece só ao carregar pela primeira vez
-  useEffect(() => {
-    if (!loading && !alertShownRef.current && allItems.length > 0) {
-      const hasLow = allItems.some(i => i.quantity > 0 && i.quantity <= i.min_quantity);
-      const hasEmpty = allItems.some(i => i.quantity === 0);
-      if (hasLow || hasEmpty) {
-        alertShownRef.current = true;
-        setShowLowStockAlert(true);
-        const t = setTimeout(() => setShowLowStockAlert(false), 6000);
-        return () => clearTimeout(t);
-      }
-    }
-  }, [loading, allItems]);
+  // Alerta de estoque — removido do banner, disponível apenas no dashboard
 
   // Autocomplete: busca sugestões de modelo
   useEffect(() => {
@@ -731,27 +733,39 @@ export default function Estoque() {
     }
   }
 
+  async function handleResetItem() {
+    if (!resetItem) return;
+    setResetting(true);
+    const { toast: t } = await import("sonner");
+    // Zera a quantidade do item
+    const { error: updateErr } = await supabase
+      .from("stock_items")
+      .update({ quantity: 0 })
+      .eq("id", resetItem.id);
+    if (updateErr) {
+      t.error("Erro ao zerar estoque.");
+      setResetting(false);
+      return;
+    }
+    // Deleta todos os movimentos do item
+    const { error: movErr } = await supabase
+      .from("stock_movements")
+      .delete()
+      .eq("stock_item_id", resetItem.id);
+    setResetting(false);
+    if (movErr) {
+      t.error("Estoque zerado, mas não foi possível limpar o histórico.");
+    } else {
+      t.success("Estoque e histórico zerados com sucesso.");
+    }
+    setResetItem(null);
+    refetch();
+  }
+
   const activeTab = activeView === "expedicao" ? "expedicao" : "intermediaria";
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Banner de alerta — aparece ao entrar e desaparece */}
-      {showLowStockAlert && (
-        <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between gap-3 bg-warning/90 text-warning-foreground px-4 py-2.5 text-sm font-medium shadow-lg">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span>
-              {globalEmptyCount > 0 && `${globalEmptyCount} item(s) zerado(s)`}
-              {globalEmptyCount > 0 && globalLowCount > 0 && " e "}
-              {globalLowCount > 0 && `${globalLowCount} item(s) com estoque baixo`}
-            </span>
-          </div>
-          <button type="button" onClick={() => setShowLowStockAlert(false)} className="text-warning-foreground/70 hover:text-warning-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
       {/* Header */}
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
@@ -1188,6 +1202,7 @@ export default function Estoque() {
                     onHistory={setHistoryItem}
                     onDelete={setDeleteItem}
                     onLotes={setLotesItem}
+                    onReset={setResetItem}
                     loteCount={lotesSummary.get(item.id) ?? 0}
                     isAdmin={isAdmin}
                   />
@@ -1209,6 +1224,7 @@ export default function Estoque() {
                     onDelete={setDeleteItem}
                     onLotes={setLotesItem}
                     onRetrabalho={setRetrabalhoItem}
+                    onReset={setResetItem}
                     loteCount={lotesSummary.get(item.id) ?? 0}
                     isAdmin={isAdmin}
                   />
@@ -1348,6 +1364,48 @@ export default function Estoque() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Zerar quantidade e histórico de uma peça */}
+      {resetItem && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-xl bg-warning/10 flex items-center justify-center shrink-0">
+                <PackageCheck className="h-4 w-4 text-warning" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Zerar estoque e histórico?</p>
+                <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
+                  {resetItem.device.model}
+                </p>
+              </div>
+            </div>
+            <p className="text-[12px] text-muted-foreground">
+              Isso vai zerar a quantidade para <strong>0</strong> e apagar <strong>todo o histórico de movimentos</strong> desta peça. A peça permanece cadastrada no estoque.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
+                onClick={() => setResetItem(null)}
+                disabled={resetting}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="flex-1 h-9 rounded-xl bg-warning text-warning-foreground text-sm font-semibold hover:bg-warning/90 transition-colors disabled:opacity-60"
+                onClick={handleResetItem}
+                disabled={resetting}
+              >
+                {resetting
+                  ? <span className="flex items-center justify-center gap-1.5"><span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" /> Zerando...</span>
+                  : "Zerar tudo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirmação de exclusão de peça */}
       {deleteItem && (

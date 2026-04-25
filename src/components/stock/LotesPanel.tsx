@@ -50,8 +50,8 @@ export function LotesPanel({ item, open, onClose }: Props) {
   }
 
   const activeLotes  = lotes.filter((l) => l.saldo > 0);
-  const totalEntrada = lotes.reduce((s, l) => s + l.total_entrada, 0);
-  const totalSaida   = lotes.reduce((s, l) => s + l.total_saida, 0);
+  const totalEntrada = activeLotes.reduce((s, l) => s + l.total_entrada, 0);
+  const totalSaida   = activeLotes.reduce((s, l) => s + l.total_saida, 0);
   const activeLotesCount = activeLotes.length;
 
   return (
