@@ -240,7 +240,7 @@ export async function registerMovement(
   userDisplayName?: string | null,
   lote?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  // Lê quantidade atual
+  // 1. Lê quantidade atual
   const { data: item } = await supabase
     .from("stock_items")
     .select("quantity")
@@ -256,23 +256,8 @@ export async function registerMovement(
     return { ok: false, error: `Estoque insuficiente. Disponível: ${item.quantity}` };
   }
 
-  // SECURITY FIX: UPDATE condicional — só aplica se a quantidade no banco ainda
-  // é exatamente a que lemos. Se outro processo alterou entre o SELECT e aqui,
-  // o update não afeta nenhuma linha e retornamos erro sem corromper dados.
-  const { count, error: upErr } = await supabase
-    .from("stock_items")
-    .update({ quantity: newQty })
-    .eq("id", stockItemId)
-    .eq("quantity", item.quantity) // guard contra race condition
-    .select("id", { count: "exact", head: true });
-
-  if (upErr) return { ok: false, error: upErr.message };
-  if (!count || count === 0) {
-    return { ok: false, error: "Estoque alterado simultaneamente. Tente novamente." };
-  }
-
-  // Registra o movimento após atualizar com sucesso
-  const { error: mvErr } = await supabase
+  // 2. Insere o movimento primeiro
+  const { data: mvData, error: mvErr } = await supabase
     .from("stock_movements")
     .insert({
       stock_item_id: stockItemId,
@@ -282,15 +267,21 @@ export async function registerMovement(
       lote: lote?.trim() || null,
       user_id: userId,
       user_display_name: userDisplayName ?? null,
-    });
+    })
+    .select("id")
+    .single();
 
-  if (mvErr) {
-    // Reverte o UPDATE se o log falhar
-    await supabase
-      .from("stock_items")
-      .update({ quantity: item.quantity })
-      .eq("id", stockItemId);
-    return { ok: false, error: "Erro ao registrar histórico. Operação revertida." };
+  if (mvErr) return { ok: false, error: mvErr.message };
+
+  // 3. Atualiza a quantidade — se falhar, remove o movimento inserido
+  const { error: upErr } = await supabase
+    .from("stock_items")
+    .update({ quantity: newQty })
+    .eq("id", stockItemId);
+
+  if (upErr) {
+    await supabase.from("stock_movements").delete().eq("id", mvData.id);
+    return { ok: false, error: "Erro ao atualizar estoque. Operação cancelada para evitar inconsistência." };
   }
 
   return { ok: true };
