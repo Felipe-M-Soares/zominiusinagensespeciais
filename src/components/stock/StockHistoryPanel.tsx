@@ -36,7 +36,7 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
 
   async function handleCancel(mv: StockMovement) {
     setCancelling(mv.id);
-    const result = await cancelMovement(mv.id, mv.stock_item_id, mv.type, mv.quantity);
+    const result = await cancelMovement(mv.id, mv.stock_item_id);
     setCancelling(null);
     setConfirmId(null);
     if (result.ok) {

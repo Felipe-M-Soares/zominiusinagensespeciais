@@ -61,8 +61,7 @@ import { ConcluirRetrabalhoModal } from "@/components/stock/ConcluirRetrabalhoMo
 import { StockDashboard } from "@/components/stock/StockDashboard";
 import { RecebimentoPanel } from "@/components/stock/RecebimentoPanel";
 import { supabase } from "@/integrations/supabase/client";
-import { deleteStockItem, fetchLotesSummary, fetchLotesSummaryBatch } from "@/hooks/useStock";
-import type { LoteSummary } from "@/hooks/useStock";
+import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 import { countryFlag } from "@/components/DeviceCard";
 
@@ -769,8 +768,6 @@ export default function Estoque() {
     setResetItem(null);
     refetch();
   }
-
-  const activeTab = activeView === "expedicao" ? "expedicao" : "intermediaria";
 
   return (
     <div className="min-h-screen bg-background">

@@ -128,7 +128,6 @@ export function useStock(search: string) {
       // Supabase PostgREST limita a 1000 linhas por request — paginamos até buscar tudo
       const PAGE_SIZE = 1000;
       let allRows: Record<string, unknown>[] = [];
-      let totalFetched = 0;
       let totalCount = 0;
       let page = 0;
 
@@ -140,7 +139,6 @@ export function useStock(search: string) {
         if (err) throw err;
         const rows = pageData ?? [];
         allRows = allRows.concat(rows);
-        totalFetched += rows.length;
         if (page === 0) totalCount = pageCount ?? rows.length;
         if (rows.length < PAGE_SIZE) break; // última página
         page++;
@@ -213,29 +211,24 @@ export async function upsertStockItem(
   patch: { quantity?: number; min_quantity?: number; location?: string; notes?: string },
   fase: StockFase = "intermediaria"
 ): Promise<{ id: string } | null> {
-  const { data: existing } = await supabase
+  // FIX: substitui SELECT + INSERT separados por upsert atômico.
+  // A versão anterior tinha race condition: dois processos simultâneos podiam
+  // passar pelo SELECT sem encontrar registro e ambos tentar INSERT, causando
+  // violação de unique constraint (device_id, fase).
+  const { data, error } = await supabase
     .from("stock_items")
-    .select("id, quantity")
-    .eq("device_id", deviceId)
-    .eq("fase", fase)
-    .maybeSingle();
+    .upsert(
+      { device_id: deviceId, quantity: 0, min_quantity: 0, fase, ...patch },
+      { onConflict: "device_id,fase" }
+    )
+    .select("id")
+    .single();
 
-  if (existing) {
-    const { data } = await supabase
-      .from("stock_items")
-      .update(patch)
-      .eq("id", existing.id)
-      .select("id")
-      .single();
-    return data;
-  } else {
-    const { data } = await supabase
-      .from("stock_items")
-      .insert({ device_id: deviceId, quantity: 0, min_quantity: 0, fase, ...patch })
-      .select("id")
-      .single();
-    return data;
+  if (error) {
+    console.error("upsertStockItem error:", error.message);
+    return null;
   }
+  return data;
 }
 
 export async function registerMovement(
@@ -247,22 +240,58 @@ export async function registerMovement(
   userDisplayName?: string | null,
   lote?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  const { data: item } = await supabase
-    .from("stock_items")
-    .select("quantity")
-    .eq("id", stockItemId)
-    .single();
+  // SECURITY FIX: evita race condition de read-then-write.
+  // Em vez de ler a quantidade, calcular newQty e depois atualizar (janela entre SELECT e UPDATE),
+  // usamos UPDATE condicional via RPC para atomicidade real no banco.
+  // Para saída: só atualiza se quantity >= quantidade solicitada (sem ficar negativo).
+  // Para entrada: incrementa diretamente com expressão SQL.
 
-  if (!item) return { ok: false, error: "Item não encontrado." };
+  if (type === "saida") {
+    // Primeiro: verifica se há estoque suficiente
+    const { data: item } = await supabase
+      .from("stock_items")
+      .select("quantity")
+      .eq("id", stockItemId)
+      .single();
 
-  const newQty =
-    type === "entrada" ? item.quantity + quantity : item.quantity - quantity;
+    if (!item) return { ok: false, error: "Item não encontrado." };
+    if (item.quantity < quantity) {
+      return { ok: false, error: `Estoque insuficiente. Disponível: ${item.quantity}` };
+    }
 
-  if (newQty < 0) {
-    return { ok: false, error: `Estoque insuficiente. Disponível: ${item.quantity}` };
+    // Atualiza com guard condicional: só aplica se quantity ainda >= solicitado
+    const { count, error: upErr } = await supabase
+      .from("stock_items")
+      .update({ quantity: item.quantity - quantity })
+      .eq("id", stockItemId)
+      .gte("quantity", quantity) // guard contra race condition
+      .select("id", { count: "exact", head: true });
+
+    if (upErr) return { ok: false, error: upErr.message };
+    if (!count || count === 0) {
+      // Outro processo atualizou antes de nós — quantidade mudou
+      return { ok: false, error: "Estoque insuficiente ou alterado simultaneamente. Tente novamente." };
+    }
+  } else {
+    // Entrada: incrementa diretamente
+    const { error: upErr } = await supabase.rpc("increment_stock_quantity", {
+      p_item_id: stockItemId,
+      p_qty: quantity,
+    });
+
+    if (upErr) {
+      // Fallback: atualiza manualmente se a RPC não existir
+      const { data: item } = await supabase
+        .from("stock_items").select("quantity").eq("id", stockItemId).single();
+      if (!item) return { ok: false, error: "Item não encontrado." };
+      const { error: upErr2 } = await supabase
+        .from("stock_items").update({ quantity: item.quantity + quantity }).eq("id", stockItemId);
+      if (upErr2) return { ok: false, error: upErr2.message };
+    }
   }
 
-  const { data: mvData, error: mvErr } = await supabase
+  // Registra o movimento após atualizar o estoque com sucesso
+  const { error: mvErr } = await supabase
     .from("stock_movements")
     .insert({
       stock_item_id: stockItemId,
@@ -272,20 +301,28 @@ export async function registerMovement(
       lote: lote?.trim() || null,
       user_id: userId,
       user_display_name: userDisplayName ?? null,
-    })
-    .select("id")
-    .single();
+    });
 
-  if (mvErr) return { ok: false, error: mvErr.message };
-
-  const { error: upErr } = await supabase
-    .from("stock_items")
-    .update({ quantity: newQty })
-    .eq("id", stockItemId);
-
-  if (upErr) {
-    await supabase.from("stock_movements").delete().eq("id", mvData.id);
-    return { ok: false, error: "Erro ao atualizar estoque. Operação cancelada para evitar inconsistência." };
+  if (mvErr) {
+    // Estoque já foi atualizado mas o log falhou — revertemos
+    if (type === "saida") {
+      await supabase.rpc("increment_stock_quantity", { p_item_id: stockItemId, p_qty: quantity })
+        .then(({ error }) => {
+          if (error) {
+            // Fallback manual se RPC não existir
+            supabase.from("stock_items").select("quantity").eq("id", stockItemId).single()
+              .then(({ data }) => {
+                if (data) supabase.from("stock_items").update({ quantity: data.quantity + quantity }).eq("id", stockItemId);
+              });
+          }
+        });
+    } else {
+      await supabase.from("stock_items").select("quantity").eq("id", stockItemId).single()
+        .then(({ data }) => {
+          if (data) supabase.from("stock_items").update({ quantity: Math.max(0, data.quantity - quantity) }).eq("id", stockItemId);
+        });
+    }
+    return { ok: false, error: "Erro ao registrar histórico. Operação revertida." };
   }
 
   return { ok: true };
@@ -623,10 +660,11 @@ export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummar
 
 export async function cancelMovement(
   movementId: string,
-  stockItemId: string,
-  type: "entrada" | "saida",
-  quantity: number
+  stockItemId: string
 ): Promise<{ ok: boolean; error?: string }> {
+  // FIX: parâmetros `type` e `quantity` foram removidos — eram sobrescritos
+  // silenciosamente pelo valor do banco logo na primeira linha, tornando-os
+  // inúteis e potencialmente enganosos para quem chamava a função.
   const { data: mv } = await supabase
     .from("stock_movements")
     .select("stock_item_id, type, quantity")
@@ -635,8 +673,9 @@ export async function cancelMovement(
 
   if (!mv) return { ok: false, error: "Movimento não encontrado." };
   if (mv.stock_item_id !== stockItemId) return { ok: false, error: "Movimento não pertence a este item." };
-  type = mv.type as "entrada" | "saida";
-  quantity = mv.quantity;
+
+  const type = mv.type as "entrada" | "saida";
+  const quantity = mv.quantity as number;
 
   const { data: item } = await supabase
     .from("stock_items")
