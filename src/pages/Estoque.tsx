@@ -234,6 +234,12 @@ function IntermediaryCard({
                 </button>
               </>
             )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface RetrabalhoCardProps {
   item: StockItem;
