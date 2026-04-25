@@ -56,6 +56,7 @@ import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { BackupPanel } from "@/components/stock/BackupPanel";
 import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicaoModal";
 import { RetrabalhoModal } from "@/components/stock/RetrabalhoModal";
+import { ConcluirRetrabalhoModal } from "@/components/stock/ConcluirRetrabalhoModal";
 import { StockDashboard } from "@/components/stock/StockDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummary, fetchLotesSummaryBatch } from "@/hooks/useStock";
@@ -229,6 +230,110 @@ function IntermediaryCard({
   );
 }
 
+// ─── Card de Retrabalho ───────────────────────────────────────────────────────
+
+interface RetrabalhoCardProps {
+  item: StockItem;
+  onConcluir: (item: StockItem) => void;
+  onHistory: (item: StockItem) => void;
+  onLotes: (item: StockItem) => void;
+  loteCount: number;
+}
+
+function RetrabalhoCard({ item, onConcluir, onHistory, onLotes, loteCount }: RetrabalhoCardProps) {
+  const d = item.device;
+
+  return (
+    <div
+      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
+      style={{
+        boxShadow:
+          "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
+      }}
+    >
+      <div className="h-0.5 bg-gradient-to-r from-transparent via-orange-500 to-transparent opacity-70 group-hover:opacity-100 transition-opacity" />
+
+      <div className="p-4 space-y-3">
+        {/* Cabeçalho */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-0.5">
+            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
+            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
+          </div>
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/25 px-2 py-0.5 text-[10px] font-medium text-orange-500">
+            <Wrench className="h-2.5 w-2.5" /> Retrabalho
+          </span>
+        </div>
+
+        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
+
+        {/* Quantidade em retrabalho */}
+        <div className="flex items-center justify-between rounded-xl px-3 py-2 border bg-orange-500/8 border-orange-500/25">
+          <div className="flex items-center gap-1.5">
+            <Wrench className="h-3.5 w-3.5 text-orange-500" />
+            <span className="text-[11px] font-medium text-muted-foreground">Em retrabalho</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[15px] font-bold tabular-nums text-orange-500">{item.quantity}</span>
+            <span className="text-[10px] text-muted-foreground">un.</span>
+          </div>
+        </div>
+
+        {/* Lotes */}
+        {loteCount > 0 && (
+          <button
+            type="button"
+            onClick={() => onLotes(item)}
+            className="flex items-center gap-1.5 text-[11px] text-orange-500/70 hover:text-orange-500 transition-colors -mt-1"
+          >
+            <Tag className="h-3 w-3" />
+            <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""}</span>
+            <span className="text-muted-foreground/40">→</span>
+          </button>
+        )}
+
+        {/* Info */}
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
+          <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
+          {d.manufacturer_country && (
+            <span className="flex items-center gap-0.5 shrink-0 ml-2">
+              <span>{countryFlag(d.manufacturer_country)}</span>
+            </span>
+          )}
+        </div>
+
+        {/* Botões */}
+        <div className="space-y-1.5 pt-1 border-t border-border/20">
+          <button
+            type="button"
+            onClick={() => onConcluir(item)}
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[11px] font-medium transition-colors"
+          >
+            <PackageCheck className="h-3.5 w-3.5" />
+            Concluir Retrabalho → Expedição
+          </button>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => onHistory(item)}
+              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
+            >
+              <Clock className="h-3 w-3" /> Histórico
+            </button>
+            <button
+              type="button"
+              onClick={() => onLotes(item)}
+              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-orange-500/10 hover:text-orange-500 text-muted-foreground text-[10px] transition-colors"
+            >
+              <Tag className="h-3 w-3" /> Lotes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Card de Expedição ────────────────────────────────────────────────────────
 
 interface ExpedicaoCardProps {
@@ -391,7 +496,7 @@ function ExpedicaoCard({
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 type FilterStatus = "all" | "ok" | "baixo" | "zerado";
-type ActiveView = "dashboard" | "intermediaria" | "expedicao";
+type ActiveView = "dashboard" | "intermediaria" | "expedicao" | "retrabalho";
 
 // Itens com qty=0 SÃO exibidos — novos devices importados começam com 0
 const HIDE_EMPTY_INTERMEDIARIA = false;
@@ -441,6 +546,7 @@ export default function Estoque() {
   const [deletingAll, setDeletingAll] = useState(false);
   const [transferItem, setTransferItem] = useState<StockItem | null>(null);
   const [retrabalhoItem, setRetrabalhoItem] = useState<StockItem | null>(null);
+  const [concluirRetrabalhoItem, setConcluirRetrabalhoItem] = useState<StockItem | null>(null);
   const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
 
   // Paginação
@@ -463,6 +569,7 @@ export default function Estoque() {
     ? intermediariaItemsAll.filter((i) => i.quantity > 0)
     : intermediariaItemsAll;
   const expedicaoItems = allItems.filter((i) => i.fase === "expedicao");
+  const retrabalhoItems = allItems.filter((i) => i.fase === "retrabalho" && i.quantity > 0);
 
   // ── useMemo ───────────────────────────────────────────────────────────────
 
@@ -470,8 +577,9 @@ export default function Estoque() {
   const rawItems = useMemo(() => {
     if (activeView === "expedicao") return expedicaoItems;
     if (activeView === "intermediaria") return intermediariaItems;
+    if (activeView === "retrabalho") return retrabalhoItems;
     return []; // dashboard — rawItems não é usado nessa view
-  }, [activeView, expedicaoItems, intermediariaItems]);
+  }, [activeView, expedicaoItems, intermediariaItems, retrabalhoItems]);
 
   const filteredItems = useMemo(() => rawItems.filter(item => {
     if (!item.device) return false; // item órfão sem device associado
@@ -784,6 +892,27 @@ export default function Estoque() {
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => { setActiveView("retrabalho"); setVisibleCount(ITEMS_PER_PAGE); }}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-medium transition-all",
+              activeView === "retrabalho"
+                ? "bg-orange-500/10 border-orange-500/40 text-orange-500"
+                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
+            )}
+          >
+            <Wrench className="h-4 w-4" />
+            <span>Retrabalho</span>
+            {!loading && retrabalhoItems.length > 0 && (
+              <span className={cn(
+                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
+                activeView === "retrabalho" ? "bg-orange-500/15 text-orange-500" : "bg-orange-500/10 text-orange-500"
+              )}>
+                {retrabalhoItems.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Dashboard View */}
@@ -961,11 +1090,15 @@ export default function Estoque() {
             "rounded-xl border px-4 py-3 text-[12px]",
             activeView === "intermediaria"
               ? "bg-primary/5 border-primary/20 text-primary/80"
-              : "bg-success/5 border-success/20 text-success/80"
+              : activeView === "retrabalho"
+                ? "bg-orange-500/5 border-orange-500/20 text-orange-600 dark:text-orange-400"
+                : "bg-success/5 border-success/20 text-success/80"
           )}>
             {activeView === "intermediaria"
               ? "Peças desenbaladas recebidas no estoque. Registre a entrada por lote e mova para Expedição após embalar."
-              : "Peças embaladas e prontas para retirada ou venda. Registre a saída aqui."}
+              : activeView === "retrabalho"
+                ? "Peças enviadas da Expedição para reprocessamento. Após concluir o retrabalho, envie de volta para Expedição."
+                : "Peças embaladas e prontas para retirada ou venda. Registre a saída aqui."}
           </div>
         )}
 
@@ -973,15 +1106,15 @@ export default function Estoque() {
         {activeView !== "dashboard" && !loading && (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs text-muted-foreground">
-              {filteredItems.length} peça{filteredItems.length !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : "expedição"}
+              {filteredItems.length} peça{filteredItems.length !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
               {hasActiveFilters && <span className="text-primary/70"> (filtrado)</span>}
             </p>
-            {statsOk > 0 && (
+            {activeView !== "retrabalho" && statsOk > 0 && (
               <span className="flex items-center gap-1 text-[11px] text-success font-medium">
                 <TrendingUp className="h-3 w-3" /> {statsOk} ok
               </span>
             )}
-            {statsLow > 0 && (
+            {activeView !== "retrabalho" && statsLow > 0 && (
               <span className="flex items-center gap-1 text-[11px] text-warning font-medium">
                 <TrendingDown className="h-3 w-3" /> {statsLow} baixo
               </span>
@@ -1010,13 +1143,17 @@ export default function Estoque() {
           <div className="text-center py-20 space-y-3">
             {activeView === "intermediaria"
               ? <Package className="h-10 w-10 text-muted-foreground/40 mx-auto" />
-              : <Truck className="h-10 w-10 text-muted-foreground/40 mx-auto" />}
+              : activeView === "retrabalho"
+                ? <Wrench className="h-10 w-10 text-muted-foreground/40 mx-auto" />
+                : <Truck className="h-10 w-10 text-muted-foreground/40 mx-auto" />}
             <p className="text-muted-foreground font-medium">
               {querySearch || hasActiveFilters
                 ? "Nenhuma peça encontrada"
                 : activeView === "intermediaria"
                   ? "Nenhuma peça no intermediário"
-                  : "Nenhuma peça na expedição"}
+                  : activeView === "retrabalho"
+                    ? "Nenhuma peça em retrabalho"
+                    : "Nenhuma peça na expedição"}
             </p>
             <p className="text-sm text-muted-foreground/60">
               {querySearch
@@ -1025,7 +1162,9 @@ export default function Estoque() {
                   ? "Tente remover alguns filtros"
                   : activeView === "intermediaria"
                     ? "Adicione peças ao estoque e registre a entrada por lote"
-                    : "Mova peças da aba Intermediário para cá após embalar"}
+                    : activeView === "retrabalho"
+                      ? "Peças enviadas para retrabalho aparecerão aqui"
+                      : "Mova peças da aba Intermediário para cá após embalar"}
             </p>
             {isAdmin && !querySearch && !hasActiveFilters && activeView === "intermediaria" && (
               <Button className="mt-2 gap-1.5 rounded-xl" onClick={() => setAddOpen(true)}>
@@ -1051,6 +1190,15 @@ export default function Estoque() {
                     onLotes={setLotesItem}
                     loteCount={lotesSummary.get(item.id) ?? 0}
                     isAdmin={isAdmin}
+                  />
+                ) : activeView === "retrabalho" ? (
+                  <RetrabalhoCard
+                    key={item.id}
+                    item={item}
+                    onConcluir={setConcluirRetrabalhoItem}
+                    onHistory={setHistoryItem}
+                    onLotes={setLotesItem}
+                    loteCount={lotesSummary.get(item.id) ?? 0}
                   />
                 ) : (
                   <ExpedicaoCard
@@ -1107,6 +1255,13 @@ export default function Estoque() {
         item={retrabalhoItem}
         open={!!retrabalhoItem}
         onClose={() => setRetrabalhoItem(null)}
+        onSuccess={refetch}
+      />
+
+      <ConcluirRetrabalhoModal
+        item={concluirRetrabalhoItem}
+        open={!!concluirRetrabalhoItem}
+        onClose={() => setConcluirRetrabalhoItem(null)}
         onSuccess={refetch}
       />
 

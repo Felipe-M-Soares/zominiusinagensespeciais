@@ -395,6 +395,11 @@ export async function transferToExpedicao(
  * Devolve unidades de um lote da Expedição para Retrabalho (intermediária).
  * Fluxo: saída da expedição → entrada no intermediário com reason "Retrabalho".
  */
+/**
+ * Envia peças da Expedição para a fila de Retrabalho (fase separada).
+ * Fluxo: saída da expedição → entrada no retrabalho.
+ * Após o retrabalho ser concluído, usar transferRetrabalhoToExpedicao para retornar.
+ */
 export async function transferToRetrabalho(
   expedicaoItemId: string,
   deviceId: string,
@@ -408,24 +413,24 @@ export async function transferToRetrabalho(
     expedicaoItemId,
     "saida",
     quantity,
-    "Retrabalho — devolvido ao Intermediário",
+    "Enviado para Retrabalho",
     userId,
     userDisplayName,
     lote
   );
   if (!saidaResult.ok) return saidaResult;
 
-  // 2. Localiza ou usa item intermediário existente para o mesmo device
+  // 2. Localiza ou cria item de retrabalho para o mesmo device
   const { data: existing } = await supabase
     .from("stock_items")
     .select("id")
     .eq("device_id", deviceId)
-    .eq("fase", "intermediaria")
+    .eq("fase", "retrabalho")
     .maybeSingle();
 
-  let intermediariaItemId: string | null = existing?.id ?? null;
+  let retrabalhoItemId: string | null = existing?.id ?? null;
 
-  if (!intermediariaItemId) {
+  if (!retrabalhoItemId) {
     const { data: srcItem } = await supabase
       .from("stock_items")
       .select("min_quantity, location, notes")
@@ -437,35 +442,115 @@ export async function transferToRetrabalho(
       .insert({
         device_id: deviceId,
         quantity: 0,
-        min_quantity: srcItem?.min_quantity ?? 0,
+        min_quantity: 0,
         location: srcItem?.location ?? null,
         notes: srcItem?.notes ?? null,
-        fase: "intermediaria",
+        fase: "retrabalho",
       })
       .select("id")
       .single();
 
     if (createErr || !created) {
-      await registerMovement(expedicaoItemId, "entrada", quantity, "Rollback — falha ao criar item intermediário", userId, userDisplayName, lote);
-      return { ok: false, error: "Erro ao criar item no intermediário." };
+      await registerMovement(expedicaoItemId, "entrada", quantity, "Rollback — falha ao criar item de retrabalho", userId, userDisplayName, lote);
+      return { ok: false, error: "Erro ao criar item no retrabalho." };
     }
-    intermediariaItemId = created.id;
+    retrabalhoItemId = created.id;
   }
 
-  // 3. Entrada no intermediário
+  // 3. Entrada no retrabalho
   const entradaResult = await registerMovement(
-    intermediariaItemId,
+    retrabalhoItemId,
     "entrada",
     quantity,
-    "Retrabalho — recebido da Expedição",
+    "Recebido da Expedição para Retrabalho",
     userId,
     userDisplayName,
     lote
   );
 
   if (!entradaResult.ok) {
-    await registerMovement(expedicaoItemId, "entrada", quantity, "Rollback — falha ao registrar entrada no intermediário", userId, userDisplayName, lote);
-    return { ok: false, error: "Erro ao registrar entrada no intermediário." };
+    await registerMovement(expedicaoItemId, "entrada", quantity, "Rollback — falha ao registrar entrada no retrabalho", userId, userDisplayName, lote);
+    return { ok: false, error: "Erro ao registrar entrada no retrabalho." };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Conclui o retrabalho: envia peças da fila de Retrabalho de volta para Expedição.
+ * Fluxo: saída do retrabalho → entrada na expedição.
+ */
+export async function transferRetrabalhoToExpedicao(
+  retrabalhoItemId: string,
+  deviceId: string,
+  lote: string,
+  quantity: number,
+  userId: string | null,
+  userDisplayName: string | null
+): Promise<{ ok: boolean; error?: string }> {
+  // 1. Saída do retrabalho
+  const saidaResult = await registerMovement(
+    retrabalhoItemId,
+    "saida",
+    quantity,
+    "Retrabalho concluído — enviado para Expedição",
+    userId,
+    userDisplayName,
+    lote
+  );
+  if (!saidaResult.ok) return saidaResult;
+
+  // 2. Localiza ou cria item de expedição para o mesmo device
+  const { data: existing } = await supabase
+    .from("stock_items")
+    .select("id")
+    .eq("device_id", deviceId)
+    .eq("fase", "expedicao")
+    .maybeSingle();
+
+  let expedicaoItemId: string | null = existing?.id ?? null;
+
+  if (!expedicaoItemId) {
+    const { data: srcItem } = await supabase
+      .from("stock_items")
+      .select("min_quantity, location, notes")
+      .eq("id", retrabalhoItemId)
+      .single();
+
+    const { data: created, error: createErr } = await supabase
+      .from("stock_items")
+      .insert({
+        device_id: deviceId,
+        quantity: 0,
+        min_quantity: srcItem?.min_quantity ?? 0,
+        location: srcItem?.location ?? null,
+        notes: srcItem?.notes ?? null,
+        fase: "expedicao",
+      })
+      .select("id")
+      .single();
+
+    if (createErr || !created) {
+      await registerMovement(retrabalhoItemId, "entrada", quantity, "Rollback — falha ao criar item de expedição", userId, userDisplayName, lote);
+      return { ok: false, error: "Erro ao criar item na expedição." };
+    }
+    expedicaoItemId = created.id;
+  }
+
+  // 3. Entrada na expedição
+  const entradaResult = await registerMovement(
+    expedicaoItemId,
+    "entrada",
+    quantity,
+    "Retrabalho concluído — recebido do Retrabalho",
+    userId,
+    userDisplayName,
+    lote
+  );
+
+  if (!entradaResult.ok) {
+    await registerMovement(retrabalhoItemId, "entrada", quantity, "Rollback — falha ao registrar entrada na expedição", userId, userDisplayName, lote);
+    return { ok: false, error: "Erro ao registrar entrada na expedição." };
   }
 
   return { ok: true };
