@@ -59,6 +59,7 @@ import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicao
 import { RetrabalhoModal } from "@/components/stock/RetrabalhoModal";
 import { ConcluirRetrabalhoModal } from "@/components/stock/ConcluirRetrabalhoModal";
 import { StockDashboard } from "@/components/stock/StockDashboard";
+import { StockNav } from "@/components/stock/StockNav";
 import { RecebimentoPanel } from "@/components/stock/RecebimentoPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
@@ -854,98 +855,18 @@ export default function Estoque() {
 
       <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
 
-        {/* Tabs de navegação: Dashboard / Intermediário / Expedição */}
-        <div className="flex items-stretch gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveView("dashboard")}
-            className={cn(
-              "flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl border text-sm font-medium transition-all",
-              activeView === "dashboard"
-                ? "bg-primary/10 border-primary/40 text-primary"
-                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
-            )}
-          >
-            <LayoutDashboard className="h-4 w-4" />
-            <span className="hidden sm:inline">Dashboard</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveView("intermediaria"); setVisibleCount(ITEMS_PER_PAGE); }}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-medium transition-all",
-              activeView === "intermediaria"
-                ? "bg-primary/10 border-primary/40 text-primary"
-                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
-            )}
-          >
-            <Package className="h-4 w-4" />
-            <span>Intermediário</span>
-            {!loading && (
-              <span className={cn(
-                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
-                activeView === "intermediaria" ? "bg-primary/15 text-primary" : "bg-muted/50 text-muted-foreground"
-              )}>
-                {intermediariaItems.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveView("expedicao"); setVisibleCount(ITEMS_PER_PAGE); }}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-medium transition-all",
-              activeView === "expedicao"
-                ? "bg-success/10 border-success/40 text-success"
-                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
-            )}
-          >
-            <Truck className="h-4 w-4" />
-            <span>Expedição</span>
-            {!loading && (
-              <span className={cn(
-                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
-                activeView === "expedicao" ? "bg-success/15 text-success" : "bg-muted/50 text-muted-foreground"
-              )}>
-                {expedicaoItems.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveView("retrabalho"); setVisibleCount(ITEMS_PER_PAGE); }}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-medium transition-all",
-              activeView === "retrabalho"
-                ? "bg-orange-500/10 border-orange-500/40 text-orange-500"
-                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
-            )}
-          >
-            <Wrench className="h-4 w-4" />
-            <span>Retrabalho</span>
-            {!loading && retrabalhoItems.length > 0 && (
-              <span className={cn(
-                "text-[11px] font-bold px-1.5 py-0.5 rounded-full",
-                activeView === "retrabalho" ? "bg-orange-500/15 text-orange-500" : "bg-orange-500/10 text-orange-500"
-              )}>
-                {retrabalhoItems.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveView("recebimento"); setVisibleCount(ITEMS_PER_PAGE); }}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-medium transition-all",
-              activeView === "recebimento"
-                ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-600 dark:text-cyan-400"
-                : "bg-background border-border text-muted-foreground hover:bg-muted/30"
-            )}
-          >
-            <Inbox className="h-4 w-4" />
-            <span>Recebimento</span>
-          </button>
-        </div>
+        {/* Tabs de navegação: mobile-first com ícones animados */}
+        <StockNav
+          activeView={activeView}
+          onViewChange={(view) => {
+            setActiveView(view);
+            setVisibleCount(ITEMS_PER_PAGE);
+          }}
+          intermediariaItems={intermediariaItems}
+          expedicaoItems={expedicaoItems}
+          retrabalhoItems={retrabalhoItems}
+          loading={loading}
+        />
 
         {/* Dashboard View */}
         {activeView === "dashboard" && (
