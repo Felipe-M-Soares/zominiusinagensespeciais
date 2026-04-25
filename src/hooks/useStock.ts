@@ -240,57 +240,38 @@ export async function registerMovement(
   userDisplayName?: string | null,
   lote?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  // SECURITY FIX: evita race condition de read-then-write.
-  // Em vez de ler a quantidade, calcular newQty e depois atualizar (janela entre SELECT e UPDATE),
-  // usamos UPDATE condicional via RPC para atomicidade real no banco.
-  // Para saída: só atualiza se quantity >= quantidade solicitada (sem ficar negativo).
-  // Para entrada: incrementa diretamente com expressão SQL.
+  // Lê quantidade atual
+  const { data: item } = await supabase
+    .from("stock_items")
+    .select("quantity")
+    .eq("id", stockItemId)
+    .single();
 
-  if (type === "saida") {
-    // Primeiro: verifica se há estoque suficiente
-    const { data: item } = await supabase
-      .from("stock_items")
-      .select("quantity")
-      .eq("id", stockItemId)
-      .single();
+  if (!item) return { ok: false, error: "Item não encontrado." };
 
-    if (!item) return { ok: false, error: "Item não encontrado." };
-    if (item.quantity < quantity) {
-      return { ok: false, error: `Estoque insuficiente. Disponível: ${item.quantity}` };
-    }
+  const newQty =
+    type === "entrada" ? item.quantity + quantity : item.quantity - quantity;
 
-    // Atualiza com guard condicional: só aplica se quantity ainda >= solicitado
-    const { count, error: upErr } = await supabase
-      .from("stock_items")
-      .update({ quantity: item.quantity - quantity })
-      .eq("id", stockItemId)
-      .gte("quantity", quantity) // guard contra race condition
-      .select("id", { count: "exact", head: true });
-
-    if (upErr) return { ok: false, error: upErr.message };
-    if (!count || count === 0) {
-      // Outro processo atualizou antes de nós — quantidade mudou
-      return { ok: false, error: "Estoque insuficiente ou alterado simultaneamente. Tente novamente." };
-    }
-  } else {
-    // Entrada: incrementa diretamente
-    const { error: upErr } = await supabase.rpc("increment_stock_quantity", {
-      p_item_id: stockItemId,
-      p_qty: quantity,
-    });
-
-    if (upErr) {
-      // Fallback: atualiza manualmente se a RPC não existir
-      const { data: item } = await supabase
-        .from("stock_items").select("quantity").eq("id", stockItemId).single();
-      if (!item) return { ok: false, error: "Item não encontrado." };
-      const { error: upErr2 } = await supabase
-        .from("stock_items").update({ quantity: item.quantity + quantity }).eq("id", stockItemId);
-      if (upErr2) return { ok: false, error: upErr2.message };
-    }
+  if (newQty < 0) {
+    return { ok: false, error: `Estoque insuficiente. Disponível: ${item.quantity}` };
   }
 
-  // Registra o movimento após atualizar o estoque com sucesso
+  // SECURITY FIX: UPDATE condicional — só aplica se a quantidade no banco ainda
+  // é exatamente a que lemos. Se outro processo alterou entre o SELECT e aqui,
+  // o update não afeta nenhuma linha e retornamos erro sem corromper dados.
+  const { count, error: upErr } = await supabase
+    .from("stock_items")
+    .update({ quantity: newQty })
+    .eq("id", stockItemId)
+    .eq("quantity", item.quantity) // guard contra race condition
+    .select("id", { count: "exact", head: true });
+
+  if (upErr) return { ok: false, error: upErr.message };
+  if (!count || count === 0) {
+    return { ok: false, error: "Estoque alterado simultaneamente. Tente novamente." };
+  }
+
+  // Registra o movimento após atualizar com sucesso
   const { error: mvErr } = await supabase
     .from("stock_movements")
     .insert({
@@ -304,24 +285,11 @@ export async function registerMovement(
     });
 
   if (mvErr) {
-    // Estoque já foi atualizado mas o log falhou — revertemos
-    if (type === "saida") {
-      await supabase.rpc("increment_stock_quantity", { p_item_id: stockItemId, p_qty: quantity })
-        .then(({ error }) => {
-          if (error) {
-            // Fallback manual se RPC não existir
-            supabase.from("stock_items").select("quantity").eq("id", stockItemId).single()
-              .then(({ data }) => {
-                if (data) supabase.from("stock_items").update({ quantity: data.quantity + quantity }).eq("id", stockItemId);
-              });
-          }
-        });
-    } else {
-      await supabase.from("stock_items").select("quantity").eq("id", stockItemId).single()
-        .then(({ data }) => {
-          if (data) supabase.from("stock_items").update({ quantity: Math.max(0, data.quantity - quantity) }).eq("id", stockItemId);
-        });
-    }
+    // Reverte o UPDATE se o log falhar
+    await supabase
+      .from("stock_items")
+      .update({ quantity: item.quantity })
+      .eq("id", stockItemId);
     return { ok: false, error: "Erro ao registrar histórico. Operação revertida." };
   }
 
