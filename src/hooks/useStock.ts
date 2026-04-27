@@ -130,7 +130,7 @@ export function useStock(search: string) {
       const PAGE_SIZE = 1000;
       let allRows: Record<string, unknown>[] = [];
       let fetchedCount = 0;
-      let page = 0;
+      const page = 0;
 
       const MAX_PAGES = 100;
       let pageNum = 0;
