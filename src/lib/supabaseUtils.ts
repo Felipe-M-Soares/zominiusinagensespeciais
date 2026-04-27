@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 
 /**
  * CODE-001 FIX: Single shared implementation of paginated "fetch all" from Supabase.
@@ -36,7 +37,7 @@ export async function fetchAllPages<T>(
   }
 
   if (page >= MAX_PAGES) {
-    console.warn(`fetchAllPages: limite de ${MAX_PAGES} páginas atingido para tabela "${table}". Dados podem estar incompletos.`);
+    logger.warn(`fetchAllPages: limite de ${MAX_PAGES} páginas atingido para tabela "${table}". Dados podem estar incompletos.`);
   }
 
   return all;

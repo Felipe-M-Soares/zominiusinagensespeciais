@@ -13,6 +13,7 @@ import {
 import { ArrowLeft, Upload, Trash2, Download, FileText, Plus, Loader2, X, CheckCircle2, AlertCircle, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
+import { logger } from "@/lib/logger";
 
 const MAX_FILE_SIZE_MB = 20;
 const MAX_FILES_AT_ONCE = 20;
@@ -64,10 +65,10 @@ export default function Manuals() {
     try {
       const { data, error } = await supabase
         .from("manuals").select("*").order("created_at", { ascending: false });
-      if (error) { console.error("fetchManuals:", error); toast.error("Erro ao carregar manuais"); }
+      if (error) { logger.error("fetchManuals:", error); toast.error("Erro ao carregar manuais"); }
       else setManuals((data as Manual[]) ?? []);
     } catch (err) {
-      console.error("fetchManuals unexpected:", err);
+      logger.error("fetchManuals unexpected:", err);
       toast.error("Erro ao carregar manuais");
     } finally {
       setLoading(false);
@@ -119,7 +120,7 @@ export default function Manuals() {
     } catch (err: unknown) {
       // SECURITY: não exibir mensagem interna do Supabase/storage na UI.
       // Loga para debug mas mostra mensagem genérica ao usuário.
-      console.error("uploadOne error:", item.file.name, err);
+      logger.error("uploadOne error:", item.file.name, err);
       const isPermission = err instanceof Error &&
         (err.message.toLowerCase().includes("unauthorized") ||
          err.message.toLowerCase().includes("row-level security") ||
@@ -164,9 +165,9 @@ export default function Manuals() {
     try {
       await supabase.storage.from("manuals").remove([manual.file_path]);
       const { error } = await supabase.from("manuals").delete().eq("id", manual.id);
-      if (error) { console.error("Delete DB error:", error); toast.error("Erro ao excluir manual"); return; }
+      if (error) { logger.error("Delete DB error:", error); toast.error("Erro ao excluir manual"); return; }
       toast.success("Manual excluído"); fetchManuals();
-    } catch (err) { console.error("handleDeleteConfirm unexpected:", err); toast.error("Erro inesperado ao excluir"); }
+    } catch (err) { logger.error("handleDeleteConfirm unexpected:", err); toast.error("Erro inesperado ao excluir"); }
   };
 
   const handleDownload = async (manual: Manual) => {
@@ -181,7 +182,7 @@ export default function Manuals() {
       if (!error && data?.signedUrl) {
         signedUrl = data.signedUrl;
       } else {
-        console.warn("createSignedUrl failed:", manual.file_path, error?.message);
+        logger.warn("createSignedUrl failed:", manual.file_path, error?.message);
         const underscoreIdx = manual.file_path.indexOf("_");
         if (underscoreIdx !== -1) {
           const timestamp = manual.file_path.slice(0, underscoreIdx);
@@ -205,7 +206,7 @@ export default function Manuals() {
       document.body.appendChild(a); a.click();
       setTimeout(() => { if (document.body.contains(a)) document.body.removeChild(a); }, 200);
     } catch (err: unknown) {
-      console.error("Download error:", err); toast.error("Erro inesperado ao baixar o arquivo.");
+      logger.error("Download error:", err); toast.error("Erro inesperado ao baixar o arquivo.");
     } finally { setDownloadingId(null); }
   };
 

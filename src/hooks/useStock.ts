@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 import type { Device } from "@/types/device";
 
 // ─── Tipos locais ────────────────────────────────────────────────────────────
@@ -59,7 +60,7 @@ export function useStock(search: string) {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetch = useCallback(async (q: string) => {
+  const loadItems = useCallback(async (q: string) => {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     setLoading(true);
@@ -128,20 +129,22 @@ export function useStock(search: string) {
       // Supabase PostgREST limita a 1000 linhas por request — paginamos até buscar tudo
       const PAGE_SIZE = 1000;
       let allRows: Record<string, unknown>[] = [];
-      let totalCount = 0;
+      let fetchedCount = 0;
       let page = 0;
 
-      while (true) {
-        const from = page * PAGE_SIZE;
+      const MAX_PAGES = 100;
+      let pageNum = 0;
+      while (pageNum < MAX_PAGES) {
+        const from = pageNum * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         const { data: pageData, count: pageCount, error: err } = await query
           .range(from, to);
         if (err) throw err;
         const rows = pageData ?? [];
         allRows = allRows.concat(rows);
-        if (page === 0) totalCount = pageCount ?? rows.length;
-        if (rows.length < PAGE_SIZE) break; // última página
-        page++;
+        if (pageNum === 0) fetchedCount = pageCount ?? rows.length;
+        if (rows.length < PAGE_SIZE) break;
+        pageNum++;
       }
 
       const normalized: StockItem[] = allRows
@@ -154,7 +157,7 @@ export function useStock(search: string) {
         .filter((item) => item.device != null);
 
       setItems(normalized);
-      setTotalCount(totalCount);
+      setTotalCount(fetchedCount);
     } catch (e: unknown) {
       if ((e as { name?: string })?.name !== "AbortError") {
         setError("Erro ao carregar estoque.");
@@ -165,11 +168,11 @@ export function useStock(search: string) {
   }, []);
 
   useEffect(() => {
-    fetch(search);
+    loadItems(search);
     return () => abortRef.current?.abort();
-  }, [search, fetch]);
+  }, [search, loadItems]);
 
-  return { items, totalCount, loading, error, refetch: () => fetch(search) };
+  return { items, totalCount, loading, error, refetch: () => loadItems(search) };
 }
 
 // ─── Hook de movimentos de um item ────────────────────────────────────────────
@@ -179,29 +182,37 @@ export function useStockMovements(stockItemId: string | null) {
   const [loading, setLoading] = useState(false);
   const cancelledRef = useRef<boolean>(false);
 
-  const fetch = useCallback(async (id: string) => {
+  const loadMovements = useCallback(async (id: string) => {
     cancelledRef.current = false;
     setLoading(true);
-    const { data } = await supabase
-      .from("stock_movements")
-      .select("id, stock_item_id, type, quantity, reason, lote, user_id, user_display_name, created_at")
-      .eq("stock_item_id", id)
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (!cancelledRef.current) {
+    try {
+      const { data, error } = await supabase
+        .from("stock_movements")
+        .select("id, stock_item_id, type, quantity, reason, lote, user_id, user_display_name, created_at")
+        .eq("stock_item_id", id)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (cancelledRef.current) return;
+      if (error) throw error;
       setMovements((data as StockMovement[]) ?? []);
-      setLoading(false);
+    } catch (err) {
+      if (!cancelledRef.current) {
+        logger.error("useStockMovements error:", err);
+        setMovements([]);
+      }
+    } finally {
+      if (!cancelledRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     cancelledRef.current = false;
-    if (stockItemId) fetch(stockItemId);
+    if (stockItemId) loadMovements(stockItemId);
     else setMovements([]);
     return () => { cancelledRef.current = true; };
-  }, [stockItemId, fetch]);
+  }, [stockItemId, loadMovements]);
 
-  return { movements, loading, refetch: stockItemId ? () => fetch(stockItemId) : () => {} };
+  return { movements, loading, refetch: stockItemId ? () => loadMovements(stockItemId) : () => {} };
 }
 
 // ─── Ações de escrita ─────────────────────────────────────────────────────────
@@ -225,7 +236,7 @@ export async function upsertStockItem(
     .single();
 
   if (error) {
-    console.error("upsertStockItem error:", error.message);
+    logger.error("upsertStockItem error:", error.message);
     return null;
   }
   return data;
@@ -712,16 +723,10 @@ export async function getBackupConfig(): Promise<BackupConfig | null> {
 export async function saveBackupConfig(
   schedule: BackupSchedule
 ): Promise<{ ok: boolean; error?: string }> {
-  const { data: existing } = await supabase
+  // FIX: upsert atômico evita race condition do SELECT+UPDATE separados
+  const { error } = await supabase
     .from("backup_configs")
-    .select("id")
-    .maybeSingle();
-
-  const op = existing
-    ? supabase.from("backup_configs").update({ schedule, updated_at: new Date().toISOString() }).eq("id", existing.id)
-    : supabase.from("backup_configs").insert({ schedule });
-
-  const { error } = await op;
+    .upsert({ schedule, updated_at: new Date().toISOString() }, { onConflict: "id" });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 

@@ -14,26 +14,29 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus, ShieldX, ShieldCheck } from "lucide-react";
+import type { AppRole } from "@/types/roles";
+import { APP_ROLES, ROLE_LABELS } from "@/types/roles";
+import { logger } from "@/lib/logger";
 
 interface UserProfile {
   user_id: string;
   display_name: string | null;
   login: string | null;
   created_at: string;
-  role: "admin" | "funcionario" | "vendedora";
+  role: AppRole;
   approved: boolean;
   blocked: boolean;
   must_change_password: boolean;
 }
 
-// ── Validação de senha forte ─────────────────────────────────────────────────
+// ── Validação de senha forte ────────────────────────────────────────────────
 function validatePassword(pwd: string): string | null {
-  if (pwd.length < 8)           return "Senha muito curta — mínimo 8 caracteres.";
-  if (pwd.length > 72)          return "Senha longa demais — máximo 72 caracteres.";
-  if (!/[A-Z]/.test(pwd))       return "Precisa de ao menos 1 letra maiúscula.";
-  if (!/[a-z]/.test(pwd))       return "Precisa de ao menos 1 letra minúscula.";
-  if (!/[0-9]/.test(pwd))       return "Precisa de ao menos 1 número.";
-  if (!/[^A-Za-z0-9]/.test(pwd))return "Precisa de ao menos 1 caractere especial (!@#$%...).";
+  if (pwd.length < 8)            return "Senha muito curta — mínimo 8 caracteres.";
+  if (pwd.length > 72)           return "Senha longa demais — máximo 72 caracteres.";
+  if (!/[A-Z]/.test(pwd))        return "Precisa de ao menos 1 letra maiúscula.";
+  if (!/[a-z]/.test(pwd))        return "Precisa de ao menos 1 letra minúscula.";
+  if (!/[0-9]/.test(pwd))        return "Precisa de ao menos 1 número.";
+  if (!/[^A-Za-z0-9]/.test(pwd)) return "Precisa de ao menos 1 caractere especial (!@#$%...).";
   return null;
 }
 
@@ -45,19 +48,17 @@ function passwordStrength(pwd: string): { score: number; label: string; color: s
   if (/[0-9]/.test(pwd)) score++;
   if (/[^A-Za-z0-9]/.test(pwd)) score++;
   const levels = [
-    { label: "",         color: "" },
+    { label: "",           color: "" },
     { label: "Muito fraca", color: "bg-destructive" },
-    { label: "Fraca",    color: "bg-orange-400" },
-    { label: "Razoável", color: "bg-warning" },
-    { label: "Boa",      color: "bg-success" },
-    { label: "Forte",    color: "bg-success" },
+    { label: "Fraca",      color: "bg-orange-400" },
+    { label: "Razoável",   color: "bg-warning" },
+    { label: "Boa",        color: "bg-success" },
+    { label: "Forte",      color: "bg-success" },
   ];
   return { score, ...levels[score] };
 }
 
-function PasswordStrengthInput({
-  value, onChange,
-}: { value: string; onChange: (v: string) => void }) {
+function PasswordStrengthInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [show, setShow] = useState(false);
   const strength = value ? passwordStrength(value) : null;
   const err = value.length > 0 ? validatePassword(value) : null;
@@ -105,31 +106,27 @@ function PasswordStrengthInput({
 }
 
 export function AdminUsers() {
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [users, setUsers]     = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { user: currentUser } = useAuth();
-  // FIX: ref para cancelar fetch se o componente desmontar durante a requisição
   const fetchAbortRef = useRef<AbortController | null>(null);
 
   const [passwordDialog, setPasswordDialog] = useState<UserProfile | null>(null);
-  const [newPassword, setNewPassword] = useState("");
+  const [newPassword, setNewPassword]       = useState("");
   const [resettingPassword, setResettingPassword] = useState(false);
 
-  const [createDialog, setCreateDialog] = useState(false);
-  const [newUserLogin, setNewUserLogin] = useState("");
-  const [newUserName, setNewUserName] = useState("");
+  const [createDialog, setCreateDialog]     = useState(false);
+  const [newUserLogin, setNewUserLogin]     = useState("");
+  const [newUserName, setNewUserName]       = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState<"admin" | "funcionario" | "vendedora">("funcionario");
-  const [creatingUser, setCreatingUser] = useState(false);
+  const [newUserRole, setNewUserRole]       = useState<AppRole>("funcionario");
+  const [creatingUser, setCreatingUser]     = useState(false);
 
-  // Confirmação para rebaixar outro admin
   const [downgradeConfirm, setDowngradeConfirm] = useState<{ userId: string; userName: string } | null>(null);
 
-  // FIX: useCallback + AbortController — evita atualizar estado em componente
-  // desmontado e cancela fetches duplicados se chamado várias vezes seguidas.
   const fetchUsers = useCallback(async () => {
-    if (fetchAbortRef.current) fetchAbortRef.current.abort();
+    fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
 
@@ -141,20 +138,21 @@ export function AdminUsers() {
       ]);
       if (controller.signal.aborted) return;
       if (pErr || rErr) { toast.error("Erro ao carregar usuários"); return; }
+
       const roleMap = new Map((roles ?? []).map(r => [r.user_id, r.role]));
       setUsers((profiles ?? []).map(p => ({
-        user_id: p.user_id,
-        display_name: p.display_name,
-        login: (p as { login?: string | null }).login ?? null,
-        created_at: p.created_at,
-        role: (roleMap.get(p.user_id) as "admin" | "funcionario" | "vendedora") ?? "funcionario",
-        approved: p.approved ?? false,
-        blocked: (p as { blocked?: boolean }).blocked ?? false,
+        user_id:              p.user_id,
+        display_name:         p.display_name,
+        login:                (p as { login?: string | null }).login ?? null,
+        created_at:           p.created_at,
+        role:                 (roleMap.get(p.user_id) as AppRole) ?? "funcionario",
+        approved:             p.approved ?? false,
+        blocked:              (p as { blocked?: boolean }).blocked ?? false,
         must_change_password: (p as { must_change_password?: boolean }).must_change_password ?? false,
       })));
     } catch (err) {
       if (controller.signal.aborted) return;
-      console.error("fetchUsers:", err);
+      logger.error("fetchUsers:", err);
       toast.error("Erro inesperado ao carregar usuários");
     } finally {
       if (!controller.signal.aborted) setLoading(false);
@@ -166,22 +164,20 @@ export function AdminUsers() {
     return () => { fetchAbortRef.current?.abort(); };
   }, [fetchUsers]);
 
-  const changeRole = async (userId: string, newRole: "admin" | "funcionario" | "vendedora") => {
-    // SEGURANÇA: admin não pode rebaixar a si mesmo — evita lock-out acidental
+  const changeRole = async (userId: string, newRole: AppRole) => {
     if (userId === currentUser?.id && newRole !== "admin") {
       toast.error("Você não pode remover sua própria permissão de administrador.");
       return;
     }
-    // SEGURANÇA: rebaixar outro admin exige confirmação explícita
     const target = users.find(u => u.user_id === userId);
-    if (target?.role === "admin" && (newRole === "funcionario" || newRole === "vendedora")) {
+    if (target?.role === "admin" && newRole !== "admin") {
       setDowngradeConfirm({ userId, userName: target.display_name ?? target.login ?? "este admin" });
       return;
     }
     await applyRoleChange(userId, newRole);
   };
 
-  const applyRoleChange = async (userId: string, newRole: "admin" | "funcionario" | "vendedora") => {
+  const applyRoleChange = async (userId: string, newRole: AppRole) => {
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
     if (error) toast.error("Erro ao alterar função: " + error.message);
     else { toast.success("Função atualizada"); fetchUsers(); }
@@ -193,28 +189,17 @@ export function AdminUsers() {
     else { toast.success(approve ? "Usuário aprovado" : "Aprovação removida"); fetchUsers(); }
   };
 
-  // REVOGAR: bloqueia o email do usuário (blocked=true + approved=false)
-  // A sessão ativa é invalidada via Edge Function admin-reset-password com senha aleatória,
-  // forçando logout imediato. Usuário vê mensagem de bloqueio ao tentar logar novamente.
   const revokeAccess = async (userId: string, userLogin: string | null) => {
     try {
-      // Marca blocked=true e approved=false no banco.
-      // O polling de 30s em useAuth detecta e faz signOut + mostra tela de bloqueio.
-      // NÃO alteramos a senha — assim o admin pode desbloquear sem precisar redefinir.
       const { error: profileErr } = await supabase
         .from("profiles")
         .update({ approved: false, blocked: true })
         .eq("user_id", userId);
-
-      if (profileErr) {
-        toast.error("Erro ao bloquear usuário: " + profileErr.message);
-        return;
-      }
-
+      if (profileErr) { toast.error("Erro ao bloquear usuário: " + profileErr.message); return; }
       toast.success(`Acesso de ${userLogin ?? "usuário"} bloqueado.`);
       fetchUsers();
     } catch (err) {
-      console.error("revokeAccess error:", err);
+      logger.error("revokeAccess error:", err);
       toast.error("Erro inesperado ao bloquear usuário.");
     }
   };
@@ -230,11 +215,8 @@ export function AdminUsers() {
 
   const resetPassword = async () => {
     if (!passwordDialog) return;
-    // SECURITY: usa validatePassword() que já existe neste arquivo — garante
-    // complexidade igual à criação de usuário (maiúscula, minúscula, número, especial).
     const pwdError = validatePassword(newPassword);
     if (pwdError) { toast.error(pwdError); return; }
-    if (newPassword.length > 72) { toast.error("Senha deve ter no máximo 72 caracteres."); return; }
     setResettingPassword(true);
     try {
       const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_reset_password", {
@@ -245,11 +227,10 @@ export function AdminUsers() {
       if (errMsg) {
         toast.error("Erro ao redefinir senha: " + errMsg);
       } else {
-        // Marca must_change_password para o usuário trocar no próximo acesso
         await supabase.from("profiles")
           .update({ must_change_password: true })
           .eq("user_id", passwordDialog.user_id);
-        toast.success(`Senha de ${passwordDialog.display_name ?? passwordDialog.login ?? "usuário"} redefinida. Usuário deverá criar nova senha no próximo acesso.`);
+        toast.success(`Senha de ${passwordDialog.display_name ?? passwordDialog.login ?? "usuário"} redefinida.`);
         setPasswordDialog(null);
         setNewPassword("");
         fetchUsers();
@@ -262,19 +243,19 @@ export function AdminUsers() {
   const deleteUser = async (userId: string) => {
     setDeletingId(userId);
     try {
-      const { data: rpcData3, error: rpcErr3 } = await supabase.rpc("admin_delete_user", {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_delete_user", {
         p_target_user_id: userId,
       });
-      const errMsg3 = rpcErr3?.message ?? (rpcData3 as {error?: string} | null)?.error ?? null;
-      if (errMsg3) {
-        toast.error("Erro ao excluir: " + errMsg3);
-      } else {
-        toast.success("Conta excluída");
-        fetchUsers();
-      }
+      const errMsg = rpcErr?.message ?? (rpcData as { error?: string } | null)?.error ?? null;
+      if (errMsg) toast.error("Erro ao excluir: " + errMsg);
+      else { toast.success("Conta excluída"); fetchUsers(); }
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const resetCreateForm = () => {
+    setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("funcionario");
   };
 
   const createUser = async () => {
@@ -291,13 +272,13 @@ export function AdminUsers() {
         p_display_name: newUserName.trim(),
         p_role:         newUserRole,
       });
-      const errMsg = rpcErr?.message ?? (rpcData as {error?: string} | null)?.error ?? null;
+      const errMsg = rpcErr?.message ?? (rpcData as { error?: string } | null)?.error ?? null;
       if (errMsg) {
         toast.error("Erro ao criar conta: " + errMsg);
       } else {
         toast.success("Conta criada!");
         setCreateDialog(false);
-        setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("funcionario");
+        resetCreateForm();
         fetchUsers();
       }
     } finally {
@@ -323,14 +304,16 @@ export function AdminUsers() {
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Criar Conta de Usuário</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Conta criada já aprovada. O usuário definirá sua senha no primeiro acesso.</p>
+            <p className="text-sm text-muted-foreground">Conta criada já aprovada.</p>
             <div className="space-y-2">
               <Label>Nome completo *</Label>
               <Input placeholder="Nome" value={newUserName} onChange={e => setNewUserName(e.target.value)} maxLength={100} />
             </div>
             <div className="space-y-2">
               <Label>Login *</Label>
-              <Input type="text" placeholder="ex: joao.silva" value={newUserLogin} onChange={e => setNewUserLogin(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,""))} autoComplete="off" />
+              <Input type="text" placeholder="ex: joao.silva" value={newUserLogin}
+                onChange={e => setNewUserLogin(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ""))}
+                autoComplete="off" />
             </div>
             <div className="space-y-2">
               <Label>Senha inicial *</Label>
@@ -338,18 +321,19 @@ export function AdminUsers() {
             </div>
             <div className="space-y-2">
               <Label>Perfil</Label>
-              <Select value={newUserRole} onValueChange={v => setNewUserRole(v as "admin" | "funcionario" | "vendedora")}>
+              <Select value={newUserRole} onValueChange={v => setNewUserRole(v as AppRole)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="funcionario">Funcionário</SelectItem>
-                  <SelectItem value="vendedora">Vendedora</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  {APP_ROLES.map(r => (
+                    <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setCreateDialog(false)}>Cancelar</Button>
-              <Button onClick={createUser} disabled={creatingUser || !newUserLogin.trim() || !newUserName.trim() || !!validatePassword(newUserPassword)}>
+              <Button variant="outline" onClick={() => { setCreateDialog(false); resetCreateForm(); }}>Cancelar</Button>
+              <Button onClick={createUser}
+                disabled={creatingUser || !newUserLogin.trim() || !newUserName.trim() || !!validatePassword(newUserPassword)}>
                 {creatingUser ? "Criando..." : "Criar Conta"}
               </Button>
             </div>
@@ -375,7 +359,9 @@ export function AdminUsers() {
                 <TableRow key={u.user_id}>
                   <TableCell className="font-medium">{u.display_name ?? "—"}</TableCell>
                   <TableCell className="text-sm">{u.login ?? "—"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{new Date(u.created_at).toLocaleDateString("pt-BR")}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(u.created_at).toLocaleDateString("pt-BR")}
+                  </TableCell>
                   <TableCell>
                     {u.blocked
                       ? <Badge variant="destructive" className="gap-1"><ShieldX className="h-3 w-3" /> Bloqueado</Badge>
@@ -386,16 +372,15 @@ export function AdminUsers() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Select value={u.role} onValueChange={v => changeRole(u.user_id, v as "admin" | "funcionario" | "vendedora")} disabled={isSelf}>
-                        <SelectTrigger className="w-[110px] h-8"><SelectValue /></SelectTrigger>
+                      <Select value={u.role} onValueChange={v => changeRole(u.user_id, v as AppRole)} disabled={isSelf}>
+                        <SelectTrigger className="w-[120px] h-8"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="funcionario">Funcionário</SelectItem>
-                  <SelectItem value="vendedora">Vendedora</SelectItem>
+                          {APP_ROLES.map(r => (
+                            <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
 
-                      {/* Usuário bloqueado: mostrar botão de desbloquear */}
                       {u.blocked && !isSelf && (
                         <Button variant="outline" size="sm" className="h-8 text-green-600 border-green-300 hover:bg-green-50"
                           onClick={() => unblockAccess(u.user_id)}>
@@ -403,7 +388,6 @@ export function AdminUsers() {
                         </Button>
                       )}
 
-                      {/* Usuário pendente (não aprovado, não bloqueado): botão Aprovar */}
                       {!u.approved && !u.blocked && !isSelf && (
                         <Button variant="outline" size="sm" className="h-8 text-green-600 border-green-300 hover:bg-green-50"
                           onClick={() => toggleApproval(u.user_id, true)}>
@@ -411,7 +395,6 @@ export function AdminUsers() {
                         </Button>
                       )}
 
-                      {/* Usuário aprovado e não bloqueado: botão Revogar */}
                       {u.approved && !u.blocked && !isSelf && u.role !== "admin" && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -424,7 +407,6 @@ export function AdminUsers() {
                               <AlertDialogTitle>Bloquear acesso de {u.display_name ?? u.login ?? "usuário"}?</AlertDialogTitle>
                               <AlertDialogDescription>
                                 O login <strong>{u.login ?? "usuário"}</strong> será bloqueado imediatamente.
-                                O usuário verá uma mensagem de "Acesso Bloqueado" ao tentar entrar e não conseguirá acessar o sistema até que um administrador o desbloqueie.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -497,13 +479,11 @@ export function AdminUsers() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirmação de rebaixamento de admin */}
-      <AlertDialog open={!!downgradeConfirm} onOpenChange={(v) => { if (!v) setDowngradeConfirm(null); }}>
+      <AlertDialog open={!!downgradeConfirm} onOpenChange={v => { if (!v) setDowngradeConfirm(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <ShieldX className="h-4 w-4" />
-              Rebaixar administrador?
+              <ShieldX className="h-4 w-4" /> Rebaixar administrador?
             </AlertDialogTitle>
             <AlertDialogDescription>
               Você está prestes a remover o acesso de administrador de{" "}
@@ -520,8 +500,7 @@ export function AdminUsers() {
                   await applyRoleChange(downgradeConfirm.userId, "funcionario");
                   setDowngradeConfirm(null);
                 }
-              }}
-            >
+              }}>
               Sim, rebaixar para Funcionário
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -19,6 +19,7 @@ import {
 import { ArrowLeft, Trash2, Plus, User, MapPin, Phone, MessageCircle, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
+import { logger } from "@/lib/logger";
 
 interface Contact {
   id: string;
@@ -55,14 +56,14 @@ export default function Contacts() {
         .order("name");
       if (controller.signal.aborted) return;
       if (error) {
-        console.error("Error fetching contacts:", error);
+        logger.error("Error fetching contacts:", error);
         toast.error("Erro ao carregar contatos");
       } else {
         setContacts((data as Contact[]) ?? []);
       }
     } catch (err) {
       if (controller.signal.aborted) return;
-      console.error("fetchContacts unexpected error:", err);
+      logger.error("fetchContacts unexpected error:", err);
       toast.error("Erro ao carregar contatos");
     } finally {
       if (!fetchAbortRef.current?.signal.aborted) setLoading(false);
@@ -108,7 +109,7 @@ export default function Contacts() {
     } catch (err) {
       // FIX: sem este catch, uma exceção de rede deixava setSaving(true) para sempre,
       // travando o botão "Salvar" permanentemente até recarregar a página.
-      console.error("handleSave error:", err);
+      logger.error("handleSave error:", err);
       toast.error("Erro inesperado. Tente novamente.");
     } finally { setSaving(false); }
   };

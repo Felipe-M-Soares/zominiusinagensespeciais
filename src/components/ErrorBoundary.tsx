@@ -1,4 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from "react";
+import { logger } from "@/lib/logger";
 
 interface Props {
   children: ReactNode;
@@ -30,7 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Em produção, aqui seria o lugar para enviar o erro a um serviço
     // como Sentry, LogRocket, etc.
-    console.error("[ErrorBoundary] Uncaught render error:", error, info.componentStack);
+    logger.error("[ErrorBoundary] Uncaught render error:", error, info.componentStack);
   }
 
   render() {

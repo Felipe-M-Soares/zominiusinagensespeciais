@@ -10,7 +10,7 @@ const NotFound = () => {
 const location = useLocation();
 
 useEffect(() => {
-  console.error("404: rota não encontrada:", location.pathname);
+  logger.error("404: rota não encontrada:", location.pathname);
 }, [location.pathname]);
 
 return (

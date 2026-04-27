@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface ImportRow {
@@ -336,7 +337,7 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
           const { error: upErr } = await supabase.from("stock_items").update(patch).eq("id", id);
           if (upErr) {
             // Apenas loga, não bloqueia o restante
-            console.warn("Erro ao atualizar item:", id, upErr.message);
+            logger.warn("Erro ao atualizar item:", id, upErr.message);
           }
         }
 
@@ -357,7 +358,7 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
         toast.error("Nenhuma peça foi importada. Verifique os erros.");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       toast.error("Erro ao processar o arquivo.");
     } finally {
       setImporting(false);

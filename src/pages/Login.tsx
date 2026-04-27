@@ -8,6 +8,7 @@ import { Logo } from "@/components/Logo";
 import { toast } from "sonner";
 import { Download, CheckCircle, User, Lock, Eye, EyeOff, ShieldX } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 
 export default function Login() {
   const [login, setLogin]           = useState("");
@@ -51,7 +52,7 @@ export default function Login() {
       }
       navigate("/");
     } catch (err) {
-      console.error("Login error:", err);
+      logger.error("Login error:", err);
       toast.error("Erro inesperado. Tente novamente.");
     } finally {
       setLoading(false);

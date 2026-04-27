@@ -90,14 +90,14 @@ export default function SetPassword() {
         .eq("user_id", user!.id);
 
       if (profileErr) {
-        console.error("Profile update error:", profileErr.message);
+        logger.error("Profile update error:", profileErr.message);
         // Não bloqueia — a senha já foi atualizada
       }
 
       toast.success("Senha definida com sucesso! Bem-vindo.");
       navigate("/");
     } catch (err) {
-      console.error("SetPassword error:", err);
+      logger.error("SetPassword error:", err);
       toast.error("Erro inesperado. Tente novamente.");
     } finally {
       setLoading(false);

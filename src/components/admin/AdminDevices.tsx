@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import { logger } from "@/lib/logger";
 
 const deviceSchema = z.object({
   udi_di: z.string().min(1, "UDI-DI é obrigatório").max(200),
@@ -285,7 +286,7 @@ export function AdminDevices() {
           .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
           .select("id");
         if (upsErr) {
-          console.error("Batch upsert error:", upsErr.message);
+          logger.error("Batch upsert error:", upsErr.message);
           skipped += batch.length;
         } else {
           inserted += batch.length;
@@ -322,7 +323,7 @@ export function AdminDevices() {
           if (!stockErr) {
             syncInserted += batch.length;
           } else {
-            console.error(`Stock insert batch ${i}-${i + STOCK_BATCH} error:`, stockErr.message);
+            logger.error(`Stock insert batch ${i}-${i + STOCK_BATCH} error:`, stockErr.message);
             syncError += batch.length;
           }
         }
@@ -334,12 +335,12 @@ export function AdminDevices() {
           toast.error(`${syncError} peças não adicionadas ao estoque — erro no banco.`);
         }
       } catch (stockErr) {
-        console.error("Erro ao criar stock_items:", stockErr);
+        logger.error("Erro ao criar stock_items:", stockErr);
         toast.error("Dispositivos importados, mas erro ao adicionar ao estoque.");
       }
 
     } catch (err) {
-      console.error("Import error:", err);
+      logger.error("Import error:", err);
       toast.error("Erro ao processar arquivo.");
     } finally {
       setImporting(false);
@@ -398,7 +399,7 @@ export function AdminDevices() {
           .insert(parseResult.data as TablesInsert<"devices">)
           .select("id")
           .single();
-        if (error) { console.error("Device insert error:", error); toast.error("Erro ao criar o dispositivo."); }
+        if (error) { logger.error("Device insert error:", error); toast.error("Erro ao criar o dispositivo."); }
         else {
           // Adiciona automaticamente ao controle de estoque com quantidade 0
           if (newDevice?.id) {
@@ -408,7 +409,7 @@ export function AdminDevices() {
               min_quantity: 0,
               fase: "intermediaria",
             }, { onConflict: "device_id,fase", ignoreDuplicates: true }).then(({ error: sErr }) => {
-              if (sErr) console.warn("Auto stock insert warning:", sErr.message);
+              if (sErr) logger.warn("Auto stock insert warning:", sErr.message);
             });
           }
           toast.success("Dispositivo criado e adicionado ao estoque intermediário");
@@ -419,7 +420,7 @@ export function AdminDevices() {
         const { id } = editDevice as Device;
         const { id: _omittedId, ...updates } = parseResult.data as TablesInsert<"devices"> & { id?: string };
         const { error } = await supabase.from("devices").update(updates).eq("id", id!);
-        if (error) { console.error("Device update error:", error); toast.error("Erro ao atualizar o dispositivo."); }
+        if (error) { logger.error("Device update error:", error); toast.error("Erro ao atualizar o dispositivo."); }
         else { toast.success("Dispositivo atualizado"); setEditDevice(null); fetchDevices(debouncedSearch, page); }
       }
     } finally {
@@ -463,7 +464,7 @@ export function AdminDevices() {
       setPage(0);
       fetchDevices("", 0);
     } catch (err) {
-      console.error("deleteAll error:", err);
+      logger.error("deleteAll error:", err);
       toast.error("Erro ao excluir todas as peças");
     } finally {
       setDeletingAll(false);

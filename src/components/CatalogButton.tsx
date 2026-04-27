@@ -65,13 +65,13 @@ export function CatalogButton() {
         .order("created_at", { ascending: false });
       if (controller.signal.aborted) return;
       if (error) {
-        console.error("fetchCatalogs error:", error.message);
+        logger.error("fetchCatalogs error:", error.message);
       } else {
         setCatalogs((data as Catalog[]) ?? []);
       }
     } catch (err) {
       if (controller.signal.aborted) return;
-      console.error("fetchCatalogs unexpected error:", err);
+      logger.error("fetchCatalogs unexpected error:", err);
     } finally {
       if (!fetchAbortRef.current?.signal.aborted) setLoading(false);
     }
@@ -100,7 +100,7 @@ export function CatalogButton() {
         .createSignedUrl(catalog.file_path, 300, { download: safeFilename });
 
       if (error || !data?.signedUrl) {
-        console.error("createSignedUrl error:", error?.message);
+        logger.error("createSignedUrl error:", error?.message);
         // Mensagem específica: ajuda o admin a saber que é problema de storage policy
         toast.error(
           isAdmin
@@ -121,7 +121,7 @@ export function CatalogButton() {
         if (document.body.contains(a)) document.body.removeChild(a);
       }, 200);
     } catch (err: unknown) {
-      console.error("Download error:", err);
+      logger.error("Download error:", err);
       toast.error("Erro inesperado ao baixar catálogo.");
     } finally {
       setDownloadingId(null);
@@ -154,7 +154,7 @@ export function CatalogButton() {
         .upload(filePath, file, { contentType: "application/pdf" });
 
       if (uploadError) {
-        console.error("Storage upload error:", uploadError.message, uploadError);
+        logger.error("Storage upload error:", uploadError.message, uploadError);
         // SECURITY: não expor mensagem interna do Supabase no toast.
         // Distingue entre erros de permissão e outros para orientar o admin.
         if (
@@ -178,7 +178,7 @@ export function CatalogButton() {
       if (dbError) {
         // Rollback: remove o arquivo que já foi enviado
         await supabase.storage.from("catalogs").remove([filePath]);
-        console.error("DB insert error:", dbError.message);
+        logger.error("DB insert error:", dbError.message);
         // SECURITY: não expor mensagem interna do DB ao usuário
         toast.error("Erro ao salvar catálogo. Tente novamente.");
         return;
@@ -191,7 +191,7 @@ export function CatalogButton() {
       if (fileRef.current) fileRef.current.value = "";
       fetchCatalogs();
     } catch (err: unknown) {
-      console.error("Upload unexpected error:", err);
+      logger.error("Upload unexpected error:", err);
       toast.error("Erro inesperado ao enviar catálogo.");
     } finally {
       setUploading(false);
@@ -205,7 +205,7 @@ export function CatalogButton() {
 
     // Remove arquivo do storage primeiro
     const { error: storageErr } = await supabase.storage.from("catalogs").remove([cat.file_path]);
-    if (storageErr) console.error("Storage delete error:", storageErr.message);
+    if (storageErr) logger.error("Storage delete error:", storageErr.message);
 
     // Remove registro da tabela
     const { error: dbErr } = await supabase.from("catalogs").delete().eq("id", cat.id);

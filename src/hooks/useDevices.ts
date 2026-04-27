@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 import type { Tables } from "@/integrations/supabase/types";
 import type { Device } from "@/types/device";
 
@@ -90,21 +91,9 @@ async function queryDevices(
     query = query.or(`model.ilike.${letter}%,model.ilike.${letter.toLowerCase()}%`);
   }
   if (!q && letter === "#") {
-    // Modelos que não começam com letra A-Z
-    query = query.not("model", "ilike", "a%")
-      .not("model", "ilike", "b%").not("model", "ilike", "c%")
-      .not("model", "ilike", "d%").not("model", "ilike", "e%")
-      .not("model", "ilike", "f%").not("model", "ilike", "g%")
-      .not("model", "ilike", "h%").not("model", "ilike", "i%")
-      .not("model", "ilike", "j%").not("model", "ilike", "k%")
-      .not("model", "ilike", "l%").not("model", "ilike", "m%")
-      .not("model", "ilike", "n%").not("model", "ilike", "o%")
-      .not("model", "ilike", "p%").not("model", "ilike", "q%")
-      .not("model", "ilike", "r%").not("model", "ilike", "s%")
-      .not("model", "ilike", "t%").not("model", "ilike", "u%")
-      .not("model", "ilike", "v%").not("model", "ilike", "w%")
-      .not("model", "ilike", "x%").not("model", "ilike", "y%")
-      .not("model", "ilike", "z%");
+    // PERF: uma única condição regex substitui 26 .not() encadeados
+    query = (query as unknown as { not: (col: string, op: string, val: string) => typeof query })
+      .not("model", "match", "^[A-Za-z]");
   }
 
   if (filters.material) query = query.eq("primary_material", filters.material);
@@ -158,7 +147,7 @@ export function useDevices(search: string, filters: Filters, letter: string) {
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        console.error("Device fetch error:", err);
+        logger.error("Device fetch error:", err);
         setError("Erro ao carregar dispositivos.");
       })
       .finally(() => {
@@ -190,7 +179,7 @@ export function useDevices(search: string, filters: Filters, letter: string) {
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        console.error("loadMore error:", err);
+        logger.error("loadMore error:", err);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoadingMore(false);
@@ -225,10 +214,10 @@ export function useDeviceOptions() {
       if (cancelled) return;
 
       // FIX: trata erros de cada query individualmente em vez de engolir silenciosamente
-      if (matRes.error) console.error("useDeviceOptions materials error:", matRes.error);
-      if (classRes.error) console.error("useDeviceOptions classifications error:", classRes.error);
-      if (exocadRes.error) console.error("useDeviceOptions exocad error:", exocadRes.error);
-      if (modelRes.error) console.error("useDeviceOptions models error:", modelRes.error);
+      if (matRes.error) logger.error("useDeviceOptions materials error:", matRes.error);
+      if (classRes.error) logger.error("useDeviceOptions classifications error:", classRes.error);
+      if (exocadRes.error) logger.error("useDeviceOptions exocad error:", exocadRes.error);
+      if (modelRes.error) logger.error("useDeviceOptions models error:", modelRes.error);
 
       const materials = [
         ...new Set(
@@ -255,7 +244,7 @@ export function useDeviceOptions() {
       setOptions({ materials, classifications, exocadOptions, availableLetters: letters });
     }).catch((err) => {
       // FIX: captura erros de rede que antes eram silenciosos
-      console.error("useDeviceOptions fetch error:", err);
+      logger.error("useDeviceOptions fetch error:", err);
     });
     return () => { cancelled = true; };
   }, []);

@@ -98,7 +98,7 @@ const Settings = () => {
           </CardHeader>
           <CardContent className="space-y-2">
             <div>
-              <Label className="text-muted-foreground text-xs">Login</Label>
+              <Label className="text-muted-foreground text-xs">Nome</Label>
               <p className="text-sm">{(user?.user_metadata?.display_name as string) ?? "—"}</p>
             </div>
           </CardContent>

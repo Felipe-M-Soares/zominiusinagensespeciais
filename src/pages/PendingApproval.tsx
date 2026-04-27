@@ -27,7 +27,7 @@ export default function PendingApproval() {
     try {
       await refreshApproval();
     } catch (err) {
-      console.error("checkApproval error:", err);
+      logger.error("checkApproval error:", err);
     } finally {
       setChecking(false);
     }
