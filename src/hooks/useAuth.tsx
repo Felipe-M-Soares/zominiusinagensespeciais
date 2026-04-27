@@ -14,7 +14,7 @@ interface AuthContext {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  role: "admin" | "client" | null;
+  role: "admin" | "funcionario" | "vendedora" | null;
   isAdmin: boolean;
   approved: boolean | null;
   blocked: boolean;
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<"admin" | "client" | null>(null);
+  const [role, setRole] = useState<"admin" | "funcionario" | "vendedora" | null>(null);
   const [approved, setApproved] = useState<boolean | null>(null);
   const [blocked, setBlocked] = useState<boolean>(false);
 
@@ -81,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle(),
       ]);
 
-      setRole(roleData?.role ?? "client");
+      setRole(roleData?.role ?? "funcionario");
 
       if (profileError) {
         console.error("fetchRoleAndApproval profiles error:", profileError.message);
@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("Failed to fetch role/approval:", err);
-      setRole("client");
+      setRole("funcionario");
       setApproved(true);
       setBlocked(false);
     }

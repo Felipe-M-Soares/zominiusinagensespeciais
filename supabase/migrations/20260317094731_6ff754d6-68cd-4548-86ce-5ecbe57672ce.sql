@@ -17,7 +17,7 @@ BEGIN
   VALUES (NEW.id, NEW.email, COALESCE(NEW.raw_user_meta_data->>'display_name', NEW.email), false);
   
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, 'client');
+  VALUES (NEW.id, 'funcionario');
   
   RETURN NEW;
 END;

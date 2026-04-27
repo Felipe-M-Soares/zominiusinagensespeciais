@@ -20,7 +20,7 @@ interface UserProfile {
   display_name: string | null;
   login: string | null;
   created_at: string;
-  role: "admin" | "client";
+  role: "admin" | "funcionario" | "vendedora";
   approved: boolean;
   blocked: boolean;
   must_change_password: boolean;
@@ -120,7 +120,7 @@ export function AdminUsers() {
   const [newUserLogin, setNewUserLogin] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState<"admin" | "client">("client");
+  const [newUserRole, setNewUserRole] = useState<"admin" | "funcionario" | "vendedora">("funcionario");
   const [creatingUser, setCreatingUser] = useState(false);
 
   // Confirmação para rebaixar outro admin
@@ -147,7 +147,7 @@ export function AdminUsers() {
         display_name: p.display_name,
         login: (p as { login?: string | null }).login ?? null,
         created_at: p.created_at,
-        role: (roleMap.get(p.user_id) as "admin" | "client") ?? "client",
+        role: (roleMap.get(p.user_id) as "admin" | "funcionario" | "vendedora") ?? "funcionario",
         approved: p.approved ?? false,
         blocked: (p as { blocked?: boolean }).blocked ?? false,
         must_change_password: (p as { must_change_password?: boolean }).must_change_password ?? false,
@@ -166,7 +166,7 @@ export function AdminUsers() {
     return () => { fetchAbortRef.current?.abort(); };
   }, [fetchUsers]);
 
-  const changeRole = async (userId: string, newRole: "admin" | "client") => {
+  const changeRole = async (userId: string, newRole: "admin" | "funcionario" | "vendedora") => {
     // SEGURANÇA: admin não pode rebaixar a si mesmo — evita lock-out acidental
     if (userId === currentUser?.id && newRole !== "admin") {
       toast.error("Você não pode remover sua própria permissão de administrador.");
@@ -174,14 +174,14 @@ export function AdminUsers() {
     }
     // SEGURANÇA: rebaixar outro admin exige confirmação explícita
     const target = users.find(u => u.user_id === userId);
-    if (target?.role === "admin" && newRole === "client") {
+    if (target?.role === "admin" && (newRole === "funcionario" || newRole === "vendedora")) {
       setDowngradeConfirm({ userId, userName: target.display_name ?? target.login ?? "este admin" });
       return;
     }
     await applyRoleChange(userId, newRole);
   };
 
-  const applyRoleChange = async (userId: string, newRole: "admin" | "client") => {
+  const applyRoleChange = async (userId: string, newRole: "admin" | "funcionario" | "vendedora") => {
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
     if (error) toast.error("Erro ao alterar função: " + error.message);
     else { toast.success("Função atualizada"); fetchUsers(); }
@@ -297,7 +297,7 @@ export function AdminUsers() {
       } else {
         toast.success("Conta criada!");
         setCreateDialog(false);
-        setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("client");
+        setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("funcionario");
         fetchUsers();
       }
     } finally {
@@ -338,10 +338,11 @@ export function AdminUsers() {
             </div>
             <div className="space-y-2">
               <Label>Perfil</Label>
-              <Select value={newUserRole} onValueChange={v => setNewUserRole(v as "admin" | "client")}>
+              <Select value={newUserRole} onValueChange={v => setNewUserRole(v as "admin" | "funcionario" | "vendedora")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="client">Cliente</SelectItem>
+                  <SelectItem value="funcionario">Funcionário</SelectItem>
+                  <SelectItem value="vendedora">Vendedora</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
@@ -385,11 +386,12 @@ export function AdminUsers() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Select value={u.role} onValueChange={v => changeRole(u.user_id, v as "admin" | "client")} disabled={isSelf}>
+                      <Select value={u.role} onValueChange={v => changeRole(u.user_id, v as "admin" | "funcionario" | "vendedora")} disabled={isSelf}>
                         <SelectTrigger className="w-[110px] h-8"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="client">Cliente</SelectItem>
+                          <SelectItem value="funcionario">Funcionário</SelectItem>
+                  <SelectItem value="vendedora">Vendedora</SelectItem>
                         </SelectContent>
                       </Select>
 
@@ -506,7 +508,7 @@ export function AdminUsers() {
             <AlertDialogDescription>
               Você está prestes a remover o acesso de administrador de{" "}
               <strong>{downgradeConfirm?.userName}</strong>. O usuário passará a ter perfil de
-              Cliente e perderá acesso ao painel Admin imediatamente.
+              Funcionário e perderá acesso ao painel Admin imediatamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -515,12 +517,12 @@ export function AdminUsers() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (downgradeConfirm) {
-                  await applyRoleChange(downgradeConfirm.userId, "client");
+                  await applyRoleChange(downgradeConfirm.userId, "funcionario");
                   setDowngradeConfirm(null);
                 }
               }}
             >
-              Sim, rebaixar para Cliente
+              Sim, rebaixar para Funcionário
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

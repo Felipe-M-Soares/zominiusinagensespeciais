@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION public.admin_create_user(
   p_login        text,
   p_password     text,
   p_display_name text,
-  p_role         text DEFAULT 'client'
+  p_role         text DEFAULT 'funcionario'
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -71,7 +71,7 @@ BEGIN
   END IF;
 
   -- 6. Define role válido
-  v_valid_role := CASE WHEN p_role = 'admin' THEN 'admin' ELSE 'client' END; -- cast happens at insert
+  v_valid_role := CASE WHEN p_role = 'admin' THEN 'admin' WHEN p_role = 'vendedora' THEN 'vendedora' ELSE 'funcionario' END; -- cast happens at insert
 
   -- 7. Gera email interno
   v_email := v_clean_login || '@interno.conceptus';

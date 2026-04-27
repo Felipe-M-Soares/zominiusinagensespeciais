@@ -26,7 +26,7 @@ BEGIN
   );
 
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, 'client');
+  VALUES (NEW.id, 'funcionario');
 
   RETURN NEW;
 END;

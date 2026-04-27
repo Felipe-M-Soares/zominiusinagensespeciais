@@ -1,12 +1,12 @@
 
 -- Create role enum
-CREATE TYPE public.app_role AS ENUM ('admin', 'client');
+CREATE TYPE public.app_role AS ENUM ('admin', 'funcionario', 'vendedora');
 
 -- Create user_roles table
 CREATE TABLE public.user_roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    role app_role NOT NULL DEFAULT 'client',
+    role app_role NOT NULL DEFAULT 'funcionario',
     UNIQUE (user_id, role)
 );
 
@@ -116,7 +116,7 @@ BEGIN
   VALUES (NEW.id, NEW.email, COALESCE(NEW.raw_user_meta_data->>'display_name', NEW.email));
   
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, 'client');
+  VALUES (NEW.id, 'funcionario');
   
   RETURN NEW;
 END;
