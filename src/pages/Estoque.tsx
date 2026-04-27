@@ -61,6 +61,7 @@ import { ConcluirRetrabalhoModal } from "@/components/stock/ConcluirRetrabalhoMo
 import { StockDashboard } from "@/components/stock/StockDashboard";
 import { StockNav } from "@/components/stock/StockNav";
 import { RecebimentoPanel } from "@/components/stock/RecebimentoPanel";
+import { ComercialPanel } from "@/components/stock/ComercialPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
@@ -518,14 +519,15 @@ function ExpedicaoCard({
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 type FilterStatus = "all" | "ok" | "baixo" | "zerado";
-type ActiveView = "dashboard" | "intermediaria" | "expedicao" | "retrabalho" | "recebimento";
+type ActiveView = "dashboard" | "intermediaria" | "expedicao" | "retrabalho" | "recebimento" | "comercial";
 
 // Itens com qty=0 SÃO exibidos — novos devices importados começam com 0
 const HIDE_EMPTY_INTERMEDIARIA = false;
 
 export default function Estoque() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, role } = useAuth();
+  const isVendedora = role === "vendedora";
 
   // ── Estado principal ──────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ActiveView>("dashboard");
@@ -600,7 +602,7 @@ export default function Estoque() {
     if (activeView === "expedicao") return expedicaoItems;
     if (activeView === "intermediaria") return intermediariaItems;
     if (activeView === "retrabalho") return retrabalhoItems;
-    return []; // dashboard — rawItems não é usado nessa view
+    return []; // dashboard, recebimento, comercial — rawItems não é usado nessa view
   }, [activeView, expedicaoItems, intermediariaItems, retrabalhoItems]);
 
   const filteredItems = useMemo(() => rawItems.filter(item => {
@@ -878,8 +880,17 @@ export default function Estoque() {
           <RecebimentoPanel isAdmin={isAdmin} />
         )}
 
+        {/* Comercial View */}
+        {activeView === "comercial" && (
+          <ComercialPanel
+            isAdmin={isAdmin}
+            isVendedora={isVendedora}
+            expedicaoItems={expedicaoItems}
+          />
+        )}
+
         {/* Busca + Filtros — apenas nas abas de lista */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && (
+        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "comercial" && (
           <div className="space-y-2">
             <div className="flex gap-2">
               <div className="relative flex-1" ref={autocompleteRef}>
@@ -1043,7 +1054,7 @@ export default function Estoque() {
         )}
 
         {/* Descrição da aba */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && (
+        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "comercial" && (
           <div className={cn(
             "rounded-xl border px-4 py-3 text-[12px]",
             activeView === "intermediaria"
@@ -1061,7 +1072,7 @@ export default function Estoque() {
         )}
 
         {/* Resumo */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && !loading && (
+        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "comercial" && !loading && (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs text-muted-foreground">
               {filteredItems.length} peça{filteredItems.length !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
@@ -1086,18 +1097,18 @@ export default function Estoque() {
         )}
 
         {/* Loading / Erro / Vazio */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && loading && (
+        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "comercial" && loading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
             <p className="text-sm text-muted-foreground">Carregando estoque...</p>
           </div>
         )}
 
-        {activeView !== "dashboard" && activeView !== "recebimento" && !loading && error && (
+        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "comercial" && !loading && error && (
           <div className="text-center py-20 text-destructive text-sm">{error}</div>
         )}
 
-        {activeView !== "dashboard" && activeView !== "recebimento" && !loading && !error && filteredItems.length === 0 && (
+        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "comercial" && !loading && !error && filteredItems.length === 0 && (
           <div className="text-center py-20 space-y-3">
             {activeView === "intermediaria"
               ? <Package className="h-10 w-10 text-muted-foreground/40 mx-auto" />
@@ -1133,7 +1144,7 @@ export default function Estoque() {
         )}
 
         {/* Grid de cards */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && !loading && !error && filteredItems.length > 0 && (
+        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "comercial" && !loading && !error && filteredItems.length > 0 && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {pagedItems.map((item) =>

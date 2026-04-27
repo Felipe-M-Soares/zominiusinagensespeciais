@@ -16,6 +16,7 @@ import {
   TrendingDown,
   TrendingUp,
   AlertTriangle,
+  ShoppingBag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StockItem } from "@/hooks/useStock";
@@ -26,7 +27,8 @@ export type ActiveView =
   | "intermediaria"
   | "expedicao"
   | "retrabalho"
-  | "recebimento";
+  | "recebimento"
+  | "comercial";
 
 interface StockNavProps {
   activeView: ActiveView;
@@ -94,6 +96,17 @@ const TABS = [
     badgeText: "text-cyan-600 dark:text-cyan-400",
     animation: "animate-tilt",
   },
+  {
+    id: "comercial" as ActiveView,
+    label: "Comercial",
+    Icon: ShoppingBag,
+    activeColor: "text-violet-600 dark:text-violet-400",
+    activeBg: "bg-violet-500/10",
+    activeBorder: "border-violet-500/40",
+    badgeBg: "bg-violet-500/15",
+    badgeText: "text-violet-600 dark:text-violet-400",
+    animation: "animate-pop",
+  },
 ] as const;
 
 // ── Preview de métricas por aba ─────────────────────────────────────────────────
@@ -130,6 +143,15 @@ function PreviewCard({
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
         <Inbox className="h-3.5 w-3.5" />
         Registre entradas por lote aqui
+      </div>
+    );
+  }
+
+  if (view === "comercial") {
+    return (
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <ShoppingBag className="h-3.5 w-3.5" />
+        Pedidos de venda e clientes
       </div>
     );
   }
@@ -191,6 +213,7 @@ export function StockNav({
     expedicao: expedicaoItems,
     retrabalho: retrabalhoItems,
     recebimento: [],
+    comercial: [],
   };
 
   // Contagens para badges
