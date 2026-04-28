@@ -9,6 +9,7 @@ import Admin from "./pages/Admin";
 import SettingsPage from "./pages/Settings";
 import Manuals from "./pages/Manuals";
 import Estoque from "./pages/Estoque";
+import Comercial from "./pages/Comercial";
 import SetPassword from "./pages/SetPassword";
 import PendingApproval from "./pages/PendingApproval";
 import NotFound from "./pages/NotFound";
@@ -66,6 +67,26 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Rota para vendedoras: acesso permitido para role === "vendedora" | "admin"
+function VendedoraRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading, role, approved, blocked } = useAuth();
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (blocked) return <Navigate to="/pending-approval" replace />;
+  if (approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (approved === false) return <Navigate to="/pending-approval" replace />;
+  if (role !== "vendedora" && role !== "admin") return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+// Index redireciona vendedoras direto para /comercial
+function IndexRoute() {
+  const { role, loading, approved } = useAuth();
+  if (loading || approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (role === "vendedora") return <Navigate to="/comercial" replace />;
+  return <Index />;
+}
+
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { user, loading, approved } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
@@ -86,11 +107,12 @@ const App = () => (
             <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
             <Route path="/set-password" element={<ProtectedRoute><SetPassword /></ProtectedRoute>} />
             <Route path="/pending-approval" element={<PendingApprovalRoute />} />
-            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+            <Route path="/" element={<ProtectedRoute><IndexRoute /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
             <Route path="/manuals" element={<ProtectedRoute><Manuals /></ProtectedRoute>} />
             <Route path="/estoque" element={<ProtectedRoute><Estoque /></ProtectedRoute>} />
+            <Route path="/comercial" element={<VendedoraRoute><Comercial /></VendedoraRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

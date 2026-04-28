@@ -25,12 +25,16 @@ const SAIDA_TYPES = [
 ] as const;
 
 // ─── Validação do lote (entrada manual) ──────────────────────────────────────
-const LOTE_REGEX = /^\d{6}-\d{2}([/][A-Za-z])?$/;
+// Formato: DDMMYYS-NN  ou  DDMMYYS-NN/A  ou  DDMMYYS-NN/B...
+// Exemplos: 0101261-01   0101261-01/A   0101261-01/B
+// DD=dia, MM=mês, YY=ano (2 dígitos), S=sequência do dia, NN=sublote (2 dígitos)
+const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
 
 function formatLote(raw: string): string {
   let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");
-  if (/^\d{7,}/.test(v)) v = v.slice(0, 6) + "-" + v.slice(6);
-  return v.slice(0, 12);
+  // Auto-insere hífen após o 7º dígito
+  if (/^\d{8,}/.test(v)) v = v.slice(0, 7) + "-" + v.slice(7);
+  return v.slice(0, 13);
 }
 
 function loteStatus(lote: string): "empty" | "valid" | "invalid" {
@@ -39,14 +43,15 @@ function loteStatus(lote: string): "empty" | "valid" | "invalid" {
 }
 
 function loteHint(lote: string): string {
-  if (!lote) return "Ex: 010126-01  ou  010126-01/A";
+  if (!lote) return "Ex: 0101261-01  ou  0101261-01/A";
   if (loteStatus(lote) === "valid") return "Lote válido ✓";
-  if (lote.length < 6) return "Digite os 6 dígitos da data (DDMMAA)";
-  if (lote.length === 6 && !lote.includes("-")) return "Adicione o hífen após a data";
-  if (/^\d{6}-\d$/.test(lote)) return "Digite os 2 dígitos do turno";
-  if (/^\d{6}-\d{2}$/.test(lote)) return "Lote válido! Adicione /A, /B... se for continuação";
-  if (/^\d{6}-\d{2}\//.test(lote)) return "Adicione a letra de continuação (A, B, C...)";
-  return "Formato: DDMMAA-TT   ou   DDMMAA-TT/A";
+  if (lote.length < 6) return "Digite a data: DDMMAA";
+  if (lote.length === 6) return "Adicione a sequência do dia (ex: 1, 2...)";
+  if (lote.length === 7 && !lote.includes("-")) return "Adicione o hífen após a sequência";
+  if (/^\d{7}-\d$/.test(lote)) return "Digite os 2 dígitos do sublote";
+  if (/^\d{7}-\d{2}$/.test(lote)) return "Lote válido! Adicione /A, /B... se for continuação";
+  if (/^\d{7}-\d{2}\//.test(lote)) return "Adicione a letra de continuação (A, B, C...)";
+  return "Formato: DDMMYYS-NN   ou   DDMMYYS-NN/A";
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -137,7 +142,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
     const safeQty = Math.trunc(resolvedQty);
     if (!item || safeQty < 1) return;
     if (!lote.trim()) { toast.error("Informe o número do lote."); return; }
-    if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMAA-TT ou DDMMAA-TT/A"); return; }
+    if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMYYS-NN ou DDMMYYS-NN/A\nEx: 0101261-01 ou 0101261-01/A"); return; }
 
     setLoading(true);
     const result = await registerMovement(
@@ -307,7 +312,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
               /* ENTRADA: campo livre com validação */
               <div className="relative">
                 <Input
-                  placeholder="010126-01"
+                  placeholder="0101261-01"
                   value={lote}
                   onChange={(e) => setLote(formatLote(e.target.value))}
                   maxLength={12}

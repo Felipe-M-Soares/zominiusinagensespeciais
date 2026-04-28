@@ -44,6 +44,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import type { StockItem } from "@/hooks/useStock";
 
+// ─── Lote helpers (formato DDMMYYS-NN ou DDMMYYS-NN/A) ───────────────────────
+const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
+function formatLote(raw: string): string {
+  let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");
+  if (/^\d{8,}/.test(v)) v = v.slice(0, 7) + "-" + v.slice(7);
+  return v.slice(0, 13);
+}
+function loteValido(lote: string) { return LOTE_REGEX.test(lote); }
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Cliente {
@@ -457,7 +466,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                   <label className="text-[10px] text-muted-foreground font-medium">Lote</label>
                   <div className="relative">
                     <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
-                    <Input value={lote} onChange={e => setLote(e.target.value)} placeholder="000000-XX" className="pl-7 h-8 text-xs font-mono" />
+                    <Input value={lote} onChange={e => setLote(formatLote(e.target.value))} placeholder="0101261-01" className="pl-7 h-8 text-xs font-mono" />
                   </div>
                 </div>
                 <div className="space-y-1">
