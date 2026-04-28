@@ -22,12 +22,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 // ─── Validação do lote ────────────────────────────────────────────────────────
-const LOTE_REGEX = /^\d{6}-\d{2}([/][A-Za-z])?$/;
+// Exemplos: 0101261-01   0101261-01/A   0101261-01/B
+const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
 
 function formatLote(raw: string): string {
   let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");
-  if (/^\d{7,}/.test(v)) v = v.slice(0, 6) + "-" + v.slice(6);
-  return v.slice(0, 12);
+  if (/^\d{8,}/.test(v)) v = v.slice(0, 7) + "-" + v.slice(7);
+  return v.slice(0, 13);
 }
 
 function loteStatus(lote: string): "empty" | "valid" | "invalid" {
@@ -36,14 +37,14 @@ function loteStatus(lote: string): "empty" | "valid" | "invalid" {
 }
 
 function loteHint(lote: string): string {
-  if (!lote) return "Ex: 010126-01  ou  010126-01/A";
+  if (!lote) return "Ex: 0101261-01  ou  0101261-01/A";
   if (loteStatus(lote) === "valid") return "Lote válido ✓";
-  if (lote.length < 6) return "Digite os 6 dígitos da data (DDMMAA)";
-  if (lote.length === 6 && !lote.includes("-")) return "Adicione o hífen após a data";
-  if (/^\d{6}-\d$/.test(lote)) return "Digite os 2 dígitos do turno";
-  if (/^\d{6}-\d{2}$/.test(lote)) return "Lote válido! Adicione /A, /B... se for continuação";
-  if (/^\d{6}-\d{2}\//.test(lote)) return "Adicione a letra de continuação (A, B, C...)";
-  return "Formato: DDMMAA-TT   ou   DDMMAA-TT/A";
+  if (lote.length < 7) return "Digite os 7 dígitos da data (DDMMYYS)";
+  if (lote.length === 7 && !lote.includes("-")) return "Adicione o hífen após a data";
+  if (/^\d{7}-\d$/.test(lote)) return "Digite os 2 dígitos do turno";
+  if (/^\d{7}-\d{2}$/.test(lote)) return "Lote válido! Adicione /A, /B... se for continuação";
+  if (/^\d{7}-\d{2}\//.test(lote)) return "Adicione a letra de continuação (A, B, C...)";
+  return "Formato: DDMMYYS-TT   ou   DDMMYYS-TT/A";
 }
 
 interface Props {
@@ -82,7 +83,7 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
     const safeQty = Math.trunc(resolvedQty);
     if (safeQty < 1) { toast.error("Quantidade deve ser maior que zero."); return; }
     if (!lote.trim()) { toast.error("Informe o número do lote."); return; }
-    if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMAA-TT ou DDMMAA-TT/A"); return; }
+    if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMYYS-TT ou DDMMYYS-TT/A\nEx: 0101261-01 ou 0101261-01/A"); return; }
     if (!descricao.trim()) { toast.error("Descreva o material recebido."); return; }
 
     setLoading(true);
@@ -136,10 +137,10 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
             </label>
             <div className="relative">
               <Input
-                placeholder="010126-01"
+                placeholder="0101261-01"
                 value={lote}
                 onChange={(e) => setLote(formatLote(e.target.value))}
-                maxLength={12}
+                maxLength={13}
                 className={cn(
                   "pr-8 h-11 rounded-xl font-mono text-sm tracking-widest uppercase transition-colors",
                   lote && loteOk === "valid" && "border-success/50 bg-success/5",

@@ -325,44 +325,42 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
   return (
     <div className="space-y-4">
       {/* Barra de ações */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/20 p-1">
-            {([
-              { value: "ativos", label: "Ativos", count: countAtivos },
-              { value: "retirados", label: "Retirados", count: countRetirados },
-              { value: "todos", label: "Todos", count: items.length },
-            ] as const).map(({ value, label, count }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setShowAtivos(value)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 h-8 rounded-lg text-[12px] font-medium transition-all",
-                  showAtivos === value
-                    ? value === "ativos"
-                      ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400"
-                      : "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {label}
-                <span className={cn(
-                  "text-[10px] font-bold px-1 py-0.5 rounded-full",
-                  showAtivos === value
-                    ? value === "ativos" ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400" : "bg-primary/15 text-primary"
-                    : "bg-muted/50 text-muted-foreground"
-                )}>
-                  {count}
-                </span>
-              </button>
-            ))}
-          </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/20 p-1 w-full sm:w-auto overflow-x-auto">
+          {([
+            { value: "ativos", label: "Ativos", count: countAtivos },
+            { value: "retirados", label: "Retirados", count: countRetirados },
+            { value: "todos", label: "Todos", count: items.length },
+          ] as const).map(({ value, label, count }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setShowAtivos(value)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 h-8 rounded-lg text-[12px] font-medium transition-all whitespace-nowrap flex-1 justify-center sm:flex-none sm:justify-start",
+                showAtivos === value
+                  ? value === "ativos"
+                    ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400"
+                    : "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {label}
+              <span className={cn(
+                "text-[10px] font-bold px-1 py-0.5 rounded-full",
+                showAtivos === value
+                  ? value === "ativos" ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400" : "bg-primary/15 text-primary"
+                  : "bg-muted/50 text-muted-foreground"
+              )}>
+                {count}
+              </span>
+            </button>
+          ))}
         </div>
 
         <Button
           size="sm"
-          className="h-9 gap-1.5 text-xs rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white"
+          className="h-9 gap-1.5 text-xs rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white w-full sm:w-auto shrink-0"
           onClick={() => setAddOpen(true)}
         >
           <PackagePlus className="h-3.5 w-3.5" /> Registrar Recebimento
