@@ -291,7 +291,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // Autocomplete de peça — igual ao estoque (busca por modelo)
+  // Autocomplete de peça — mostra todas disponíveis ao focar, filtra conforme digita
   function handlePecaInput(v: string) {
     setPecaSearch(v);
     setSelectedPeca(null);
@@ -299,25 +299,37 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setLotes([]);
     setShowLoteDrop(false);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!v.trim() || v.trim().length < 2) { setAutocomplete([]); setShowAutocomp(false); return; }
     debounceRef.current = setTimeout(() => {
       const q = v.trim().toLowerCase();
       const sugestoes = expedicaoItems.filter(i =>
         i.quantity > 0 && (
+          !q ||
           i.device?.model?.toLowerCase().includes(q) ||
           i.device?.reference?.toLowerCase().includes(q) ||
           i.device?.udi_di?.toLowerCase().includes(q)
         )
       );
-      // Deduplica por device_id para mostrar cada modelo uma vez
+      // Deduplica por device_id
       const vistos = new Set<string>();
       const deduped = sugestoes.filter(i => {
         if (vistos.has(i.device_id)) return false;
         vistos.add(i.device_id); return true;
-      }).slice(0, 8);
+      }).slice(0, 20);
       setAutocomplete(deduped);
       setShowAutocomp(deduped.length > 0);
-    }, 150);
+    }, 80);
+  }
+
+  function handlePecaFocus() {
+    // Ao focar, mostra todas as peças disponíveis mesmo sem texto
+    const sugestoes = expedicaoItems.filter(i => i.quantity > 0);
+    const vistos = new Set<string>();
+    const deduped = sugestoes.filter(i => {
+      if (vistos.has(i.device_id)) return false;
+      vistos.add(i.device_id); return true;
+    }).slice(0, 20);
+    setAutocomplete(deduped);
+    setShowAutocomp(deduped.length > 0);
   }
 
   // Quando seleciona uma peça — busca os lotes disponíveis nos stock_movements da expedição
@@ -482,10 +494,10 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                   <input
                     ref={pecaInputRef}
                     type="text"
-                    placeholder="Modelo, referência ou UDI..."
+                    placeholder="Clique para ver peças disponíveis ou digite para buscar..."
                     value={pecaSearch}
                     onChange={e => handlePecaInput(e.target.value)}
-                    onFocus={() => { if (autocomplete.length > 0) setShowAutocomp(true); }}
+                    onFocus={() => { if (!selectedPeca) handlePecaFocus(); }}
                     onKeyDown={e => { if (e.key === "Escape") setShowAutocomp(false); }}
                     className="w-full pl-9 pr-9 h-10 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring font-medium"
                   />
@@ -519,7 +531,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                       ))}
                     </div>
                   )}
-                  {showAutocomp && autocomplete.length === 0 && pecaSearch.length >= 2 && (
+                  {showAutocomp && autocomplete.length === 0 && (
                     <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl p-3 text-center">
                       <p className="text-xs text-muted-foreground">Nenhuma peça disponível na expedição</p>
                     </div>
