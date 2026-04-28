@@ -46,6 +46,7 @@ import {
   ArrowLeft,
   LogOut,
   Boxes,
+  ScanBarcode,
 } from "lucide-react";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { Logo } from "@/components/Logo";
@@ -215,6 +216,11 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
 
 // ─── Modal: Novo Pedido ───────────────────────────────────────────────────────
 
+interface LoteDisponivel {
+  lote: string;
+  quantidade: number;
+}
+
 interface NovoPedidoModalProps {
   open: boolean;
   onClose: () => void;
@@ -225,27 +231,47 @@ interface NovoPedidoModalProps {
 
 function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems }: NovoPedidoModalProps) {
   const { user } = useAuth();
+
+  // Cliente
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clienteId, setClienteId] = useState(clienteFixo?.id ?? "");
   const [clienteSearch, setClienteSearch] = useState(clienteFixo?.nome ?? "");
   const [showClienteDrop, setShowClienteDrop] = useState(false);
-  const [obs, setObs] = useState("");
-  const [itens, setItens] = useState<PedidoItem[]>([]);
-  const [saving, setSaving] = useState(false);
   const [novoClienteModal, setNovoClienteModal] = useState(false);
-  const [pecaSearch, setPecaSearch] = useState("");
-  const [showPecaDrop, setShowPecaDrop] = useState(false);
-  const [selectedPeca, setSelectedPeca] = useState<ReturnType<typeof useStock>["items"][0] | null>(null);
-  const [lote, setLote] = useState("");
-  const [qtd, setQtd] = useState(1);
-  const dropRef = useRef<HTMLDivElement>(null);
-  const pecaDropRef = useRef<HTMLDivElement>(null);
 
+  // Busca de peça — igual ao estoque
+  const [pecaSearch, setPecaSearch] = useState("");
+  const [autocomplete, setAutocomplete] = useState<ReturnType<typeof useStock>["items"]>([]);
+  const [showAutocomp, setShowAutocomp] = useState(false);
+  const [selectedPeca, setSelectedPeca] = useState<ReturnType<typeof useStock>["items"][0] | null>(null);
+
+  // Lotes disponíveis para a peça selecionada
+  const [lotes, setLotes] = useState<LoteDisponivel[]>([]);
+  const [lotesLoading, setLotesLoading] = useState(false);
+  const [selectedLote, setSelectedLote] = useState<LoteDisponivel | null>(null);
+  const [showLoteDrop, setShowLoteDrop] = useState(false);
+
+  // Quantidade e lista do pedido
+  const [qtd, setQtd] = useState(1);
+  const [itens, setItens] = useState<PedidoItem[]>([]);
+  const [obs, setObs] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const clienteDropRef = useRef<HTMLDivElement>(null);
+  const pecaDropRef = useRef<HTMLDivElement>(null);
+  const loteDropRef = useRef<HTMLDivElement>(null);
+  const pecaInputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset ao abrir
   useEffect(() => {
     if (!open) return;
     setClienteId(clienteFixo?.id ?? "");
     setClienteSearch(clienteFixo?.nome ?? "");
-    setItens([]); setObs(""); setPecaSearch(""); setSelectedPeca(null); setLote(""); setQtd(1);
+    setItens([]); setObs("");
+    setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
+    setSelectedPeca(null); setLotes([]); setSelectedLote(null);
+    setQtd(1);
     loadClientes();
   }, [open, clienteFixo]);
 
@@ -254,35 +280,114 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setClientes((data as Cliente[]) ?? []);
   }
 
+  // Fecha dropdowns ao clicar fora
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setShowClienteDrop(false);
-      if (pecaDropRef.current && !pecaDropRef.current.contains(e.target as Node)) setShowPecaDrop(false);
+      if (clienteDropRef.current && !clienteDropRef.current.contains(e.target as Node)) setShowClienteDrop(false);
+      if (pecaDropRef.current && !pecaDropRef.current.contains(e.target as Node)) setShowAutocomp(false);
+      if (loteDropRef.current && !loteDropRef.current.contains(e.target as Node)) setShowLoteDrop(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const clientesFiltrados = clientes.filter(c =>
-    c.nome.toLowerCase().includes(clienteSearch.toLowerCase()) || (c.documento ?? "").includes(clienteSearch)
-  );
+  // Autocomplete de peça — igual ao estoque (busca por modelo)
+  function handlePecaInput(v: string) {
+    setPecaSearch(v);
+    setSelectedPeca(null);
+    setSelectedLote(null);
+    setLotes([]);
+    setShowLoteDrop(false);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!v.trim() || v.trim().length < 2) { setAutocomplete([]); setShowAutocomp(false); return; }
+    debounceRef.current = setTimeout(() => {
+      const q = v.trim().toLowerCase();
+      const sugestoes = expedicaoItems.filter(i =>
+        i.quantity > 0 && (
+          i.device?.model?.toLowerCase().includes(q) ||
+          i.device?.reference?.toLowerCase().includes(q) ||
+          i.device?.udi_di?.toLowerCase().includes(q)
+        )
+      );
+      // Deduplica por device_id para mostrar cada modelo uma vez
+      const vistos = new Set<string>();
+      const deduped = sugestoes.filter(i => {
+        if (vistos.has(i.device_id)) return false;
+        vistos.add(i.device_id); return true;
+      }).slice(0, 8);
+      setAutocomplete(deduped);
+      setShowAutocomp(deduped.length > 0);
+    }, 150);
+  }
 
-  const expDisponiveis = expedicaoItems.filter(i =>
-    i.quantity > 0 &&
-    (i.device?.model?.toLowerCase().includes(pecaSearch.toLowerCase()) ||
-     i.device?.reference?.toLowerCase().includes(pecaSearch.toLowerCase()))
-  );
+  // Quando seleciona uma peça — busca os lotes disponíveis nos stock_movements da expedição
+  async function handleSelectPeca(item: ReturnType<typeof useStock>["items"][0]) {
+    setSelectedPeca(item);
+    setPecaSearch(item.device?.model ?? "");
+    setShowAutocomp(false);
+    setSelectedLote(null);
+    setLotes([]);
+    setLotesLoading(true);
+    try {
+      // Busca movimentos de entrada da expedição para essa peça
+      const { data: movs } = await supabase
+        .from("stock_movements")
+        .select("lote, quantity, type")
+        .eq("stock_item_id", item.id)
+        .not("lote", "is", null)
+        .order("created_at", { ascending: false });
+
+      if (!movs) { setLotes([]); return; }
+
+      // Calcula saldo por lote (entradas - saídas)
+      const saldos = new Map<string, number>();
+      for (const m of movs as { lote: string; quantity: number; type: string }[]) {
+        if (!m.lote) continue;
+        const l = m.lote.toUpperCase();
+        const atual = saldos.get(l) ?? 0;
+        saldos.set(l, m.type === "entrada" ? atual + m.quantity : atual - m.quantity);
+      }
+
+      const lotesDisp: LoteDisponivel[] = [];
+      for (const [lote, qtdSaldo] of saldos.entries()) {
+        if (qtdSaldo > 0) lotesDisp.push({ lote, quantidade: qtdSaldo });
+      }
+      // Ordena do mais recente (alfabético descendente do lote)
+      lotesDisp.sort((a, b) => b.lote.localeCompare(a.lote));
+      setLotes(lotesDisp);
+      if (lotesDisp.length > 0) setShowLoteDrop(true);
+    } catch {
+      toast.error("Erro ao buscar lotes.");
+    } finally {
+      setLotesLoading(false);
+    }
+  }
+
+  function handleSelectLote(l: LoteDisponivel) {
+    setSelectedLote(l);
+    setShowLoteDrop(false);
+    setQtd(1);
+  }
 
   function addItem() {
-    if (!selectedPeca || !lote.trim() || qtd < 1) return;
-    if (!loteValido(lote)) { toast.error("Lote inválido. Use o formato DDMMYYS-NN ou DDMMYYS-NN/A\nEx: 0101261-01 ou 0101261-01/A"); return; }
-    const jaReservado = itens.filter(i => i.stock_item_id === selectedPeca.id).reduce((s, i) => s + i.quantidade, 0);
-    if (qtd > selectedPeca.quantity - jaReservado) {
-      toast.error(`Apenas ${selectedPeca.quantity - jaReservado} unidades disponíveis`);
+    if (!selectedPeca || !selectedLote) return;
+    const maxQtd = selectedLote.quantidade -
+      itens.filter(i => i.stock_item_id === selectedPeca.id && i.lote === selectedLote.lote)
+           .reduce((s, i) => s + i.quantidade, 0);
+    if (qtd < 1 || qtd > maxQtd) {
+      toast.error(`Disponível neste lote: ${maxQtd} un.`);
       return;
     }
-    setItens(prev => [...prev, { stock_item_id: selectedPeca.id, lote: lote.trim(), quantidade: qtd, device_model: selectedPeca.device?.model ?? "", device_reference: selectedPeca.device?.reference ?? "" }]);
-    setSelectedPeca(null); setPecaSearch(""); setLote(""); setQtd(1);
+    setItens(prev => [...prev, {
+      stock_item_id: selectedPeca.id,
+      lote: selectedLote.lote,
+      quantidade: qtd,
+      device_model: selectedPeca.device?.model ?? "",
+      device_reference: selectedPeca.device?.reference ?? "",
+    }]);
+    // Reseta a seleção de peça para adicionar outra
+    setSelectedPeca(null); setPecaSearch(""); setLotes([]); setSelectedLote(null); setQtd(1);
+    setTimeout(() => pecaInputRef.current?.focus(), 50);
   }
 
   async function handleSave() {
@@ -310,6 +415,10 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     }
   }
 
+  const clientesFiltrados = clientes.filter(c =>
+    c.nome.toLowerCase().includes(clienteSearch.toLowerCase()) || (c.documento ?? "").includes(clienteSearch)
+  );
+
   if (!open) return null;
 
   return (
@@ -326,10 +435,11 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto flex-1">
-          {/* Cliente */}
+
+          {/* ── Cliente ── */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Cliente *</label>
-            <div className="relative" ref={dropRef}>
+            <div className="relative" ref={clienteDropRef}>
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -359,51 +469,158 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
             {clienteId && <p className="text-[11px] text-violet-500 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Cliente selecionado</p>}
           </div>
 
-          {/* Seleção de peças */}
+          {/* ── Seleção de peça — estilo estoque ── */}
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Adicionar Peça da Expedição</label>
-            <div className="rounded-xl border border-border/50 bg-muted/10 p-3 space-y-2">
-              <div className="relative" ref={pecaDropRef}>
-                <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <Input placeholder="Buscar peça disponível..." value={pecaSearch} onChange={e => { setPecaSearch(e.target.value); setShowPecaDrop(true); setSelectedPeca(null); }} onFocus={() => setShowPecaDrop(true)} className="pl-9 h-9 text-sm" />
-                {selectedPeca && <div className="absolute right-3 top-1/2 -translate-y-1/2"><CheckCircle2 className="h-3.5 w-3.5 text-success" /></div>}
-                {showPecaDrop && pecaSearch && expDisponiveis.length > 0 && (
-                  <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-44 overflow-y-auto">
-                    {expDisponiveis.map(item => (
-                      <button key={item.id} type="button" onClick={() => { setSelectedPeca(item); setPecaSearch(item.device?.model ?? ""); setShowPecaDrop(false); }} className="w-full text-left px-4 py-2.5 hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0">
-                        <p className="text-sm font-medium">{item.device?.model}</p>
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <span>{item.device?.reference}</span>
-                          <span className="text-success font-semibold">{item.quantity} disponível</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {showPecaDrop && pecaSearch && expDisponiveis.length === 0 && (
-                  <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl p-3 text-center">
-                    <p className="text-xs text-muted-foreground">Nenhuma peça disponível na expedição</p>
-                  </div>
-                )}
+            <div className="rounded-xl border border-border/50 bg-muted/10 p-3 space-y-2.5">
+
+              {/* Busca de modelo */}
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium text-muted-foreground">1. Buscar peça</p>
+                <div className="relative" ref={pecaDropRef}>
+                  <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <input
+                    ref={pecaInputRef}
+                    type="text"
+                    placeholder="Modelo, referência ou UDI..."
+                    value={pecaSearch}
+                    onChange={e => handlePecaInput(e.target.value)}
+                    onFocus={() => { if (autocomplete.length > 0) setShowAutocomp(true); }}
+                    onKeyDown={e => { if (e.key === "Escape") setShowAutocomp(false); }}
+                    className="w-full pl-9 pr-9 h-10 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring font-medium"
+                  />
+                  {pecaSearch && !selectedPeca && (
+                    <button type="button" onClick={() => { setPecaSearch(""); setSelectedPeca(null); setLotes([]); setSelectedLote(null); setAutocomplete([]); setShowAutocomp(false); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {selectedPeca && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-violet-500" />
+                    </div>
+                  )}
+                  {/* Autocomplete dropdown */}
+                  {showAutocomp && autocomplete.length > 0 && (
+                    <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                      {autocomplete.map(item => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleSelectPeca(item)}
+                          className="w-full text-left px-4 py-2.5 hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0"
+                        >
+                          <p className="text-[13px] font-semibold">{item.device?.model}</p>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                            <span>{item.device?.reference}</span>
+                            <span>·</span>
+                            <span className="text-success font-medium">{item.quantity} un. disponível</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {showAutocomp && autocomplete.length === 0 && pecaSearch.length >= 2 && (
+                    <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl p-3 text-center">
+                      <p className="text-xs text-muted-foreground">Nenhuma peça disponível na expedição</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+
+              {/* Seleção de lote */}
+              {selectedPeca && (
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground font-medium">Lote</label>
-                  <div className="relative">
-                    <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
-                    <Input value={lote} onChange={e => setLote(formatLote(e.target.value))} placeholder="0101261-01" className="pl-7 h-8 text-xs font-mono" />
+                  <p className="text-[10px] font-medium text-muted-foreground">2. Selecionar lote</p>
+                  <div className="relative" ref={loteDropRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowLoteDrop(v => !v)}
+                      disabled={lotesLoading}
+                      className="w-full flex items-center justify-between gap-2 h-10 px-3 rounded-xl border border-input bg-background text-sm hover:bg-muted/20 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        {lotesLoading ? (
+                          <span className="text-muted-foreground text-xs flex items-center gap-1.5">
+                            <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" /> Buscando lotes...
+                          </span>
+                        ) : selectedLote ? (
+                          <span className="font-mono font-semibold text-foreground truncate">{selectedLote.lote}</span>
+                        ) : lotes.length === 0 ? (
+                          <span className="text-muted-foreground text-xs">Nenhum lote com saldo disponível</span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">Selecione o lote...</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {selectedLote && (
+                          <span className="text-[10px] text-success font-medium bg-success/10 px-1.5 py-0.5 rounded-full">
+                            {selectedLote.quantidade} disp.
+                          </span>
+                        )}
+                        {!lotesLoading && lotes.length > 0 && (
+                          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", showLoteDrop && "rotate-180")} />
+                        )}
+                      </div>
+                    </button>
+                    {showLoteDrop && lotes.length > 0 && (
+                      <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                        {lotes.map(l => (
+                          <button
+                            key={l.lote}
+                            type="button"
+                            onClick={() => handleSelectLote(l)}
+                            className={cn(
+                              "w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0",
+                              selectedLote?.lote === l.lote && "bg-violet-500/8"
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              {selectedLote?.lote === l.lote && <CheckCircle2 className="h-3 w-3 text-violet-500 shrink-0" />}
+                              <span className="font-mono font-semibold text-[13px]">{l.lote}</span>
+                            </div>
+                            <span className="text-[11px] text-success font-medium bg-success/10 px-2 py-0.5 rounded-full shrink-0">
+                              {l.quantidade} un.
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
+              )}
+
+              {/* Quantidade */}
+              {selectedLote && (
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground font-medium">Quantidade</label>
-                  <Input type="number" min={1} value={qtd} onChange={e => setQtd(Math.max(1, parseInt(e.target.value) || 1))} className="h-8 text-xs" />
+                  <p className="text-[10px] font-medium text-muted-foreground">3. Quantidade</p>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setQtd(q => Math.max(1, q - 1))} className="h-10 w-10 flex items-center justify-center rounded-xl border border-input bg-background hover:bg-muted/40 text-lg font-bold shrink-0 transition-colors">−</button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={selectedLote.quantidade}
+                      value={qtd}
+                      onChange={e => setQtd(Math.max(1, Math.min(selectedLote.quantidade, parseInt(e.target.value) || 1)))}
+                      className="flex-1 h-10 rounded-xl border border-input bg-background text-center text-base font-bold focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <button type="button" onClick={() => setQtd(q => Math.min(selectedLote.quantidade, q + 1))} className="h-10 w-10 flex items-center justify-center rounded-xl border border-input bg-background hover:bg-muted/40 text-lg font-bold shrink-0 transition-colors">+</button>
+                    <span className="text-[11px] text-muted-foreground shrink-0">/ {selectedLote.quantidade}</span>
+                  </div>
                 </div>
-              </div>
-              <button type="button" onClick={addItem} disabled={!selectedPeca || !lote.trim() || qtd < 1} className="w-full h-8 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-xs font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5">
+              )}
+
+              <button
+                type="button"
+                onClick={addItem}
+                disabled={!selectedPeca || !selectedLote || qtd < 1}
+                className="w-full h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+              >
                 <Plus className="h-3.5 w-3.5" /> Adicionar ao pedido
               </button>
             </div>
 
+            {/* Itens adicionados */}
             {itens.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[11px] text-muted-foreground font-medium">{itens.length} item{itens.length > 1 ? "s" : ""} no pedido</p>
@@ -413,6 +630,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-medium truncate">{it.device_model}</p>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <Tag className="h-2.5 w-2.5" />
                           <span className="font-mono">{it.lote}</span>
                           <span>·</span>
                           <span>{it.quantidade} un.</span>
@@ -431,7 +649,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           {/* Observações */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Observações</label>
-            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Informações adicionais..." className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[60px] focus:outline-none focus:ring-2 focus:ring-ring" />
+            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Informações adicionais..." className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[56px] focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
         </div>
 
@@ -450,6 +668,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     </div>
   );
 }
+
 
 // ─── Card de Pedido ───────────────────────────────────────────────────────────
 
