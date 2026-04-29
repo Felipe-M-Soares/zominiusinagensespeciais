@@ -745,6 +745,10 @@ export default function Estoque() {
     if (!resetItem) return;
     setResetting(true);
     const { toast: t } = await import("sonner");
+
+    // Deleta pedido_itens vinculados (FK restrict impede alterações cascata)
+    await supabase.from("pedido_itens").delete().eq("stock_item_id", resetItem.id);
+
     // Zera a quantidade do item
     const { error: updateErr } = await supabase
       .from("stock_items")
@@ -755,7 +759,7 @@ export default function Estoque() {
       setResetting(false);
       return;
     }
-    // Deleta todos os movimentos do item
+    // Deleta todos os movimentos do item (limpa histórico de lotes)
     const { error: movErr } = await supabase
       .from("stock_movements")
       .delete()

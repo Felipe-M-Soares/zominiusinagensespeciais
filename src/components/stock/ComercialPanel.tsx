@@ -43,6 +43,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import type { StockItem } from "@/hooks/useStock";
+import * as XLSX from "xlsx";
+import { Download } from "lucide-react";
 
 // ─── Lote helpers (formato DDMMYYS-NN ou DDMMYYS-NN/A) ───────────────────────
 const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
@@ -798,6 +800,160 @@ interface ComercialPanelProps {
   expedicaoItems: StockItem[];
 }
 
+// ─── Export Excel Comercial ──────────────────────────────────────────────────
+async function exportExcelComercial() {
+  const { data: pedidosData, error } = await supabase
+    .from("pedidos_comerciais")
+    .select("*, clientes(nome)")
+    .order("created_at", { ascending: false });
+
+  if (error || !pedidosData) {
+    const { toast: t } = await import("sonner");
+    t.error("Erro ao buscar dados dos pedidos.");
+    return;
+  }
+
+  const pedidoIds = pedidosData.map((p: Record<string, unknown>) => p.id as string);
+
+  const { data: itensData } = await supabase
+    .from("pedido_itens")
+    .select("*, stock_items(devices(model, reference))")
+    .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"]);
+
+  const statusLabel: Record<string, string> = {
+    pendente: "Pendente",
+    faturado: "Faturado",
+    cancelado: "Cancelado",
+  };
+
+  // Aba 1: Pedidos
+  const pedidosRows = pedidosData.map((p: Record<string, unknown>) => {
+    const c = p.clientes as Record<string, unknown> | null;
+    return {
+      "Pedido ID":     String(p.id).slice(0, 8).toUpperCase(),
+      "Cliente":       String(c?.nome ?? "—"),
+      "Vendedora":     String(p.vendedora_nome ?? "—"),
+      "Status":        statusLabel[p.status as string] ?? String(p.status),
+      "Observações":   String(p.observacoes ?? ""),
+      "Criado em":     p.created_at ? new Date(p.created_at as string).toLocaleDateString("pt-BR") : "",
+      "Faturado em":   p.faturado_em ? new Date(p.faturado_em as string).toLocaleDateString("pt-BR") : "",
+    };
+  });
+
+  // Aba 2: Itens dos Pedidos
+  const itensRows = (itensData ?? []).map((it: Record<string, unknown>) => {
+    const stockItem = it.stock_items as Record<string, unknown> | null;
+    const device = stockItem?.devices as Record<string, unknown> | null;
+    const pedido = pedidosData.find((p: Record<string, unknown>) => p.id === it.pedido_id) as Record<string, unknown> | undefined;
+    const cliente = pedido?.clientes as Record<string, unknown> | null;
+    return {
+      "Pedido ID":    String(it.pedido_id).slice(0, 8).toUpperCase(),
+      "Cliente":      String(cliente?.nome ?? "—"),
+      "Modelo":       String(device?.model ?? "—"),
+      "Referência":   String(device?.reference ?? "—"),
+      "Lote":         String(it.lote ?? ""),
+      "Quantidade":   Number(it.quantidade ?? 0),
+      "Status Pedido": statusLabel[pedido?.status as string ?? ""] ?? String(pedido?.status ?? ""),
+    };
+  });
+
+  const wb = XLSX.utils.book_new();
+
+  // Aba Pedidos
+  const wsPedidos = XLSX.utils.json_to_sheet(pedidosRows.length > 0 ? pedidosRows : [{ "Pedido ID": "", "Cliente": "", "Vendedora": "", "Status": "", "Observações": "", "Criado em": "", "Faturado em": "" }]);
+  wsPedidos["!cols"] = [{ wch: 12 }, { wch: 28 }, { wch: 20 }, { wch: 12 }, { wch: 30 }, { wch: 14 }, { wch: 14 }];
+  wsPedidos["!freeze"] = { xSplit: 0, ySplit: 1 };
+  const pedidosKeys = ["Pedido ID","Cliente","Vendedora","Status","Observações","Criado em","Faturado em"];
+  pedidosKeys.forEach((_, colIdx) => {
+    const cellAddr = XLSX.utils.encode_cell({ r: 0, c: colIdx });
+    if (!wsPedidos[cellAddr]) return;
+    wsPedidos[cellAddr].s = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 10 },
+      fill: { fgColor: { rgb: "4C1D95" }, patternType: "solid" },
+      alignment: { horizontal: "center", vertical: "center" },
+    };
+  });
+  pedidosRows.forEach((row, rowIdx) => {
+    const isEven = rowIdx % 2 === 0;
+    pedidosKeys.forEach((key, colIdx) => {
+      const cellAddr = XLSX.utils.encode_cell({ r: rowIdx + 1, c: colIdx });
+      if (!wsPedidos[cellAddr]) return;
+      const status = row["Status"];
+      let fill = isEven ? "F5F0FF" : "FFFFFF";
+      let fontColor = "222222";
+      if (key === "Status") {
+        if (status === "Pendente") { fill = "FFF7E0"; fontColor = "B45309"; }
+        if (status === "Faturado") { fill = "EAFFEA"; fontColor = "166534"; }
+        if (status === "Cancelado") { fill = "FFEAEA"; fontColor = "CC0000"; }
+      }
+      wsPedidos[cellAddr].s = {
+        font: { name: "Arial", sz: 10, color: { rgb: fontColor }, bold: key === "Status" },
+        fill: { fgColor: { rgb: fill }, patternType: "solid" },
+        alignment: { horizontal: "left", vertical: "center" },
+        border: { bottom: { style: "thin", color: { rgb: "E0E0E0" } }, right: { style: "thin", color: { rgb: "E0E0E0" } } },
+      };
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, wsPedidos, "Pedidos");
+
+  // Aba Itens
+  const wsItens = XLSX.utils.json_to_sheet(itensRows.length > 0 ? itensRows : [{ "Pedido ID": "", "Cliente": "", "Modelo": "", "Referência": "", "Lote": "", "Quantidade": 0, "Status Pedido": "" }]);
+  wsItens["!cols"] = [{ wch: 12 }, { wch: 24 }, { wch: 36 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
+  wsItens["!freeze"] = { xSplit: 0, ySplit: 1 };
+  const itensKeys = ["Pedido ID","Cliente","Modelo","Referência","Lote","Quantidade","Status Pedido"];
+  itensKeys.forEach((_, colIdx) => {
+    const cellAddr = XLSX.utils.encode_cell({ r: 0, c: colIdx });
+    if (!wsItens[cellAddr]) return;
+    wsItens[cellAddr].s = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 10 },
+      fill: { fgColor: { rgb: "4C1D95" }, patternType: "solid" },
+      alignment: { horizontal: "center", vertical: "center" },
+    };
+  });
+  itensRows.forEach((row, rowIdx) => {
+    const isEven = rowIdx % 2 === 0;
+    itensKeys.forEach((key, colIdx) => {
+      const cellAddr = XLSX.utils.encode_cell({ r: rowIdx + 1, c: colIdx });
+      if (!wsItens[cellAddr]) return;
+      wsItens[cellAddr].s = {
+        font: { name: "Arial", sz: 10, color: { rgb: "222222" }, bold: key === "Quantidade" },
+        fill: { fgColor: { rgb: isEven ? "F5F0FF" : "FFFFFF" }, patternType: "solid" },
+        alignment: { horizontal: key === "Quantidade" ? "center" : "left", vertical: "center" },
+        border: { bottom: { style: "thin", color: { rgb: "E0E0E0" } }, right: { style: "thin", color: { rgb: "E0E0E0" } } },
+      };
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, wsItens, "Itens dos Pedidos");
+
+  // Aba Resumo
+  const total = pedidosData.length;
+  const pendentes = pedidosData.filter((p: Record<string, unknown>) => p.status === "pendente").length;
+  const faturados = pedidosData.filter((p: Record<string, unknown>) => p.status === "faturado").length;
+  const cancelados = pedidosData.filter((p: Record<string, unknown>) => p.status === "cancelado").length;
+  const summaryData = [
+    { "Indicador": "Total de pedidos",    "Valor": total },
+    { "Indicador": "Pedidos pendentes",   "Valor": pendentes },
+    { "Indicador": "Pedidos faturados",   "Valor": faturados },
+    { "Indicador": "Pedidos cancelados",  "Valor": cancelados },
+    { "Indicador": "Total de itens",      "Valor": (itensData ?? []).length },
+    { "Indicador": "Data de exportação",  "Valor": new Date().toLocaleString("pt-BR") },
+  ];
+  const wsResumo = XLSX.utils.json_to_sheet(summaryData);
+  wsResumo["!cols"] = [{ wch: 30 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, wsResumo, "Resumo");
+
+  const buf = XLSX.write(wb, { bookType: "xlsx", type: "array", cellStyles: true });
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `comercial-${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+  const { toast: t } = await import("sonner");
+  t.success(`${total} pedido${total !== 1 ? "s" : ""} exportado${total !== 1 ? "s" : ""} para Excel (.xlsx).`);
+}
+
 export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: ComercialPanelProps) {
   const { role } = useAuth();
   const canAccess = isAdmin || isVendedora;
@@ -994,13 +1150,23 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                 </button>
               ))}
             </div>
-            <Button
-              size="sm"
-              className="h-8 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500"
-              onClick={() => setNovoPedidoOpen(true)}
-            >
-              <Plus className="h-3.5 w-3.5" /> Novo Pedido
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-xs rounded-lg border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10"
+                onClick={() => exportExcelComercial()}
+              >
+                <Download className="h-3.5 w-3.5" /> Excel
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500"
+                onClick={() => setNovoPedidoOpen(true)}
+              >
+                <Plus className="h-3.5 w-3.5" /> Novo Pedido
+              </Button>
+            </div>
           </div>
 
           {loadingPedidos ? (

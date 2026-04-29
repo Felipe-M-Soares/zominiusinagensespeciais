@@ -679,6 +679,21 @@ export async function cancelMovement(
 export async function deleteStockItem(
   stockItemId: string
 ): Promise<{ ok: boolean; error?: string }> {
+  // Deleta pedido_itens vinculados (FK restrict impede deletar stock_item direto)
+  const { error: piErr } = await supabase
+    .from("pedido_itens")
+    .delete()
+    .eq("stock_item_id", stockItemId);
+  if (piErr) return { ok: false, error: piErr.message };
+
+  // Deleta movimentos vinculados
+  const { error: mvErr } = await supabase
+    .from("stock_movements")
+    .delete()
+    .eq("stock_item_id", stockItemId);
+  if (mvErr) return { ok: false, error: mvErr.message };
+
+  // Agora deleta o stock_item
   const { error } = await supabase
     .from("stock_items")
     .delete()
