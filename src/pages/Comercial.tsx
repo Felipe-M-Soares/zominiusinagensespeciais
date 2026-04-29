@@ -16,7 +16,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { useStock } from "@/hooks/useStock";
+import { useStock, fetchAllMovements } from "@/hooks/useStock";
+import type { AllMovement } from "@/hooks/useStock";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,14 @@ import {
   LogOut,
   Boxes,
   ScanBarcode,
+  LayoutDashboard,
+  History,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  RefreshCw,
+  Trophy,
+  TrendingUp,
+  Download,
 } from "lucide-react";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { Logo } from "@/components/Logo";
@@ -906,6 +915,356 @@ function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir }: Cli
   );
 }
 
+// ─── Histórico Geral Comercial ────────────────────────────────────────────────
+
+interface HistoricoGeralProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
+  const [movements, setMovements] = useState<AllMovement[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (open) {
+      setLoading(true);
+      fetchAllMovements(100).then((data) => {
+        if (!cancelled) {
+          // Filtra apenas movimentos da expedição (comercial)
+          const expMov = data.filter(m => m.fase === "expedicao");
+          setMovements(expMov);
+          setLoading(false);
+        }
+      }).catch(() => { if (!cancelled) setLoading(false); });
+    } else {
+      setMovements([]);
+    }
+    return () => { cancelled = true; };
+  }, [open]);
+
+  async function load() {
+    setLoading(true);
+    const data = await fetchAllMovements(100);
+    setMovements(data.filter(m => m.fase === "expedicao"));
+    setLoading(false);
+  }
+
+  function fmtDate(iso: string) {
+    const d = new Date(iso);
+    return {
+      date: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }),
+      time: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    };
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        {/* Header */}
+        <div className="relative px-5 pt-5 pb-3 shrink-0">
+          <div className="absolute inset-0 bg-gradient-to-b from-violet-500/5 to-transparent" />
+          <div className="relative flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-violet-500" />
+                <p className="text-sm font-semibold">Histórico Geral — Expedição</p>
+              </div>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                Últimas {movements.length} movimentações da expedição
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={load}
+                disabled={loading}
+                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
+                title="Atualizar"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-3 pb-4 overflow-y-auto flex-1 space-y-1">
+          {loading && (
+            <div className="flex items-center justify-center py-10">
+              <div className="animate-spin h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full" />
+            </div>
+          )}
+          {!loading && movements.length === 0 && (
+            <div className="text-center py-12 text-sm text-muted-foreground">
+              Nenhuma movimentação registrada na expedição
+            </div>
+          )}
+          {!loading && movements.map((mv) => {
+            const { date, time } = fmtDate(mv.created_at);
+            const isEntrada = mv.type === "entrada";
+            return (
+              <div
+                key={mv.id}
+                className={cn(
+                  "flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors",
+                  isEntrada ? "bg-success/4 border-success/15" : "bg-violet-500/4 border-violet-500/15"
+                )}
+              >
+                {isEntrada
+                  ? <ArrowDownCircle className="h-4 w-4 mt-0.5 text-success shrink-0" />
+                  : <ArrowUpCircle className="h-4 w-4 mt-0.5 text-violet-500 shrink-0" />}
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="text-[12px] font-semibold text-foreground leading-snug line-clamp-1">{mv.device_model}</p>
+                  <p className="text-[10px] text-muted-foreground font-mono">{mv.device_reference}</p>
+                  {mv.lote && (
+                    <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-violet-500/80">
+                      <Tag className="h-2.5 w-2.5" />Lote {mv.lote}
+                    </p>
+                  )}
+                  {mv.reason && <p className="text-[11px] text-muted-foreground line-clamp-1">{mv.reason}</p>}
+                  {mv.user_display_name && (
+                    <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
+                      <User className="h-2.5 w-2.5" />{mv.user_display_name}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-violet-500")}>
+                    {isEntrada ? "+" : "-"}{mv.quantity}
+                    <span className="text-[10px] font-normal ml-0.5 opacity-70">un.</span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{date}</span>
+                  <span className="text-[10px] text-muted-foreground/60">{time}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard Comercial ──────────────────────────────────────────────────────
+
+interface DashboardComercialProps {
+  pedidos: PedidoCompleto[];
+  loading: boolean;
+  currentUserName: string | null;
+  isAdmin: boolean;
+}
+
+function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: DashboardComercialProps) {
+  // Filtra apenas faturados
+  const faturados = pedidos.filter(p => p.status === "faturado");
+
+  const totalPecasFaturadas = faturados.reduce((sum, p) => sum + p.itens.reduce((s, i) => s + i.quantidade, 0), 0);
+  const totalPedidosFaturados = faturados.length;
+
+  // Ranking vendedoras
+  const rankingVendedoras: Record<string, number> = {};
+  for (const p of faturados) {
+    const nome = p.vendedora_nome ?? "—";
+    rankingVendedoras[nome] = (rankingVendedoras[nome] ?? 0) + p.itens.reduce((s, i) => s + i.quantidade, 0);
+  }
+  const rankingVendList = Object.entries(rankingVendedoras)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  // Ranking clientes
+  const rankingClientes: Record<string, number> = {};
+  for (const p of faturados) {
+    rankingClientes[p.cliente_nome] = (rankingClientes[p.cliente_nome] ?? 0) + p.itens.reduce((s, i) => s + i.quantidade, 0);
+  }
+  const rankingClientesList = Object.entries(rankingClientes)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  // PDF da vendedora atual
+  function downloadPdfVendedora() {
+    const meusPedidos = faturados.filter(p => p.vendedora_nome === currentUserName);
+    if (meusPedidos.length === 0) { toast.error("Nenhum pedido faturado seu encontrado."); return; }
+
+    // Agrupa por peça
+    const pecas: Record<string, { model: string; ref: string; total: number }> = {};
+    for (const p of meusPedidos) {
+      for (const i of p.itens) {
+        const key = i.stock_item_id;
+        if (!pecas[key]) pecas[key] = { model: i.device_model ?? "—", ref: i.device_reference ?? "—", total: 0 };
+        pecas[key].total += i.quantidade;
+      }
+    }
+    const pecasList = Object.values(pecas).sort((a, b) => b.total - a.total);
+
+    // Monta HTML para impressão
+    const html = `
+      <!DOCTYPE html><html><head><meta charset="UTF-8">
+      <title>Relatório — ${currentUserName}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+        h1 { font-size: 18px; margin-bottom: 4px; }
+        p.sub { font-size: 12px; color: #666; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 8px 10px; background: #f3f0ff; color: #5b21b6; border-bottom: 2px solid #ddd6fe; }
+        td { padding: 7px 10px; border-bottom: 1px solid #eee; }
+        tr:last-child td { border-bottom: none; }
+        .total { font-weight: bold; font-size: 15px; color: #5b21b6; }
+        .footer { margin-top: 20px; font-size: 11px; color: #999; }
+      </style></head><body>
+      <h1>📊 Relatório de Vendas</h1>
+      <p class="sub">Vendedora: <strong>${currentUserName}</strong> &nbsp;·&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
+      <table>
+        <thead><tr><th>#</th><th>Peça</th><th>Referência</th><th>Qtd. Vendida</th></tr></thead>
+        <tbody>
+          ${pecasList.map((p, i) => `<tr><td>${i + 1}</td><td>${p.model}</td><td>${p.ref}</td><td class="total">${p.total}</td></tr>`).join("")}
+        </tbody>
+      </table>
+      <p class="footer">Total de ${meusPedidos.length} pedido(s) faturado(s) &nbsp;·&nbsp; ${pecasList.reduce((s, p) => s + p.total, 0)} peças no total</p>
+      </body></html>
+    `;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, "_blank");
+    setTimeout(() => { w?.print(); URL.revokeObjectURL(url); }, 500);
+  }
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="rounded-2xl border bg-muted/20 p-4 h-24 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  const maxVend = rankingVendList[0]?.[1] ?? 1;
+  const maxCli = rankingClientesList[0]?.[1] ?? 1;
+
+  return (
+    <div className="space-y-4">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+            <Package className="h-5 w-5 text-violet-500" />
+          </div>
+          <div>
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Peças Faturadas</p>
+            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPecasFaturadas.toLocaleString("pt-BR")}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{totalPedidosFaturados} pedido(s)</p>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+            <Clock className="h-5 w-5 text-amber-500" />
+          </div>
+          <div>
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Pendentes</p>
+            <p className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+              {pedidos.filter(p => p.status === "pendente").length}
+            </p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">aguardando faturamento</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Ranking Vendedoras */}
+      <div className="rounded-2xl border border-border/40 overflow-hidden">
+        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+          <Trophy className="h-4 w-4 text-amber-500" />
+          <p className="text-sm font-semibold">Ranking de Vendedoras</p>
+          <span className="text-[11px] text-muted-foreground/60">(peças faturadas)</span>
+        </div>
+        {rankingVendList.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
+        ) : (
+          <div className="divide-y divide-border/20">
+            {rankingVendList.map(([nome, total], idx) => (
+              <div key={nome} className="flex items-center gap-3 px-4 py-2.5">
+                <span className={cn(
+                  "h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
+                  idx === 0 ? "bg-amber-400/20 text-amber-600" :
+                  idx === 1 ? "bg-slate-300/20 text-slate-500" :
+                  idx === 2 ? "bg-orange-300/20 text-orange-600" :
+                  "bg-muted/40 text-muted-foreground"
+                )}>{idx + 1}º</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[12px] font-medium truncate">{nome}</span>
+                    <span className="text-[12px] font-bold text-violet-600 dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-violet-400 transition-all"
+                      style={{ width: `${Math.round((total / maxVend) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Ranking Clientes */}
+      <div className="rounded-2xl border border-border/40 overflow-hidden">
+        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-violet-500" />
+          <p className="text-sm font-semibold">Clientes que Mais Compraram</p>
+          <span className="text-[11px] text-muted-foreground/60">(peças)</span>
+        </div>
+        {rankingClientesList.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
+        ) : (
+          <div className="divide-y divide-border/20">
+            {rankingClientesList.map(([nome, total], idx) => (
+              <div key={nome} className="flex items-center gap-3 px-4 py-2.5">
+                <span className={cn(
+                  "h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
+                  idx === 0 ? "bg-violet-500/20 text-violet-600" : "bg-muted/40 text-muted-foreground"
+                )}>{idx + 1}º</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[12px] font-medium truncate">{nome}</span>
+                    <span className="text-[12px] font-bold text-violet-600 dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-400 to-violet-300 transition-all"
+                      style={{ width: `${Math.round((total / maxCli) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Botão PDF da vendedora */}
+      <button
+        type="button"
+        onClick={downloadPdfVendedora}
+        className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-violet-500/30 text-violet-600 dark:text-violet-400 text-sm font-medium hover:bg-violet-500/10 transition-colors"
+      >
+        <Download className="h-4 w-4" />
+        Baixar meu relatório em PDF
+      </button>
+    </div>
+  );
+}
+
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function Comercial() {
@@ -914,6 +1273,14 @@ export default function Comercial() {
 
   const isVendedora = role === "vendedora";
   const canAccess = isAdmin || isVendedora;
+
+  // Nome da usuária logada
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => setCurrentUserName((data as { display_name?: string } | null)?.display_name ?? user?.email ?? null));
+  }, [user?.id]);
 
   // Tema
   const [isDark, setIsDark] = useState(() => {
@@ -929,8 +1296,9 @@ export default function Comercial() {
   }, [isDark]);
 
   // Sub-tabs
-  type SubTab = "pedidos" | "clientes";
+  type SubTab = "dashboard" | "pedidos" | "clientes";
   const [subTab, setSubTab] = useState<SubTab>("pedidos");
+  const [historicoOpen, setHistoricoOpen] = useState(false);
 
   // Peças da expedição (para criar pedidos)
   const { items: allItems, loading: loadingStock } = useStock("");
@@ -1014,9 +1382,17 @@ export default function Comercial() {
   async function handleDeleteCliente() {
     if (!deleteCliente) return;
     setDeletingCliente(true);
+    // Admin pode apagar mesmo com pedidos vinculados — cancela pedidos primeiro
+    if (isAdmin) {
+      await supabase.from("pedido_itens").delete().in(
+        "pedido_id",
+        (await supabase.from("pedidos_comerciais").select("id").eq("cliente_id", deleteCliente.id)).data?.map((p: Record<string, unknown>) => p.id as string) ?? []
+      );
+      await supabase.from("pedidos_comerciais").delete().eq("cliente_id", deleteCliente.id);
+    }
     const { error } = await supabase.from("clientes").delete().eq("id", deleteCliente.id);
     setDeletingCliente(false);
-    if (error) { toast.error("Não foi possível excluir. Pode haver pedidos vinculados."); return; }
+    if (error) { toast.error("Não foi possível excluir o cliente."); return; }
     toast.success("Cliente excluído.");
     setDeleteCliente(null);
     loadClientes();
@@ -1114,6 +1490,7 @@ export default function Comercial() {
             {/* Sub-tabs */}
             <div className="flex items-center gap-1 bg-muted/30 rounded-xl p-1">
               {([
+                { id: "dashboard" as SubTab, label: "Dashboard", icon: LayoutDashboard, badge: 0 },
                 { id: "pedidos" as SubTab, label: "Pedidos", icon: ShoppingBag, badge: pedidosPendentes },
                 { id: "clientes" as SubTab, label: "Clientes", icon: User, badge: 0 },
               ]).map(tab => (
@@ -1137,7 +1514,26 @@ export default function Comercial() {
                   )}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setHistoricoOpen(true)}
+                className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium text-muted-foreground hover:text-foreground transition-all"
+                title="Histórico Geral"
+              >
+                <History className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Histórico</span>
+              </button>
             </div>
+
+            {/* ── Aba Dashboard ── */}
+            {subTab === "dashboard" && (
+              <DashboardComercial
+                pedidos={pedidos}
+                loading={loadingPedidos}
+                currentUserName={currentUserName}
+                isAdmin={isAdmin}
+              />
+            )}
 
             {/* ── Aba Pedidos ── */}
             {subTab === "pedidos" && (
@@ -1277,7 +1673,7 @@ export default function Comercial() {
                 <p className="text-[12px] text-muted-foreground mt-0.5">{deleteCliente.nome}</p>
               </div>
             </div>
-            <p className="text-[12px] text-muted-foreground">Clientes com pedidos vinculados não podem ser excluídos.</p>
+            <p className="text-[12px] text-muted-foreground">{isAdmin ? "Como admin, você pode excluir este cliente mesmo que tenha pedidos vinculados. Os pedidos também serão removidos." : "Clientes com pedidos vinculados não podem ser excluídos."}</p>
             <div className="flex gap-2">
               <button type="button" onClick={() => setDeleteCliente(null)} disabled={deletingCliente} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
               <button type="button" onClick={handleDeleteCliente} disabled={deletingCliente} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
@@ -1288,6 +1684,9 @@ export default function Comercial() {
           </div>
         </div>
       )}
+
+      {/* Histórico Geral */}
+      <HistoricoGeralModal open={historicoOpen} onClose={() => setHistoricoOpen(false)} />
     </div>
   );
 }
