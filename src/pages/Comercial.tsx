@@ -1269,7 +1269,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
 
 export default function Comercial() {
   const navigate = useNavigate();
-  const { signOut, isAdmin, role } = useAuth();
+  const { signOut, isAdmin, role, user } = useAuth();
 
   const isVendedora = role === "vendedora";
   const canAccess = isAdmin || isVendedora;
