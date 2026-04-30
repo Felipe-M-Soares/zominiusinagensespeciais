@@ -45,6 +45,7 @@ import {
   ShoppingCart,
   Receipt,
   Ban,
+  Truck,
   ArrowLeft,
   LogOut,
   Boxes,
