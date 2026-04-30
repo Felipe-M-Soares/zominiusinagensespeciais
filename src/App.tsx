@@ -10,6 +10,7 @@ import SettingsPage from "./pages/Settings";
 import Manuals from "./pages/Manuals";
 import Estoque from "./pages/Estoque";
 import Comercial from "./pages/Comercial";
+import Financeiro from "./pages/Financeiro";
 import SetPassword from "./pages/SetPassword";
 import PendingApproval from "./pages/PendingApproval";
 import NotFound from "./pages/NotFound";
@@ -79,11 +80,12 @@ function VendedoraRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Index redireciona vendedoras direto para /comercial
+// Index redireciona vendedoras direto para /comercial, financeiro para /financeiro
 function IndexRoute() {
   const { role, loading, approved } = useAuth();
   if (loading || approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
   if (role === "vendedora") return <Navigate to="/comercial" replace />;
+  if (role === "financeiro") return <Navigate to="/financeiro" replace />;
   return <Index />;
 }
 
@@ -113,6 +115,7 @@ const App = () => (
             <Route path="/manuals" element={<ProtectedRoute><Manuals /></ProtectedRoute>} />
             <Route path="/estoque" element={<ProtectedRoute><Estoque /></ProtectedRoute>} />
             <Route path="/comercial" element={<VendedoraRoute><Comercial /></VendedoraRoute>} />
+            <Route path="/financeiro" element={<ProtectedRoute><Financeiro /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

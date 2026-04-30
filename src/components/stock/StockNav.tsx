@@ -16,6 +16,7 @@ import {
   TrendingDown,
   TrendingUp,
   AlertTriangle,
+  ShoppingBag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StockItem } from "@/hooks/useStock";
@@ -27,6 +28,7 @@ export type ActiveView =
   | "expedicao"
   | "retrabalho"
   | "recebimento"
+  | "pedidos"
 
 interface StockNavProps {
   activeView: ActiveView;
@@ -35,6 +37,7 @@ interface StockNavProps {
   expedicaoItems: StockItem[];
   retrabalhoItems: StockItem[];
   loading: boolean;
+  pedidosPendentes?: number;
 }
 
 // ── Configuração das abas ──────────────────────────────────────────────────────
@@ -94,6 +97,17 @@ const TABS = [
     badgeText: "text-cyan-600 dark:text-cyan-400",
     animation: "animate-tilt",
   },
+  {
+    id: "pedidos" as ActiveView,
+    label: "Pedidos",
+    Icon: ShoppingBag,
+    activeColor: "text-amber-600 dark:text-amber-400",
+    activeBg: "bg-amber-500/10",
+    activeBorder: "border-amber-500/40",
+    badgeBg: "bg-amber-500/15",
+    badgeText: "text-amber-600 dark:text-amber-400",
+    animation: "animate-pop",
+  },
 ] as const;
 
 // ── Preview de métricas por aba ─────────────────────────────────────────────────
@@ -125,11 +139,13 @@ function PreviewCard({
     );
   }
 
-  if (view === "recebimento") {
+  if (view === "recebimento" || view === "pedidos") {
     return (
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <Inbox className="h-3.5 w-3.5" />
-        Registre entradas por lote aqui
+        {view === "pedidos"
+          ? <><ShoppingBag className="h-3.5 w-3.5" />Pedidos das vendedoras para separar</>
+          : <><Inbox className="h-3.5 w-3.5" />Registre entradas por lote aqui</>
+        }
       </div>
     );
   }
@@ -171,6 +187,7 @@ export function StockNav({
   expedicaoItems,
   retrabalhoItems,
   loading,
+  pedidosPendentes = 0,
 }: StockNavProps) {
   const [animating, setAnimating] = useState<ActiveView | null>(null);
 
@@ -191,6 +208,7 @@ export function StockNav({
     expedicao: expedicaoItems,
     retrabalho: retrabalhoItems,
     recebimento: [],
+    pedidos: [],
   };
 
   // Contagens para badges
@@ -198,6 +216,7 @@ export function StockNav({
     intermediaria: intermediariaItems.length,
     expedicao: expedicaoItems.length,
     retrabalho: retrabalhoItems.length,
+    pedidos: pedidosPendentes || undefined,
   };
 
   const activeTab = TABS.find((t) => t.id === activeView)!;

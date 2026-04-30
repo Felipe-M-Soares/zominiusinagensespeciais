@@ -56,6 +56,7 @@ import {
   Trophy,
   TrendingUp,
   Download,
+  Bell,
 } from "lucide-react";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { Logo } from "@/components/Logo";
@@ -225,10 +226,7 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
 
 // ─── Modal: Novo Pedido ───────────────────────────────────────────────────────
 
-interface LoteDisponivel {
-  lote: string;
-  quantidade: number;
-}
+// ─── Modal: Novo Pedido (simplificado — sem seleção de lote) ─────────────────
 
 interface NovoPedidoModalProps {
   open: boolean;
@@ -248,27 +246,21 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const [showClienteDrop, setShowClienteDrop] = useState(false);
   const [novoClienteModal, setNovoClienteModal] = useState(false);
 
-  // Busca de peça — igual ao estoque
+  // Busca de peça — por nome, sem lotes
   const [pecaSearch, setPecaSearch] = useState("");
   const [autocomplete, setAutocomplete] = useState<ReturnType<typeof useStock>["items"]>([]);
   const [showAutocomp, setShowAutocomp] = useState(false);
   const [selectedPeca, setSelectedPeca] = useState<ReturnType<typeof useStock>["items"][0] | null>(null);
 
-  // Lotes disponíveis para a peça selecionada
-  const [lotes, setLotes] = useState<LoteDisponivel[]>([]);
-  const [lotesLoading, setLotesLoading] = useState(false);
-  const [selectedLote, setSelectedLote] = useState<LoteDisponivel | null>(null);
-  const [showLoteDrop, setShowLoteDrop] = useState(false);
-
-  // Quantidade e lista do pedido
+  // Lista do pedido, frete e obs
   const [qtd, setQtd] = useState(1);
   const [itens, setItens] = useState<PedidoItem[]>([]);
+  const [frete, setFrete] = useState("0");
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
 
   const clienteDropRef = useRef<HTMLDivElement>(null);
   const pecaDropRef = useRef<HTMLDivElement>(null);
-  const loteDropRef = useRef<HTMLDivElement>(null);
   const pecaInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -277,10 +269,9 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (!open) return;
     setClienteId(clienteFixo?.id ?? "");
     setClienteSearch(clienteFixo?.nome ?? "");
-    setItens([]); setObs("");
+    setItens([]); setObs(""); setFrete("0");
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
-    setSelectedPeca(null); setLotes([]); setSelectedLote(null);
-    setQtd(1);
+    setSelectedPeca(null); setQtd(1);
     loadClientes();
   }, [open, clienteFixo]);
 
@@ -294,120 +285,61 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     const h = (e: MouseEvent) => {
       if (clienteDropRef.current && !clienteDropRef.current.contains(e.target as Node)) setShowClienteDrop(false);
       if (pecaDropRef.current && !pecaDropRef.current.contains(e.target as Node)) setShowAutocomp(false);
-      if (loteDropRef.current && !loteDropRef.current.contains(e.target as Node)) setShowLoteDrop(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // Autocomplete de peça — mostra todas disponíveis ao focar, filtra conforme digita
+  // Autocomplete de peça — filtra apenas por NOME (device.model), não mostra lotes
   function handlePecaInput(v: string) {
     setPecaSearch(v);
     setSelectedPeca(null);
-    setSelectedLote(null);
-    setLotes([]);
-    setShowLoteDrop(false);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       const q = v.trim().toLowerCase();
+      // Busca em todos os itens do estoque (não só expedição), por nome
       const sugestoes = expedicaoItems.filter(i =>
-        i.quantity > 0 && (
-          !q ||
-          i.device?.model?.toLowerCase().includes(q) ||
-          i.device?.reference?.toLowerCase().includes(q) ||
-          i.device?.udi_di?.toLowerCase().includes(q)
-        )
+        !q || i.device?.model?.toLowerCase().includes(q)
       );
       // Deduplica por device_id
       const vistos = new Set<string>();
       const deduped = sugestoes.filter(i => {
         if (vistos.has(i.device_id)) return false;
         vistos.add(i.device_id); return true;
-      }).slice(0, 20);
+      }).slice(0, 15);
       setAutocomplete(deduped);
       setShowAutocomp(deduped.length > 0);
     }, 80);
   }
 
   function handlePecaFocus() {
-    // Ao focar, mostra todas as peças disponíveis mesmo sem texto
-    const sugestoes = expedicaoItems.filter(i => i.quantity > 0);
     const vistos = new Set<string>();
-    const deduped = sugestoes.filter(i => {
+    const deduped = expedicaoItems.filter(i => {
       if (vistos.has(i.device_id)) return false;
       vistos.add(i.device_id); return true;
-    }).slice(0, 20);
+    }).slice(0, 15);
     setAutocomplete(deduped);
     setShowAutocomp(deduped.length > 0);
   }
 
-  // Quando seleciona uma peça — busca os lotes disponíveis nos stock_movements da expedição
-  async function handleSelectPeca(item: ReturnType<typeof useStock>["items"][0]) {
+  function handleSelectPeca(item: ReturnType<typeof useStock>["items"][0]) {
     setSelectedPeca(item);
     setPecaSearch(item.device?.model ?? "");
     setShowAutocomp(false);
-    setSelectedLote(null);
-    setLotes([]);
-    setLotesLoading(true);
-    try {
-      // Busca movimentos de entrada da expedição para essa peça
-      const { data: movs } = await supabase
-        .from("stock_movements")
-        .select("lote, quantity, type")
-        .eq("stock_item_id", item.id)
-        .not("lote", "is", null)
-        .order("created_at", { ascending: false });
-
-      if (!movs) { setLotes([]); return; }
-
-      // Calcula saldo por lote (entradas - saídas)
-      const saldos = new Map<string, number>();
-      for (const m of movs as { lote: string; quantity: number; type: string }[]) {
-        if (!m.lote) continue;
-        const l = m.lote.toUpperCase();
-        const atual = saldos.get(l) ?? 0;
-        saldos.set(l, m.type === "entrada" ? atual + m.quantity : atual - m.quantity);
-      }
-
-      const lotesDisp: LoteDisponivel[] = [];
-      for (const [lote, qtdSaldo] of saldos.entries()) {
-        if (qtdSaldo > 0) lotesDisp.push({ lote, quantidade: qtdSaldo });
-      }
-      // Ordena do mais recente (alfabético descendente do lote)
-      lotesDisp.sort((a, b) => b.lote.localeCompare(a.lote));
-      setLotes(lotesDisp);
-      if (lotesDisp.length > 0) setShowLoteDrop(true);
-    } catch {
-      toast.error("Erro ao buscar lotes.");
-    } finally {
-      setLotesLoading(false);
-    }
-  }
-
-  function handleSelectLote(l: LoteDisponivel) {
-    setSelectedLote(l);
-    setShowLoteDrop(false);
     setQtd(1);
   }
 
   function addItem() {
-    if (!selectedPeca || !selectedLote) return;
-    const maxQtd = selectedLote.quantidade -
-      itens.filter(i => i.stock_item_id === selectedPeca.id && i.lote === selectedLote.lote)
-           .reduce((s, i) => s + i.quantidade, 0);
-    if (qtd < 1 || qtd > maxQtd) {
-      toast.error(`Disponível neste lote: ${maxQtd} un.`);
-      return;
-    }
+    if (!selectedPeca) return;
+    if (qtd < 1) { toast.error("Quantidade inválida"); return; }
     setItens(prev => [...prev, {
       stock_item_id: selectedPeca.id,
-      lote: selectedLote.lote,
+      lote: "",  // lote será escolhido pelo estoque na separação
       quantidade: qtd,
       device_model: selectedPeca.device?.model ?? "",
       device_reference: selectedPeca.device?.reference ?? "",
     }]);
-    // Reseta a seleção de peça para adicionar outra
-    setSelectedPeca(null); setPecaSearch(""); setLotes([]); setSelectedLote(null); setQtd(1);
+    setSelectedPeca(null); setPecaSearch(""); setQtd(1);
     setTimeout(() => pecaInputRef.current?.focus(), 50);
   }
 
@@ -418,16 +350,30 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     try {
       const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
       const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
+      const freteVal = parseFloat(frete.replace(",", ".")) || 0;
       const { data: pedido, error: pedidoErr } = await supabase
         .from("pedidos_comerciais")
-        .insert({ cliente_id: clienteId, vendedora_id: user?.id, vendedora_nome: vendedoraNome, observacoes: obs || null })
+        .insert({
+          cliente_id: clienteId,
+          vendedora_id: user?.id,
+          vendedora_nome: vendedoraNome,
+          observacoes: obs || null,
+          frete: freteVal,
+          status: "pendente",
+        })
         .select().single();
       if (pedidoErr) throw pedidoErr;
       const { error: itensErr } = await supabase.from("pedido_itens").insert(
-        itens.map(i => ({ pedido_id: (pedido as { id: string }).id, stock_item_id: i.stock_item_id, lote: i.lote, quantidade: i.quantidade, quantidade_reservada: i.quantidade }))
+        itens.map(i => ({
+          pedido_id: (pedido as { id: string }).id,
+          stock_item_id: i.stock_item_id,
+          lote: i.lote || "a-definir",
+          quantidade: i.quantidade,
+          quantidade_reservada: 0,
+        }))
       );
       if (itensErr) throw itensErr;
-      toast.success("Pedido criado! Peças reservadas na expedição.");
+      toast.success("Pedido criado! O estoque irá separar os lotes.");
       onSuccess();
     } catch {
       toast.error("Erro ao criar pedido.");
@@ -459,218 +405,134 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
           {/* ── Cliente ── */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Cliente *</label>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Cliente *</label>
             <div className="relative" ref={clienteDropRef}>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                  <Input
-                    placeholder="Buscar ou selecionar cliente..."
-                    value={clienteSearch}
-                    onChange={e => { setClienteSearch(e.target.value); setClienteId(""); setShowClienteDrop(true); }}
-                    onFocus={() => setShowClienteDrop(true)}
-                    className="pl-9 h-9 text-sm"
-                  />
-                </div>
-                <button type="button" onClick={() => setNovoClienteModal(true)} className="h-9 w-9 flex items-center justify-center rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-500 transition-colors shrink-0" title="Novo cliente">
-                  <UserPlus className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={clienteSearch}
+                onChange={e => { setClienteSearch(e.target.value); setClienteId(""); setShowClienteDrop(true); }}
+                onFocus={() => setShowClienteDrop(true)}
+                placeholder="Buscar cliente..."
+                className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+              />
               {showClienteDrop && clientesFiltrados.length > 0 && (
-                <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-44 overflow-y-auto">
-                  {clientesFiltrados.map(c => (
-                    <button key={c.id} type="button" onClick={() => { setClienteId(c.id); setClienteSearch(c.nome); setShowClienteDrop(false); }} className="w-full text-left px-4 py-2.5 hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0">
-                      <p className="text-sm font-medium">{c.nome}</p>
+                <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-40 overflow-y-auto">
+                  {clientesFiltrados.slice(0, 8).map(c => (
+                    <button key={c.id} type="button" onClick={() => { setClienteId(c.id); setClienteSearch(c.nome); setShowClienteDrop(false); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0">
+                      <p className="font-medium text-[13px]">{c.nome}</p>
                       {c.documento && <p className="text-[11px] text-muted-foreground">{c.documento}</p>}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            {clienteId && <p className="text-[11px] text-violet-500 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Cliente selecionado</p>}
+            <button type="button" onClick={() => setNovoClienteModal(true)} className="flex items-center gap-1.5 text-[11px] text-violet-500 hover:text-violet-400 transition-colors">
+              <Plus className="h-3 w-3" /> Cadastrar novo cliente
+            </button>
           </div>
 
-          {/* ── Seleção de peça — estilo estoque ── */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Adicionar Peça da Expedição</label>
-            <div className="rounded-xl border border-border/50 bg-muted/10 p-3 space-y-2.5">
+          {/* ── Frete ── */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Valor do Frete</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground font-medium">R$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={frete}
+                onChange={e => setFrete(e.target.value.replace(/[^0-9.,]/g, ""))}
+                placeholder="0,00"
+                className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+              />
+            </div>
+          </div>
 
-              {/* Busca de modelo */}
-              <div className="space-y-1">
-                <p className="text-[10px] font-medium text-muted-foreground">1. Buscar peça</p>
-                <div className="relative" ref={pecaDropRef}>
-                  <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                  <input
-                    ref={pecaInputRef}
-                    type="text"
-                    placeholder="Clique para ver peças disponíveis ou digite para buscar..."
-                    value={pecaSearch}
-                    onChange={e => handlePecaInput(e.target.value)}
-                    onFocus={() => { if (!selectedPeca) handlePecaFocus(); }}
-                    onKeyDown={e => { if (e.key === "Escape") setShowAutocomp(false); }}
-                    className="w-full pl-9 pr-9 h-10 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring font-medium"
-                  />
-                  {pecaSearch && !selectedPeca && (
-                    <button type="button" onClick={() => { setPecaSearch(""); setSelectedPeca(null); setLotes([]); setSelectedLote(null); setAutocomplete([]); setShowAutocomp(false); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  {selectedPeca && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-violet-500" />
-                    </div>
-                  )}
-                  {/* Autocomplete dropdown */}
-                  {showAutocomp && autocomplete.length > 0 && (
-                    <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-52 overflow-y-auto">
-                      {autocomplete.map(item => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => handleSelectPeca(item)}
-                          className="w-full text-left px-4 py-2.5 hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0"
-                        >
-                          <p className="text-[13px] font-semibold">{item.device?.model}</p>
-                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
-                            <span>{item.device?.reference}</span>
-                            <span>·</span>
-                            <span className="text-success font-medium">{item.quantity} un. disponível</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {showAutocomp && autocomplete.length === 0 && (
-                    <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl p-3 text-center">
-                      <p className="text-xs text-muted-foreground">Nenhuma peça disponível na expedição</p>
-                    </div>
-                  )}
-                </div>
+          {/* ── Adicionar Peça ── */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Adicionar Peça</label>
+            <div className="flex gap-2">
+              <div className="relative flex-1" ref={pecaDropRef}>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  ref={pecaInputRef}
+                  type="text"
+                  value={pecaSearch}
+                  onChange={e => handlePecaInput(e.target.value)}
+                  onFocus={handlePecaFocus}
+                  placeholder="Buscar por nome da peça..."
+                  className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+                />
+                {showAutocomp && autocomplete.length > 0 && (
+                  <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-48 overflow-y-auto">
+                    {autocomplete.map(i => (
+                      <button key={i.id} type="button" onClick={() => handleSelectPeca(i)} className="w-full text-left px-4 py-2.5 hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0">
+                        <p className="text-[13px] font-medium">{i.device?.model}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono">{i.device?.reference}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-
-              {/* Seleção de lote */}
-              {selectedPeca && (
-                <div className="space-y-1">
-                  <p className="text-[10px] font-medium text-muted-foreground">2. Selecionar lote</p>
-                  <div className="relative" ref={loteDropRef}>
-                    <button
-                      type="button"
-                      onClick={() => setShowLoteDrop(v => !v)}
-                      disabled={lotesLoading}
-                      className="w-full flex items-center justify-between gap-2 h-10 px-3 rounded-xl border border-input bg-background text-sm hover:bg-muted/20 transition-colors"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        {lotesLoading ? (
-                          <span className="text-muted-foreground text-xs flex items-center gap-1.5">
-                            <div className="h-3 w-3 border border-current border-t-transparent rounded-full animate-spin" /> Buscando lotes...
-                          </span>
-                        ) : selectedLote ? (
-                          <span className="font-mono font-semibold text-foreground truncate">{selectedLote.lote}</span>
-                        ) : lotes.length === 0 ? (
-                          <span className="text-muted-foreground text-xs">Nenhum lote com saldo disponível</span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">Selecione o lote...</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {selectedLote && (
-                          <span className="text-[10px] text-success font-medium bg-success/10 px-1.5 py-0.5 rounded-full">
-                            {selectedLote.quantidade} disp.
-                          </span>
-                        )}
-                        {!lotesLoading && lotes.length > 0 && (
-                          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", showLoteDrop && "rotate-180")} />
-                        )}
-                      </div>
-                    </button>
-                    {showLoteDrop && lotes.length > 0 && (
-                      <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-52 overflow-y-auto">
-                        {lotes.map(l => (
-                          <button
-                            key={l.lote}
-                            type="button"
-                            onClick={() => handleSelectLote(l)}
-                            className={cn(
-                              "w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0",
-                              selectedLote?.lote === l.lote && "bg-violet-500/8"
-                            )}
-                          >
-                            <div className="flex items-center gap-2">
-                              {selectedLote?.lote === l.lote && <CheckCircle2 className="h-3 w-3 text-violet-500 shrink-0" />}
-                              <span className="font-mono font-semibold text-[13px]">{l.lote}</span>
-                            </div>
-                            <span className="text-[11px] text-success font-medium bg-success/10 px-2 py-0.5 rounded-full shrink-0">
-                              {l.quantidade} un.
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Quantidade */}
-              {selectedLote && (
-                <div className="space-y-1">
-                  <p className="text-[10px] font-medium text-muted-foreground">3. Quantidade</p>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setQtd(q => Math.max(1, q - 1))} className="h-10 w-10 flex items-center justify-center rounded-xl border border-input bg-background hover:bg-muted/40 text-lg font-bold shrink-0 transition-colors">−</button>
-                    <input
-                      type="number"
-                      min={1}
-                      max={selectedLote.quantidade}
-                      value={qtd}
-                      onChange={e => setQtd(Math.max(1, Math.min(selectedLote.quantidade, parseInt(e.target.value) || 1)))}
-                      className="flex-1 h-10 rounded-xl border border-input bg-background text-center text-base font-bold focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                    <button type="button" onClick={() => setQtd(q => Math.min(selectedLote.quantidade, q + 1))} className="h-10 w-10 flex items-center justify-center rounded-xl border border-input bg-background hover:bg-muted/40 text-lg font-bold shrink-0 transition-colors">+</button>
-                    <span className="text-[11px] text-muted-foreground shrink-0">/ {selectedLote.quantidade}</span>
-                  </div>
-                </div>
-              )}
-
+              <input
+                type="number"
+                min={1}
+                value={qtd}
+                onChange={e => setQtd(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-16 h-10 rounded-xl border border-border/50 bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+              />
               <button
                 type="button"
                 onClick={addItem}
-                disabled={!selectedPeca || !selectedLote || qtd < 1}
-                className="w-full h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+                disabled={!selectedPeca}
+                className="h-10 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-40 transition-colors flex items-center gap-1.5"
               >
-                <Plus className="h-3.5 w-3.5" /> Adicionar ao pedido
+                <Plus className="h-4 w-4" />
               </button>
             </div>
-
-            {/* Itens adicionados */}
-            {itens.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-[11px] text-muted-foreground font-medium">{itens.length} item{itens.length > 1 ? "s" : ""} no pedido</p>
-                <div className="space-y-1">
-                  {itens.map((it, idx) => (
-                    <div key={idx} className="flex items-center gap-2 rounded-lg bg-muted/20 border border-border/30 px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-medium truncate">{it.device_model}</p>
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <Tag className="h-2.5 w-2.5" />
-                          <span className="font-mono">{it.lote}</span>
-                          <span>·</span>
-                          <span>{it.quantidade} un.</span>
-                        </div>
-                      </div>
-                      <button type="button" onClick={() => setItens(prev => prev.filter((_, i) => i !== idx))} className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+            {selectedPeca && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/8 border border-violet-500/20 text-[11px]">
+                <Package className="h-3 w-3 text-violet-500 shrink-0" />
+                <span className="text-violet-600 dark:text-violet-400 font-medium truncate">{selectedPeca.device?.model}</span>
+                <span className="text-muted-foreground/60 ml-auto shrink-0 font-mono">{selectedPeca.device?.reference}</span>
               </div>
             )}
           </div>
 
-          {/* Observações */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Observações</label>
-            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Informações adicionais..." className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[56px] focus:outline-none focus:ring-2 focus:ring-ring" />
+          {/* ── Lista de Itens ── */}
+          {itens.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                Itens do Pedido ({itens.reduce((s, i) => s + i.quantidade, 0)} un.)
+              </label>
+              <div className="space-y-1">
+                {itens.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/20 border border-border/30">
+                    <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium truncate">{item.device_model}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
+                    </div>
+                    <span className="text-[13px] font-bold shrink-0">{item.quantidade} un.</span>
+                    <button type="button" onClick={() => setItens(prev => prev.filter((_, i) => i !== idx))} className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Observações ── */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Observações</label>
+            <textarea
+              value={obs}
+              onChange={e => setObs(e.target.value)}
+              placeholder="Informações adicionais para o estoque..."
+              rows={2}
+              className="w-full rounded-xl border border-border/50 bg-background text-sm px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+            />
           </div>
         </div>
 
@@ -911,6 +773,91 @@ function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir }: Cli
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Notificações Bell ───────────────────────────────────────────────────────
+
+function NotificacoesBell({ userId }: { userId: string }) {
+  const [notifs, setNotifs] = useState<{ id: string; titulo: string; mensagem: string | null; lida: boolean; created_at: string }[]>([]);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase
+      .from("notificacoes")
+      .select("id, titulo, mensagem, lida, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setNotifs((data as typeof notifs) ?? []);
+  }, [userId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Realtime subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel(`notif-${userId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notificacoes", filter: `user_id=eq.${userId}` }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, load]);
+
+  // Fecha ao clicar fora
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  async function marcarLidas() {
+    const ids = notifs.filter(n => !n.lida).map(n => n.id);
+    if (ids.length === 0) return;
+    await supabase.from("notificacoes").update({ lida: true }).in("id", ids);
+    setNotifs(prev => prev.map(n => ({ ...n, lida: true })));
+  }
+
+  const naoLidas = notifs.filter(n => !n.lida).length;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => { setOpen(v => !v); if (!open) marcarLidas(); }}
+        className="relative h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
+      >
+        <Bell className="h-4 w-4" />
+        {naoLidas > 0 && (
+          <span className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-violet-500 border-2 border-background" />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-72 rounded-2xl border border-border bg-card shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
+            <span className="text-[12px] font-semibold">Notificações</span>
+            {naoLidas > 0 && <span className="text-[10px] text-violet-500">{naoLidas} nova{naoLidas > 1 ? "s" : ""}</span>}
+          </div>
+          <div className="max-h-64 overflow-y-auto divide-y divide-border/20">
+            {notifs.length === 0 ? (
+              <div className="py-8 text-center text-[12px] text-muted-foreground">Nenhuma notificação</div>
+            ) : notifs.map(n => (
+              <div key={n.id} className={cn("px-4 py-3 transition-colors", n.lida ? "" : "bg-violet-500/5")}>
+                <div className="flex items-start gap-2">
+                  {!n.lida && <span className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0 mt-1.5" />}
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-semibold">{n.titulo}</p>
+                    {n.mensagem && <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{n.mensagem}</p>}
+                    <p className="text-[10px] text-muted-foreground/50 mt-1">{new Date(n.created_at).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1469,6 +1416,7 @@ export default function Comercial() {
               <LogOut className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Sair</span>
             </Button>
+            {user && <NotificacoesBell userId={user.id} />}
           </div>
         </div>
       </header>
