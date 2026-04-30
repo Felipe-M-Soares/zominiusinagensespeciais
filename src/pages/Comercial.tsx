@@ -1300,7 +1300,9 @@ export default function Comercial() {
   // Clientes
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loadingClientes, setLoadingClientes] = useState(true);
-  const [clienteSearch, setClienteSearch] = useState("");
+  const [clienteSearchFilter, setClienteSearchFilter] = useState(""); // só atualiza em debounce
+  const clienteSearchRef = useRef<HTMLInputElement>(null);
+  const clienteSearchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [clienteModal, setClienteModal] = useState(false);
   const [editCliente, setEditCliente] = useState<Cliente | null>(null);
   const [deleteCliente, setDeleteCliente] = useState<Cliente | null>(null);
@@ -1384,9 +1386,9 @@ export default function Comercial() {
   const pedidosFiltrados = pedidos.filter(p => filtroStatus === "todos" || p.status === filtroStatus);
   const pedidosPendentes = pedidos.filter(p => p.status === "pendente").length;
   const clientesFiltrados = clientes.filter(c =>
-    c.nome.toLowerCase().includes(clienteSearch.toLowerCase()) ||
-    (c.documento ?? "").includes(clienteSearch) ||
-    (c.telefone ?? "").includes(clienteSearch)
+    c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
+    (c.documento ?? "").includes(clienteSearchFilter) ||
+    (c.telefone ?? "").includes(clienteSearchFilter)
   );
 
   return (
@@ -1561,8 +1563,23 @@ export default function Comercial() {
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                    <Input placeholder="Buscar cliente..." value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} className="pl-9 h-9 text-sm" />
-                    {clienteSearch && <button type="button" onClick={() => setClienteSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>}
+                    <input
+                      ref={clienteSearchRef}
+                      type="text"
+                      placeholder="Buscar cliente..."
+                      defaultValue=""
+                      onChange={e => {
+                        if (clienteSearchDebounce.current) clearTimeout(clienteSearchDebounce.current);
+                        const v = e.target.value;
+                        clienteSearchDebounce.current = setTimeout(() => setClienteSearchFilter(v), 300);
+                      }}
+                      className="pl-9 pr-8 h-9 w-full text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    />
+                    {clienteSearchFilter && (
+                      <button type="button" onClick={() => { if (clienteSearchRef.current) clienteSearchRef.current.value = ""; setClienteSearchFilter(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                   <Button size="sm" className="h-9 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setEditCliente(null); setClienteModal(true); }}>
                     <UserPlus className="h-3.5 w-3.5" /> Novo
@@ -1574,8 +1591,8 @@ export default function Comercial() {
                 ) : clientesFiltrados.length === 0 ? (
                   <div className="text-center py-16 space-y-2">
                     <User className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-                    <p className="text-muted-foreground font-medium">{clienteSearch ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}</p>
-                    {!clienteSearch && (
+                    <p className="text-muted-foreground font-medium">{clienteSearchFilter ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}</p>
+                    {!clienteSearchFilter && (
                       <button type="button" onClick={() => { setEditCliente(null); setClienteModal(true); }} className="mt-2 inline-flex items-center gap-1.5 h-8 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors">
                         <UserPlus className="h-3.5 w-3.5" /> Cadastrar primeiro cliente
                       </button>

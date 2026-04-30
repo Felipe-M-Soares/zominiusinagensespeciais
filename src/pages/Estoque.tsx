@@ -677,17 +677,19 @@ export default function Estoque() {
   const hasActiveFilters = filterStatus !== "all" || !!filterLocation || !!filterBrand;
 
   const handleSearchChange = useCallback((v: string) => {
-    setSearch(v);
+    // Não atualiza `search` a cada tecla — só dispara querySearch com debounce
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!v.trim()) {
+      setSearch("");
       setQuerySearch("");
       setVisibleCount(ITEMS_PER_PAGE);
       return;
     }
     debounceRef.current = setTimeout(() => {
+      setSearch(v.trim());
       setQuerySearch(v.trim());
       setVisibleCount(ITEMS_PER_PAGE);
-    }, 400);
+    }, 350);
   }, []);
 
   function handleSearchSubmit(v: string) {
@@ -698,6 +700,7 @@ export default function Estoque() {
   }
 
   function handleSelectSuggestion(suggestion: string) {
+    if (inputRef.current) inputRef.current.value = suggestion;
     setSearch(suggestion);
     setQuerySearch(suggestion);
     setShowAutocomplete(false);
@@ -909,12 +912,16 @@ export default function Estoque() {
                 <Input
                   ref={inputRef}
                   placeholder="Buscar por modelo, referência, UDI ou lote..."
-                  value={search}
+                  defaultValue=""
                   onChange={(e) => handleSearchChange(e.target.value)}
                   onFocus={() => { if (autocompleteItems.length > 0) setShowAutocomplete(true); }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      handleSearchSubmit((e.target as HTMLInputElement).value.trim());
+                      const v = (e.target as HTMLInputElement).value.trim();
+                      if (debounceRef.current) clearTimeout(debounceRef.current);
+                      setSearch(v); setQuerySearch(v);
+                      setVisibleCount(ITEMS_PER_PAGE);
+                      setShowAutocomplete(false);
                       requestAnimationFrame(() => inputRef.current?.select());
                     }
                     if (e.key === "Escape") setShowAutocomplete(false);
@@ -924,7 +931,11 @@ export default function Estoque() {
                 {search && (
                   <button
                     type="button"
-                    onClick={() => { setSearch(""); setQuerySearch(""); setShowAutocomplete(false); inputRef.current?.focus(); }}
+                    onClick={() => {
+                      if (inputRef.current) inputRef.current.value = "";
+                      setSearch(""); setQuerySearch(""); setShowAutocomplete(false);
+                      inputRef.current?.focus();
+                    }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <X className="h-3.5 w-3.5" />

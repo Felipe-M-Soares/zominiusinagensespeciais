@@ -1234,7 +1234,9 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
   const [editCliente, setEditCliente] = useState<Cliente | null>(null);
   const [deleteCliente, setDeleteCliente] = useState<Cliente | null>(null);
   const [deletingCliente, setDeletingCliente] = useState(false);
-  const [clienteSearch, setClienteSearch] = useState("");
+  const [clienteSearchFilter, setClienteSearchFilter] = useState("");
+  const clienteSearchRef = useRef<HTMLInputElement>(null);
+  const clienteSearchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pedidoComCliente, setPedidoComCliente] = useState<Cliente | null>(null);
 
   const loadPedidos = useCallback(async () => {
@@ -1315,9 +1317,9 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
   const pedidosFiltrados = pedidos.filter(p => filtroStatus === "todos" || p.status === filtroStatus);
   const clientesFiltrados = clientes.filter(c =>
-    c.nome.toLowerCase().includes(clienteSearch.toLowerCase()) ||
-    (c.documento ?? "").includes(clienteSearch) ||
-    (c.telefone ?? "").includes(clienteSearch)
+    c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
+    (c.documento ?? "").includes(clienteSearchFilter) ||
+    (c.telefone ?? "").includes(clienteSearchFilter)
   );
 
   const pedidosPendentes = pedidos.filter(p => p.status === "pendente").length;
@@ -1492,14 +1494,20 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <Input
+              <input
+                ref={clienteSearchRef}
+                type="text"
                 placeholder="Buscar cliente..."
-                value={clienteSearch}
-                onChange={e => setClienteSearch(e.target.value)}
-                className="pl-9 h-9 text-sm"
+                defaultValue=""
+                onChange={e => {
+                  if (clienteSearchDebounce.current) clearTimeout(clienteSearchDebounce.current);
+                  const v = e.target.value;
+                  clienteSearchDebounce.current = setTimeout(() => setClienteSearchFilter(v), 300);
+                }}
+                className="pl-9 pr-8 h-9 w-full text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
-              {clienteSearch && (
-                <button type="button" onClick={() => setClienteSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              {clienteSearchFilter && (
+                <button type="button" onClick={() => { if (clienteSearchRef.current) clienteSearchRef.current.value = ""; setClienteSearchFilter(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -1516,8 +1524,8 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
           ) : clientesFiltrados.length === 0 ? (
             <div className="text-center py-16 space-y-2">
               <User className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-              <p className="text-muted-foreground font-medium">{clienteSearch ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}</p>
-              {!clienteSearch && (
+              <p className="text-muted-foreground font-medium">{clienteSearchFilter ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}</p>
+              {!clienteSearchFilter && (
                 <button
                   type="button"
                   onClick={() => { setEditCliente(null); setClienteModal(true); }}
