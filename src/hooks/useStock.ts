@@ -303,6 +303,27 @@ export async function registerMovement(
     return { ok: false, error: "Erro ao atualizar estoque. Operação cancelada para evitar inconsistência." };
   }
 
+  // Se foi saída com lote, verifica se o saldo do lote zerou → deleta todos os movimentos do lote
+  if (type === "saida" && lote?.trim()) {
+    const loteUpper = lote.trim().toUpperCase();
+    const { data: movs } = await supabase
+      .from("stock_movements")
+      .select("id, type, quantity")
+      .eq("stock_item_id", stockItemId)
+      .eq("lote", loteUpper);
+
+    if (movs && movs.length > 0) {
+      const saldo = (movs as { id: string; type: string; quantity: number }[]).reduce((acc, m) => {
+        return acc + (m.type === "entrada" ? m.quantity : -m.quantity);
+      }, 0);
+
+      if (saldo <= 0) {
+        const ids = (movs as { id: string }[]).map((m) => m.id);
+        await supabase.from("stock_movements").delete().in("id", ids);
+      }
+    }
+  }
+
   return { ok: true };
 }
 
