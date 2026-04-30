@@ -591,6 +591,7 @@ interface PedidoCardProps {
 
 function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [confirmado, setConfirmado] = useState(false);
 
   const statusColor = {
     pendente: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25",
@@ -695,10 +696,12 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps)
             <div className="flex gap-1.5">
               <button
                 type="button"
-                onClick={() => onFaturar(pedido)}
-                className="flex-1 h-8 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5"
+                onClick={() => { if (confirmado) return; setConfirmado(true); onFaturar(pedido); }}
+                disabled={confirmado}
+                className="flex-1 h-8 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
               >
-                <Receipt className="h-3.5 w-3.5" /> Faturar
+                {confirmado ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Receipt className="h-3.5 w-3.5" />}
+                {confirmado ? "Confirmado" : "Faturar"}
               </button>
               <button
                 type="button"
