@@ -6,7 +6,7 @@ import { DeviceCard } from "@/components/DeviceCard";
 import { DeviceDetail } from "@/components/DeviceDetail";
 import type { Device } from "@/types/device";
 import { Button } from "@/components/ui/button";
-import { LogOut, Settings, BookOpen, ChevronDown, Loader2, Boxes, ShoppingBag, Menu, X as XIcon } from "lucide-react";
+import { LogOut, Settings, BookOpen, ChevronDown, Loader2, Boxes, ShoppingBag, Receipt, Menu, X as XIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { CatalogButton } from "@/components/CatalogButton";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
@@ -150,6 +150,16 @@ const Index = () => {
             >
               <ShoppingBag className="h-4 w-4 sm:mr-1" />
               <span className="hidden sm:inline">Comercial</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/financeiro")}
+              className="h-8 px-2 sm:px-3 text-xs"
+              title="Financeiro"
+            >
+              <Receipt className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">Financeiro</span>
             </Button>
             <CatalogButton />
             <Button

@@ -32,6 +32,7 @@ import {
   Plus,
   Trash2,
   CheckCircle2,
+  PackageCheck,
   Clock,
   Package,
   Tag,
@@ -329,9 +330,23 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setQtd(1);
   }
 
+  // Quantidade já no carrinho para essa peça
+  function qtdJaNoCarrinho(stockItemId: string) {
+    return itens.filter(i => i.stock_item_id === stockItemId).reduce((s, i) => s + i.quantidade, 0);
+  }
+
+  // Máximo disponível = qty na expedição - já no carrinho
+  const maxDisponivel = selectedPeca
+    ? Math.max(0, selectedPeca.quantity - qtdJaNoCarrinho(selectedPeca.id))
+    : 0;
+
   function addItem() {
     if (!selectedPeca) return;
     if (qtd < 1) { toast.error("Quantidade inválida"); return; }
+    if (qtd > maxDisponivel) {
+      toast.error(`Disponível na expedição: ${maxDisponivel} un.`);
+      return;
+    }
     setItens(prev => [...prev, {
       stock_item_id: selectedPeca.id,
       lote: "",  // lote será escolhido pelo estoque na separação
@@ -477,14 +492,18 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               <input
                 type="number"
                 min={1}
+                max={maxDisponivel || undefined}
                 value={qtd}
-                onChange={e => setQtd(Math.max(1, parseInt(e.target.value) || 1))}
+                onChange={e => {
+                  const v = Math.max(1, parseInt(e.target.value) || 1);
+                  setQtd(maxDisponivel > 0 ? Math.min(v, maxDisponivel) : v);
+                }}
                 className="w-16 h-10 rounded-xl border border-border/50 bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
               />
               <button
                 type="button"
                 onClick={addItem}
-                disabled={!selectedPeca}
+                disabled={!selectedPeca || maxDisponivel === 0}
                 className="h-10 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-40 transition-colors flex items-center gap-1.5"
               >
                 <Plus className="h-4 w-4" />
@@ -494,7 +513,9 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/8 border border-violet-500/20 text-[11px]">
                 <Package className="h-3 w-3 text-violet-500 shrink-0" />
                 <span className="text-violet-600 dark:text-violet-400 font-medium truncate">{selectedPeca.device?.model}</span>
-                <span className="text-muted-foreground/60 ml-auto shrink-0 font-mono">{selectedPeca.device?.reference}</span>
+                <span className={cn("ml-auto shrink-0 font-mono font-semibold", maxDisponivel === 0 ? "text-destructive" : "text-muted-foreground/60")}>
+                  {maxDisponivel === 0 ? "sem estoque" : `máx. ${maxDisponivel} un.`}
+                </span>
               </div>
             )}
           </div>
@@ -651,12 +672,27 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps)
           </button>
           {pedido.status === "pendente" && isAdmin && (
             <div className="flex gap-1.5">
-              <button type="button" onClick={() => onFaturar(pedido)} className="flex-1 h-8 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5">
-                <Receipt className="h-3.5 w-3.5" /> Faturar
+              <button type="button" onClick={() => onFaturar(pedido)} className="flex-1 h-8 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar
               </button>
               <button type="button" onClick={() => onCancelar(pedido)} className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors" title="Cancelar">
                 <Ban className="h-3.5 w-3.5" />
               </button>
+            </div>
+          )}
+          {pedido.status === "separando" && (
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-lg bg-blue-500/8 border border-blue-500/20 text-blue-600 text-[11px]">
+              <PackageCheck className="h-3.5 w-3.5" /> Estoque separando...
+            </div>
+          )}
+          {pedido.status === "pronto" && (
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-lg bg-emerald-500/8 border border-emerald-500/20 text-emerald-600 text-[11px]">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Pronto — aguardando NF
+            </div>
+          )}
+          {pedido.status === "enviado" && (
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-lg bg-success/8 border border-success/20 text-success text-[11px]">
+              <Truck className="h-3.5 w-3.5" /> Enviado ao cliente! 🎉
             </div>
           )}
         </div>
@@ -665,7 +701,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps)
   );
 }
 
-// ─── Modal: Faturar ───────────────────────────────────────────────────────────
+// ─── Modal: Confirmar Pedido ──────────────────────────────────────────────────
 
 interface FaturarModalProps {
   pedido: PedidoCompleto | null;
@@ -674,29 +710,25 @@ interface FaturarModalProps {
 }
 
 function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
-  const { user } = useAuth();
   const [saving, setSaving] = useState(false);
 
   if (!pedido) return null;
 
-  async function handleFaturar() {
+  async function handleConfirmar() {
     if (!pedido) return;
     setSaving(true);
     try {
-      const { error: pedErr } = await supabase.from("pedidos_comerciais").update({ status: "faturado", faturado_por: user?.id, faturado_em: new Date().toISOString() }).eq("id", pedido.id);
-      if (pedErr) throw pedErr;
-
-      for (const item of pedido.itens) {
-        const { data: sd } = await supabase.from("stock_items").select("quantity").eq("id", item.stock_item_id).single();
-        const novaQtd = Math.max(0, ((sd as { quantity: number } | null)?.quantity ?? 0) - item.quantidade);
-        await supabase.from("stock_items").update({ quantity: novaQtd }).eq("id", item.stock_item_id);
-        await supabase.from("stock_movements").insert({ stock_item_id: item.stock_item_id, type: "saida", quantity: item.quantidade, lote: item.lote, notes: `Pedido comercial — cliente: ${pedido.cliente_nome}`, user_display_name: "Comercial" });
-      }
-
-      toast.success("Pedido faturado! Peças retiradas da expedição.");
+      // Confirma o pedido — status permanece "pendente" e vai para a fila do estoque
+      // O estoque vai separar → pronto → financeiro emite NF → enviado
+      const { error } = await supabase
+        .from("pedidos_comerciais")
+        .update({ status: "pendente" })
+        .eq("id", pedido.id);
+      if (error) throw error;
+      toast.success("Pedido confirmado! O estoque irá separar as peças.");
       onSuccess();
     } catch {
-      toast.error("Erro ao faturar pedido.");
+      toast.error("Erro ao confirmar pedido.");
     } finally {
       setSaving(false);
     }
@@ -708,21 +740,25 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="flex items-start gap-3">
-          <div className="h-9 w-9 rounded-xl bg-success/10 flex items-center justify-center shrink-0"><Receipt className="h-4 w-4 text-success" /></div>
+          <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="h-4 w-4 text-violet-500" />
+          </div>
           <div>
-            <p className="text-sm font-semibold">Faturar Pedido?</p>
+            <p className="text-sm font-semibold">Confirmar Pedido?</p>
             <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
           </div>
         </div>
-        <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2.5">
-          <p className="text-[12px] text-muted-foreground"><strong className="text-foreground">{total} unidade{total !== 1 ? "s" : ""}</strong> serão retiradas da expedição e o pedido marcado como <strong>faturado</strong>.</p>
-          <p className="text-[11px] text-muted-foreground/70 mt-1">Esta ação não pode ser desfeita.</p>
+        <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2.5 space-y-1">
+          <p className="text-[12px] text-muted-foreground">
+            <strong className="text-foreground">{total} unidade{total !== 1 ? "s" : ""}</strong> serão encaminhadas ao estoque para separação.
+          </p>
+          <p className="text-[11px] text-muted-foreground/70">O estoque vai separar os lotes → financeiro emite a NF → cliente recebe.</p>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
-          <button type="button" onClick={handleFaturar} disabled={saving} className="flex-1 h-9 rounded-xl bg-success text-success-foreground text-sm font-semibold hover:bg-success/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
-            {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
-            Faturar
+          <button type="button" onClick={handleConfirmar} disabled={saving} className="flex-1 h-9 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-500 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
+            {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+            Confirmar Pedido
           </button>
         </div>
       </div>
