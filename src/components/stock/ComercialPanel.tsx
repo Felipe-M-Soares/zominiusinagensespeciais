@@ -298,14 +298,14 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   );
 
   const expedicaoDisponiveis = expedicaoItems.filter(i =>
-    i.quantity > 0 &&
+    (i.quantity_available ?? Math.max(0, i.quantity - i.quantity_reserved)) > 0 &&
     (i.device?.model?.toLowerCase().includes(pecaSearch.toLowerCase()) ||
      i.device?.reference?.toLowerCase().includes(pecaSearch.toLowerCase()))
   );
 
   function addItem() {
     if (!selectedPeca || !lote.trim() || qtd < 1) return;
-    const disponivel = selectedPeca.quantity;
+    const disponivel = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
     const jaReservado = itens.filter(i => i.stock_item_id === selectedPeca.id).reduce((s, i) => s + i.quantidade, 0);
     if (qtd > (disponivel - jaReservado)) {
       toast.error(`Apenas ${disponivel - jaReservado} unidades disponíveis`);
@@ -353,6 +353,20 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
       const { error: itensErr } = await supabase.from("pedido_itens").insert(itensInsert);
       if (itensErr) throw itensErr;
+
+      // Reservar peças: incrementar quantity_reserved em cada stock_item da expedição
+      for (const item of itens) {
+        const { data: si } = await supabase
+          .from("stock_items")
+          .select("quantity_reserved")
+          .eq("id", item.stock_item_id)
+          .single();
+        const currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+        await supabase
+          .from("stock_items")
+          .update({ quantity_reserved: currentReserved + item.quantidade })
+          .eq("id", item.stock_item_id);
+      }
 
       toast.success("Pedido criado! Peças reservadas na expedição.");
       onSuccess();
@@ -458,7 +472,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                         <p className="text-sm font-medium">{item.device?.model}</p>
                         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                           <span>{item.device?.reference}</span>
-                          <span className="text-success font-semibold">{item.quantity} disp.</span>
+                          <span className="text-success font-semibold">{item.quantity_available ?? Math.max(0, item.quantity - item.quantity_reserved)} disp.</span>
                         </div>
                       </button>
                     ))}
@@ -720,40 +734,14 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
     if (!pedido) return;
     setSaving(true);
     try {
-      // 1. Marcar pedido como faturado
+      // Marcar pedido como faturado — estoque já foi descontado ao "Marcar como Pronto"
       const { error: pedErr } = await supabase
         .from("pedidos_comerciais")
         .update({ status: "faturado", faturado_por: user?.id, faturado_em: new Date().toISOString() })
         .eq("id", pedido.id);
       if (pedErr) throw pedErr;
 
-      // 2. Para cada item: registrar saída na expedição
-      for (const item of pedido.itens) {
-        // Buscar qtd atual
-        const { data: stockData } = await supabase
-          .from("stock_items")
-          .select("quantity")
-          .eq("id", item.stock_item_id)
-          .single();
-
-        const qtdAtual = (stockData as { quantity: number } | null)?.quantity ?? 0;
-        const novaQtd = Math.max(0, qtdAtual - item.quantidade);
-
-        // Atualizar quantity
-        await supabase.from("stock_items").update({ quantity: novaQtd }).eq("id", item.stock_item_id);
-
-        // Registrar movimento
-        await supabase.from("stock_movements").insert({
-          stock_item_id: item.stock_item_id,
-          type: "saida",
-          quantity: item.quantidade,
-          lote: item.lote,
-          notes: `Pedido comercial #${pedido.id.slice(0, 8)} — cliente: ${pedido.cliente_nome}`,
-          user_display_name: "Estoque",
-        });
-      }
-
-      toast.success("Pedido faturado! Peças retiradas da expedição.");
+      toast.success("Pedido faturado!");
       onSuccess();
     } catch {
       toast.error("Erro ao faturar pedido.");
@@ -964,20 +952,34 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
 
 // ─── Histórico Geral Comercial (modal) ───────────────────────────────────────
 
-function HistoricoGeralComercial({ open, onClose }: { open: boolean; onClose: () => void }) {
+function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { open: boolean; onClose: () => void; currentUserName: string | null; isAdmin: boolean }) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
 
+  async function loadMovements(cancelled: { v: boolean }) {
+    setLoading(true);
+    try {
+      const data = await fetchAllMovements(200);
+      // Filtra apenas expedição; se não for admin, filtra também pelo nome da vendedora
+      const filtered = data.filter(m => {
+        if (m.fase !== "expedicao") return false;
+        if (isAdmin) return true;
+        // vendedora vê apenas movimentos relacionados aos seus pedidos (registrados com seu nome)
+        return m.user_display_name === currentUserName;
+      });
+      if (!cancelled.v) { setMovements(filtered); setLoading(false); }
+    } catch {
+      if (!cancelled.v) setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    let cancelled = false;
+    const cancelled = { v: false };
     if (open) {
-      setLoading(true);
-      fetchAllMovements(100).then(data => {
-        if (!cancelled) { setMovements(data.filter(m => m.fase === "expedicao")); setLoading(false); }
-      }).catch(() => { if (!cancelled) setLoading(false); });
+      loadMovements(cancelled);
     } else setMovements([]);
-    return () => { cancelled = true; };
-  }, [open]);
+    return () => { cancelled.v = true; };
+  }, [open, currentUserName, isAdmin]);
 
   function fmtDate(iso: string) {
     const d = new Date(iso);
@@ -1000,7 +1002,7 @@ function HistoricoGeralComercial({ open, onClose }: { open: boolean; onClose: ()
               <p className="text-[12px] text-muted-foreground mt-0.5">Últimas {movements.length} movimentações</p>
             </div>
             <div className="flex items-center gap-1.5">
-              <button type="button" onClick={() => { setLoading(true); fetchAllMovements(100).then(d => { setMovements(d.filter(m => m.fase === "expedicao")); setLoading(false); }); }} disabled={loading} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
+              <button type="button" onClick={() => loadMovements({ v: false })} disabled={loading} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               </button>
               <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
@@ -1327,6 +1329,19 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
   async function handleCancelar() {
     if (!cancelarPedido) return;
     setCancelando(true);
+    // Liberar reservas das peças
+    for (const item of cancelarPedido.itens) {
+      const { data: si } = await supabase
+        .from("stock_items")
+        .select("quantity_reserved")
+        .eq("id", item.stock_item_id)
+        .single();
+      const currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+      await supabase
+        .from("stock_items")
+        .update({ quantity_reserved: Math.max(0, currentReserved - item.quantidade) })
+        .eq("id", item.stock_item_id);
+    }
     const { error } = await supabase.from("pedidos_comerciais").update({ status: "cancelado" }).eq("id", cancelarPedido.id);
     setCancelando(false);
     if (error) { toast.error("Erro ao cancelar."); return; }
@@ -1691,7 +1706,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       )}
 
       {/* Histórico Geral Expedição */}
-      <HistoricoGeralComercial open={historicoOpen} onClose={() => setHistoricoOpen(false)} />
+      <HistoricoGeralComercial open={historicoOpen} onClose={() => setHistoricoOpen(false)} currentUserName={currentUserName} isAdmin={isAdmin} />
     </div>
   );
 }

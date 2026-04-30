@@ -239,10 +239,12 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
   const [lotesDisponiveis, setLotesDisponiveis] = useState<Record<string, LoteDisponivel[]>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!pedido) return;
     setLoading(true);
+    setSaved(false);
 
     async function loadLotes() {
       if (!pedido) return;
@@ -346,39 +348,11 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
 
     if (error) { setSaving(false); toast.error("Erro ao iniciar separação."); return; }
 
-    // Reserva as quantidades em cada stock_item da expedição
-    for (const item of pedido.itens) {
-      // Determina o stock_item de expedição correto
-      const { data: si } = await supabase
-        .from("stock_items")
-        .select("id, quantity_reserved, device_id, fase")
-        .eq("id", item.stock_item_id)
-        .single();
-
-      let expItemId = item.stock_item_id;
-      let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-
-      if (si && (si as { fase: string }).fase !== "expedicao") {
-        // Busca o item de expedição pelo device_id
-        const { data: expSi } = await supabase
-          .from("stock_items")
-          .select("id, quantity_reserved")
-          .eq("device_id", (si as { device_id: string }).device_id)
-          .eq("fase", "expedicao")
-          .single();
-        if (expSi) {
-          expItemId = (expSi as { id: string }).id;
-          currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
-        }
-      }
-
-      await supabase
-        .from("stock_items")
-        .update({ quantity_reserved: currentReserved + item.quantidade })
-        .eq("id", expItemId);
-    }
+    // Nota: a reserva (quantity_reserved) já foi feita na criação do pedido comercial.
+    // Aqui apenas mudamos o status para "separando".
 
     setSaving(false);
+    setSaved(true);
     toast.success("Separação iniciada! Peças reservadas.");
     onClose();
     onSuccess();
@@ -473,11 +447,11 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
           <button
             type="button"
             onClick={handleConfirmar}
-            disabled={saving || loading}
+            disabled={saving || loading || saved}
             className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {saving ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            Confirmar e Reservar Peças
+            {saving ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : saved ? <CheckCircle2 className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+            {saved ? "Confirmado!" : "Confirmar e Reservar Peças"}
           </button>
         </div>
       </div>
@@ -560,13 +534,59 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
   async function handleMarcarPronto(pedido: Pedido) {
     if (!user) return;
+
+    // Retirar peças da expedição e liberar reserva
+    for (const item of pedido.itens) {
+      const { data: si } = await supabase
+        .from("stock_items")
+        .select("id, quantity, quantity_reserved, device_id, fase")
+        .eq("id", item.stock_item_id)
+        .single();
+
+      let expItemId = item.stock_item_id;
+      let currentQty = (si as { quantity: number } | null)?.quantity ?? 0;
+      let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+
+      if (si && (si as { fase: string }).fase !== "expedicao") {
+        const { data: expSi } = await supabase
+          .from("stock_items")
+          .select("id, quantity, quantity_reserved")
+          .eq("device_id", (si as { device_id: string }).device_id)
+          .eq("fase", "expedicao")
+          .single();
+        if (expSi) {
+          expItemId = (expSi as { id: string }).id;
+          currentQty = (expSi as { quantity: number }).quantity ?? 0;
+          currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
+        }
+      }
+
+      const novaQtd = Math.max(0, currentQty - item.quantidade);
+      const novaReserva = Math.max(0, currentReserved - item.quantidade);
+
+      await supabase.from("stock_items").update({
+        quantity: novaQtd,
+        quantity_reserved: novaReserva,
+      }).eq("id", expItemId);
+
+      // Registrar saída
+      await supabase.from("stock_movements").insert({
+        stock_item_id: expItemId,
+        type: "saida",
+        quantity: item.quantidade,
+        lote: item.lote ?? null,
+        notes: `Pedido comercial — cliente: ${pedido.cliente_nome} (separação concluída)`,
+        user_display_name: pedido.vendedora_nome ?? "Estoque",
+      });
+    }
+
     const { error } = await supabase
       .from("pedidos_comerciais")
       .update({ status: "pronto" })
       .eq("id", pedido.id);
 
     if (error) { toast.error("Erro ao marcar como pronto."); return; }
-    toast.success("Pedido marcado como pronto! Aguardando nota fiscal.");
+    toast.success("Pedido marcado como pronto! Peças retiradas da expedição.");
     loadPedidos();
   }
 
