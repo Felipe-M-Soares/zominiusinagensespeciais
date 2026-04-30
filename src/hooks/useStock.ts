@@ -303,27 +303,6 @@ export async function registerMovement(
     return { ok: false, error: "Erro ao atualizar estoque. Operação cancelada para evitar inconsistência." };
   }
 
-  // Se foi saída com lote, verifica se o saldo do lote zerou → deleta todos os movimentos do lote
-  if (type === "saida" && lote?.trim()) {
-    const loteUpper = lote.trim().toUpperCase();
-    const { data: movs } = await supabase
-      .from("stock_movements")
-      .select("id, type, quantity")
-      .eq("stock_item_id", stockItemId)
-      .eq("lote", loteUpper);
-
-    if (movs && movs.length > 0) {
-      const saldo = (movs as { id: string; type: string; quantity: number }[]).reduce((acc, m) => {
-        return acc + (m.type === "entrada" ? m.quantity : -m.quantity);
-      }, 0);
-
-      if (saldo <= 0) {
-        const ids = (movs as { id: string }[]).map((m) => m.id);
-        await supabase.from("stock_movements").delete().in("id", ids);
-      }
-    }
-  }
-
   return { ok: true };
 }
 
@@ -708,21 +687,43 @@ export async function cancelMovement(
 export async function deleteStockItem(
   stockItemId: string
 ): Promise<{ ok: boolean; error?: string }> {
-  // Deleta pedido_itens vinculados (FK restrict impede deletar stock_item direto)
-  const { error: piErr } = await supabase
+  // 1. Busca pedido_itens vinculados a este stock_item
+  const { data: pedidoItens, error: piSelectErr } = await supabase
     .from("pedido_itens")
-    .delete()
+    .select("id, pedido_id")
     .eq("stock_item_id", stockItemId);
-  if (piErr) return { ok: false, error: piErr.message };
+  if (piSelectErr) return { ok: false, error: piSelectErr.message };
 
-  // Deleta movimentos vinculados
+  if (pedidoItens && pedidoItens.length > 0) {
+    const pedidoIds = [...new Set((pedidoItens as { id: string; pedido_id: string }[]).map(i => i.pedido_id))];
+
+    // 2. Deleta os pedido_itens vinculados
+    const { error: piErr } = await supabase
+      .from("pedido_itens")
+      .delete()
+      .eq("stock_item_id", stockItemId);
+    if (piErr) return { ok: false, error: piErr.message };
+
+    // 3. Para cada pedido afetado, verifica se ficou sem itens e deleta se sim
+    for (const pedidoId of pedidoIds) {
+      const { data: remaining } = await supabase
+        .from("pedido_itens")
+        .select("id")
+        .eq("pedido_id", pedidoId);
+      if (!remaining || remaining.length === 0) {
+        await supabase.from("pedidos_comerciais").delete().eq("id", pedidoId);
+      }
+    }
+  }
+
+  // 4. Deleta movimentos vinculados
   const { error: mvErr } = await supabase
     .from("stock_movements")
     .delete()
     .eq("stock_item_id", stockItemId);
   if (mvErr) return { ok: false, error: mvErr.message };
 
-  // Agora deleta o stock_item
+  // 5. Agora deleta o stock_item
   const { error } = await supabase
     .from("stock_items")
     .delete()

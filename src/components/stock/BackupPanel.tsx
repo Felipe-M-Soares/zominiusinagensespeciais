@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   DatabaseBackup, Download, RefreshCw, Calendar,
-  CheckCircle2, Clock, User, FileSpreadsheet,
+  CheckCircle2, Clock, User, FileSpreadsheet, Trash2, AlertTriangle,
 } from "lucide-react";
 import {
   getBackupConfig, saveBackupConfig, runBackup, listBackups, downloadBackup,
@@ -20,6 +20,25 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+
+// ─── Apagar todo o histórico ─────────────────────────────────────────────────
+async function clearAllHistory(): Promise<{ ok: boolean; error?: string }> {
+  // Deleta na ordem correta para respeitar FKs:
+  // 1. pedido_itens (referencia stock_items e pedidos_comerciais)
+  const { error: e1 } = await supabase.from("pedido_itens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (e1) return { ok: false, error: e1.message };
+  // 2. pedidos_comerciais
+  const { error: e2 } = await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (e2) return { ok: false, error: e2.message };
+  // 3. stock_movements
+  const { error: e3 } = await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (e3) return { ok: false, error: e3.message };
+  // 4. Zera quantities nos stock_items
+  const { error: e4 } = await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
+  if (e4) return { ok: false, error: e4.message };
+  return { ok: true };
+}
 
 interface Props {
   open: boolean;
@@ -388,10 +407,78 @@ export function BackupPanel({ open, onClose }: Props) {
                   </div>
                 </div>
               )}
+
+              {/* ── Apagar todo o histórico ───────────────────────────────── */}
+              {isAdmin && (
+                <div className="pt-2 border-t border-border/30">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                    Zona de Perigo
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setClearConfirm(true)}
+                    className="w-full flex items-center justify-center gap-2 h-9 rounded-xl border border-destructive/40 text-destructive text-xs font-semibold hover:bg-destructive/10 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Apagar todo o histórico do site
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Modal de confirmação — apagar histórico */}
+    {clearConfirm && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-destructive">Apagar todo o histórico?</p>
+              <p className="text-[12px] text-muted-foreground mt-1">
+                Isso vai apagar <strong>todos os movimentos</strong>, pedidos comerciais e zerar o estoque de todas as peças. Esta ação <strong>não pode ser desfeita</strong>.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setClearConfirm(false)}
+              disabled={clearing}
+              className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={clearing}
+              onClick={async () => {
+                setClearing(true);
+                const result = await clearAllHistory();
+                setClearing(false);
+                if (result.ok) {
+                  toast.success("Histórico apagado com sucesso.");
+                  setClearConfirm(false);
+                  onClose();
+                } else {
+                  toast.error(result.error ?? "Erro ao apagar histórico.");
+                }
+              }}
+              className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
+            >
+              {clearing
+                ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                : <Trash2 className="h-3.5 w-3.5" />}
+              Apagar tudo
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   );
 }
