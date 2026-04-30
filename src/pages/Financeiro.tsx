@@ -103,7 +103,7 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
     if (!pedido || !user || !nf.trim()) return;
     setSaving(true);
 
-    // 1. Atualiza pedido: faturado → enviado + NF
+    // 1. Atualiza pedido: pronto → enviado + NF
     const now = new Date().toISOString();
     const { error } = await supabase
       .from("pedidos_comerciais")
@@ -120,7 +120,52 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
 
     if (error) { toast.error("Erro ao emitir nota fiscal."); setSaving(false); return; }
 
-    // 2. Cria notificação para a vendedora
+    // 2. Dá baixa no estoque e libera reservas
+    for (const item of pedido.itens) {
+      const { data: si } = await supabase
+        .from("stock_items")
+        .select("id, quantity, quantity_reserved, device_id, fase")
+        .eq("id", item.stock_item_id)
+        .single();
+
+      let expItemId = item.stock_item_id;
+      let currentQty = (si as { quantity: number } | null)?.quantity ?? 0;
+      let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+
+      if (si && (si as { fase: string }).fase !== "expedicao") {
+        const { data: expSi } = await supabase
+          .from("stock_items")
+          .select("id, quantity, quantity_reserved")
+          .eq("device_id", (si as { device_id: string }).device_id)
+          .eq("fase", "expedicao")
+          .single();
+        if (expSi) {
+          expItemId = (expSi as { id: string }).id;
+          currentQty = (expSi as { quantity: number }).quantity ?? 0;
+          currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
+        }
+      }
+
+      await supabase
+        .from("stock_items")
+        .update({
+          quantity: Math.max(0, currentQty - item.quantidade),
+          quantity_reserved: Math.max(0, currentReserved - item.quantidade),
+        })
+        .eq("id", expItemId);
+
+      await supabase.from("stock_movements").insert({
+        stock_item_id: expItemId,
+        type: "saida",
+        quantity: item.quantidade,
+        lote: item.lote,
+        reason: `NF ${nf.trim()} — ${pedido.cliente_nome}`,
+        user_id: user.id,
+        user_display_name: "Financeiro",
+      });
+    }
+
+    // 3. Notificação para a vendedora
     if (pedido.vendedora_id) {
       await supabase.from("notificacoes").insert({
         user_id: pedido.vendedora_id,

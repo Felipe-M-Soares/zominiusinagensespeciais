@@ -11,6 +11,8 @@ export interface StockItem {
   id: string;
   device_id: string;
   quantity: number;
+  quantity_reserved: number;
+  quantity_available: number; // computed: quantity - quantity_reserved
   min_quantity: number;
   location: string | null;
   notes: string | null;
@@ -70,7 +72,7 @@ export function useStock(search: string) {
       let query = supabase
         .from("stock_items")
         .select(
-          `id, device_id, quantity, min_quantity, location, notes, fase, created_at, updated_at,
+          `id, device_id, quantity, quantity_reserved, min_quantity, location, notes, fase, created_at, updated_at,
            device:devices(
              id, udi_di, reference, model, brand_name, internal_code,
              anvisa_registration, manufacturer_country, classification_code,
@@ -148,11 +150,17 @@ export function useStock(search: string) {
       }
 
       const normalized: StockItem[] = allRows
-        .map((row: Record<string, unknown>) => ({
-          ...row,
-          fase: (row.fase as StockFase) ?? "intermediaria",
-          device: Array.isArray(row.device) ? (row.device[0] ?? null) : (row.device ?? null),
-        } as StockItem))
+        .map((row: Record<string, unknown>) => {
+          const qty = (row.quantity as number) ?? 0;
+          const reserved = (row.quantity_reserved as number) ?? 0;
+          return {
+            ...row,
+            quantity_reserved: reserved,
+            quantity_available: Math.max(0, qty - reserved),
+            fase: (row.fase as StockFase) ?? "intermediaria",
+            device: Array.isArray(row.device) ? (row.device[0] ?? null) : (row.device ?? null),
+          } as StockItem;
+        })
         // Filtra itens órfãos: stock_items sem device associado causam crash no render
         .filter((item) => item.device != null);
 

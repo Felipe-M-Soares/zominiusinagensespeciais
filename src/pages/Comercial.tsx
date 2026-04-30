@@ -338,7 +338,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
   // Máximo disponível = qty na expedição - já no carrinho
   const maxDisponivel = selectedPeca
-    ? Math.max(0, selectedPeca.quantity - qtdJaNoCarrinho(selectedPeca.id))
+    ? Math.max(0, selectedPeca.quantity_available - qtdJaNoCarrinho(selectedPeca.id))
     : 0;
 
   function addItem() {
@@ -1286,7 +1286,7 @@ export default function Comercial() {
 
   // Peças da expedição (para criar pedidos)
   const { items: allItems, loading: loadingStock } = useStock("");
-  const expedicaoItems = allItems.filter(i => i.fase === "expedicao" && i.quantity > 0);
+  const expedicaoItems = allItems.filter(i => i.fase === "expedicao" && i.quantity_available > 0);
 
   // Pedidos
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>([]);

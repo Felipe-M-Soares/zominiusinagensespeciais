@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useStock } from "@/hooks/useStock";
@@ -522,7 +522,75 @@ function ExpedicaoCard({
 type FilterStatus = "all" | "ok" | "baixo" | "zerado";
 type ActiveView = "dashboard" | "intermediaria" | "expedicao" | "retrabalho" | "recebimento" | "pedidos";
 
-// Itens com qty=0 SÃO exibidos — novos devices importados começam com 0
+// ── SearchBar isolado — não propaga re-renders ao pai a cada tecla ─────────────
+interface SearchBarProps {
+  onSearch: (value: string) => void;
+  onClear: () => void;
+  hasValue: boolean;
+  suggestions: string[];
+  showSuggestions: boolean;
+  onSelectSuggestion: (s: string) => void;
+  onCloseSuggestions: () => void;
+}
+
+const SearchBar = memo(function SearchBar({
+  onSearch, onClear, hasValue, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
+}: SearchBarProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleChange(v: string) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!v.trim()) { onClear(); return; }
+    debounceRef.current = setTimeout(() => onSearch(v.trim()), 350);
+  }
+
+  function handleClear() {
+    if (inputRef.current) inputRef.current.value = "";
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    onClear();
+  }
+
+  return (
+    <div className="relative flex-1" ref={containerRef}>
+      <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Buscar por modelo, referência, UDI ou lote..."
+        onChange={e => handleChange(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === "Enter") {
+            const v = (e.target as HTMLInputElement).value.trim();
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            onSearch(v);
+            onCloseSuggestions();
+            requestAnimationFrame(() => inputRef.current?.select());
+          }
+          if (e.key === "Escape") onCloseSuggestions();
+        }}
+        className="flex h-11 w-full rounded-md border border-input bg-card px-3 py-2 pl-10 pr-10 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      />
+      {hasValue && (
+        <button type="button" onClick={handleClear} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+          {suggestions.map(s => (
+            <button key={s} type="button"
+              onMouseDown={e => { e.preventDefault(); if (inputRef.current) inputRef.current.value = s; onSelectSuggestion(s); }}
+              className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border/30 last:border-0"
+            >{s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
 const HIDE_EMPTY_INTERMEDIARIA = false;
 
 export default function Estoque() {
@@ -907,62 +975,21 @@ export default function Estoque() {
         {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && (
           <div className="space-y-2">
             <div className="flex gap-2">
-              <div className="relative flex-1" ref={autocompleteRef}>
-                <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  ref={inputRef}
-                  placeholder="Buscar por modelo, referência, UDI ou lote..."
-                  defaultValue=""
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  onFocus={() => { if (autocompleteItems.length > 0) setShowAutocomplete(true); }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const v = (e.target as HTMLInputElement).value.trim();
-                      if (debounceRef.current) clearTimeout(debounceRef.current);
-                      setSearch(v); setQuerySearch(v);
-                      setVisibleCount(ITEMS_PER_PAGE);
-                      setShowAutocomplete(false);
-                      requestAnimationFrame(() => inputRef.current?.select());
-                    }
-                    if (e.key === "Escape") setShowAutocomplete(false);
-                  }}
-                  className="pl-10 pr-10 h-11 text-sm bg-card"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (inputRef.current) inputRef.current.value = "";
-                      setSearch(""); setQuerySearch(""); setShowAutocomplete(false);
-                      inputRef.current?.focus();
-                    }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                {/* Autocomplete dropdown */}
-                {showAutocomplete && autocompleteItems.length > 0 && (
-                  <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-                    {autocompleteItems.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => handleSelectSuggestion(s)}
-                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0"
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <SearchBar
+                onSearch={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); }}
+                onClear={() => { setSearch(""); setQuerySearch(""); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
+                hasValue={!!search}
+                suggestions={autocompleteItems}
+                showSuggestions={showAutocomplete}
+                onSelectSuggestion={handleSelectSuggestion}
+                onCloseSuggestions={() => setShowAutocomplete(false)}
+              />
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 className="h-11 w-11 shrink-0"
-                onClick={() => search.trim() && handleSearchSubmit(search.trim())}
+                onClick={() => search.trim() && handleSelectSuggestion(search.trim())}
               >
                 <Search className="h-4 w-4" />
               </Button>

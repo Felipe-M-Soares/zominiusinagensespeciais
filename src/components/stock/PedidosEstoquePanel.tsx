@@ -344,8 +344,41 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
       })
       .eq("id", pedido.id);
 
+    if (error) { setSaving(false); toast.error("Erro ao iniciar separação."); return; }
+
+    // Reserva as quantidades em cada stock_item da expedição
+    for (const item of pedido.itens) {
+      // Determina o stock_item de expedição correto
+      const { data: si } = await supabase
+        .from("stock_items")
+        .select("id, quantity_reserved, device_id, fase")
+        .eq("id", item.stock_item_id)
+        .single();
+
+      let expItemId = item.stock_item_id;
+      let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+
+      if (si && (si as { fase: string }).fase !== "expedicao") {
+        // Busca o item de expedição pelo device_id
+        const { data: expSi } = await supabase
+          .from("stock_items")
+          .select("id, quantity_reserved")
+          .eq("device_id", (si as { device_id: string }).device_id)
+          .eq("fase", "expedicao")
+          .single();
+        if (expSi) {
+          expItemId = (expSi as { id: string }).id;
+          currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
+        }
+      }
+
+      await supabase
+        .from("stock_items")
+        .update({ quantity_reserved: currentReserved + item.quantidade })
+        .eq("id", expItemId);
+    }
+
     setSaving(false);
-    if (error) { toast.error("Erro ao iniciar separação."); return; }
     toast.success("Separação iniciada! Peças reservadas.");
     onClose();
     onSuccess();
@@ -540,13 +573,46 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   async function handleCancelar() {
     if (!cancelarPedido) return;
     setCancelando(true);
+
+    // Se estava separando, libera as reservas
+    if (cancelarPedido.status === "separando") {
+      for (const item of cancelarPedido.itens) {
+        const { data: si } = await supabase
+          .from("stock_items")
+          .select("id, quantity_reserved, device_id, fase")
+          .eq("id", item.stock_item_id)
+          .single();
+
+        let expItemId = item.stock_item_id;
+        let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+
+        if (si && (si as { fase: string }).fase !== "expedicao") {
+          const { data: expSi } = await supabase
+            .from("stock_items")
+            .select("id, quantity_reserved")
+            .eq("device_id", (si as { device_id: string }).device_id)
+            .eq("fase", "expedicao")
+            .single();
+          if (expSi) {
+            expItemId = (expSi as { id: string }).id;
+            currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
+          }
+        }
+
+        await supabase
+          .from("stock_items")
+          .update({ quantity_reserved: Math.max(0, currentReserved - item.quantidade) })
+          .eq("id", expItemId);
+      }
+    }
+
     const { error } = await supabase
       .from("pedidos_comerciais")
       .update({ status: "cancelado" })
       .eq("id", cancelarPedido.id);
     setCancelando(false);
     if (error) { toast.error("Erro ao cancelar."); return; }
-    toast.success("Pedido cancelado.");
+    toast.success("Pedido cancelado. Reservas liberadas.");
     setCancelarPedido(null);
     loadPedidos();
   }
