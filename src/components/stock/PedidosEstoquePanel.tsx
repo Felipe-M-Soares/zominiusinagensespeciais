@@ -247,30 +247,66 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
     async function loadLotes() {
       if (!pedido) return;
       const result: Record<string, LoteDisponivel[]> = {};
+
       for (const item of pedido.itens) {
-        // Busca movimentos de entrada na expedição para esse stock_item, agrupados por lote
-        const { data } = await supabase
+        // 1. Descobre o device_id a partir do stock_item do pedido
+        const { data: siData } = await supabase
+          .from("stock_items")
+          .select("device_id, quantity, fase")
+          .eq("id", item.stock_item_id)
+          .single();
+
+        if (!siData) { result[item.id] = []; continue; }
+
+        // 2. Se o item já é da expedição, usa ele; senão busca o da expedição
+        let expedicaoItemId = item.stock_item_id;
+        if ((siData as { fase: string }).fase !== "expedicao") {
+          const { data: expItem } = await supabase
+            .from("stock_items")
+            .select("id, quantity")
+            .eq("device_id", (siData as { device_id: string }).device_id)
+            .eq("fase", "expedicao")
+            .single();
+          if (!expItem) { result[item.id] = []; continue; }
+          expedicaoItemId = (expItem as { id: string }).id;
+        }
+
+        // 3. Busca movimentos do stock_item de expedição com lote preenchido
+        const { data: movs } = await supabase
           .from("stock_movements")
           .select("lote, quantity, type")
-          .eq("stock_item_id", item.stock_item_id)
-          .eq("fase", "expedicao")
+          .eq("stock_item_id", expedicaoItemId)
           .not("lote", "is", null)
           .order("created_at", { ascending: false });
 
-        if (data) {
-          // Calcula saldo por lote
-          const saldos: Record<string, number> = {};
-          for (const mv of data) {
-            if (!mv.lote) continue;
-            saldos[mv.lote] = (saldos[mv.lote] ?? 0) + (mv.type === "entrada" ? mv.quantity : -mv.quantity);
-          }
-          result[item.id] = Object.entries(saldos)
-            .filter(([, qty]) => qty > 0)
-            .map(([lote, quantity]) => ({ lote, quantity, stock_item_id: item.stock_item_id }));
-        } else {
-          result[item.id] = [];
+        // 4. Calcula saldo por lote (entradas - saídas)
+        const saldos: Record<string, number> = {};
+        for (const mv of (movs ?? [])) {
+          if (!mv.lote) continue;
+          saldos[mv.lote] = (saldos[mv.lote] ?? 0) + (mv.type === "entrada" ? mv.quantity : -mv.quantity);
         }
+
+        // 5. Se não houver movimentos com lote, usa a quantidade total do item
+        const lotesList = Object.entries(saldos)
+          .filter(([, qty]) => qty > 0)
+          .map(([lote, quantity]) => ({ lote, quantity, stock_item_id: expedicaoItemId }));
+
+        // Fallback: sem lotes registrados, mostra o saldo total como lote "Sem lote"
+        if (lotesList.length === 0) {
+          const { data: expItem2 } = await supabase
+            .from("stock_items")
+            .select("quantity")
+            .eq("id", expedicaoItemId)
+            .single();
+          const qty = (expItem2 as { quantity: number } | null)?.quantity ?? 0;
+          if (qty > 0) {
+            lotesList.push({ lote: "Sem lote", quantity: qty, stock_item_id: expedicaoItemId });
+          }
+        }
+
+        result[item.id] = lotesList;
       }
+
       setLotesDisponiveis(result);
       // Pre-seleciona o primeiro lote disponível para cada item
       const inicial: Record<string, string> = {};
