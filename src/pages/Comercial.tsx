@@ -91,7 +91,7 @@ interface PedidoCompleto {
   cliente_id: string;
   cliente_nome: string;
   vendedora_nome: string | null;
-  status: "pendente" | "faturado" | "cancelado";
+  status: "pendente" | "separando" | "pronto" | "faturado" | "enviado" | "cancelado";
   observacoes: string | null;
   created_at: string;
   faturado_em: string | null;
@@ -614,7 +614,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps)
             <p className="text-[11px] text-muted-foreground/70">{pedido.vendedora_nome}</p>
           </div>
           <Badge variant="outline" className={cn("shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-lg flex items-center gap-1", statusColor)}>
-            {statusIcon} {{ pendente: "Pendente", faturado: "Faturado", cancelado: "Cancelado" }[pedido.status]}
+            {statusIcon} {{ pendente: "Pendente", separando: "Separando", pronto: "Pronto", faturado: "Faturado", enviado: "Enviado", cancelado: "Cancelado" }[pedido.status]}
           </Badge>
         </div>
 
@@ -712,11 +712,10 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
     if (!pedido) return;
     setSaving(true);
     try {
-      // Confirma o pedido — status permanece "pendente" e vai para a fila do estoque
-      // O estoque vai separar → pronto → financeiro emite NF → enviado
+      // Confirma o pedido — muda para "separando" para entrar na fila do estoque
       const { error } = await supabase
         .from("pedidos_comerciais")
-        .update({ status: "pendente" })
+        .update({ status: "separando" })
         .eq("id", pedido.id);
       if (error) throw error;
       toast.success("Pedido confirmado! O estoque irá separar as peças.");
