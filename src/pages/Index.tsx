@@ -42,6 +42,12 @@ const Index = () => {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Refs para evitar recriar callbacks quando filters/activeLetter mudam
+  const filtersRef = useRef(filters);
+  const activeLetterRef = useRef(activeLetter);
+  useEffect(() => { filtersRef.current = filters; }, [filters]);
+  useEffect(() => { activeLetterRef.current = activeLetter; }, [activeLetter]);
+
   const triggerDebounce = useCallback(
     (s: string, f: Filters, l: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -54,12 +60,13 @@ const Index = () => {
     []
   );
 
+  // Estável — não recria quando filters/activeLetter mudam (lê via ref)
   const handleSearchChange = useCallback(
     (v: string) => {
       setSearch(v);
-      triggerDebounce(v, filters, activeLetter);
+      triggerDebounce(v, filtersRef.current, activeLetterRef.current);
     },
-    [filters, activeLetter, triggerDebounce]
+    [triggerDebounce]
   );
 
   // Disparo imediato (sem debounce) — usado pelo leitor de código de barras (Enter)
@@ -68,10 +75,10 @@ const Index = () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       setSearch(v);
       setQuerySearch(v);
-      setQueryFilters(filters);
-      setQueryLetter(activeLetter);
+      setQueryFilters(filtersRef.current);
+      setQueryLetter(activeLetterRef.current);
     },
-    [filters, activeLetter]
+    []
   );
 
   const handleFilterChange = useCallback(
