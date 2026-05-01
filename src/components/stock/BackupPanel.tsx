@@ -195,6 +195,8 @@ export function BackupPanel({ open, onClose }: Props) {
   const [running, setRunning]   = useState(false);
   const [exporting, setExporting] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   async function load() {
     setLoading(true);
