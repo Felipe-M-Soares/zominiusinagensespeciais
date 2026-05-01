@@ -47,6 +47,7 @@ import {
   Wrench,
   Inbox,
   ShoppingBag,
+  Archive,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
@@ -429,6 +430,21 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
             <span className="text-[10px] text-muted-foreground">un.</span>
           </div>
         </div>
+
+        {item.quantity_reserved > 0 && (
+          <div className="flex items-center justify-between rounded-xl px-3 py-2 border bg-amber-500/8 border-amber-500/25 -mt-1">
+            <div className="flex items-center gap-1.5">
+              <Archive className={cn("h-3.5 w-3.5 text-amber-500")} />
+              <span className="text-[11px] font-medium text-muted-foreground">Reservado</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[15px] font-bold tabular-nums text-amber-500">
+                {item.quantity_reserved}
+              </span>
+              <span className="text-[10px] text-muted-foreground">un.</span>
+            </div>
+          </div>
+        )}
 
         {loteCount > 0 && (
           <button
