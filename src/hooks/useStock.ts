@@ -687,48 +687,13 @@ export async function cancelMovement(
 export async function deleteStockItem(
   stockItemId: string
 ): Promise<{ ok: boolean; error?: string }> {
-  // 1. Busca pedido_itens vinculados a este stock_item
-  const { data: pedidoItens, error: piSelectErr } = await supabase
-    .from("pedido_itens")
-    .select("id, pedido_id")
-    .eq("stock_item_id", stockItemId);
-  if (piSelectErr) return { ok: false, error: piSelectErr.message };
+  // Usa RPC com SECURITY DEFINER para contornar RLS e deletar em cascata
+  const { data, error } = await supabase
+    .rpc("delete_stock_item", { p_stock_item_id: stockItemId });
 
-  if (pedidoItens && pedidoItens.length > 0) {
-    const pedidoIds = [...new Set((pedidoItens as { id: string; pedido_id: string }[]).map(i => i.pedido_id))];
-
-    // 2. Deleta os pedido_itens vinculados
-    const { error: piErr } = await supabase
-      .from("pedido_itens")
-      .delete()
-      .eq("stock_item_id", stockItemId);
-    if (piErr) return { ok: false, error: piErr.message };
-
-    // 3. Para cada pedido afetado, verifica se ficou sem itens e deleta se sim
-    for (const pedidoId of pedidoIds) {
-      const { data: remaining } = await supabase
-        .from("pedido_itens")
-        .select("id")
-        .eq("pedido_id", pedidoId);
-      if (!remaining || remaining.length === 0) {
-        await supabase.from("pedidos_comerciais").delete().eq("id", pedidoId);
-      }
-    }
-  }
-
-  // 4. Deleta movimentos vinculados
-  const { error: mvErr } = await supabase
-    .from("stock_movements")
-    .delete()
-    .eq("stock_item_id", stockItemId);
-  if (mvErr) return { ok: false, error: mvErr.message };
-
-  // 5. Agora deleta o stock_item
-  const { error } = await supabase
-    .from("stock_items")
-    .delete()
-    .eq("id", stockItemId);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  const result = data as { ok: boolean; error?: string };
+  return result;
 }
 
 // ─── Backup ──────────────────────────────────────────────────────────────────
