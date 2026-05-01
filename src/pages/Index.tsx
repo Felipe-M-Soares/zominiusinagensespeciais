@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useDevices, useDeviceOptions, type Filters } from "@/hooks/useDevices";
 import { useAuth } from "@/hooks/useAuth";
 import { SearchFilters } from "@/components/SearchFilters";
@@ -36,81 +36,29 @@ const Index = () => {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
 
-  const [querySearch, setQuerySearch] = useState("");
-  const [queryFilters, setQueryFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [queryLetter, setQueryLetter] = useState("");
-
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Refs para evitar recriar callbacks quando filters/activeLetter mudam
-  const filtersRef = useRef(filters);
-  const activeLetterRef = useRef(activeLetter);
-  useEffect(() => { filtersRef.current = filters; }, [filters]);
-  useEffect(() => { activeLetterRef.current = activeLetter; }, [activeLetter]);
-
-  const triggerDebounce = useCallback(
-    (s: string, f: Filters, l: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        setQuerySearch(s);
-        setQueryFilters(f);
-        setQueryLetter(l);
-      }, 350);
-    },
-    []
-  );
-
-  // Estável — não recria quando filters/activeLetter mudam (lê via ref)
-  const handleSearchChange = useCallback(
-    (v: string) => {
-      setSearch(v);
-      triggerDebounce(v, filtersRef.current, activeLetterRef.current);
-    },
-    [triggerDebounce]
-  );
+  // O debounce é feito no SearchFilters — aqui recebemos o valor já "pronto"
+  const handleSearchChange = useCallback((v: string) => {
+    setSearch(v);
+  }, []);
 
   // Disparo imediato (sem debounce) — usado pelo leitor de código de barras (Enter)
-  const handleSearchSubmit = useCallback(
-    (v: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      setSearch(v);
-      setQuerySearch(v);
-      setQueryFilters(filtersRef.current);
-      setQueryLetter(activeLetterRef.current);
-    },
-    []
-  );
+  const handleSearchSubmit = useCallback((v: string) => {
+    setSearch(v);
+  }, []);
 
-  const handleFilterChange = useCallback(
-    (key: string, value: string) => {
-      setFilters((prev) => {
-        const next = { ...prev, [key]: value };
-        triggerDebounce(search, next, activeLetter);
-        return next;
-      });
-    },
-    [search, activeLetter, triggerDebounce]
-  );
+  const handleFilterChange = useCallback((key: string, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
-  const handleLetterSelect = useCallback(
-    (letter: string) => {
-      setActiveLetter(letter);
-      triggerDebounce(search, filters, letter);
-    },
-    [search, filters, triggerDebounce]
-  );
+  const handleLetterSelect = useCallback((letter: string) => {
+    setActiveLetter(letter);
+  }, []);
 
   const handleClear = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     setSearch("");
     setFilters(EMPTY_FILTERS);
     setActiveLetter("");
-    setQuerySearch("");
-    setQueryFilters(EMPTY_FILTERS);
-    setQueryLetter("");
   }, []);
-
-  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
 
@@ -123,7 +71,7 @@ const Index = () => {
   }, [navigate]);
 
   const { devices, totalCount, loading, loadingMore, error, loadMore, hasMore } =
-    useDevices(querySearch, queryFilters, queryLetter);
+    useDevices(search, filters, activeLetter);
 
   const options = useDeviceOptions();
 
