@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   ArrowDownCircle, ArrowUpCircle, Minus, Plus, Package,
-  Barcode, ShoppingCart, Wrench, Tag, CheckCircle2, XCircle,
+  Barcode, Wrench, Tag, CheckCircle2, XCircle,
   ChevronDown,
 } from "lucide-react";
 import type { StockItem, LoteSummary } from "@/hooks/useStock";
@@ -22,7 +22,6 @@ import { formatLote, loteStatus } from "@/lib/lote";
 // ─── Tipos de saída ────────────────────────────────────────────────────────────
 const SAIDA_TYPES = [
   { value: "retirada", label: "Retirada", icon: Wrench },
-  { value: "venda",    label: "Venda",    icon: ShoppingCart },
 ] as const;
 
 
@@ -55,7 +54,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
     (user?.user_metadata?.display_name as string) ?? user?.email ?? null;
 
   const [type, setType]           = useState<"entrada" | "saida">(initialType);
-  const [saidaType, setSaidaType] = useState<"retirada" | "venda">("retirada");
+  const [saidaType, setSaidaType] = useState<"retirada">("retirada");
   const [qty, setQty]             = useState<number | "">(1);
   const [lote, setLote]           = useState("");
   const [reason, setReason]       = useState("");
@@ -198,27 +197,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
           </div>
           )}
 
-          {/* Sub-tipo de saída */}
-          {isSaidaMode && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Tipo de saída
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {SAIDA_TYPES.map(({ value, label, icon: Icon }) => (
-                  <button key={value} type="button" onClick={() => setSaidaType(value)}
-                    className={cn(
-                      "flex items-center justify-center gap-2 h-10 rounded-xl border text-[13px] font-medium transition-all",
-                      saidaType === value
-                        ? "bg-primary/10 border-primary/40 text-primary"
-                        : "bg-background border-border text-muted-foreground hover:bg-muted/30"
-                    )}>
-                    <Icon className="h-3.5 w-3.5" />{label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+
 
           {/* ── LOTE ────────────────────────────────────────────────────────── */}
           <div className="space-y-1.5">
