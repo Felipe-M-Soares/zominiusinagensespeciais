@@ -807,8 +807,8 @@ export interface AllMovement {
   fase: StockFase;
 }
 
-export async function fetchAllMovements(limit = 100): Promise<AllMovement[]> {
-  const { data } = await supabase
+export async function fetchAllMovements(limit = 100, fase?: StockFase): Promise<AllMovement[]> {
+  let query = supabase
     .from("stock_movements")
     .select(`
       id, stock_item_id, type, quantity, reason, lote, user_display_name, created_at,
@@ -819,6 +819,13 @@ export async function fetchAllMovements(limit = 100): Promise<AllMovement[]> {
     `)
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  // Filtra por fase diretamente no banco para não trazer dados desnecessários
+  if (fase) {
+    query = query.eq("stock_items.fase", fase);
+  }
+
+  const { data } = await query;
 
   return ((data ?? []) as Record<string, unknown>[]).map((row) => {
     const si = row.stock_item as Record<string, unknown> | null;

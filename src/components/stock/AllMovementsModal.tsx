@@ -29,9 +29,8 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
 
   async function load() {
     setLoading(true);
-    const data = await fetchAllMovements(100);
-    const filtered = fase ? data.filter(m => m.fase === fase) : data;
-    setMovements(filtered);
+    const data = await fetchAllMovements(100, fase);
+    setMovements(data.filter(m => fase ? m.fase === fase : true));
     setLoading(false);
   }
 
@@ -39,10 +38,9 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
     let cancelled = false;
     if (open) {
       setLoading(true);
-      fetchAllMovements(100).then((data) => {
+      fetchAllMovements(100, fase).then((data) => {
         if (!cancelled) {
-          const filtered = fase ? data.filter(m => m.fase === fase) : data;
-          setMovements(filtered);
+          setMovements(data.filter(m => fase ? m.fase === fase : true));
           setLoading(false);
         }
       }).catch(() => { if (!cancelled) setLoading(false); });
