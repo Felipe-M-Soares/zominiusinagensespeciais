@@ -32,18 +32,24 @@ const Index = () => {
     applyTheme(next ? "dark" : "light");
   }, [isDark]);
 
+  // `search` = valor exibido no input (atualizado a cada tecla via SearchFilters)
+  // `querySearch` = valor que dispara a query no banco (só atualiza ao submeter)
   const [search, setSearch] = useState("");
+  const [querySearch, setQuerySearch] = useState("");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
 
-  // O debounce é feito no SearchFilters — aqui recebemos o valor já "pronto"
+  // Chamado pelo debounce do SearchFilters — NÃO dispara query, só mantém o estado visual
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
+    // Se o campo foi limpo, reseta a query também
+    if (!v.trim()) setQuerySearch("");
   }, []);
 
-  // Disparo imediato (sem debounce) — usado pelo leitor de código de barras (Enter)
+  // Disparo pela tecla Enter ou botão de pesquisa — dispara a query no banco
   const handleSearchSubmit = useCallback((v: string) => {
     setSearch(v);
+    setQuerySearch(v);
   }, []);
 
   const handleFilterChange = useCallback((key: string, value: string) => {
@@ -56,6 +62,7 @@ const Index = () => {
 
   const handleClear = useCallback(() => {
     setSearch("");
+    setQuerySearch("");
     setFilters(EMPTY_FILTERS);
     setActiveLetter("");
   }, []);
@@ -71,7 +78,7 @@ const Index = () => {
   }, [navigate]);
 
   const { devices, totalCount, loading, loadingMore, error, loadMore, hasMore } =
-    useDevices(search, filters, activeLetter);
+    useDevices(querySearch, filters, activeLetter);
 
   const options = useDeviceOptions();
 
