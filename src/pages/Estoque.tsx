@@ -87,8 +87,9 @@ const IntermediaryCard = memo(function IntermediaryCard({
   item, onEntrada, onTransfer, onHistory, onDelete, onLotes, onReset, loteCount, isAdmin,
 }: IntermediaryCardProps) {
   const d = item.device;
-  const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
-  const isEmpty = item.quantity === 0;
+  const available = item.quantity_available;
+  const isLow = available > 0 && available <= item.min_quantity;
+  const isEmpty = available === 0;
 
   return (
     <div
@@ -366,8 +367,9 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
   item, onSaida, onHistory, onDelete, onLotes, onRetrabalho, onReset, loteCount, isAdmin,
 }: ExpedicaoCardProps) {
   const d = item.device;
-  const isLow = item.quantity > 0 && item.quantity <= item.min_quantity;
-  const isEmpty = item.quantity === 0;
+  const available = item.quantity_available;
+  const isLow = available > 0 && available <= item.min_quantity;
+  const isEmpty = available === 0;
 
   return (
     <div
@@ -425,7 +427,7 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
             {isEmpty && <AlertTriangle className="h-3 w-3 text-destructive" />}
             {isLow && !isEmpty && <TrendingDown className="h-3 w-3 text-warning" />}
             <span className={cn("text-[15px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")}>
-              {item.quantity}
+              {available}
             </span>
             <span className="text-[10px] text-muted-foreground">un.</span>
           </div>

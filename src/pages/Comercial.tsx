@@ -712,13 +712,28 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
     if (!pedido) return;
     setSaving(true);
     try {
-      // Confirma o pedido — muda para "separando" para entrar na fila do estoque
+      // 1. Muda status do pedido para "separando"
       const { error } = await supabase
         .from("pedidos_comerciais")
         .update({ status: "separando" })
         .eq("id", pedido.id);
       if (error) throw error;
-      toast.success("Pedido confirmado! O estoque irá separar as peças.");
+
+      // 2. Incrementa quantity_reserved em cada stock_item reservado
+      for (const item of pedido.itens) {
+        const { data: si } = await supabase
+          .from("stock_items")
+          .select("id, quantity_reserved")
+          .eq("id", item.stock_item_id)
+          .maybeSingle();
+        const currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+        await supabase
+          .from("stock_items")
+          .update({ quantity_reserved: currentReserved + item.quantidade })
+          .eq("id", item.stock_item_id);
+      }
+
+      toast.success("Pedido confirmado! Peças reservadas no estoque.");
       onSuccess();
     } catch {
       toast.error("Erro ao confirmar pedido.");
@@ -1351,8 +1366,25 @@ export default function Comercial() {
     if (!cancelarPedido) return;
     setCancelando(true);
     const { error } = await supabase.from("pedidos_comerciais").update({ status: "cancelado" }).eq("id", cancelarPedido.id);
+    if (error) { setCancelando(false); toast.error("Erro ao cancelar."); return; }
+
+    // Se o pedido já estava confirmado (separando/pronto), libera a reserva no estoque
+    if (cancelarPedido.status === "separando" || cancelarPedido.status === "pronto") {
+      for (const item of cancelarPedido.itens) {
+        const { data: si } = await supabase
+          .from("stock_items")
+          .select("id, quantity_reserved")
+          .eq("id", item.stock_item_id)
+          .maybeSingle();
+        const currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+        await supabase
+          .from("stock_items")
+          .update({ quantity_reserved: Math.max(0, currentReserved - item.quantidade) })
+          .eq("id", item.stock_item_id);
+      }
+    }
+
     setCancelando(false);
-    if (error) { toast.error("Erro ao cancelar."); return; }
     toast.success("Pedido cancelado.");
     setCancelarPedido(null);
     loadPedidos();
