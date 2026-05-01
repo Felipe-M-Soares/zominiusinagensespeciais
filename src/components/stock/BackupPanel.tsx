@@ -411,23 +411,24 @@ export function BackupPanel({ open, onClose }: Props) {
                 </div>
               )}
 
-              {/* ── Apagar todo o histórico ───────────────────────────────── */}
-              {isAdmin && (
-                <div className="pt-2 border-t border-border/30">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                    Zona de Perigo
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setClearConfirm(true)}
-                    className="w-full flex items-center justify-center gap-2 h-9 rounded-xl border border-destructive/40 text-destructive text-xs font-semibold hover:bg-destructive/10 transition-colors"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Apagar todo o histórico do site
-                  </button>
-                </div>
-              )}
             </>
+          )}
+
+          {/* ── Zona de Perigo — sempre visível para admin ──────────────── */}
+          {isAdmin && (
+            <div className="pt-2 border-t border-border/30">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                Zona de Perigo
+              </p>
+              <button
+                type="button"
+                onClick={() => setClearConfirm(true)}
+                className="w-full flex items-center justify-center gap-2 h-9 rounded-xl border border-destructive/40 text-destructive text-xs font-semibold hover:bg-destructive/10 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Apagar todo o histórico do site
+              </button>
+            </div>
           )}
         </div>
       </DialogContent>
