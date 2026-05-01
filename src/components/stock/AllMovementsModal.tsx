@@ -5,40 +5,52 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowDownCircle, ArrowUpCircle, History, User, RefreshCw, Tag } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, History, User, RefreshCw, Tag, Truck, Package, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchAllMovements } from "@/hooks/useStock";
-import type { AllMovement } from "@/hooks/useStock";
+import type { AllMovement, StockFase } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  fase?: StockFase; // quando passado, filtra apenas esse setor
 }
 
-export function AllMovementsModal({ open, onClose }: Props) {
+const FASE_LABELS: Record<StockFase, { label: string; Icon: React.ElementType }> = {
+  intermediaria: { label: "Intermediária", Icon: Package },
+  expedicao: { label: "Expedição", Icon: Truck },
+  retrabalho: { label: "Retrabalho", Icon: Wrench },
+};
+
+export function AllMovementsModal({ open, onClose, fase }: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    const data = await fetchAllMovements(100);
+    const filtered = fase ? data.filter(m => m.fase === fase) : data;
+    setMovements(filtered);
+    setLoading(false);
+  }
 
   useEffect(() => {
     let cancelled = false;
     if (open) {
       setLoading(true);
       fetchAllMovements(100).then((data) => {
-        if (!cancelled) { setMovements(data); setLoading(false); }
+        if (!cancelled) {
+          const filtered = fase ? data.filter(m => m.fase === fase) : data;
+          setMovements(filtered);
+          setLoading(false);
+        }
       }).catch(() => { if (!cancelled) setLoading(false); });
     } else {
       setMovements([]);
     }
     return () => { cancelled = true; };
-  }, [open]);
-
-  async function load() {
-    setLoading(true);
-    const data = await fetchAllMovements(100);
-    setMovements(data);
-    setLoading(false);
-  }
+  }, [open, fase]);
 
   function fmtDate(iso: string) {
     const d = new Date(iso);
@@ -59,7 +71,7 @@ export function AllMovementsModal({ open, onClose }: Props) {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                   <History className="h-4 w-4 text-primary" />
-                  Histórico Geral
+                  {fase ? `Histórico — ${FASE_LABELS[fase].label}` : "Histórico Geral"}
                 </DialogTitle>
               </DialogHeader>
               <p className="text-[12px] text-muted-foreground mt-0.5">

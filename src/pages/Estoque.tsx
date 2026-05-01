@@ -82,7 +82,7 @@ interface IntermediaryCardProps {
   isAdmin: boolean;
 }
 
-function IntermediaryCard({
+const IntermediaryCard = memo(function IntermediaryCard({
   item, onEntrada, onTransfer, onHistory, onDelete, onLotes, onReset, loteCount, isAdmin,
 }: IntermediaryCardProps) {
   const d = item.device;
@@ -243,7 +243,7 @@ function IntermediaryCard({
       </div>
     </div>
   );
-}
+});
 
 interface RetrabalhoCardProps {
   item: StockItem;
@@ -253,7 +253,7 @@ interface RetrabalhoCardProps {
   loteCount: number;
 }
 
-function RetrabalhoCard({ item, onConcluir, onHistory, onLotes, loteCount }: RetrabalhoCardProps) {
+const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistory, onLotes, loteCount }: RetrabalhoCardProps) {
   const d = item.device;
 
   return (
@@ -345,7 +345,7 @@ function RetrabalhoCard({ item, onConcluir, onHistory, onLotes, loteCount }: Ret
       </div>
     </div>
   );
-}
+});
 
 // ─── Card de Expedição ────────────────────────────────────────────────────────
 
@@ -361,7 +361,7 @@ interface ExpedicaoCardProps {
   isAdmin: boolean;
 }
 
-function ExpedicaoCard({
+const ExpedicaoCard = memo(function ExpedicaoCard({
   item, onSaida, onHistory, onDelete, onLotes, onRetrabalho, onReset, loteCount, isAdmin,
 }: ExpedicaoCardProps) {
   const d = item.device;
@@ -515,7 +515,7 @@ function ExpedicaoCard({
       </div>
     </div>
   );
-}
+});
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
@@ -534,21 +534,25 @@ interface SearchBarProps {
 }
 
 const SearchBar = memo(function SearchBar({
-  onSearch, onClear, hasValue, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
+  onSearch, onClear, hasValue: _hasValue, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Estado local para controlar botão de limpar — não propaga re-renders ao pai
+  const [localHasValue, setLocalHasValue] = useState(false);
 
   function handleChange(v: string) {
+    setLocalHasValue(!!v.trim());
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!v.trim()) { onClear(); return; }
-    debounceRef.current = setTimeout(() => onSearch(v.trim()), 350);
+    debounceRef.current = setTimeout(() => onSearch(v.trim()), 400);
   }
 
   function handleClear() {
     if (inputRef.current) inputRef.current.value = "";
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    setLocalHasValue(false);
     onClear();
   }
 
@@ -572,7 +576,7 @@ const SearchBar = memo(function SearchBar({
         }}
         className="flex h-11 w-full rounded-md border border-input bg-card px-3 py-2 pl-10 pr-10 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       />
-      {hasValue && (
+      {localHasValue && (
         <button type="button" onClick={handleClear} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
           <X className="h-3.5 w-3.5" />
         </button>
@@ -775,6 +779,17 @@ export default function Estoque() {
     setVisibleCount(ITEMS_PER_PAGE);
   }
 
+  // Callbacks estáveis para os cards — evita recriar funções a cada render
+  const handleEntrada = useCallback((i: StockItem) => setMovementState({ item: i, type: "entrada", lockedType: "entrada" }), []);
+  const handleSaida = useCallback((i: StockItem) => setMovementState({ item: i, type: "saida", lockedType: "saida" }), []);
+  const handleTransfer = useCallback((i: StockItem) => setTransferItem(i), []);
+  const handleHistory = useCallback((i: StockItem) => setHistoryItem(i), []);
+  const handleDelete = useCallback((i: StockItem) => setDeleteItem(i), []);
+  const handleLotes = useCallback((i: StockItem) => setLotesItem(i), []);
+  const handleReset = useCallback((i: StockItem) => setResetItem(i), []);
+  const handleRetrabalho = useCallback((i: StockItem) => setRetrabalhoItem(i), []);
+  const handleConcluir = useCallback((i: StockItem) => setConcluirRetrabalhoItem(i), []);
+
   // Stats da aba atual (filtrados)
   const statsLow = filteredItems.filter((i) => i.quantity > 0 && i.quantity <= i.min_quantity).length;
   const statsOk = filteredItems.filter((i) => i.quantity > i.min_quantity).length;
@@ -976,7 +991,7 @@ export default function Estoque() {
           <div className="space-y-2">
             <div className="flex gap-2">
               <SearchBar
-                onSearch={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); }}
+                onSearch={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
                 onClear={() => { setSearch(""); setQuerySearch(""); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
                 hasValue={!!search}
                 suggestions={autocompleteItems}
@@ -1201,12 +1216,12 @@ export default function Estoque() {
                   <IntermediaryCard
                     key={item.id}
                     item={item}
-                    onEntrada={(i) => setMovementState({ item: i, type: "entrada", lockedType: "entrada" })}
-                    onTransfer={setTransferItem}
-                    onHistory={setHistoryItem}
-                    onDelete={setDeleteItem}
-                    onLotes={setLotesItem}
-                    onReset={setResetItem}
+                    onEntrada={handleEntrada}
+                    onTransfer={handleTransfer}
+                    onHistory={handleHistory}
+                    onDelete={handleDelete}
+                    onLotes={handleLotes}
+                    onReset={handleReset}
                     loteCount={lotesSummary.get(item.id) ?? 0}
                     isAdmin={isAdmin}
                   />
@@ -1214,21 +1229,21 @@ export default function Estoque() {
                   <RetrabalhoCard
                     key={item.id}
                     item={item}
-                    onConcluir={setConcluirRetrabalhoItem}
-                    onHistory={setHistoryItem}
-                    onLotes={setLotesItem}
+                    onConcluir={handleConcluir}
+                    onHistory={handleHistory}
+                    onLotes={handleLotes}
                     loteCount={lotesSummary.get(item.id) ?? 0}
                   />
                 ) : (
                   <ExpedicaoCard
                     key={item.id}
                     item={item}
-                    onSaida={(i) => setMovementState({ item: i, type: "saida", lockedType: "saida" })}
-                    onHistory={setHistoryItem}
-                    onDelete={setDeleteItem}
-                    onLotes={setLotesItem}
-                    onRetrabalho={setRetrabalhoItem}
-                    onReset={setResetItem}
+                    onSaida={handleSaida}
+                    onHistory={handleHistory}
+                    onDelete={handleDelete}
+                    onLotes={handleLotes}
+                    onRetrabalho={handleRetrabalho}
+                    onReset={handleReset}
                     loteCount={lotesSummary.get(item.id) ?? 0}
                     isAdmin={isAdmin}
                   />
@@ -1307,6 +1322,7 @@ export default function Estoque() {
       <AllMovementsModal
         open={allMovOpen}
         onClose={() => setAllMovOpen(false)}
+        fase={activeView === "expedicao" || activeView === "intermediaria" || activeView === "retrabalho" ? activeView : undefined}
       />
 
       <BackupPanel

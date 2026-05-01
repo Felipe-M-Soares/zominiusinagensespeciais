@@ -575,7 +575,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         type: "saida",
         quantity: item.quantidade,
         lote: item.lote ?? null,
-        notes: `Pedido comercial — cliente: ${pedido.cliente_nome} (separação concluída)`,
+        reason: `Pedido comercial — cliente: ${pedido.cliente_nome} (separação concluída)`,
         user_display_name: pedido.vendedora_nome ?? "Estoque",
       });
     }
