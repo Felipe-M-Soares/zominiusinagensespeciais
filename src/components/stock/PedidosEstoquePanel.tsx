@@ -8,7 +8,7 @@
  *  4. Clica "Marcar como Pronto" → status vira "pronto", aguarda financeiro emitir NF
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import {
   Package,
   Tag,
@@ -27,6 +27,8 @@ import {
   ArrowRight,
   PackageCheck,
   Ban,
+  Search,
+  Archive,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -155,11 +157,16 @@ function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, is
       {/* Expandido */}
       {expanded && (
         <div className="px-4 pb-4 space-y-3 border-t border-border/20 pt-3">
-          {/* Itens */}
+          {/* Seção Expedição */}
           <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Package className="h-3 w-3 text-emerald-500" />
+              <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">Expedição</p>
+              <span className="ml-auto text-[10px] font-bold text-emerald-600">{totalItens} un.</span>
+            </div>
             {pedido.itens.map(item => (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-background/60 border border-border/20">
-                <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/5 border border-emerald-500/15">
+                <Package className="h-3.5 w-3.5 text-emerald-500/70 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-medium truncate">{item.device_model}</p>
                   <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
@@ -170,11 +177,39 @@ function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, is
                       <Tag className="h-2.5 w-2.5" />{item.lote}
                     </span>
                   )}
-                  <span className="text-[12px] font-bold text-foreground">{item.quantidade} un.</span>
+                  <span className="text-[12px] font-bold text-emerald-600">{item.quantidade} un.</span>
                 </div>
               </div>
             ))}
           </div>
+
+          {/* Seção Reservado */}
+          {(pedido.status === "separando" || pedido.status === "pendente") && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <Archive className="h-3 w-3 text-blue-500" />
+                <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide">Reservado</p>
+                <span className="ml-auto text-[10px] font-bold text-blue-600">{totalItens} un.</span>
+              </div>
+              {pedido.itens.map(item => (
+                <div key={`reservado-${item.id}`} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/5 border border-blue-500/15">
+                  <Archive className="h-3.5 w-3.5 text-blue-500/70 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-medium truncate">{item.device_model}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {item.lote && (
+                      <span className="flex items-center gap-1 text-[10px] font-mono text-violet-500">
+                        <Tag className="h-2.5 w-2.5" />{item.lote}
+                      </span>
+                    )}
+                    <span className="text-[12px] font-bold text-blue-600">{item.quantidade} un.</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {pedido.observacoes && (
             <p className="text-[11px] text-muted-foreground italic px-1">"{pedido.observacoes}"</p>
@@ -459,6 +494,54 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
   );
 }
 
+// ─── SearchBar isolada (uncontrolled) ─────────────────────────────────────────
+
+interface SearchBarPedidosProps {
+  onSearch: (value: string) => void;
+  onClear: () => void;
+  hasValue: boolean;
+}
+
+const SearchBarPedidos = memo(function SearchBarPedidos({ onSearch, onClear, hasValue }: SearchBarPedidosProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const v = e.target.value;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onSearch(v.trim()), 300);
+  }
+
+  function handleClear() {
+    if (inputRef.current) inputRef.current.value = "";
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    onClear();
+  }
+
+  return (
+    <div className="relative flex-1">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+      <input
+        ref={inputRef}
+        defaultValue=""
+        type="text"
+        placeholder="Buscar por cliente ou vendedora..."
+        onChange={handleChange}
+        className="flex h-9 w-full rounded-xl border border-input bg-background px-3 py-2 pl-9 pr-8 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      />
+      {hasValue && (
+        <button
+          type="button"
+          onClick={handleClear}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+});
+
 // ─── Painel Principal ─────────────────────────────────────────────────────────
 
 interface PedidosEstoquePanelProps {
@@ -470,6 +553,8 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState<string>("ativos");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [hasSearch, setHasSearch] = useState(false);
   const [separarPedido, setSepararPedido] = useState<Pedido | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<Pedido | null>(null);
   const [cancelando, setCancelando] = useState(false);
@@ -523,9 +608,16 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
   const statusAtivos = ["pendente", "separando", "pronto"];
   const filtrados = pedidos.filter(p => {
-    if (filtroStatus === "ativos") return statusAtivos.includes(p.status);
-    if (filtroStatus === "historico") return !statusAtivos.includes(p.status);
-    return p.status === filtroStatus;
+    const matchStatus = filtroStatus === "ativos" ? statusAtivos.includes(p.status) :
+      filtroStatus === "historico" ? !statusAtivos.includes(p.status) :
+      p.status === filtroStatus;
+    if (!matchStatus) return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      p.cliente_nome.toLowerCase().includes(q) ||
+      (p.vendedora_nome ?? "").toLowerCase().includes(q)
+    );
   });
 
   const pendentes = pedidos.filter(p => p.status === "pendente").length;
@@ -651,6 +743,15 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
             <p className="text-[10px] text-muted-foreground">{k.label}</p>
           </div>
         ))}
+      </div>
+
+      {/* Busca */}
+      <div className="flex items-center gap-2">
+        <SearchBarPedidos
+          onSearch={v => { setSearchQuery(v); setHasSearch(!!v); }}
+          onClear={() => { setSearchQuery(""); setHasSearch(false); }}
+          hasValue={hasSearch}
+        />
       </div>
 
       {/* Filtros */}

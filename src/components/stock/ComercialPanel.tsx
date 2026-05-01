@@ -587,11 +587,12 @@ interface PedidoCardProps {
   onFaturar: (pedido: PedidoCompleto) => void;
   onCancelar: (pedido: PedidoCompleto) => void;
   onRefresh: () => void;
+  isConfirmado: boolean;
+  onConfirmar: (pedidoId: string) => void;
 }
 
-function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps) {
+function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onConfirmar }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [confirmado, setConfirmado] = useState(false);
 
   const statusColor = {
     pendente: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25",
@@ -696,12 +697,12 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps)
             <div className="flex gap-1.5">
               <button
                 type="button"
-                onClick={() => { if (confirmado) return; setConfirmado(true); onFaturar(pedido); }}
-                disabled={confirmado}
+                onClick={() => { if (isConfirmado) return; onConfirmar(pedido.id); onFaturar(pedido); }}
+                disabled={isConfirmado}
                 className="flex-1 h-8 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
               >
-                {confirmado ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Receipt className="h-3.5 w-3.5" />}
-                {confirmado ? "Confirmado" : "Faturar"}
+                {isConfirmado ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Receipt className="h-3.5 w-3.5" />}
+                {isConfirmado ? "Confirmado" : "Faturar"}
               </button>
               <button
                 type="button"
@@ -1233,6 +1234,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
   const [faturarPedido, setFaturarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelando, setCancelando] = useState(false);
+  const [confirmadosIds, setConfirmadosIds] = useState<Set<string>>(new Set());
 
   // Clientes
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -1501,6 +1503,8 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                   onFaturar={setFaturarPedido}
                   onCancelar={setCancelarPedido}
                   onRefresh={loadPedidos}
+                  isConfirmado={confirmadosIds.has(p.id)}
+                  onConfirmar={id => setConfirmadosIds(prev => new Set([...prev, id]))}
                 />
               ))}
             </div>
