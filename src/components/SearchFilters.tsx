@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback } from "react";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -47,10 +46,13 @@ export function SearchFilters({
   onLetterSelect,
 }: Props) {
   const [open, setOpen] = useState(false);
+  // Estado local para o botão X — não propaga re-render ao pai a cada tecla
+  const [localHasValue, setLocalHasValue] = useState(!!search);
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasFilters =
-    search ||
+    localHasValue ||
     filters.material ||
     filters.classification ||
     filters.sterile ||
@@ -72,11 +74,29 @@ export function SearchFilters({
     requestAnimationFrame(() => inputRef.current?.select());
   }, []);
 
+  // onChange: atualiza estado local imediatamente (sem travar cursor)
+  // e dispara o pai via debounce
+  const handleChange = useCallback(
+    (v: string) => {
+      setLocalHasValue(!!v.trim());
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (!v.trim()) {
+        onSearchChange("");
+        return;
+      }
+      debounceRef.current = setTimeout(() => onSearchChange(v), 400);
+    },
+    [onSearchChange]
+  );
+
   // Ao colar, remove espaços iniciais/finais e seleciona o conteúdo
   const handlePaste = useCallback(
     (e: React.ClipboardEvent<HTMLInputElement>) => {
       e.preventDefault();
       const pasted = e.clipboardData.getData("text").trim();
+      if (inputRef.current) inputRef.current.value = pasted;
+      setLocalHasValue(!!pasted);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       onSearchChange(pasted);
       requestAnimationFrame(() => {
         const el = inputRef.current;
@@ -94,13 +114,22 @@ export function SearchFilters({
       if (e.key === "Enter") {
         e.preventDefault();
         const value = (e.currentTarget.value ?? "").trim();
+        if (debounceRef.current) clearTimeout(debounceRef.current);
         if (value) onSearchSubmit(value);
-        // Seleciona tudo para o próximo bipe
         requestAnimationFrame(() => inputRef.current?.select());
       }
     },
     [onSearchSubmit]
   );
+
+  // Limpar — reseta input não-controlado + estado pai
+  const handleClearInput = useCallback(() => {
+    if (inputRef.current) inputRef.current.value = "";
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setLocalHasValue(false);
+    onSearchChange("");
+    inputRef.current?.focus();
+  }, [onSearchChange]);
 
   return (
     <div className="space-y-3">
@@ -109,25 +138,23 @@ export function SearchFilters({
         <div className="relative flex-1">
           {/* Ícone de leitor — visual, indica que o campo aceita bipagem */}
           <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
+          <input
             ref={inputRef}
+            type="text"
             placeholder="Bipe o código de barras ou pesquise aqui..."
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
+            defaultValue={search}
+            onChange={(e) => handleChange(e.target.value)}
             onFocus={handleFocus}
             onPaste={handlePaste}
             onKeyDown={handleKeyDown}
-            className="pl-10 pr-10 h-10 sm:h-11 text-sm bg-card"
+            className="flex h-10 sm:h-11 w-full rounded-md border border-input bg-card px-3 py-2 pl-10 pr-10 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
           {/* Botão limpar campo */}
-          {search && (
+          {localHasValue && (
             <button
               type="button"
               aria-label="Limpar busca"
-              onClick={() => {
-                onSearchChange("");
-                inputRef.current?.focus();
-              }}
+              onClick={handleClearInput}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
             >
               <X className="h-3.5 w-3.5" />
@@ -144,7 +171,8 @@ export function SearchFilters({
           aria-label="Pesquisar"
           className="h-10 w-10 sm:h-11 sm:w-11 shrink-0"
           onClick={() => {
-            if (search.trim()) onSearchSubmit(search.trim());
+            const v = inputRef.current?.value.trim() ?? "";
+            if (v) onSearchSubmit(v);
           }}
         >
           <Search className="h-4 w-4" />
@@ -282,7 +310,12 @@ export function SearchFilters({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={onClear}
+                onClick={() => {
+                  if (inputRef.current) inputRef.current.value = "";
+                  setLocalHasValue(false);
+                  if (debounceRef.current) clearTimeout(debounceRef.current);
+                  onClear();
+                }}
                 className="gap-1 text-muted-foreground text-xs h-8"
               >
                 <X className="h-3.5 w-3.5" /> Limpar todos os filtros
