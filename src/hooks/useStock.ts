@@ -132,7 +132,6 @@ export function useStock(search: string) {
       const PAGE_SIZE = 1000;
       let allRows: Record<string, unknown>[] = [];
       let fetchedCount = 0;
-      const page = 0;
 
       const MAX_PAGES = 100;
       let pageNum = 0;
@@ -406,10 +405,6 @@ export async function transferToExpedicao(
   return { ok: true };
 }
 
-/**
- * Devolve unidades de um lote da Expedição para Retrabalho (intermediária).
- * Fluxo: saída da expedição → entrada no intermediário com reason "Retrabalho".
- */
 /**
  * Envia peças da Expedição para a fila de Retrabalho (fase separada).
  * Fluxo: saída da expedição → entrada no retrabalho.

@@ -13,8 +13,6 @@ import {
   Truck,
   Wrench,
   Inbox,
-  TrendingDown,
-  TrendingUp,
   AlertTriangle,
   ShoppingBag,
 } from "lucide-react";
@@ -128,7 +126,6 @@ function PreviewCard({
   const total = items.reduce((s, i) => s + i.quantity, 0);
 
   if (view === "dashboard") {
-    const allItems = [] as StockItem[]; // passed as items for dashboard
     return (
       <div className="grid grid-cols-4 gap-2">
         <PreviewStat value={items.length} label="Tipos" color="text-primary" />

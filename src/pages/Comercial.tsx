@@ -63,14 +63,7 @@ import {
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { Logo } from "@/components/Logo";
 
-// ─── Lote helpers (formato DDMMYYS-NN ou DDMMYYS-NN/A) ───────────────────────
-const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
-function formatLote(raw: string): string {
-  let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");
-  if (/^\d{8,}/.test(v)) v = v.slice(0, 7) + "-" + v.slice(7);
-  return v.slice(0, 13);
-}
-function loteValido(lote: string) { return LOTE_REGEX.test(lote); }
+import { formatLote, loteValido } from "@/lib/lote";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 

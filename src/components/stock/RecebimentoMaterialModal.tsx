@@ -20,21 +20,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-
-// ─── Validação do lote ────────────────────────────────────────────────────────
-// Exemplos: 0101261-01   0101261-01/A   0101261-01/B
-const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
-
-function formatLote(raw: string): string {
-  let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");
-  if (/^\d{8,}/.test(v)) v = v.slice(0, 7) + "-" + v.slice(7);
-  return v.slice(0, 13);
-}
-
-function loteStatus(lote: string): "empty" | "valid" | "invalid" {
-  if (!lote) return "empty";
-  return LOTE_REGEX.test(lote) ? "valid" : "invalid";
-}
+import { formatLote, loteStatus } from "@/lib/lote";
 
 function loteHint(lote: string): string {
   if (!lote) return "Ex: 0101261-01  ou  0101261-01/A";

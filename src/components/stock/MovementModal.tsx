@@ -17,6 +17,7 @@ import { registerMovement, fetchLotesSummary } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { formatLote, loteStatus } from "@/lib/lote";
 
 // ─── Tipos de saída ────────────────────────────────────────────────────────────
 const SAIDA_TYPES = [
@@ -24,23 +25,6 @@ const SAIDA_TYPES = [
   { value: "venda",    label: "Venda",    icon: ShoppingCart },
 ] as const;
 
-// ─── Validação do lote (entrada manual) ──────────────────────────────────────
-// Formato: DDMMYYS-NN  ou  DDMMYYS-NN/A  ou  DDMMYYS-NN/B...
-// Exemplos: 0101261-01   0101261-01/A   0101261-01/B
-// DD=dia, MM=mês, YY=ano (2 dígitos), S=sequência do dia, NN=sublote (2 dígitos)
-const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
-
-function formatLote(raw: string): string {
-  let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");
-  // Auto-insere hífen após o 7º dígito
-  if (/^\d{8,}/.test(v)) v = v.slice(0, 7) + "-" + v.slice(7);
-  return v.slice(0, 13);
-}
-
-function loteStatus(lote: string): "empty" | "valid" | "invalid" {
-  if (!lote) return "empty";
-  return LOTE_REGEX.test(lote) ? "valid" : "invalid";
-}
 
 function loteHint(lote: string): string {
   if (!lote) return "Ex: 0101261-01  ou  0101261-01/A";
