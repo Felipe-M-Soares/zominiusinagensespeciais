@@ -1260,6 +1260,7 @@ export default function Comercial() {
 
   // Nome da usuária logada
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!user?.id) return;
     supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle()

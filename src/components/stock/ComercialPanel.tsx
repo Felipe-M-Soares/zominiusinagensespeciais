@@ -976,6 +976,7 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const cancelled = { v: false };
     if (open) {
@@ -1212,6 +1213,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
   // Nome da usuária logada
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!user?.id) return;
     supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle()

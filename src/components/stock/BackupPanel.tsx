@@ -263,6 +263,7 @@ export function BackupPanel({ open, onClose }: Props) {
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
         {/* Header */}
@@ -480,5 +481,6 @@ export function BackupPanel({ open, onClose }: Props) {
         </div>
       </div>
     )}
+    </>
   );
 }
