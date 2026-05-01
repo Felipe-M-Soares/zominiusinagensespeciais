@@ -118,17 +118,28 @@ function PreviewCard({
   view: ActiveView;
   label: string;
 }) {
-  const ok = items.filter((i) => i.quantity > i.min_quantity).length;
-  const low = items.filter(
+  // Para o dashboard: agrupa por device_id para não contar a mesma peça em múltiplas fases
+  const byDevice = new Map<string, { quantity: number; min_quantity: number }>();
+  for (const i of items) {
+    const cur = byDevice.get(i.device_id);
+    byDevice.set(i.device_id, {
+      quantity: (cur?.quantity ?? 0) + i.quantity,
+      min_quantity: Math.max(cur?.min_quantity ?? 0, i.min_quantity),
+    });
+  }
+  const devEntries = Array.from(byDevice.values());
+
+  const ok = (view === "dashboard" ? devEntries : items).filter((i) => i.quantity > i.min_quantity).length;
+  const low = (view === "dashboard" ? devEntries : items).filter(
     (i) => i.quantity > 0 && i.quantity <= i.min_quantity
   ).length;
-  const empty = items.filter((i) => i.quantity === 0).length;
+  const empty = (view === "dashboard" ? devEntries : items).filter((i) => i.quantity === 0).length;
   const total = items.reduce((s, i) => s + i.quantity, 0);
 
   if (view === "dashboard") {
     return (
       <div className="grid grid-cols-4 gap-2">
-        <PreviewStat value={items.length} label="Tipos" color="text-primary" />
+        <PreviewStat value={byDevice.size} label="Tipos" color="text-primary" />
         <PreviewStat value={ok} label="OK" color="text-success" />
         <PreviewStat value={low} label="Baixo" color="text-warning" />
         <PreviewStat value={empty} label="Zerado" color="text-destructive" />

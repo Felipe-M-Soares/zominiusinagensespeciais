@@ -47,11 +47,22 @@ export function StockDashboard({ items, loading }: Props) {
     return () => { cancelled = true; };
   }, []);
 
-  const total = items.length;
-  const zerados = items.filter(i => i.quantity === 0).length;
-  const baixo = items.filter(i => i.quantity > 0 && i.quantity <= i.min_quantity).length;
-  const ok = items.filter(i => i.quantity > i.min_quantity).length;
-  const totalPecas = items.reduce((sum, i) => sum + i.quantity, 0);
+  // Agrupa por device_id para não contar o mesmo dispositivo múltiplas vezes (uma row por fase)
+  const byDevice = new Map<string, { quantity: number; min_quantity: number }>();
+  for (const i of items) {
+    const deviceId = i.device_id;
+    const cur = byDevice.get(deviceId);
+    byDevice.set(deviceId, {
+      quantity: (cur?.quantity ?? 0) + i.quantity,
+      min_quantity: Math.max(cur?.min_quantity ?? 0, i.min_quantity),
+    });
+  }
+  const deviceEntries = Array.from(byDevice.values());
+  const total = byDevice.size; // tipos únicos
+  const totalPecas = deviceEntries.reduce((sum, d) => sum + d.quantity, 0);
+  const zerados = deviceEntries.filter(d => d.quantity === 0).length;
+  const baixo = deviceEntries.filter(d => d.quantity > 0 && d.quantity <= d.min_quantity).length;
+  const ok = deviceEntries.filter(d => d.quantity > d.min_quantity).length;
 
   if (loading) {
     return (
