@@ -32,9 +32,8 @@ const Index = () => {
     applyTheme(next ? "dark" : "light");
   }, [isDark]);
 
-  // `search` = valor visual do input (atualiza a cada tecla)
   // `querySearch` = valor que dispara a query no banco (atualiza com debounce ou Enter)
-  const [search, setSearch] = useState("");
+  // O valor visual do input é controlado internamente pelo SearchFilters
   const [querySearch, setQuerySearch] = useState("");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
@@ -50,9 +49,8 @@ const Index = () => {
 
   const options = useDeviceOptions();
 
-  // Debounce no pai — igual ao Estoque
+  // Debounce no pai — atualiza querySearch após parar de digitar
   const handleSearchChange = useCallback((v: string) => {
-    setSearch(v);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!v.trim()) {
       setQuerySearch("");
@@ -68,14 +66,12 @@ const Index = () => {
   // Enter ou botão lupa — disparo imediato
   const handleSearchSubmit = useCallback((v: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    setSearch(v);
     setQuerySearch(v);
     setShowSuggestions(false);
   }, []);
 
   // Selecionar sugestão
   const handleSelectSuggestion = useCallback((s: string) => {
-    setSearch(s);
     setQuerySearch(s);
     setSuggestions([]);
     setShowSuggestions(false);
@@ -91,7 +87,6 @@ const Index = () => {
 
   const handleClear = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    setSearch("");
     setQuerySearch("");
     setSuggestions([]);
     setShowSuggestions(false);
@@ -99,30 +94,27 @@ const Index = () => {
     setActiveLetter("");
   }, []);
 
-  // Gera sugestões a partir dos devices já carregados
+  // Gera sugestões a partir dos devices já carregados (baseado no querySearch)
   useEffect(() => {
-    if (!search.trim() || search.trim().length < 2) {
+    if (!querySearch.trim() || querySearch.trim().length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
-    const timer = setTimeout(() => {
-      const q = search.trim().toLowerCase();
-      const seen = new Set<string>();
-      const result: string[] = [];
-      for (const d of devices) {
-        const model = d.model;
-        if (model && model.toLowerCase().includes(q) && !seen.has(model)) {
-          seen.add(model);
-          result.push(model);
-          if (result.length >= 6) break;
-        }
+    const q = querySearch.trim().toLowerCase();
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const d of devices) {
+      const model = d.model;
+      if (model && model.toLowerCase().includes(q) && !seen.has(model)) {
+        seen.add(model);
+        result.push(model);
+        if (result.length >= 6) break;
       }
-      setSuggestions(result);
-      setShowSuggestions(result.length > 0);
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [search, devices]);
+    }
+    setSuggestions(result);
+    setShowSuggestions(result.length > 0);
+  }, [querySearch, devices]);
 
   // Fecha autocomplete ao clicar fora
   useEffect(() => {
@@ -298,7 +290,7 @@ const Index = () => {
           <>
             <SearchFilters
               autocompleteRef={autocompleteRef}
-              search={search}
+              search={querySearch}
               onSearchChange={handleSearchChange}
               onSearchSubmit={handleSearchSubmit}
               suggestions={suggestions}
