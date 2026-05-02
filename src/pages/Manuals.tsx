@@ -14,6 +14,7 @@ import { ArrowLeft, Upload, Trash2, Download, FileText, Plus, Loader2, X, CheckC
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
 import { logger } from "@/lib/logger";
+import { getStoredTheme, applyTheme } from "@/pages/Settings";
 
 const MAX_FILE_SIZE_MB = 20;
 const MAX_FILES_AT_ONCE = 20;
@@ -60,6 +61,17 @@ export default function Manuals() {
   const [queue, setQueue] = useState<QueuedFile[]>([]);
   const [isUploadingAll, setIsUploadingAll] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const [isDark, setIsDark] = useState(() => {
+    const theme = getStoredTheme();
+    if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return theme === "dark";
+  });
+  const toggleTheme = useCallback(() => {
+    const next = !isDark;
+    setIsDark(next);
+    applyTheme(next ? "dark" : "light");
+  }, [isDark]);
 
   const fetchManuals = useCallback(async () => {
     try {
@@ -246,11 +258,24 @@ export default function Manuals() {
           </Button>
           <Logo className="h-8 object-contain" />
           <h1 className="text-sm font-semibold">Manuais</h1>
-          {isAdmin && (
-            <Button size="sm" className="ml-auto h-8 gap-1.5 text-xs" onClick={() => setDialogOpen(true)}>
-              <Plus className="h-3.5 w-3.5" /> Adicionar
-            </Button>
-          )}
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
+              title={isDark ? "Modo claro" : "Modo escuro"}
+            >
+              {isDark
+                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              }
+            </button>
+            {isAdmin && (
+              <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setDialogOpen(true)}>
+                <Plus className="h-3.5 w-3.5" /> Adicionar
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
