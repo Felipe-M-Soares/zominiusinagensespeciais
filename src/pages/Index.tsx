@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useDevices, useDeviceOptions, type Filters } from "@/hooks/useDevices";
 import { useAuth } from "@/hooks/useAuth";
 import { SearchFilters } from "@/components/SearchFilters";
@@ -32,24 +32,53 @@ const Index = () => {
     applyTheme(next ? "dark" : "light");
   }, [isDark]);
 
-  // `search` = valor exibido no input (atualizado a cada tecla via SearchFilters)
-  // `querySearch` = valor que dispara a query no banco (só atualiza ao submeter)
+  // `search` = valor visual do input (atualiza a cada tecla)
+  // `querySearch` = valor que dispara a query no banco (atualiza com debounce ou Enter)
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
 
-  // Chamado pelo debounce do SearchFilters — NÃO dispara query, só mantém o estado visual
+  // Autocomplete
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { devices, totalCount, loading, loadingMore, error, loadMore, hasMore } =
+    useDevices(querySearch, filters, activeLetter);
+
+  const options = useDeviceOptions();
+
+  // Debounce no pai — igual ao Estoque
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
-    // Se o campo foi limpo, reseta a query também
-    if (!v.trim()) setQuerySearch("");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!v.trim()) {
+      setQuerySearch("");
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      setQuerySearch(v.trim());
+    }, 350);
   }, []);
 
-  // Disparo pela tecla Enter ou botão de pesquisa — dispara a query no banco
+  // Enter ou botão lupa — disparo imediato
   const handleSearchSubmit = useCallback((v: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     setSearch(v);
     setQuerySearch(v);
+    setShowSuggestions(false);
+  }, []);
+
+  // Selecionar sugestão
+  const handleSelectSuggestion = useCallback((s: string) => {
+    setSearch(s);
+    setQuerySearch(s);
+    setSuggestions([]);
+    setShowSuggestions(false);
   }, []);
 
   const handleFilterChange = useCallback((key: string, value: string) => {
@@ -61,10 +90,49 @@ const Index = () => {
   }, []);
 
   const handleClear = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     setSearch("");
     setQuerySearch("");
+    setSuggestions([]);
+    setShowSuggestions(false);
     setFilters(EMPTY_FILTERS);
     setActiveLetter("");
+  }, []);
+
+  // Gera sugestões a partir dos devices já carregados
+  useEffect(() => {
+    if (!search.trim() || search.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const q = search.trim().toLowerCase();
+      const seen = new Set<string>();
+      const result: string[] = [];
+      for (const d of devices) {
+        const model = d.model;
+        if (model && model.toLowerCase().includes(q) && !seen.has(model)) {
+          seen.add(model);
+          result.push(model);
+          if (result.length >= 6) break;
+        }
+      }
+      setSuggestions(result);
+      setShowSuggestions(result.length > 0);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [search, devices]);
+
+  // Fecha autocomplete ao clicar fora
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
@@ -76,11 +144,6 @@ const Index = () => {
     setMenuOpen(false);
     navigate(path);
   }, [navigate]);
-
-  const { devices, totalCount, loading, loadingMore, error, loadMore, hasMore } =
-    useDevices(querySearch, filters, activeLetter);
-
-  const options = useDeviceOptions();
 
   return (
     <div className="min-h-screen bg-background">
@@ -234,9 +297,14 @@ const Index = () => {
         ) : (
           <>
             <SearchFilters
+              autocompleteRef={autocompleteRef}
               search={search}
               onSearchChange={handleSearchChange}
               onSearchSubmit={handleSearchSubmit}
+              suggestions={suggestions}
+              showSuggestions={showSuggestions}
+              onSelectSuggestion={handleSelectSuggestion}
+              onCloseSuggestions={() => setShowSuggestions(false)}
               materials={options.materials}
               classifications={options.classifications}
               exocadOptions={options.exocadOptions}

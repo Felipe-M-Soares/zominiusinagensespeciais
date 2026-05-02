@@ -13,9 +13,14 @@ import { cn } from "@/lib/utils";
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 interface Props {
+  autocompleteRef?: React.RefObject<HTMLDivElement>;
   search: string;
   onSearchChange: (v: string) => void;
   onSearchSubmit: (v: string) => void;
+  suggestions?: string[];
+  showSuggestions?: boolean;
+  onSelectSuggestion?: (s: string) => void;
+  onCloseSuggestions?: () => void;
   materials: string[];
   classifications: string[];
   exocadOptions: string[];
@@ -30,9 +35,14 @@ interface Props {
 }
 
 export function SearchFilters({
+  autocompleteRef,
   search,
   onSearchChange,
   onSearchSubmit,
+  suggestions = [],
+  showSuggestions = false,
+  onSelectSuggestion,
+  onCloseSuggestions,
   materials,
   classifications,
   exocadOptions,
@@ -85,17 +95,13 @@ export function SearchFilters({
     requestAnimationFrame(() => inputRef.current?.select());
   }, []);
 
-  // Debounce ÚNICO aqui — o pai não adiciona debounce adicional
+  // Debounce é gerenciado pelo pai — aqui apenas repassa o valor imediatamente
   const handleChange = useCallback(
     (v: string) => {
       setLocalSearch(v);
       prevSearchRef.current = v;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (!v.trim()) {
-        onSearchChange("");
-        return;
-      }
-      debounceRef.current = setTimeout(() => onSearchChange(v), 400);
+      onSearchChange(v);
     },
     [onSearchChange]
   );
@@ -148,7 +154,7 @@ export function SearchFilters({
     <div className="space-y-3">
       {/* Search row */}
       <div className="flex gap-2">
-        <div className="relative flex-1">
+        <div className="relative flex-1" ref={autocompleteRef}>
           <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <input
             ref={inputRef}
@@ -158,7 +164,10 @@ export function SearchFilters({
             onChange={(e) => handleChange(e.target.value)}
             onFocus={handleFocus}
             onPaste={handlePaste}
-            onKeyDown={handleKeyDown}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") onCloseSuggestions?.();
+              handleKeyDown(e);
+            }}
             className="flex h-10 sm:h-11 w-full rounded-md border border-input bg-card px-3 py-2 pl-10 pr-10 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
           {localSearch && (
@@ -170,6 +179,23 @@ export function SearchFilters({
             >
               <X className="h-3.5 w-3.5" />
             </button>
+          )}
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onSelectSuggestion?.(s);
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border/30 last:border-0"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           )}
         </div>
 
