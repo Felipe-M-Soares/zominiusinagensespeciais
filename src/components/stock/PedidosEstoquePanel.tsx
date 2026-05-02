@@ -641,7 +641,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   const { user } = useAuth();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filtroStatus, setFiltroStatus] = useState<string>("ativos");
+  const [filtroStatus] = useState<string>("separando_pronto");
   const [searchQuery, setSearchQuery] = useState("");
   const [hasSearch, setHasSearch] = useState(false);
   const [separarPedido, setSepararPedido] = useState<Pedido | null>(null);
@@ -695,11 +695,9 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
   useEffect(() => { loadPedidos(); }, [loadPedidos]);
 
-  const statusAtivos = ["pendente", "separando", "pronto"];
+
   const filtrados = pedidos.filter(p => {
-    const matchStatus = filtroStatus === "ativos" ? statusAtivos.includes(p.status) :
-      filtroStatus === "historico" ? !statusAtivos.includes(p.status) :
-      p.status === filtroStatus;
+    const matchStatus = p.status === "separando" || p.status === "pronto";
     if (!matchStatus) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -709,9 +707,6 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     );
   });
 
-  const pendentes = pedidos.filter(p => p.status === "pendente").length;
-  const separando = pedidos.filter(p => p.status === "separando").length;
-  const prontos = pedidos.filter(p => p.status === "pronto").length;
 
   async function handleMarcarPronto(pedido: Pedido) {
     if (!user) return;
@@ -820,56 +815,17 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
   return (
     <div className="space-y-4">
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { label: "Pendentes", value: pendentes, color: "text-amber-600", bg: "bg-amber-500/8 border-amber-500/20" },
-          { label: "Separando", value: separando, color: "text-blue-600", bg: "bg-blue-500/8 border-blue-500/20" },
-          { label: "Prontos", value: prontos, color: "text-emerald-600", bg: "bg-emerald-500/8 border-emerald-500/20" },
-        ].map(k => (
-          <div key={k.label} className={cn("rounded-xl border p-3 text-center", k.bg)}>
-            <p className={cn("text-xl font-bold tabular-nums", k.color)}>{k.value}</p>
-            <p className="text-[10px] text-muted-foreground">{k.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Busca */}
+      {/* Busca + Atualizar */}
       <div className="flex items-center gap-2">
         <SearchBarPedidos
           onSearch={v => { setSearchQuery(v); setHasSearch(!!v); }}
           onClear={() => { setSearchQuery(""); setHasSearch(false); }}
           hasValue={hasSearch}
         />
-      </div>
-
-      {/* Filtros */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {[
-          { id: "ativos", label: "Ativos" },
-          { id: "pendente", label: "Pendentes" },
-          { id: "separando", label: "Separando" },
-          { id: "pronto", label: "Prontos" },
-          { id: "historico", label: "Histórico" },
-        ].map(f => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFiltroStatus(f.id)}
-            className={cn(
-              "h-7 px-3 rounded-full text-[11px] font-medium border transition-colors",
-              filtroStatus === f.id
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/60"
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
         <button
           type="button"
           onClick={loadPedidos}
-          className="h-7 w-7 flex items-center justify-center rounded-full bg-muted/30 border border-border/40 text-muted-foreground hover:bg-muted/60 transition-colors ml-auto"
+          className="h-9 w-9 flex items-center justify-center rounded-full bg-muted/30 border border-border/40 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0"
           title="Atualizar"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />

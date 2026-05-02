@@ -22,6 +22,19 @@
          frame-ancestors só funciona via HTTP header, não via meta tag. -->
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+    <!-- Aplica tema antes do React montar para evitar flash de tema errado -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          var dark =
+            t === "dark" ||
+            ((!t || t === "system") &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
     <title>Concept Usinagens Especiais</title>
     <meta name="description" content="Base de dados de dispositivos dentários - Conformidade ANVISA" />
     <meta name="author" content="Concept Usinagens Especiais" />
