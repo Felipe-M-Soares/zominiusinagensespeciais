@@ -324,6 +324,103 @@ const Index = () => {
       </header>
 
       <main className="container mx-auto px-4 py-5 space-y-5">
+
+        {/* Busca e filtros — SEMPRE montados, fora do condicional de loading */}
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <SearchBar
+              onSearch={handleSearchChange}
+              onClear={handleClearSearch}
+              hasValue={!!search}
+              suggestions={autocompleteItems}
+              showSuggestions={showAutocomplete}
+              onSelectSuggestion={handleSelectSuggestion}
+              onCloseSuggestions={() => setShowAutocomplete(false)}
+            />
+            <Button type="button" variant="outline" size="icon" className="h-10 w-10 sm:h-11 sm:w-11 shrink-0"
+              onClick={() => search.trim() && handleSelectSuggestion(search.trim())}>
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button type="button" variant={showFilters ? "default" : "outline"} size="icon"
+              className="h-10 w-10 sm:h-11 sm:w-11 shrink-0 relative"
+              onClick={() => setShowFilters(v => !v)}>
+              <SlidersHorizontal className="h-4 w-4" />
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center font-bold">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </div>
+
+          {showFilters && (
+            <div className="rounded-lg border border-border bg-card p-3 sm:p-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+                <Select value={filters.material || "all"} onValueChange={v => handleFilterChange("material", v === "all" ? "" : v)}>
+                  <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Material" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os materiais</SelectItem>
+                    {options.materials.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={filters.classification || "all"} onValueChange={v => handleFilterChange("classification", v === "all" ? "" : v)}>
+                  <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Classificação" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as classes</SelectItem>
+                    {options.classifications.map(c => <SelectItem key={c} value={c}>Classe {c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={filters.sterile || "all"} onValueChange={v => handleFilterChange("sterile", v === "all" ? "" : v)}>
+                  <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Esterilidade" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="true">Estéril</SelectItem>
+                    <SelectItem value="false">Não Estéril</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filters.single_use || "all"} onValueChange={v => handleFilterChange("single_use", v === "all" ? "" : v)}>
+                  <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Uso" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os usos</SelectItem>
+                    <SelectItem value="true">Uso único</SelectItem>
+                    <SelectItem value="false">Reutilizável</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filters.exocad || "all"} onValueChange={v => handleFilterChange("exocad", v === "all" ? "" : v)}>
+                  <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Exocad" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos Exocad</SelectItem>
+                    {options.exocadOptions.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-2 font-medium">Filtrar por letra inicial</p>
+                <div className="flex flex-wrap gap-1">
+                  <button onClick={() => handleLetterSelect("")} className={cn("h-7 px-2 rounded text-[11px] font-medium transition-colors", activeLetter === "" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-accent border border-border")}>Todos</button>
+                  {LETTERS.filter(l => options.availableLetters.has(l)).map(letter => (
+                    <button key={letter} onClick={() => handleLetterSelect(letter)} className={cn("h-7 w-7 rounded text-[11px] font-medium transition-colors", activeLetter === letter ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-accent border border-border")}>{letter}</button>
+                  ))}
+                </div>
+              </div>
+              {(filters.material || filters.classification || filters.sterile || filters.single_use || filters.exocad || activeLetter) && (
+                <div className="flex justify-end">
+                  <Button variant="ghost" size="sm" onClick={handleClear} className="gap-1 text-muted-foreground text-xs h-8">
+                    <XIcon className="h-3.5 w-3.5" /> Limpar todos os filtros
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            {devices.length === totalCount
+              ? `${totalCount.toLocaleString("pt-BR")} dispositivos cadastrados`
+              : `${devices.length.toLocaleString("pt-BR")} de ${totalCount.toLocaleString("pt-BR")} dispositivos`}
+          </p>
+        </div>
+
+        {/* Conteúdo condicional — loading, erro, ou lista */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
@@ -331,148 +428,28 @@ const Index = () => {
           </div>
         ) : error ? (
           <div className="text-center py-20 text-destructive">{error}</div>
+        ) : devices.length === 0 ? (
+          <div className="text-center py-16 space-y-2">
+            <p className="text-muted-foreground text-lg font-display">Nenhum dispositivo encontrado</p>
+            <p className="text-muted-foreground text-sm">Tente ajustar os filtros ou a pesquisa</p>
+          </div>
         ) : (
           <>
-            {/* Busca — SearchBar direto, igual ao Estoque */}
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <SearchBar
-                  onSearch={handleSearchChange}
-                  onClear={handleClearSearch}
-                  hasValue={!!search}
-                  suggestions={autocompleteItems}
-                  showSuggestions={showAutocomplete}
-                  onSelectSuggestion={handleSelectSuggestion}
-                  onCloseSuggestions={() => setShowAutocomplete(false)}
-                />
-                <Button type="button" variant="outline" size="icon" className="h-10 w-10 sm:h-11 sm:w-11 shrink-0"
-                  onClick={() => search.trim() && handleSelectSuggestion(search.trim())}>
-                  <Search className="h-4 w-4" />
-                </Button>
-                <Button type="button" variant={showFilters ? "default" : "outline"} size="icon"
-                  className="h-10 w-10 sm:h-11 sm:w-11 shrink-0 relative"
-                  onClick={() => setShowFilters(v => !v)}>
-                  <SlidersHorizontal className="h-4 w-4" />
-                  {activeFilterCount > 0 && (
-                    <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center font-bold">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </Button>
-              </div>
-
-              {showFilters && (
-                <div className="rounded-lg border border-border bg-card p-3 sm:p-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
-                    <Select value={filters.material || "all"} onValueChange={v => handleFilterChange("material", v === "all" ? "" : v)}>
-                      <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Material" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos os materiais</SelectItem>
-                        {options.materials.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Select value={filters.classification || "all"} onValueChange={v => handleFilterChange("classification", v === "all" ? "" : v)}>
-                      <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Classificação" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todas as classes</SelectItem>
-                        {options.classifications.map(c => <SelectItem key={c} value={c}>Classe {c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Select value={filters.sterile || "all"} onValueChange={v => handleFilterChange("sterile", v === "all" ? "" : v)}>
-                      <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Esterilidade" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos</SelectItem>
-                        <SelectItem value="true">Estéril</SelectItem>
-                        <SelectItem value="false">Não Estéril</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={filters.single_use || "all"} onValueChange={v => handleFilterChange("single_use", v === "all" ? "" : v)}>
-                      <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Uso" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos os usos</SelectItem>
-                        <SelectItem value="true">Uso único</SelectItem>
-                        <SelectItem value="false">Reutilizável</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={filters.exocad || "all"} onValueChange={v => handleFilterChange("exocad", v === "all" ? "" : v)}>
-                      <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Exocad" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos Exocad</SelectItem>
-                        {options.exocadOptions.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-2 font-medium">Filtrar por letra inicial</p>
-                    <div className="flex flex-wrap gap-1">
-                      <button onClick={() => handleLetterSelect("")} className={cn("h-7 px-2 rounded text-[11px] font-medium transition-colors", activeLetter === "" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-accent border border-border")}>Todos</button>
-                      {LETTERS.filter(l => options.availableLetters.has(l)).map(letter => (
-                        <button key={letter} onClick={() => handleLetterSelect(letter)} className={cn("h-7 w-7 rounded text-[11px] font-medium transition-colors", activeLetter === letter ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-accent border border-border")}>{letter}</button>
-                      ))}
-                    </div>
-                  </div>
-                  {(filters.material || filters.classification || filters.sterile || filters.single_use || filters.exocad || activeLetter) && (
-                    <div className="flex justify-end">
-                      <Button variant="ghost" size="sm" onClick={handleClear} className="gap-1 text-muted-foreground text-xs h-8">
-                        <XIcon className="h-3.5 w-3.5" /> Limpar todos os filtros
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                {devices.length === totalCount
-                  ? `${totalCount.toLocaleString("pt-BR")} dispositivos cadastrados`
-                  : `${devices.length.toLocaleString("pt-BR")} de ${totalCount.toLocaleString("pt-BR")} dispositivos`}
-              </p>
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {devices.map((device) => (
+                <DeviceCard key={device.udi_di} device={device} onClick={setSelectedDevice} />
+              ))}
             </div>
-
-            {devices.length === 0 ? (
-              <div className="text-center py-16 space-y-2">
-                <p className="text-muted-foreground text-lg font-display">
-                  Nenhum dispositivo encontrado
-                </p>
-                <p className="text-muted-foreground text-sm">
-                  Tente ajustar os filtros ou a pesquisa
-                </p>
+            {hasMore && (
+              <div className="flex justify-center pt-2">
+                <Button variant="outline" onClick={loadMore} disabled={loadingMore} className="gap-2">
+                  {loadingMore ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" />Carregando...</>
+                  ) : (
+                    <><ChevronDown className="h-4 w-4" />Carregar mais ({(totalCount - devices.length).toLocaleString("pt-BR")} restantes)</>
+                  )}
+                </Button>
               </div>
-            ) : (
-              <>
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {devices.map((device) => (
-                    <DeviceCard
-                      key={device.udi_di}
-                      device={device}
-                      onClick={setSelectedDevice}
-                    />
-                  ))}
-                </div>
-
-                {hasMore && (
-                  <div className="flex justify-center pt-2">
-                    <Button
-                      variant="outline"
-                      onClick={loadMore}
-                      disabled={loadingMore}
-                      className="gap-2"
-                    >
-                      {loadingMore ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Carregando...
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown className="h-4 w-4" />
-                          Carregar mais (
-                          {(totalCount - devices.length).toLocaleString("pt-BR")} restantes)
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
-              </>
             )}
           </>
         )}
