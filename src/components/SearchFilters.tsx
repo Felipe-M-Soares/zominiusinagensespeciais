@@ -1,10 +1,6 @@
 import { useState, useRef, memo } from "react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Search, X, SlidersHorizontal, ScanBarcode } from "lucide-react";
@@ -12,8 +8,10 @@ import { cn } from "@/lib/utils";
 
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-// ── SearchBar isolado — idêntico ao do Estoque, não propaga re-renders ao pai ──
+// ── SearchBar isolado — idêntico ao do Estoque ────────────────────────────────
 interface SearchBarProps {
+  inputRef: React.RefObject<HTMLInputElement>;
+  autocompleteRef: React.RefObject<HTMLDivElement>;
   onSearch: (value: string) => void;
   onClear: () => void;
   suggestions: string[];
@@ -24,9 +22,9 @@ interface SearchBarProps {
 }
 
 const SearchBar = memo(function SearchBar({
-  onSearch, onClear, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions, onSearchSubmit,
+  inputRef, autocompleteRef, onSearch, onClear,
+  suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions, onSearchSubmit,
 }: SearchBarProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localHasValue, setLocalHasValue] = useState(false);
 
@@ -45,7 +43,7 @@ const SearchBar = memo(function SearchBar({
   }
 
   return (
-    <div className="relative flex-1">
+    <div className="relative flex-1" ref={autocompleteRef}>
       <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
       <input
         ref={inputRef}
@@ -56,7 +54,7 @@ const SearchBar = memo(function SearchBar({
           if (e.key === "Enter") {
             const v = (e.target as HTMLInputElement).value.trim();
             if (debounceRef.current) clearTimeout(debounceRef.current);
-            if (v) onSearchSubmit(v);
+            onSearchSubmit(v);
             onCloseSuggestions();
             requestAnimationFrame(() => inputRef.current?.select());
           }
@@ -85,6 +83,8 @@ const SearchBar = memo(function SearchBar({
 
 // ── SearchFilters principal ────────────────────────────────────────────────────
 interface Props {
+  inputRef: React.RefObject<HTMLInputElement>;
+  autocompleteRef: React.RefObject<HTMLDivElement>;
   onSearchChange: (v: string) => void;
   onSearchSubmit: (v: string) => void;
   suggestions?: string[];
@@ -105,47 +105,31 @@ interface Props {
 }
 
 export function SearchFilters({
-  onSearchChange,
-  onSearchSubmit,
-  suggestions = [],
-  showSuggestions = false,
-  onSelectSuggestion,
-  onCloseSuggestions,
-  materials,
-  classifications,
-  exocadOptions,
-  filters,
-  onFilterChange,
-  onClear,
-  resultCount,
-  totalCount,
-  activeLetter,
-  availableLetters,
-  onLetterSelect,
+  inputRef, autocompleteRef,
+  onSearchChange, onSearchSubmit,
+  suggestions = [], showSuggestions = false,
+  onSelectSuggestion, onCloseSuggestions,
+  materials, classifications, exocadOptions,
+  filters, onFilterChange, onClear,
+  resultCount, totalCount,
+  activeLetter, availableLetters, onLetterSelect,
 }: Props) {
   const [open, setOpen] = useState(false);
 
   const activeFilterCount = [
-    filters.material,
-    filters.classification,
-    filters.sterile,
-    filters.single_use,
-    filters.exocad,
-    activeLetter,
+    filters.material, filters.classification, filters.sterile,
+    filters.single_use, filters.exocad, activeLetter,
   ].filter(Boolean).length;
 
-  const hasFilters =
-    filters.material ||
-    filters.classification ||
-    filters.sterile ||
-    filters.single_use ||
-    filters.exocad ||
-    activeLetter;
+  const hasFilters = filters.material || filters.classification || filters.sterile ||
+    filters.single_use || filters.exocad || activeLetter;
 
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
         <SearchBar
+          inputRef={inputRef}
+          autocompleteRef={autocompleteRef}
           onSearch={onSearchChange}
           onClear={onClear}
           onSearchSubmit={onSearchSubmit}
@@ -155,24 +139,16 @@ export function SearchFilters({
           onCloseSuggestions={onCloseSuggestions ?? (() => {})}
         />
 
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          title="Pesquisar"
-          aria-label="Pesquisar"
+        <Button type="button" variant="outline" size="icon" title="Pesquisar"
           className="h-10 w-10 sm:h-11 sm:w-11 shrink-0"
-          onClick={() => onSearchSubmit("")}
+          onClick={() => { const v = inputRef.current?.value.trim() ?? ""; onSearchSubmit(v); }}
         >
           <Search className="h-4 w-4" />
         </Button>
 
-        <Button
-          variant={open ? "default" : "outline"}
-          size="icon"
+        <Button variant={open ? "default" : "outline"} size="icon"
           className="h-10 w-10 sm:h-11 sm:w-11 shrink-0 relative"
-          onClick={() => setOpen(!open)}
-          aria-label="Filtros avançados"
+          onClick={() => setOpen(!open)} aria-label="Filtros avançados"
         >
           <SlidersHorizontal className="h-4 w-4" />
           {activeFilterCount > 0 && (
@@ -186,23 +162,23 @@ export function SearchFilters({
       {open && (
         <div className="rounded-lg border border-border bg-card p-3 sm:p-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
-            <Select value={filters.material || "all"} onValueChange={(v) => onFilterChange("material", v === "all" ? "" : v)}>
+            <Select value={filters.material || "all"} onValueChange={v => onFilterChange("material", v === "all" ? "" : v)}>
               <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Material" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os materiais</SelectItem>
-                {materials.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                {materials.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
               </SelectContent>
             </Select>
 
-            <Select value={filters.classification || "all"} onValueChange={(v) => onFilterChange("classification", v === "all" ? "" : v)}>
+            <Select value={filters.classification || "all"} onValueChange={v => onFilterChange("classification", v === "all" ? "" : v)}>
               <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Classificação" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas as classes</SelectItem>
-                {classifications.map((c) => <SelectItem key={c} value={c}>Classe {c}</SelectItem>)}
+                {classifications.map(c => <SelectItem key={c} value={c}>Classe {c}</SelectItem>)}
               </SelectContent>
             </Select>
 
-            <Select value={filters.sterile || "all"} onValueChange={(v) => onFilterChange("sterile", v === "all" ? "" : v)}>
+            <Select value={filters.sterile || "all"} onValueChange={v => onFilterChange("sterile", v === "all" ? "" : v)}>
               <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Esterilidade" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
@@ -211,7 +187,7 @@ export function SearchFilters({
               </SelectContent>
             </Select>
 
-            <Select value={filters.single_use || "all"} onValueChange={(v) => onFilterChange("single_use", v === "all" ? "" : v)}>
+            <Select value={filters.single_use || "all"} onValueChange={v => onFilterChange("single_use", v === "all" ? "" : v)}>
               <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Uso" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os usos</SelectItem>
@@ -220,11 +196,11 @@ export function SearchFilters({
               </SelectContent>
             </Select>
 
-            <Select value={filters.exocad || "all"} onValueChange={(v) => onFilterChange("exocad", v === "all" ? "" : v)}>
+            <Select value={filters.exocad || "all"} onValueChange={v => onFilterChange("exocad", v === "all" ? "" : v)}>
               <SelectTrigger className="bg-background text-xs sm:text-sm h-9"><SelectValue placeholder="Exocad" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos Exocad</SelectItem>
-                {exocadOptions.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+                {exocadOptions.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -232,13 +208,15 @@ export function SearchFilters({
           <div>
             <p className="text-xs text-muted-foreground mb-2 font-medium">Filtrar por letra inicial</p>
             <div className="flex flex-wrap gap-1">
-              <button onClick={() => onLetterSelect("")} className={cn("h-7 px-2 rounded text-[11px] font-medium transition-colors", activeLetter === "" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-accent border border-border")}>
-                Todos
-              </button>
-              {LETTERS.filter((l) => availableLetters.has(l)).map((letter) => (
-                <button key={letter} onClick={() => onLetterSelect(letter)} className={cn("h-7 w-7 rounded text-[11px] font-medium transition-colors", activeLetter === letter ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-accent border border-border")}>
-                  {letter}
-                </button>
+              <button onClick={() => onLetterSelect("")}
+                className={cn("h-7 px-2 rounded text-[11px] font-medium transition-colors",
+                  activeLetter === "" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-accent border border-border"
+                )}>Todos</button>
+              {LETTERS.filter(l => availableLetters.has(l)).map(letter => (
+                <button key={letter} onClick={() => onLetterSelect(letter)}
+                  className={cn("h-7 w-7 rounded text-[11px] font-medium transition-colors",
+                    activeLetter === letter ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-accent border border-border"
+                  )}>{letter}</button>
               ))}
             </div>
           </div>

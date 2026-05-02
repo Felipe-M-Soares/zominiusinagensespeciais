@@ -18,8 +18,6 @@ const Index = () => {
   const { signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  // FIX TEMA: usa a mesma lógica de Settings (applyTheme/getStoredTheme) para que
-  // o toggle do Index e a página de Settings fiquem sincronizados.
   const [isDark, setIsDark] = useState(() => {
     const theme = getStoredTheme();
     if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -32,48 +30,55 @@ const Index = () => {
     applyTheme(next ? "dark" : "light");
   }, [isDark]);
 
-  // `querySearch` = valor que dispara a query no banco (atualiza com debounce ou Enter)
-  // O valor visual do input é controlado internamente pelo SearchFilters
+  // Igual ao Estoque: search = valor visual (para autocomplete), querySearch = valor que vai ao banco
+  const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
 
   // Autocomplete
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+
+  // Refs — igual ao Estoque
+  const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
 
   const { devices, totalCount, loading, loadingMore, error, loadMore, hasMore } =
     useDevices(querySearch, filters, activeLetter);
 
   const options = useDeviceOptions();
 
-  // Debounce no pai — atualiza querySearch após parar de digitar
+  // Igual ao Estoque: debounce atualiza search + querySearch juntos
   const handleSearchChange = useCallback((v: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!v.trim()) {
+      setSearch("");
       setQuerySearch("");
-      setSuggestions([]);
-      setShowSuggestions(false);
+      setShowAutocomplete(false);
       return;
     }
     debounceRef.current = setTimeout(() => {
+      setSearch(v.trim());
       setQuerySearch(v.trim());
     }, 350);
   }, []);
 
-  // Enter ou botão lupa — disparo imediato
+  // Enter — disparo imediato igual ao Estoque
   const handleSearchSubmit = useCallback((v: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearch(v);
     setQuerySearch(v);
-    setShowSuggestions(false);
+    setShowAutocomplete(false);
   }, []);
 
-  // Selecionar sugestão
-  const handleSelectSuggestion = useCallback((s: string) => {
-    setQuerySearch(s);
-    setSuggestions([]);
-    setShowSuggestions(false);
+  // Selecionar sugestão — igual ao Estoque
+  const handleSelectSuggestion = useCallback((suggestion: string) => {
+    if (inputRef.current) inputRef.current.value = suggestion;
+    setSearch(suggestion);
+    setQuerySearch(suggestion);
+    setShowAutocomplete(false);
   }, []);
 
   const handleFilterChange = useCallback((key: string, value: string) => {
@@ -86,40 +91,39 @@ const Index = () => {
 
   const handleClear = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (inputRef.current) inputRef.current.value = "";
+    setSearch("");
     setQuerySearch("");
-    setSuggestions([]);
-    setShowSuggestions(false);
+    setShowAutocomplete(false);
     setFilters(EMPTY_FILTERS);
     setActiveLetter("");
   }, []);
 
-  // Gera sugestões a partir dos devices já carregados (baseado no querySearch)
+  // Autocomplete — igual ao Estoque
   useEffect(() => {
-    if (!querySearch.trim() || querySearch.trim().length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
+    if (!search.trim() || search.trim().length < 2) {
+      setAutocompleteItems([]);
+      setShowAutocomplete(false);
       return;
     }
-    const q = querySearch.trim().toLowerCase();
-    const seen = new Set<string>();
-    const result: string[] = [];
-    for (const d of devices) {
-      const model = d.model;
-      if (model && model.toLowerCase().includes(q) && !seen.has(model)) {
-        seen.add(model);
-        result.push(model);
-        if (result.length >= 6) break;
-      }
-    }
-    setSuggestions(result);
-    setShowSuggestions(result.length > 0);
-  }, [querySearch, devices]);
+    const timer = setTimeout(() => {
+      const q = search.trim().toLowerCase();
+      const suggestions = devices
+        .filter(d => d.model)
+        .map(d => d.model)
+        .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
+        .slice(0, 6);
+      setAutocompleteItems(suggestions);
+      setShowAutocomplete(suggestions.length > 0);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [search, devices]);
 
-  // Fecha autocomplete ao clicar fora
+  // Fecha autocomplete ao clicar fora — igual ao Estoque
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
+        setShowAutocomplete(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -288,12 +292,14 @@ const Index = () => {
         ) : (
           <>
             <SearchFilters
+              inputRef={inputRef}
+              autocompleteRef={autocompleteRef}
               onSearchChange={handleSearchChange}
               onSearchSubmit={handleSearchSubmit}
-              suggestions={suggestions}
-              showSuggestions={showSuggestions}
+              suggestions={autocompleteItems}
+              showSuggestions={showAutocomplete}
               onSelectSuggestion={handleSelectSuggestion}
-              onCloseSuggestions={() => setShowSuggestions(false)}
+              onCloseSuggestions={() => setShowAutocomplete(false)}
               materials={options.materials}
               classifications={options.classifications}
               exocadOptions={options.exocadOptions}
