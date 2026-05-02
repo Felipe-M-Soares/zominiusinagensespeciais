@@ -85,13 +85,11 @@ async function queryDevices(
     );
   }
 
-  // FIX LETRAS: usa ilike com UPPER para garantir que funciona com toda a base,
-  // independente do casing salvo no banco (ex: "parafuso" deve aparecer em "P").
-  if (!q && letter && letter !== "#") {
+  // Filtro por letra — aplica independente de haver texto de busca
+  if (letter && letter !== "#") {
     query = query.or(`model.ilike.${letter}%,model.ilike.${letter.toLowerCase()}%`);
   }
-  if (!q && letter === "#") {
-    // PERF: uma única condição regex substitui 26 .not() encadeados
+  if (letter === "#") {
     query = (query as unknown as { not: (col: string, op: string, val: string) => typeof query })
       .not("model", "match", "^[A-Za-z]");
   }

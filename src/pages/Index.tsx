@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, memo } from "react";
+import { useState, useCallback, memo, useRef } from "react";
 import { useDevices, useDeviceOptions, type Filters } from "@/hooks/useDevices";
 import { useAuth } from "@/hooks/useAuth";
 import { DeviceCard } from "@/components/DeviceCard";
@@ -110,8 +110,8 @@ const Index = () => {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompleteItems] = useState<string[]>([]);
+  const [showAutocomplete] = useState(false);
 
   const activeFilterCount = [filters.material, filters.classification, filters.sterile, filters.single_use, filters.exocad, activeLetter].filter(Boolean).length;
 
@@ -135,7 +135,6 @@ const Index = () => {
   const handleSelectSuggestion = useCallback((suggestion: string) => {
     setSearch(suggestion);
     setQuerySearch(suggestion);
-    setShowAutocomplete(false);
   }, []);
 
   const handleFilterChange = useCallback((key: string, value: string) => {
@@ -151,26 +150,6 @@ const Index = () => {
     setFilters(EMPTY_FILTERS);
     setActiveLetter("");
   }, [handleClearSearch]);
-
-  // Autocomplete — igual ao Estoque
-  useEffect(() => {
-    if (!search.trim() || search.trim().length < 2) {
-      setAutocompleteItems([]);
-      setShowAutocomplete(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      const q = search.trim().toLowerCase();
-      const suggestions = devices
-        .filter(d => d.model)
-        .map(d => d.model)
-        .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
-        .slice(0, 6);
-      setAutocompleteItems(suggestions);
-      setShowAutocomplete(suggestions.length > 0);
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [search, devices]);
 
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
 
