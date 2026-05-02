@@ -99,7 +99,11 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
 
   const d = item.device;
   const resolvedQty = qty === "" ? 0 : qty;
-  const afterQty = type === "entrada" ? item.quantity + resolvedQty : item.quantity - resolvedQty;
+  // Para saída: calcula sobre quantity_available (descontando reservados)
+  // Para entrada: calcula sobre quantity total
+  const afterQty = type === "entrada"
+    ? item.quantity + resolvedQty
+    : item.quantity_available - resolvedQty;
   const loteOk = loteStatus(lote);
   const isSaidaMode = type === "saida";
 
@@ -364,6 +368,14 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
               className="h-10 rounded-xl text-sm"
             />
           </div>
+
+          {/* Aviso de reservado */}
+          {isSaidaMode && item.quantity_reserved > 0 && (
+            <div className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs bg-warning/8 border border-warning/30 text-warning">
+              <span className="font-semibold">{item.quantity_reserved} un. reservadas</span>
+              <span className="opacity-70">— indisponíveis para retirada</span>
+            </div>
+          )}
 
           {/* Preview */}
           <div className={cn(
