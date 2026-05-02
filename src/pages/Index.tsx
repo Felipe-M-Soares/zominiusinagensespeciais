@@ -41,7 +41,6 @@ const Index = () => {
   // Autocomplete
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const autocompleteRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { devices, totalCount, loading, loadingMore, error, loadMore, hasMore } =
@@ -289,8 +288,6 @@ const Index = () => {
         ) : (
           <>
             <SearchFilters
-              autocompleteRef={autocompleteRef}
-              search={querySearch}
               onSearchChange={handleSearchChange}
               onSearchSubmit={handleSearchSubmit}
               suggestions={suggestions}
