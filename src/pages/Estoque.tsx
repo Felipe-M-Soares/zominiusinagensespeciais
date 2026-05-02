@@ -483,7 +483,7 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
             className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
             <ArrowUpCircle className="h-3.5 w-3.5" />
-            Retirada / Venda
+            Retirada
           </button>
           <button
             type="button"
