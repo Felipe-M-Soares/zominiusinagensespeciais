@@ -1550,14 +1550,7 @@ export default function Comercial() {
             {/* ── Aba Pedidos ── */}
             {subTab === "pedidos" && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {(["todos", "pendente", "faturado", "cancelado"] as const).map(s => (
-                      <button key={s} type="button" onClick={() => setFiltroStatus(s)} className={cn("h-7 px-2.5 rounded-full text-[11px] font-medium border transition-colors", filtroStatus === s ? "bg-violet-600 text-white border-violet-600" : "bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/60")}>
-                        {{ todos: "Todos", pendente: "⏳ Pendentes", faturado: "✅ Faturados", cancelado: "🚫 Cancelados" }[s]}
-                      </button>
-                    ))}
-                  </div>
+                <div className="flex items-center justify-end gap-2">
                   <Button size="sm" className="h-8 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setPedidoComCliente(null); setNovoPedidoOpen(true); }}>
                     <Plus className="h-3.5 w-3.5" /> Novo Pedido
                   </Button>
