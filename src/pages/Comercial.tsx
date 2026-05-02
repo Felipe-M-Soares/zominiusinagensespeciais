@@ -962,10 +962,10 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
             <div>
               <div className="flex items-center gap-2">
                 <History className="h-4 w-4 text-violet-500" />
-                <p className="text-sm font-semibold">Histórico Geral — Expedição</p>
+                <p className="text-sm font-semibold">Histórico Geral — Comercial</p>
               </div>
               <p className="text-[12px] text-muted-foreground mt-0.5">
-                Últimas {movements.length} movimentações da expedição
+                Últimas {movements.length} movimentações do comercial
               </p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -997,7 +997,7 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
           )}
           {!loading && movements.length === 0 && (
             <div className="text-center py-12 text-sm text-muted-foreground">
-              Nenhuma movimentação registrada na expedição
+              Nenhuma movimentação registrada no comercial
             </div>
           )}
           {!loading && movements.map((mv) => {

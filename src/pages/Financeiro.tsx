@@ -372,6 +372,179 @@ function PedidoCard({ pedido, onEmitirNF }: PedidoCardProps) {
   );
 }
 
+// ─── Histórico Financeiro ─────────────────────────────────────────────────────
+
+interface HistoricoFinanceiroProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+function HistoricoFinanceiroModal({ open, onClose }: HistoricoFinanceiroProps) {
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("pedidos_comerciais")
+      .select(`
+        id, vendedora_id, vendedora_nome, status, frete, observacoes,
+        nota_fiscal, created_at, separado_em, nf_criada_em, enviado_em,
+        clientes!inner(nome),
+        pedido_itens(
+          id, stock_item_id, lote, quantidade,
+          stock_items!inner(devices!inner(model, reference))
+        )
+      `)
+      .in("status", ["faturado", "enviado"])
+      .order("nf_criada_em", { ascending: false })
+      .limit(50);
+
+    if (!error && data) {
+      const mapped: Pedido[] = (data as Record<string, unknown>[]).map(p => ({
+        id: p.id as string,
+        cliente_nome: (p.clientes as { nome: string }).nome,
+        vendedora_nome: p.vendedora_nome as string | null,
+        vendedora_id: p.vendedora_id as string | null,
+        status: p.status as string,
+        frete: (p.frete as number) ?? 0,
+        observacoes: p.observacoes as string | null,
+        nota_fiscal: p.nota_fiscal as string | null,
+        created_at: p.created_at as string,
+        separado_em: p.separado_em as string | null,
+        nf_criada_em: p.nf_criada_em as string | null,
+        enviado_em: p.enviado_em as string | null,
+        itens: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
+          id: i.id as string,
+          stock_item_id: i.stock_item_id as string,
+          lote: i.lote as string,
+          quantidade: i.quantidade as number,
+          device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
+          device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
+        })),
+      }));
+      setPedidos(mapped);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    if (open) load();
+    else setPedidos([]);
+  }, [open]);
+
+  function fmtDate(iso: string | null) {
+    if (!iso) return { date: "—", time: "" };
+    const d = new Date(iso);
+    return {
+      date: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }),
+      time: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    };
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        {/* Header */}
+        <div className="relative px-5 pt-5 pb-3 shrink-0">
+          <div className="absolute inset-0 bg-gradient-to-b from-violet-500/5 to-transparent" />
+          <div className="relative flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-violet-500" />
+                <p className="text-sm font-semibold">Histórico Geral — Financeiro</p>
+              </div>
+              <p className="text-[12px] text-muted-foreground mt-0.5">
+                Últimas {pedidos.length} notas fiscais emitidas
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={load}
+                disabled={loading}
+                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
+                title="Atualizar"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-3 pb-4 overflow-y-auto flex-1 space-y-1">
+          {loading && (
+            <div className="flex items-center justify-center py-10">
+              <div className="animate-spin h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full" />
+            </div>
+          )}
+          {!loading && pedidos.length === 0 && (
+            <div className="text-center py-12 text-sm text-muted-foreground">
+              Nenhuma nota fiscal emitida ainda
+            </div>
+          )}
+          {!loading && pedidos.map((p) => {
+            const { date, time } = fmtDate(p.nf_criada_em ?? p.created_at);
+            const enviado = p.status === "enviado";
+            return (
+              <div
+                key={p.id}
+                className={cn(
+                  "flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors",
+                  enviado ? "bg-success/4 border-success/15" : "bg-violet-500/4 border-violet-500/15"
+                )}
+              >
+                {enviado
+                  ? <Send className="h-4 w-4 mt-0.5 text-success shrink-0" />
+                  : <FileText className="h-4 w-4 mt-0.5 text-violet-500 shrink-0" />}
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="text-[12px] font-semibold text-foreground leading-snug line-clamp-1">
+                    {p.cliente_nome}
+                  </p>
+                  {p.nota_fiscal && (
+                    <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-violet-500/80">
+                      <Tag className="h-2.5 w-2.5" />NF {p.nota_fiscal}
+                    </p>
+                  )}
+                  {p.vendedora_nome && (
+                    <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
+                      <User className="h-2.5 w-2.5" />{p.vendedora_nome}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-muted-foreground">
+                    {p.itens.length} {p.itens.length === 1 ? "item" : "itens"}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className={cn(
+                    "text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
+                    enviado
+                      ? "bg-success/10 text-success border-success/30"
+                      : "bg-violet-500/10 text-violet-500 border-violet-500/30"
+                  )}>
+                    {enviado ? "Enviado" : "Faturado"}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{date}</span>
+                  <span className="text-[10px] text-muted-foreground/60">{time}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function Financeiro() {
@@ -381,6 +554,7 @@ export default function Financeiro() {
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState("pronto");
   const [emitirNFPedido, setEmitirNFPedido] = useState<Pedido | null>(null);
+  const [historicoOpen, setHistoricoOpen] = useState(false);
 
   // Só admin ou financeiro pode acessar
   const canAccess = isAdmin || role === "financeiro";
@@ -471,9 +645,14 @@ export default function Financeiro() {
               </span>
             )}
           </div>
-          <button type="button" onClick={loadPedidos} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => setHistoricoOpen(true)} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors" title="Histórico">
+              <History className="h-4 w-4" />
+            </button>
+            <button type="button" onClick={loadPedidos} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -545,6 +724,7 @@ export default function Financeiro() {
       </main>
 
       <EmitirNFModal pedido={emitirNFPedido} onClose={() => setEmitirNFPedido(null)} onSuccess={loadPedidos} />
+      <HistoricoFinanceiroModal open={historicoOpen} onClose={() => setHistoricoOpen(false)} />
     </div>
   );
 }
