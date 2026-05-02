@@ -917,15 +917,32 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Reasons que NÃO pertencem ao comercial (são do estoque interno)
+  const INTERNAL_REASONS = [
+    "Retrabalho concluído — recebido do Retrabalho",
+    "Retrabalho concluído — enviado para Expedição",
+    "Enviado para Retrabalho",
+    "Recebido de Intermediário",
+    "Rollback — falha ao criar item de retrabalho",
+    "Rollback — falha ao criar item de expedição",
+    "Rollback — falha ao registrar entrada na expedição",
+    "Retirada",
+  ];
+
+  function isComercialMovement(m: AllMovement) {
+    if (m.fase !== "expedicao") return false;
+    if (!m.reason) return false;
+    if (INTERNAL_REASONS.some(r => m.reason?.startsWith(r))) return false;
+    return true;
+  }
+
   useEffect(() => {
     let cancelled = false;
     if (open) {
       setLoading(true);
       fetchAllMovements(100).then((data) => {
         if (!cancelled) {
-          // Filtra apenas movimentos da expedição (comercial)
-          const expMov = data.filter(m => m.fase === "expedicao");
-          setMovements(expMov);
+          setMovements(data.filter(isComercialMovement));
           setLoading(false);
         }
       }).catch(() => { if (!cancelled) setLoading(false); });
@@ -938,7 +955,7 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
   async function load() {
     setLoading(true);
     const data = await fetchAllMovements(100);
-    setMovements(data.filter(m => m.fase === "expedicao"));
+    setMovements(data.filter(isComercialMovement));
     setLoading(false);
   }
 
