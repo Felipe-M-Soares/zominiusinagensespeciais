@@ -948,7 +948,7 @@ export default function Estoque() {
                     <List className="h-3.5 w-3.5" /> Lista
                   </Button>
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setAllMovOpen(true)}>
-                    <History className="h-3.5 w-3.5" /> Histórico { {intermediaria:"Intermediária",expedicao:"Expedição",retrabalho:"Retrabalho"}[activeView as string] ?? "Geral" }
+                    <History className="h-3.5 w-3.5" /> Histórico do Estoque
                   </Button>
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
                     <DatabaseBackup className="h-3.5 w-3.5" /> Backup
@@ -971,7 +971,7 @@ export default function Estoque() {
                       {[
                         { label: "Adicionar Peça", icon: Plus, action: () => setAddOpen(true) },
                         { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
-                        { label: `Histórico ${ {intermediaria:"Intermediária",expedicao:"Expedição",retrabalho:"Retrabalho"}[activeView as string] ?? "Geral"}`, icon: History, action: () => setAllMovOpen(true) },
+                        { label: "Histórico do Estoque", icon: History, action: () => setAllMovOpen(true) },
                         { label: "Importar CSV", icon: ScanBarcode, action: () => setCsvOpen(true) },
                         { label: "Backup", icon: DatabaseBackup, action: () => setBackupOpen(true) },
                         { label: "Excluir Todo Estoque", icon: Trash2, action: () => setDeleteAllOpen(true), danger: true },

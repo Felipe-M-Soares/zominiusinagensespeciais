@@ -27,10 +27,20 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Exclui movimentos originados pelo Financeiro ou pelo Comercial (pedidos)
+  function filterStockOnly(data: import("@/hooks/useStock").AllMovement[]) {
+    return data.filter((m) => {
+      if (m.user_display_name === "Financeiro") return false;
+      if (m.reason?.startsWith("Pedido comercial")) return false;
+      if (m.reason?.startsWith("NF ")) return false;
+      return fase ? m.fase === fase : true;
+    });
+  }
+
   async function load() {
     setLoading(true);
     const data = await fetchAllMovements(100, fase);
-    setMovements(data.filter(m => fase ? m.fase === fase : true));
+    setMovements(filterStockOnly(data));
     setLoading(false);
   }
 
@@ -40,7 +50,7 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
       setLoading(true);
       fetchAllMovements(100, fase).then((data) => {
         if (!cancelled) {
-          setMovements(data.filter(m => fase ? m.fase === fase : true));
+          setMovements(filterStockOnly(data));
           setLoading(false);
         }
       }).catch(() => { if (!cancelled) setLoading(false); });
@@ -69,7 +79,7 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                   <History className="h-4 w-4 text-primary" />
-                  {fase ? `Histórico — ${FASE_LABELS[fase].label}` : "Histórico Geral"}
+                  {fase ? `Histórico do Estoque — ${FASE_LABELS[fase].label}` : "Histórico do Estoque"}
                 </DialogTitle>
               </DialogHeader>
               <p className="text-[12px] text-muted-foreground mt-0.5">
