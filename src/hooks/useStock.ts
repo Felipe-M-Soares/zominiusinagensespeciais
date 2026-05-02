@@ -608,15 +608,28 @@ export async function fetchLotesSummaryBatch(
 export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummary[]> {
   const { data } = await supabase
     .from("stock_movements")
-    .select("lote, type, quantity, created_at")
+    .select("lote, type, quantity, reason, created_at")
     .eq("stock_item_id", stockItemId)
     .not("lote", "is", null)
     .order("created_at", { ascending: false });
 
   if (!data || data.length === 0) return [];
 
+  // Reasons de transferência interna entre fases — não contam como entrada/saída real
+  const INTERNAL_REASONS = [
+    "Retrabalho concluído — recebido do Retrabalho",
+    "Retrabalho concluído — enviado para Expedição",
+    "Enviado para Retrabalho",
+    "Rollback — falha ao criar item de retrabalho",
+    "Rollback — falha ao criar item de expedição",
+    "Rollback — falha ao registrar entrada na expedição",
+  ];
+
   const map = new Map<string, LoteSummary>();
-  for (const row of data as { lote: string; type: string; quantity: number; created_at: string }[]) {
+  for (const row of data as { lote: string; type: string; quantity: number; reason: string | null; created_at: string }[]) {
+    // Ignora movimentos internos de transferência entre fases
+    if (row.reason && INTERNAL_REASONS.includes(row.reason)) continue;
+
     const key = row.lote.toUpperCase();
     if (!map.has(key)) {
       map.set(key, { lote: key, total_entrada: 0, total_saida: 0, saldo: 0, last_movement: row.created_at });
