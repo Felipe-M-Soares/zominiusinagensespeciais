@@ -120,10 +120,16 @@ const Index = () => {
 
   const options = useDeviceOptions();
 
-  // Igual ao Estoque: onSearch do SearchBar dispara ambos
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
     setQuerySearch(v);
+    setShowAutocomplete(false);
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setSearch("");
+    setQuerySearch("");
+    setShowAutocomplete(false);
   }, []);
 
   const handleSelectSuggestion = useCallback((suggestion: string) => {
@@ -141,12 +147,10 @@ const Index = () => {
   }, []);
 
   const handleClear = useCallback(() => {
-    setSearch("");
-    setQuerySearch("");
-    setShowAutocomplete(false);
+    handleClearSearch();
     setFilters(EMPTY_FILTERS);
     setActiveLetter("");
-  }, []);
+  }, [handleClearSearch]);
 
   // Autocomplete — igual ao Estoque
   useEffect(() => {
@@ -333,8 +337,8 @@ const Index = () => {
             <div className="space-y-3">
               <div className="flex gap-2">
                 <SearchBar
-                  onSearch={v => { setSearch(v); setQuerySearch(v); setShowAutocomplete(false); }}
-                  onClear={() => { setSearch(""); setQuerySearch(""); setShowAutocomplete(false); }}
+                  onSearch={handleSearchChange}
+                  onClear={handleClearSearch}
                   hasValue={!!search}
                   suggestions={autocompleteItems}
                   showSuggestions={showAutocomplete}
