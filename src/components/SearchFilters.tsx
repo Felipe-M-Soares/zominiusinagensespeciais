@@ -8,23 +8,23 @@ import { cn } from "@/lib/utils";
 
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-// ── SearchBar isolado — idêntico ao do Estoque ────────────────────────────────
+// ── SearchBar isolado — não propaga re-renders ao pai a cada tecla ─────────────
+// COPIADO LITERALMENTE DO ESTOQUE — inputRef e debounceRef ficam DENTRO do memo
 interface SearchBarProps {
-  inputRef: React.RefObject<HTMLInputElement>;
-  autocompleteRef: React.RefObject<HTMLDivElement>;
   onSearch: (value: string) => void;
   onClear: () => void;
+  hasValue: boolean;
   suggestions: string[];
   showSuggestions: boolean;
   onSelectSuggestion: (s: string) => void;
   onCloseSuggestions: () => void;
-  onSearchSubmit: (value: string) => void;
 }
 
 const SearchBar = memo(function SearchBar({
-  inputRef, autocompleteRef, onSearch, onClear,
-  suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions, onSearchSubmit,
+  onSearch, onClear, hasValue: _hasValue, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
 }: SearchBarProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localHasValue, setLocalHasValue] = useState(false);
 
@@ -43,7 +43,7 @@ const SearchBar = memo(function SearchBar({
   }
 
   return (
-    <div className="relative flex-1" ref={autocompleteRef}>
+    <div className="relative flex-1" ref={containerRef}>
       <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
       <input
         ref={inputRef}
@@ -54,7 +54,7 @@ const SearchBar = memo(function SearchBar({
           if (e.key === "Enter") {
             const v = (e.target as HTMLInputElement).value.trim();
             if (debounceRef.current) clearTimeout(debounceRef.current);
-            onSearchSubmit(v);
+            onSearch(v);
             onCloseSuggestions();
             requestAnimationFrame(() => inputRef.current?.select());
           }
@@ -83,10 +83,9 @@ const SearchBar = memo(function SearchBar({
 
 // ── SearchFilters principal ────────────────────────────────────────────────────
 interface Props {
-  inputRef: React.RefObject<HTMLInputElement>;
-  autocompleteRef: React.RefObject<HTMLDivElement>;
   onSearchChange: (v: string) => void;
   onSearchSubmit: (v: string) => void;
+  hasValue: boolean;
   suggestions?: string[];
   showSuggestions?: boolean;
   onSelectSuggestion?: (s: string) => void;
@@ -105,8 +104,7 @@ interface Props {
 }
 
 export function SearchFilters({
-  inputRef, autocompleteRef,
-  onSearchChange, onSearchSubmit,
+  onSearchChange, onSearchSubmit, hasValue,
   suggestions = [], showSuggestions = false,
   onSelectSuggestion, onCloseSuggestions,
   materials, classifications, exocadOptions,
@@ -128,23 +126,14 @@ export function SearchFilters({
     <div className="space-y-3">
       <div className="flex gap-2">
         <SearchBar
-          inputRef={inputRef}
-          autocompleteRef={autocompleteRef}
-          onSearch={onSearchChange}
+          onSearch={v => { onSearchChange(v); onSearchSubmit(v); }}
           onClear={onClear}
-          onSearchSubmit={onSearchSubmit}
+          hasValue={hasValue}
           suggestions={suggestions}
           showSuggestions={showSuggestions}
           onSelectSuggestion={onSelectSuggestion ?? (() => {})}
           onCloseSuggestions={onCloseSuggestions ?? (() => {})}
         />
-
-        <Button type="button" variant="outline" size="icon" title="Pesquisar"
-          className="h-10 w-10 sm:h-11 sm:w-11 shrink-0"
-          onClick={() => { const v = inputRef.current?.value.trim() ?? ""; onSearchSubmit(v); }}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
 
         <Button variant={open ? "default" : "outline"} size="icon"
           className="h-10 w-10 sm:h-11 sm:w-11 shrink-0 relative"

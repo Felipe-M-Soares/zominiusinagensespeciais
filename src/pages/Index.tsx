@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useDevices, useDeviceOptions, type Filters } from "@/hooks/useDevices";
 import { useAuth } from "@/hooks/useAuth";
 import { SearchFilters } from "@/components/SearchFilters";
@@ -30,52 +30,27 @@ const Index = () => {
     applyTheme(next ? "dark" : "light");
   }, [isDark]);
 
-  // Igual ao Estoque: search = valor visual (para autocomplete), querySearch = valor que vai ao banco
+  // Igual ao Estoque: search = valor visual (autocomplete), querySearch = vai ao banco
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
 
-  // Autocomplete
   const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
-
-  // Refs — igual ao Estoque
-  const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autocompleteRef = useRef<HTMLDivElement>(null);
 
   const { devices, totalCount, loading, loadingMore, error, loadMore, hasMore } =
     useDevices(querySearch, filters, activeLetter);
 
   const options = useDeviceOptions();
 
-  // Igual ao Estoque: debounce atualiza search + querySearch juntos
+  // Igual ao Estoque: onSearch do SearchBar dispara ambos
   const handleSearchChange = useCallback((v: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!v.trim()) {
-      setSearch("");
-      setQuerySearch("");
-      setShowAutocomplete(false);
-      return;
-    }
-    debounceRef.current = setTimeout(() => {
-      setSearch(v.trim());
-      setQuerySearch(v.trim());
-    }, 350);
-  }, []);
-
-  // Enter — disparo imediato igual ao Estoque
-  const handleSearchSubmit = useCallback((v: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     setSearch(v);
     setQuerySearch(v);
-    setShowAutocomplete(false);
   }, []);
 
-  // Selecionar sugestão — igual ao Estoque
   const handleSelectSuggestion = useCallback((suggestion: string) => {
-    if (inputRef.current) inputRef.current.value = suggestion;
     setSearch(suggestion);
     setQuerySearch(suggestion);
     setShowAutocomplete(false);
@@ -90,8 +65,6 @@ const Index = () => {
   }, []);
 
   const handleClear = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (inputRef.current) inputRef.current.value = "";
     setSearch("");
     setQuerySearch("");
     setShowAutocomplete(false);
@@ -118,17 +91,6 @@ const Index = () => {
     }, 150);
     return () => clearTimeout(timer);
   }, [search, devices]);
-
-  // Fecha autocomplete ao clicar fora — igual ao Estoque
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
-        setShowAutocomplete(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
 
@@ -292,10 +254,9 @@ const Index = () => {
         ) : (
           <>
             <SearchFilters
-              inputRef={inputRef}
-              autocompleteRef={autocompleteRef}
               onSearchChange={handleSearchChange}
-              onSearchSubmit={handleSearchSubmit}
+              onSearchSubmit={handleSearchChange}
+              hasValue={!!search}
               suggestions={autocompleteItems}
               showSuggestions={showAutocomplete}
               onSelectSuggestion={handleSelectSuggestion}
