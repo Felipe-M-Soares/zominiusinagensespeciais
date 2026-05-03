@@ -47,6 +47,7 @@ interface LoteDisponivel {
 
 interface PedidoItem {
   id: string;
+  ids: string[]; // todos os ids de pedido_itens unificados
   stock_item_id: string;
   lote: string;
   quantidade: number;
@@ -727,13 +728,15 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
     // Snapshot com todos os lotes e quantidades escolhidas
     const snapshot = pedido.itens.flatMap(item => {
       const sel = lotesSelecionados[item.id] ?? {};
-      return Object.entries(sel).map(([lote, quantidade]) => ({
-        pedido_item_id: item.id,
-        stock_item_id: item.stock_item_id,
-        lote,
-        quantidade,
-        device_model: item.device_model,
-      }));
+      return Object.entries(sel).flatMap(([lote, quantidade]) =>
+        item.ids.map(pid => ({
+          pedido_item_id: pid,
+          stock_item_id: item.stock_item_id,
+          lote,
+          quantidade: quantidade / item.ids.length,
+          device_model: item.device_model,
+        }))
+      );
     });
 
     const { error } = await supabase
@@ -933,12 +936,21 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
   async function handleSalvar() {
     if (!item || qtd < 1) return;
     setSaving(true);
-    const { error } = await supabase
-      .from("pedido_itens")
-      .update({ quantidade: qtd })
-      .eq("id", item.id);
+    // Se há múltiplos itens unificados, distribuímos a nova quantidade entre eles
+    const count = item.ids.length;
+    const base = Math.floor(qtd / count);
+    const remainder = qtd % count;
+    let hasError = false;
+    for (let i = 0; i < item.ids.length; i++) {
+      const novaQtd = base + (i < remainder ? 1 : 0);
+      const { error } = await supabase
+        .from("pedido_itens")
+        .update({ quantidade: novaQtd })
+        .eq("id", item.ids[i]);
+      if (error) { hasError = true; break; }
+    }
     setSaving(false);
-    if (error) { toast.error("Erro ao atualizar quantidade."); return; }
+    if (hasError) { toast.error("Erro ao atualizar quantidade."); return; }
     toast.success("Quantidade atualizada!");
     onSuccess();
     onClose();
@@ -1093,13 +1105,15 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     if (!user) return;
     const snapshot = pedido.itens.flatMap(item => {
       const sel = lotesSelecionados[item.id] ?? {};
-      return Object.entries(sel).map(([lote, quantidade]) => ({
-        pedido_item_id: item.id,
-        stock_item_id: item.stock_item_id,
-        lote,
-        quantidade,
-        device_model: item.device_model,
-      }));
+      return Object.entries(sel).flatMap(([lote, quantidade]) =>
+        item.ids.map(pid => ({
+          pedido_item_id: pid,
+          stock_item_id: item.stock_item_id,
+          lote,
+          quantidade: quantidade / item.ids.length, // distribui proporcionalmente
+          device_model: item.device_model,
+        }))
+      );
     });
     const { error } = await supabase
       .from("pedidos_comerciais")
@@ -1146,14 +1160,28 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       frete: (p.frete as number) ?? 0,
       observacoes: p.observacoes as string | null,
       created_at: p.created_at as string,
-      itens: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
-        id: i.id as string,
-        stock_item_id: i.stock_item_id as string,
-        lote: i.lote as string,
-        quantidade: i.quantidade as number,
-        device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
-        device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
-      })),
+      itens: (() => {
+        const raw = ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
+          id: i.id as string,
+          ids: [i.id as string],
+          stock_item_id: i.stock_item_id as string,
+          lote: i.lote as string,
+          quantidade: i.quantidade as number,
+          device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
+          device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
+        }));
+        // Unifica itens com o mesmo stock_item_id somando quantidades
+        const merged: Record<string, typeof raw[0]> = {};
+        for (const item of raw) {
+          if (merged[item.stock_item_id]) {
+            merged[item.stock_item_id].quantidade += item.quantidade;
+            merged[item.stock_item_id].ids.push(item.id);
+          } else {
+            merged[item.stock_item_id] = { ...item };
+          }
+        }
+        return Object.values(merged);
+      })(),
     }));
 
     setPedidos(mapped);
@@ -1179,19 +1207,23 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     if (!user) return;
     const snapshot = pedido.itens.flatMap(item => {
       const sel = lotesSelecionados[item.id] ?? {};
-      return Object.entries(sel).map(([lote, quantidade]) => ({
-        pedido_item_id: item.id,
-        stock_item_id: item.stock_item_id,
-        lote,
-        quantidade,
-        device_model: item.device_model,
-      }));
+      return Object.entries(sel).flatMap(([lote, quantidade]) =>
+        item.ids.map(pid => ({
+          pedido_item_id: pid,
+          stock_item_id: item.stock_item_id,
+          lote,
+          quantidade: quantidade / item.ids.length,
+          device_model: item.device_model,
+        }))
+      );
     });
-    // Atualiza lote em cada pedido_item
+    // Atualiza lote em cada pedido_item (incluindo duplicatas unificadas)
     for (const item of pedido.itens) {
       const sel = lotesSelecionados[item.id] ?? {};
       const lotePrincipal = Object.keys(sel)[0] ?? null;
-      await supabase.from("pedido_itens").update({ lote: lotePrincipal }).eq("id", item.id);
+      for (const itemId of item.ids) {
+        await supabase.from("pedido_itens").update({ lote: lotePrincipal }).eq("id", itemId);
+      }
     }
     const { error } = await supabase
       .from("pedidos_comerciais")
