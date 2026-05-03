@@ -642,7 +642,7 @@ export default function Estoque() {
     supabase
       .from("pedidos_comerciais")
       .select("id", { count: "exact", head: true })
-      .eq("status", "pendente")
+      .eq("status", "separando")
       .then(({ count }) => setPedidosPendentes(count ?? 0));
   }, []);
 

@@ -113,10 +113,18 @@ function PreviewCard({
   items,
   view,
   label,
+  pecasExpedicao,
+  pecasRetrabalho,
+  tiposBaixo,
+  pedidosSeparando,
 }: {
   items: StockItem[];
   view: ActiveView;
   label: string;
+  pecasExpedicao?: number;
+  pecasRetrabalho?: number;
+  tiposBaixo?: number;
+  pedidosSeparando?: number;
 }) {
   // Para o dashboard: agrupa por device_id para não contar a mesma peça em múltiplas fases
   const byDevice = new Map<string, { quantity: number; min_quantity: number }>();
@@ -143,10 +151,10 @@ function PreviewCard({
   if (view === "dashboard") {
     return (
       <div className="grid grid-cols-4 gap-2">
-        <PreviewStat value={totalIntermediaria.toLocaleString("pt-BR")} label="Intermediário" color="text-primary" />
-        <PreviewStat value={ok} label="OK" color="text-success" />
-        <PreviewStat value={low} label="Baixo" color="text-warning" />
-        <PreviewStat value={empty} label="Zerado" color="text-destructive" />
+        <PreviewStat value={(pecasExpedicao ?? 0).toLocaleString("pt-BR")} label="Expedição" color="text-primary" />
+        <PreviewStat value={(pecasRetrabalho ?? 0).toLocaleString("pt-BR")} label="Retrabalho" color="text-amber-500" />
+        <PreviewStat value={tiposBaixo ?? 0} label="Baixo" color="text-warning" />
+        <PreviewStat value={pedidosSeparando ?? 0} label="Separando" color="text-blue-500" />
       </div>
     );
   }
@@ -222,6 +230,13 @@ export function StockNav({
     recebimento: [],
     pedidos: [],
   };
+
+  // Métricas do dashboard (espelham o StockDashboard)
+  const pecasExpedicao = expedicaoItems.reduce((s, i) => s + i.quantity, 0);
+  const pecasRetrabalho = retrabalhoItems.reduce((s, i) => s + i.quantity, 0);
+  const expByDevice = new Map<string, number>();
+  for (const i of expedicaoItems) expByDevice.set(i.device_id, (expByDevice.get(i.device_id) ?? 0) + i.quantity);
+  const tiposBaixo = Array.from(expByDevice.values()).filter(q => q > 0 && q < 100).length;
 
   // Contagens para badges
   const counts: Partial<Record<ActiveView, number>> = {
@@ -324,6 +339,10 @@ export function StockNav({
             items={previewItems[activeView]}
             view={activeView}
             label={activeTab.label}
+            pecasExpedicao={pecasExpedicao}
+            pecasRetrabalho={pecasRetrabalho}
+            tiposBaixo={tiposBaixo}
+            pedidosSeparando={pedidosPendentes ?? 0}
           />
         </div>
       )}
