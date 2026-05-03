@@ -103,11 +103,11 @@ interface PedidoCardProps {
   onIniciarSeparacao: (pedido: Pedido) => void;
   onMarcarPronto: (pedido: Pedido) => void;
   onCancelar: (pedido: Pedido) => void;
-  onAdicionarPeca: (pedido: Pedido) => void;
+  onEditarItem: (pedido: Pedido, item: PedidoItem) => void;
   isAdmin: boolean;
 }
 
-function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, onAdicionarPeca, isAdmin }: PedidoCardProps) {
+function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, onEditarItem, isAdmin }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
 
@@ -181,6 +181,16 @@ function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, on
                     </span>
                   )}
                   <span className="text-[12px] font-bold text-emerald-600">{item.quantidade} un.</span>
+                  {pedido.status === "pendente" && (
+                    <button
+                      type="button"
+                      title="Editar quantidade"
+                      onClick={e => { e.stopPropagation(); onEditarItem(pedido, item); }}
+                      className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -221,24 +231,14 @@ function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, on
           {/* Ações */}
           <div className="flex gap-2 pt-1">
             {pedido.status === "pendente" && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onAdicionarPeca(pedido)}
-                  className="flex-1 h-9 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Adicionar Peça
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onIniciarSeparacao(pedido)}
-                  className="flex-1 h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <PackageCheck className="h-3.5 w-3.5" />
-                  Iniciar Separação
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => onIniciarSeparacao(pedido)}
+                className="flex-1 h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5"
+              >
+                <PackageCheck className="h-3.5 w-3.5" />
+                Iniciar Separação
+              </button>
             )}
             {pedido.status === "separando" && (
               <button
@@ -594,189 +594,112 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
   );
 }
 
-// ─── Modal Adicionar Peça ao Pedido Pendente ──────────────────────────────────
+// ─── Modal Editar Quantidade de Item do Pedido Pendente ───────────────────────
 
-interface StockItemSimple {
-  id: string;
-  device_model: string;
-  device_reference: string;
-  quantity_available: number;
-}
-
-interface AdicionarPecaModalProps {
+interface EditarItemModalProps {
   pedido: Pedido | null;
+  item: PedidoItem | null;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-function AdicionarPecaModal({ pedido, onClose, onSuccess }: AdicionarPecaModalProps) {
-  const [pecas, setPecas] = useState<StockItemSimple[]>([]);
-  const [loadingPecas, setLoadingPecas] = useState(false);
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<StockItemSimple | null>(null);
+function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalProps) {
   const [qtd, setQtd] = useState(1);
   const [saving, setSaving] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!pedido) return;
-    setLoadingPecas(true);
-    supabase
-      .from("stock_items")
-      .select("id, quantity, quantity_reserved, devices!inner(model, reference)")
-      .eq("fase", "expedicao")
-      .gt("quantity", 0)
-      .then(({ data }) => {
-        const items: StockItemSimple[] = ((data ?? []) as Record<string, unknown>[]).map((row) => {
-          const dev = row.devices as { model: string; reference: string } | null;
-          const qty = (row.quantity as number) ?? 0;
-          const reserved = (row.quantity_reserved as number) ?? 0;
-          return {
-            id: row.id as string,
-            device_model: dev?.model ?? "—",
-            device_reference: dev?.reference ?? "—",
-            quantity_available: Math.max(0, qty - reserved),
-          };
-        }).filter(i => i.quantity_available > 0);
-        setPecas(items);
-        setLoadingPecas(false);
-      });
-  }, [pedido]);
+    if (item) setQtd(item.quantidade);
+    else setQtd(1);
+  }, [item]);
 
-  useEffect(() => {
-    if (pedido) setTimeout(() => inputRef.current?.focus(), 100);
-    else { setSearch(""); setSelected(null); setQtd(1); }
-  }, [pedido]);
-
-  const filtered = pecas.filter(p =>
-    p.device_model.toLowerCase().includes(search.toLowerCase()) ||
-    p.device_reference.toLowerCase().includes(search.toLowerCase())
-  );
-
-  async function handleAdd() {
-    if (!pedido || !selected) return;
-    if (qtd < 1 || qtd > selected.quantity_available) {
-      toast.error(`Quantidade inválida. Disponível: ${selected.quantity_available} un.`);
-      return;
-    }
+  async function handleSalvar() {
+    if (!item || qtd < 1) return;
     setSaving(true);
-    const { error } = await supabase.from("pedido_itens").insert({
-      pedido_id: pedido.id,
-      stock_item_id: selected.id,
-      lote: "a-definir",
-      quantidade: qtd,
-      quantidade_reservada: 0,
-    });
+    const { error } = await supabase
+      .from("pedido_itens")
+      .update({ quantidade: qtd })
+      .eq("id", item.id);
     setSaving(false);
-    if (error) { toast.error("Erro ao adicionar peça."); return; }
-    toast.success(`${selected.device_model} adicionada ao pedido!`);
+    if (error) { toast.error("Erro ao atualizar quantidade."); return; }
+    toast.success("Quantidade atualizada!");
     onSuccess();
     onClose();
   }
 
-  if (!pedido) return null;
+  if (!pedido || !item) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2">
-            <Plus className="h-4 w-4 text-amber-500" />
-            <p className="text-sm font-semibold">Adicionar Peça</p>
+            <Package className="h-4 w-4 text-amber-500" />
+            <p className="text-sm font-semibold">Editar Quantidade</p>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="p-4 space-y-3 overflow-y-auto flex-1">
-          {/* Info pedido */}
-          <div className="rounded-xl bg-amber-500/8 border border-amber-500/20 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
-            Pedido de <strong>{pedido.cliente_nome}</strong> — adicionando mais peças enquanto pendente
+        <div className="p-5 space-y-4">
+          {/* Info da peça */}
+          <div className="rounded-xl bg-muted/20 border border-border/20 px-4 py-3">
+            <p className="text-[13px] font-semibold">{item.device_model}</p>
+            <p className="text-[11px] text-muted-foreground font-mono mt-0.5">{item.device_reference}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-1">Pedido de {pedido.cliente_nome}</p>
           </div>
-
-          {/* Busca */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <input
-              ref={inputRef}
-              value={search}
-              onChange={e => { setSearch(e.target.value); setSelected(null); }}
-              placeholder="Buscar peça por modelo ou referência..."
-              className="w-full h-9 pl-9 pr-3 rounded-xl border border-border/40 bg-muted/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-
-          {/* Lista de peças */}
-          {loadingPecas ? (
-            <div className="flex justify-center py-6">
-              <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
-            </div>
-          ) : (
-            <div className="space-y-1 max-h-52 overflow-y-auto">
-              {filtered.length === 0 && (
-                <p className="text-center py-6 text-[12px] text-muted-foreground">Nenhuma peça disponível na expedição</p>
-              )}
-              {filtered.map(p => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => { setSelected(p); setQtd(1); }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors",
-                    selected?.id === p.id
-                      ? "bg-amber-500/10 border-amber-500/30"
-                      : "bg-muted/10 border-border/20 hover:bg-muted/30"
-                  )}
-                >
-                  <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-medium truncate">{p.device_model}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono">{p.device_reference}</p>
-                  </div>
-                  <span className="text-[11px] font-bold text-emerald-600 shrink-0">{p.quantity_available} disp.</span>
-                </button>
-              ))}
-            </div>
-          )}
 
           {/* Quantidade */}
-          {selected && (
-            <div className="rounded-xl border border-border/30 bg-muted/10 px-4 py-3 space-y-2">
-              <p className="text-[11px] font-semibold text-foreground">{selected.device_model}</p>
-              <div className="flex items-center gap-3">
-                <label className="text-[11px] text-muted-foreground">Quantidade:</label>
-                <div className="flex items-center gap-2 ml-auto">
-                  <button type="button" onClick={() => setQtd(q => Math.max(1, q - 1))} className="h-7 w-7 rounded-lg bg-muted/30 hover:bg-muted/60 flex items-center justify-center transition-colors">
-                    <Minus className="h-3 w-3" />
-                  </button>
-                  <span className="text-[14px] font-bold tabular-nums w-8 text-center">{qtd}</span>
-                  <button type="button" onClick={() => setQtd(q => Math.min(selected.quantity_available, q + 1))} className="h-7 w-7 rounded-lg bg-muted/30 hover:bg-muted/60 flex items-center justify-center transition-colors">
-                    <Plus className="h-3 w-3" />
-                  </button>
-                </div>
-              </div>
+          <div className="space-y-2">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Nova quantidade</label>
+            <div className="flex items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => setQtd(q => Math.max(1, q - 1))}
+                className="h-10 w-10 rounded-xl bg-muted/30 hover:bg-muted/60 flex items-center justify-center transition-colors"
+              >
+                <Minus className="h-4 w-4" />
+              </button>
+              <input
+                type="number"
+                min={1}
+                value={qtd}
+                onChange={e => setQtd(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-20 text-center text-[22px] font-bold bg-transparent border border-border/40 rounded-xl h-12 focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <button
+                type="button"
+                onClick={() => setQtd(q => q + 1)}
+                className="h-10 w-10 rounded-xl bg-muted/30 hover:bg-muted/60 flex items-center justify-center transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
             </div>
-          )}
-        </div>
+            {qtd !== item.quantidade && (
+              <p className="text-center text-[11px] text-muted-foreground">
+                Era <strong>{item.quantidade}</strong> → ficará <strong>{qtd}</strong> un.
+              </p>
+            )}
+          </div>
 
-        {/* Footer */}
-        <div className="px-4 pb-4 shrink-0 border-t border-border/20 pt-3 flex gap-2">
-          <button type="button" onClick={onClose} className="flex-1 h-10 rounded-xl border border-border/30 text-[12px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={!selected || saving}
-            className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-500/90 text-white text-[12px] font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
-          >
-            {saving
-              ? <div className="h-3.5 w-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
-              : <Plus className="h-3.5 w-3.5" />}
-            Adicionar ao Pedido
-          </button>
+          {/* Botões */}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 h-10 rounded-xl border border-border/30 text-[12px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSalvar}
+              disabled={saving || qtd === item.quantidade}
+              className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-500/90 text-white text-[12px] font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+            >
+              {saving
+                ? <div className="h-3.5 w-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                : null}
+              Salvar
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -847,7 +770,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   const [separarPedido, setSepararPedido] = useState<Pedido | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<Pedido | null>(null);
   const [cancelando, setCancelando] = useState(false);
-  const [adicionarPecaPedido, setAdicionarPecaPedido] = useState<Pedido | null>(null);
+  const [editarItem, setEditarItem] = useState<{ pedido: Pedido; item: PedidoItem } | null>(null);
 
   const loadPedidos = useCallback(async () => {
     setLoading(true);
@@ -1052,7 +975,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
               onIniciarSeparacao={setSepararPedido}
               onMarcarPronto={handleMarcarPronto}
               onCancelar={setCancelarPedido}
-              onAdicionarPeca={setAdicionarPecaPedido}
+              onEditarItem={(pedido, item) => setEditarItem({ pedido, item })}
               isAdmin={isAdmin}
             />
           ))}
@@ -1067,9 +990,11 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       />
 
       {/* Modal adicionar peça ao pedido pendente */}
-      <AdicionarPecaModal
-        pedido={adicionarPecaPedido}
-        onClose={() => setAdicionarPecaPedido(null)}
+      {/* Modal editar quantidade de item pendente */}
+      <EditarItemModal
+        pedido={editarItem?.pedido ?? null}
+        item={editarItem?.item ?? null}
+        onClose={() => setEditarItem(null)}
         onSuccess={loadPedidos}
       />
 
