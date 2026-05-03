@@ -559,27 +559,14 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
               </button>
             )}
             {isSeparando && (
-              <div className="flex flex-col gap-1.5 flex-1">
-                <button
-                  type="button"
-                  onClick={async () => { setSalvandoSep(true); await onSalvarSeparacao(pedido, lotesSel); setSalvandoSep(false); }}
-                  disabled={!canSalvarSep || salvandoSep}
-                  className="w-full h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  {salvandoSep
-                    ? <div className="h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                    : <Tag className="h-3.5 w-3.5" />}
-                  Salvar lotes da separação
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onMarcarPronto(pedido)}
-                  className="w-full h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Marcar como Pronto
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => onMarcarPronto(pedido)}
+                className="flex-1 h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Marcar como Pronto
+              </button>
             )}
             {pedido.status === "pronto" && (
               <div className="flex-1 h-9 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-emerald-600 text-[12px] font-medium flex items-center justify-center gap-1.5">
