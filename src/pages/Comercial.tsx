@@ -1670,18 +1670,6 @@ export default function Comercial() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Atalho para Estoque — só admin vê */}
-            {isAdmin && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/estoque")}
-                className="h-8 gap-1.5 text-xs hidden sm:flex"
-              >
-                <Boxes className="h-3.5 w-3.5" />
-                Estoque
-              </Button>
-            )}
             {/* Toggle tema */}
             <button
               type="button"
