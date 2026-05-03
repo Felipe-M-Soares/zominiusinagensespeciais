@@ -63,6 +63,7 @@ export function StockDashboard({ items, loading }: Props) {
   // Peças na expedição
   const expedicaoItems = items.filter(i => i.fase === "expedicao");
   const totalPecasExpedicao = expedicaoItems.reduce((sum, i) => sum + i.quantity, 0);
+  const totalPecasIntermediaria = items.filter(i => i.fase === "intermediaria").reduce((sum, i) => sum + i.quantity, 0);
 
   // Peças em retrabalho
   const pecasRetrabalho = items
@@ -93,11 +94,11 @@ export function StockDashboard({ items, loading }: Props) {
         <KpiCard
           icon={Package}
           label="Total de Peças"
-          value={totalPecasExpedicao.toLocaleString("pt-BR")}
+          value={totalPecasIntermediaria.toLocaleString("pt-BR")}
           color="text-primary"
           bg="bg-primary/5"
           border="border-primary/20"
-          description={`${totalTipos} tipos cadastrados`}
+          description={`${totalTipos} tipos · ${totalPecasExpedicao} na expedição`}
         />
         <KpiCard
           icon={Wrench}
