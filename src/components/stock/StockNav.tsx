@@ -136,10 +136,14 @@ function PreviewCard({
   const empty = (view === "dashboard" ? devEntries : items).filter((i) => i.quantity === 0).length;
   const total = items.reduce((s, i) => s + i.quantity, 0);
 
+  const totalIntermediaria = items
+    .filter(i => i.fase === "intermediaria")
+    .reduce((s, i) => s + i.quantity, 0);
+
   if (view === "dashboard") {
     return (
       <div className="grid grid-cols-4 gap-2">
-        <PreviewStat value={byDevice.size} label="Tipos" color="text-primary" />
+        <PreviewStat value={totalIntermediaria.toLocaleString("pt-BR")} label="Intermediário" color="text-primary" />
         <PreviewStat value={ok} label="OK" color="text-success" />
         <PreviewStat value={low} label="Baixo" color="text-warning" />
         <PreviewStat value={empty} label="Zerado" color="text-destructive" />
