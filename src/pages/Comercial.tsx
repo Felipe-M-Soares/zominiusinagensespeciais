@@ -1657,8 +1657,7 @@ export default function Comercial() {
                 <ArrowLeft className="h-4 w-4" />
               </button>
             )}
-            <Logo className="h-7 object-contain" />
-            <div className="flex items-center gap-2 ml-1">
+            <div className="flex items-center gap-2">
               <ShoppingBag className="h-4 w-4 text-violet-500" />
               <h1 className="text-sm font-semibold">Comercial</h1>
               {!loadingPedidos && pedidosPendentes > 0 && (
