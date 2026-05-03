@@ -1499,7 +1499,7 @@ export default function Comercial() {
   const [historicoOpen, setHistoricoOpen] = useState(false);
 
   // Peças da expedição (para criar pedidos)
-  const { items: allItems, loading: loadingStock } = useStock("");
+  const { items: allItems, loading: loadingStock, refetch: refetchStock } = useStock("");
   const expedicaoItems = allItems.filter(i => i.fase === "expedicao" && i.quantity_available > 0);
 
   // Pedidos
@@ -1595,6 +1595,7 @@ export default function Comercial() {
     toast.success("Pedido cancelado.");
     setCancelarPedido(null);
     loadPedidos();
+    refetchStock();
   }
 
   async function handleDeleteCliente() {
@@ -1848,7 +1849,7 @@ export default function Comercial() {
       <NovoPedidoModal
         open={novoPedidoOpen}
         onClose={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); }}
-        onSuccess={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); loadPedidos(); }}
+        onSuccess={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); loadPedidos(); refetchStock(); }}
         clienteFixo={pedidoComCliente}
         expedicaoItems={expedicaoItems}
       />
@@ -1863,14 +1864,14 @@ export default function Comercial() {
       <FaturarModal
         pedido={faturarPedido}
         onClose={() => setFaturarPedido(null)}
-        onSuccess={() => { setFaturarPedido(null); loadPedidos(); }}
+        onSuccess={() => { setFaturarPedido(null); loadPedidos(); refetchStock(); }}
       />
 
       <AdicionarPecaModal
         pedido={adicionarPecaPedido}
         expedicaoItems={expedicaoItems}
         onClose={() => setAdicionarPecaPedido(null)}
-        onSuccess={() => { setAdicionarPecaPedido(null); loadPedidos(); }}
+        onSuccess={() => { setAdicionarPecaPedido(null); loadPedidos(); refetchStock(); }}
       />
 
       {/* Cancelar pedido */}
