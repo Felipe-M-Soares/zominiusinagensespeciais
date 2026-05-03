@@ -114,17 +114,19 @@ interface LoteSelecao {
 interface PedidoCardProps {
   pedido: Pedido;
   onIniciarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao) => void;
+  onSalvarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao) => Promise<void>;
   onMarcarPronto: (pedido: Pedido) => void;
   onCancelar: (pedido: Pedido) => void;
   onEditarItem: (pedido: Pedido, item: PedidoItem) => void;
   isAdmin: boolean;
 }
 
-function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, onEditarItem, isAdmin }: PedidoCardProps) {
+function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, isAdmin }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [expedicaoData, setExpedicaoData] = useState<Record<string, StockItemExpedicao>>({});
   const [lotesSel, setLotesSel] = useState<LoteSelecao>({});
   const [loadingLotes, setLoadingLotes] = useState(false);
+  const [salvandoSep, setSalvandoSep] = useState(false);
   const loadedRef = useRef(false);
 
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
@@ -231,6 +233,12 @@ function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, on
   }
 
   const canConfirmar = isPendente && pedido.itens.every(item => {
+    const exp = expedicaoData[item.id];
+    if (!exp || exp.lotes.length === 0) return true;
+    return totalSel(item.id) === item.quantidade;
+  });
+
+  const canSalvarSep = isSeparando && !loadingLotes && pedido.itens.every(item => {
     const exp = expedicaoData[item.id];
     if (!exp || exp.lotes.length === 0) return true;
     return totalSel(item.id) === item.quantidade;
@@ -443,12 +451,90 @@ function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, on
                     </>
                   )}
 
-                  {/* Status separando: exibe lotes escolhidos (somente leitura) */}
-                  {isSeparando && item.lote && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-blue-600 font-mono">
-                      <Tag className="h-3 w-3" />
-                      Lote: {item.lote}
-                    </div>
+                  {/* Status separando: mesma UI de seleção de lotes, editável */}
+                  {isSeparando && (
+                    <>
+                      {lotes.length === 0 ? (
+                        <div className="flex items-center gap-1.5 text-[11px] text-destructive">
+                          <AlertTriangle className="h-3 w-3" />
+                          Sem estoque disponível na expedição
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Lotes — escolha o que será enviado</p>
+                            <span className={cn(
+                              "ml-auto text-[10px] font-bold",
+                              selTotal === item.quantidade ? "text-blue-500" : selTotal > 0 ? "text-amber-500" : "text-muted-foreground"
+                            )}>
+                              {selTotal}/{item.quantidade} selecionados
+                            </span>
+                          </div>
+                          {lotes.map(l => {
+                            const isSel = !!(lotesSel[item.id]?.[l.lote]);
+                            const qtySel = lotesSel[item.id]?.[l.lote] ?? 0;
+                            return (
+                              <div
+                                key={l.lote}
+                                className={cn(
+                                  "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
+                                  isSel ? "bg-blue-500/8 border-blue-500/30" : "bg-muted/20 border-border/20"
+                                )}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => toggleLote(item.id, l.lote, l.quantity)}
+                                  className={cn(
+                                    "h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
+                                    isSel ? "bg-blue-500 border-blue-500" : "border-muted-foreground/40"
+                                  )}
+                                >
+                                  {isSel && <CheckCircle2 className="h-3 w-3 text-white" />}
+                                </button>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] font-mono font-semibold">{l.lote}</p>
+                                  <p className="text-[10px] text-muted-foreground">{l.quantity} disponíveis</p>
+                                </div>
+                                {isSel && (
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => setQtyLote(item.id, l.lote, qtySel - 1, l.quantity)}
+                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground"
+                                    >
+                                      <Minus className="h-3 w-3" />
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={l.quantity}
+                                      value={qtySel}
+                                      onChange={e => setQtyLote(item.id, l.lote, parseInt(e.target.value) || 0, l.quantity)}
+                                      className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => setQtyLote(item.id, l.lote, qtySel + 1, l.quantity)}
+                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {selTotal !== item.quantidade && selTotal > 0 && (
+                            <p className="text-[11px] text-amber-600 flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              {selTotal < item.quantidade
+                                ? `Faltam ${item.quantidade - selTotal} un.`
+                                : `Excesso de ${selTotal - item.quantidade} un.`}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );
@@ -473,14 +559,27 @@ function PedidoCard({ pedido, onIniciarSeparacao, onMarcarPronto, onCancelar, on
               </button>
             )}
             {isSeparando && (
-              <button
-                type="button"
-                onClick={() => onMarcarPronto(pedido)}
-                className="flex-1 h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5"
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Marcar como Pronto
-              </button>
+              <div className="flex flex-col gap-1.5 flex-1">
+                <button
+                  type="button"
+                  onClick={async () => { setSalvandoSep(true); await onSalvarSeparacao(pedido, lotesSel); setSalvandoSep(false); }}
+                  disabled={!canSalvarSep || salvandoSep}
+                  className="w-full h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  {salvandoSep
+                    ? <div className="h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    : <Tag className="h-3.5 w-3.5" />}
+                  Salvar lotes da separação
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMarcarPronto(pedido)}
+                  className="w-full h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Marcar como Pronto
+                </button>
+              </div>
             )}
             {pedido.status === "pronto" && (
               <div className="flex-1 h-9 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-emerald-600 text-[12px] font-medium flex items-center justify-center gap-1.5">
@@ -1089,6 +1188,33 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   });
 
 
+  async function handleSalvarSeparacao(pedido: Pedido, lotesSelecionados: LoteSelecao) {
+    if (!user) return;
+    const snapshot = pedido.itens.flatMap(item => {
+      const sel = lotesSelecionados[item.id] ?? {};
+      return Object.entries(sel).map(([lote, quantidade]) => ({
+        pedido_item_id: item.id,
+        stock_item_id: item.stock_item_id,
+        lote,
+        quantidade,
+        device_model: item.device_model,
+      }));
+    });
+    // Atualiza lote em cada pedido_item
+    for (const item of pedido.itens) {
+      const sel = lotesSelecionados[item.id] ?? {};
+      const lotePrincipal = Object.keys(sel)[0] ?? null;
+      await supabase.from("pedido_itens").update({ lote: lotePrincipal }).eq("id", item.id);
+    }
+    const { error } = await supabase
+      .from("pedidos_comerciais")
+      .update({ lotes_separados: snapshot })
+      .eq("id", pedido.id);
+    if (error) { toast.error("Erro ao salvar lotes."); return; }
+    toast.success("Lotes da separação salvos!");
+    loadPedidos();
+  }
+
   async function handleMarcarPronto(pedido: Pedido) {
     if (!user) return;
 
@@ -1230,6 +1356,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
               key={pedido.id}
               pedido={pedido}
               onIniciarSeparacao={handleIniciarSeparacao}
+              onSalvarSeparacao={handleSalvarSeparacao}
               onMarcarPronto={handleMarcarPronto}
               onCancelar={setCancelarPedido}
               onEditarItem={(pedido, item) => setEditarItem({ pedido, item })}
