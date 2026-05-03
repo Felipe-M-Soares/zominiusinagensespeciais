@@ -738,6 +738,19 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  // Calcula quantas unidades de cada stock_item já estão no pedido atual (ainda não reservadas)
+  const jaNosPedido = (pedido?.itens ?? []).reduce<Record<string, number>>((acc, it) => {
+    acc[it.stock_item_id] = (acc[it.stock_item_id] ?? 0) + it.quantidade;
+    return acc;
+  }, {});
+
+  // Retorna o disponível real descontando o que já está no pedido pendente
+  function dispReal(item: ReturnType<typeof useStock>["items"][0]) {
+    const bruto = Math.max(0, item.quantity_available);
+    const jaAdicionado = jaNosPedido[item.id] ?? 0;
+    return Math.max(0, bruto - jaAdicionado);
+  }
+
   function handleInput(v: string) {
     setSearch(v); setSelectedPeca(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -747,6 +760,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
       const deduped = expedicaoItems.filter(i => {
         if (!i.device?.model?.toLowerCase().includes(q) && q) return false;
         if (vistos.has(i.device_id)) return false;
+        if (dispReal(i) <= 0) return false; // oculta peças sem saldo real disponível
         vistos.add(i.device_id); return true;
       }).slice(0, 15);
       setAutocomplete(deduped); setShowAutocomp(deduped.length > 0);
@@ -757,12 +771,14 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
     const vistos = new Set<string>();
     const deduped = expedicaoItems.filter(i => {
       if (vistos.has(i.device_id)) return false;
+      if (dispReal(i) <= 0) return false; // oculta peças sem saldo real disponível
       vistos.add(i.device_id); return true;
     }).slice(0, 15);
     setAutocomplete(deduped); setShowAutocomp(deduped.length > 0);
   }
 
-  const maxDisponivel = selectedPeca ? Math.max(0, selectedPeca.quantity_available) : 0;
+  // Disponível real = bruto da expedição − já no pedido pendente
+  const maxDisponivel = selectedPeca ? dispReal(selectedPeca) : 0;
 
   async function handleAdd() {
     if (!pedido || !selectedPeca) return;
@@ -829,7 +845,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
                       <p className="text-[12px] font-medium truncate">{item.device?.model}</p>
                       <p className="text-[10px] text-muted-foreground font-mono">{item.device?.reference}</p>
                     </div>
-                    <span className="text-[10px] font-bold text-emerald-600 shrink-0">{item.quantity_available} disp.</span>
+                    <span className="text-[10px] font-bold text-emerald-600 shrink-0">{dispReal(item)} disp.</span>
                   </button>
                 ))}
               </div>
@@ -842,7 +858,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
               <div>
                 <p className="text-[12px] font-semibold">{selectedPeca.device?.model}</p>
                 <p className="text-[10px] text-muted-foreground font-mono">{selectedPeca.device?.reference}</p>
-                <p className="text-[10px] text-emerald-600 mt-0.5">{maxDisponivel} disponíveis na expedição</p>
+                <p className="text-[10px] text-emerald-600 mt-0.5">{maxDisponivel} disponíveis na expedição{(jaNosPedido[selectedPeca!.id] ?? 0) > 0 ? ` (${jaNosPedido[selectedPeca!.id]} já no pedido)` : ""}</p>
               </div>
               <div className="flex items-center justify-center gap-4">
                 <button type="button" onClick={() => setQtd(q => Math.max(1, q - 1))} className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 flex items-center justify-center transition-colors">
