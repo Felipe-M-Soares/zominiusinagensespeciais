@@ -59,6 +59,7 @@ import {
   TrendingUp,
   Download,
   Bell,
+  Minus,
 } from "lucide-react";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { Logo } from "@/components/Logo";
@@ -575,9 +576,10 @@ interface PedidoCardProps {
   isAdmin: boolean;
   onFaturar: (p: PedidoCompleto) => void;
   onCancelar: (p: PedidoCompleto) => void;
+  onAdicionarPeca: (p: PedidoCompleto) => void;
 }
 
-function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps) {
+function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const data = new Date(pedido.created_at).toLocaleDateString("pt-BR");
@@ -664,6 +666,15 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps)
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
             {expanded ? "Ocultar peças" : "Ver peças"}
           </button>
+          {pedido.status === "pendente" && (
+            <button
+              type="button"
+              onClick={() => onAdicionarPeca(pedido)}
+              className="w-full flex items-center justify-center gap-1.5 h-7 rounded-lg bg-violet-500/8 hover:bg-violet-500/15 text-violet-600 dark:text-violet-400 text-[10px] font-medium transition-colors border border-violet-500/20"
+            >
+              <Plus className="h-3 w-3" /> Adicionar peça
+            </button>
+          )}
           {pedido.status === "pendente" && isAdmin && (
             <div className="flex gap-1.5">
               <button type="button" onClick={() => onFaturar(pedido)} className="flex-1 h-8 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5">
@@ -689,6 +700,184 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar }: PedidoCardProps)
               <Truck className="h-3.5 w-3.5" /> Enviado ao cliente! 🎉
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal: Adicionar Peça ao Pedido Pendente ─────────────────────────────────
+
+interface AdicionarPecaModalProps {
+  pedido: PedidoCompleto | null;
+  expedicaoItems: ReturnType<typeof useStock>["items"];
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: AdicionarPecaModalProps) {
+  const [search, setSearch] = useState("");
+  const [autocomplete, setAutocomplete] = useState<ReturnType<typeof useStock>["items"]>([]);
+  const [showAutocomp, setShowAutocomp] = useState(false);
+  const [selectedPeca, setSelectedPeca] = useState<ReturnType<typeof useStock>["items"][0] | null>(null);
+  const [qtd, setQtd] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (pedido) { setSearch(""); setSelectedPeca(null); setQtd(1); setTimeout(() => inputRef.current?.focus(), 100); }
+  }, [pedido]);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setShowAutocomp(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  function handleInput(v: string) {
+    setSearch(v); setSelectedPeca(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const q = v.trim().toLowerCase();
+      const vistos = new Set<string>();
+      const deduped = expedicaoItems.filter(i => {
+        if (!i.device?.model?.toLowerCase().includes(q) && q) return false;
+        if (vistos.has(i.device_id)) return false;
+        vistos.add(i.device_id); return true;
+      }).slice(0, 15);
+      setAutocomplete(deduped); setShowAutocomp(deduped.length > 0);
+    }, 80);
+  }
+
+  function handleFocus() {
+    const vistos = new Set<string>();
+    const deduped = expedicaoItems.filter(i => {
+      if (vistos.has(i.device_id)) return false;
+      vistos.add(i.device_id); return true;
+    }).slice(0, 15);
+    setAutocomplete(deduped); setShowAutocomp(deduped.length > 0);
+  }
+
+  const maxDisponivel = selectedPeca ? Math.max(0, selectedPeca.quantity_available) : 0;
+
+  async function handleAdd() {
+    if (!pedido || !selectedPeca) return;
+    if (qtd < 1 || qtd > maxDisponivel) { toast.error(`Disponível: ${maxDisponivel} un.`); return; }
+    setSaving(true);
+    const { error } = await supabase.from("pedido_itens").insert({
+      pedido_id: pedido.id,
+      stock_item_id: selectedPeca.id,
+      lote: "a-definir",
+      quantidade: qtd,
+      quantidade_reservada: 0,
+    });
+    setSaving(false);
+    if (error) { toast.error("Erro ao adicionar peça."); return; }
+    toast.success(`${selectedPeca.device?.model} adicionada ao pedido!`);
+    onSuccess();
+    onClose();
+  }
+
+  if (!pedido) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
+          <div className="flex items-center gap-2">
+            <Plus className="h-4 w-4 text-violet-500" />
+            <p className="text-sm font-semibold">Adicionar Peça</p>
+          </div>
+          <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3 overflow-y-auto flex-1">
+          {/* Info */}
+          <div className="rounded-xl bg-violet-500/8 border border-violet-500/20 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-400">
+            Pedido de <strong>{pedido.cliente_nome}</strong> — ainda pendente, pode adicionar peças
+          </div>
+
+          {/* Busca com autocomplete */}
+          <div className="relative" ref={dropRef}>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={e => handleInput(e.target.value)}
+              onFocus={handleFocus}
+              placeholder="Buscar peça por modelo..."
+              className="w-full h-9 pl-9 pr-3 rounded-xl border border-border/40 bg-muted/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+            />
+            {showAutocomp && autocomplete.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 rounded-xl border border-border/30 bg-card shadow-xl z-10 overflow-hidden max-h-48 overflow-y-auto">
+                {autocomplete.map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); setSelectedPeca(item); setSearch(item.device?.model ?? ""); setShowAutocomp(false); setQtd(1); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/40 text-left transition-colors"
+                  >
+                    <Package className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium truncate">{item.device?.model}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{item.device?.reference}</p>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-600 shrink-0">{item.quantity_available} disp.</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Quantidade */}
+          {selectedPeca && (
+            <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 space-y-3">
+              <div>
+                <p className="text-[12px] font-semibold">{selectedPeca.device?.model}</p>
+                <p className="text-[10px] text-muted-foreground font-mono">{selectedPeca.device?.reference}</p>
+                <p className="text-[10px] text-emerald-600 mt-0.5">{maxDisponivel} disponíveis na expedição</p>
+              </div>
+              <div className="flex items-center justify-center gap-4">
+                <button type="button" onClick={() => setQtd(q => Math.max(1, q - 1))} className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 flex items-center justify-center transition-colors">
+                  <Minus className="h-4 w-4" />
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={maxDisponivel}
+                  value={qtd}
+                  onChange={e => setQtd(Math.max(1, Math.min(maxDisponivel, parseInt(e.target.value) || 1)))}
+                  className="w-16 text-center text-[20px] font-bold bg-transparent border border-border/40 rounded-xl h-10 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                />
+                <button type="button" onClick={() => setQtd(q => Math.min(maxDisponivel, q + 1))} className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 flex items-center justify-center transition-colors">
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 pb-4 pt-3 shrink-0 border-t border-border/20 flex gap-2">
+          <button type="button" onClick={onClose} className="flex-1 h-10 rounded-xl border border-border/30 text-[12px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={!selectedPeca || saving}
+            className="flex-1 h-10 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+          >
+            {saving ? <div className="h-3.5 w-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            Adicionar ao Pedido
+          </button>
         </div>
       </div>
     </div>
@@ -1320,6 +1509,7 @@ export default function Comercial() {
   const [novoPedidoOpen, setNovoPedidoOpen] = useState(false);
   const [faturarPedido, setFaturarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<PedidoCompleto | null>(null);
+  const [adicionarPecaPedido, setAdicionarPecaPedido] = useState<PedidoCompleto | null>(null);
   const [cancelando, setCancelando] = useState(false);
   const [pedidoComCliente, setPedidoComCliente] = useState<Cliente | null>(null);
 
@@ -1586,7 +1776,7 @@ export default function Comercial() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {pedidosFiltrados.map(p => (
-                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} />
+                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} />
                     ))}
                   </div>
                 )}
@@ -1674,6 +1864,13 @@ export default function Comercial() {
         pedido={faturarPedido}
         onClose={() => setFaturarPedido(null)}
         onSuccess={() => { setFaturarPedido(null); loadPedidos(); }}
+      />
+
+      <AdicionarPecaModal
+        pedido={adicionarPecaPedido}
+        expedicaoItems={expedicaoItems}
+        onClose={() => setAdicionarPecaPedido(null)}
+        onSuccess={() => { setAdicionarPecaPedido(null); loadPedidos(); }}
       />
 
       {/* Cancelar pedido */}
