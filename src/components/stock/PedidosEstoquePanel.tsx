@@ -1177,7 +1177,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
 
   const filtrados = pedidos.filter(p => {
-    const matchStatus = p.status === "pendente" || p.status === "separando" || p.status === "pronto";
+    const matchStatus = p.status === "separando" || p.status === "pronto";
     if (!matchStatus) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
