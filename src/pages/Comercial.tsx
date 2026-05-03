@@ -1373,9 +1373,9 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
             <Package className="h-5 w-5 text-violet-500" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Peças Faturadas</p>
-            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPecasFaturadas.toLocaleString("pt-BR")}</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{totalPedidosFaturados} pedido(s)</p>
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Pedidos Efetuados</p>
+            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPedidosFaturados.toLocaleString("pt-BR")}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{totalPecasFaturadas} peça(s)</p>
           </div>
         </div>
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-start gap-3">
