@@ -297,18 +297,32 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     (c.documento ?? "").includes(clienteSearch)
   );
 
-  const expedicaoDisponiveis = expedicaoItems.filter(i =>
-    (i.quantity_available ?? Math.max(0, i.quantity - i.quantity_reserved)) > 0 &&
-    (i.device?.model?.toLowerCase().includes(pecaSearch.toLowerCase()) ||
-     i.device?.reference?.toLowerCase().includes(pecaSearch.toLowerCase()))
-  );
+  // Calcula quanto já foi adicionado ao pedido atual para cada stock_item
+  const jaAdicionadoNoPedido = itens.reduce<Record<string, number>>((acc, i) => {
+    acc[i.stock_item_id] = (acc[i.stock_item_id] ?? 0) + i.quantidade;
+    return acc;
+  }, {});
+
+  // Filtra e exibe apenas peças com quantidade ainda disponível (descontando o que já está no pedido local)
+  const expedicaoDisponiveis = expedicaoItems
+    .map(i => {
+      const dispBruto = i.quantity_available ?? Math.max(0, i.quantity - i.quantity_reserved);
+      const jaAdicionado = jaAdicionadoNoPedido[i.id] ?? 0;
+      return { ...i, _dispReal: dispBruto - jaAdicionado };
+    })
+    .filter(i =>
+      i._dispReal > 0 &&
+      (i.device?.model?.toLowerCase().includes(pecaSearch.toLowerCase()) ||
+       i.device?.reference?.toLowerCase().includes(pecaSearch.toLowerCase()))
+    );
 
   function addItem() {
     if (!selectedPeca || !lote.trim() || qtd < 1) return;
-    const disponivel = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
-    const jaReservado = itens.filter(i => i.stock_item_id === selectedPeca.id).reduce((s, i) => s + i.quantidade, 0);
-    if (qtd > (disponivel - jaReservado)) {
-      toast.error(`Apenas ${disponivel - jaReservado} unidades disponíveis`);
+    const dispBruto = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
+    const jaAdicionado = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
+    const dispReal = dispBruto - jaAdicionado;
+    if (qtd > dispReal) {
+      toast.error(dispReal <= 0 ? "Sem estoque disponível para esta peça" : `Apenas ${dispReal} unidade${dispReal !== 1 ? "s" : ""} disponível${dispReal !== 1 ? "s" : ""}`);
       return;
     }
     setItens(prev => [...prev, {
@@ -472,7 +486,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                         <p className="text-sm font-medium">{item.device?.model}</p>
                         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                           <span>{item.device?.reference}</span>
-                          <span className="text-success font-semibold">{item.quantity_available ?? Math.max(0, item.quantity - item.quantity_reserved)} disp.</span>
+                          <span className="text-success font-semibold">{item._dispReal} disp.</span>
                         </div>
                       </button>
                     ))}
@@ -495,8 +509,33 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground font-medium">Quantidade</label>
-                  <Input type="number" min={1} value={qtd} onChange={e => setQtd(Math.max(1, parseInt(e.target.value) || 1))} className="h-8 text-xs" />
+                  <label className="text-[10px] text-muted-foreground font-medium">
+                    Quantidade
+                    {selectedPeca && (() => {
+                      const dispBruto = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
+                      const jaAd = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
+                      const dispReal = dispBruto - jaAd;
+                      return dispReal > 0 ? <span className="text-muted-foreground/60"> (máx {dispReal})</span> : null;
+                    })()}
+                  </label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={selectedPeca ? Math.max(1, (selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved)) - (jaAdicionadoNoPedido[selectedPeca.id] ?? 0)) : undefined}
+                    value={qtd}
+                    onChange={e => {
+                      const val = Math.max(1, parseInt(e.target.value) || 1);
+                      if (selectedPeca) {
+                        const dispBruto = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
+                        const jaAd = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
+                        const dispReal = dispBruto - jaAd;
+                        setQtd(Math.min(val, Math.max(1, dispReal)));
+                      } else {
+                        setQtd(val);
+                      }
+                    }}
+                    className="h-8 text-xs"
+                  />
                 </div>
               </div>
 
