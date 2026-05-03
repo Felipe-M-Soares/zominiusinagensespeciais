@@ -1,8 +1,9 @@
-import { Package, AlertTriangle, TrendingDown, TrendingUp, ArrowDownCircle, ArrowUpCircle, Truck, Activity } from "lucide-react";
+import { Package, AlertTriangle, TrendingDown, Wrench, ArrowDownCircle, ArrowUpCircle, Truck, Activity, PackageCheck } from "lucide-react";
 import type { StockItem, AllMovement } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { fetchAllMovements } from "@/hooks/useStock";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   items: StockItem[];
@@ -37,6 +38,7 @@ function KpiCard({ icon: Icon, label, value, color, bg, border, description }: K
 export function StockDashboard({ items, loading }: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [movLoading, setMovLoading] = useState(true);
+  const [pedidosSeparando, setPedidosSeparando] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,22 +49,32 @@ export function StockDashboard({ items, loading }: Props) {
     return () => { cancelled = true; };
   }, []);
 
-  // Agrupa por device_id para não contar o mesmo dispositivo múltiplas vezes (uma row por fase)
-  const byDevice = new Map<string, { quantity: number; min_quantity: number }>();
-  for (const i of items) {
-    const deviceId = i.device_id;
-    const cur = byDevice.get(deviceId);
-    byDevice.set(deviceId, {
-      quantity: (cur?.quantity ?? 0) + i.quantity,
-      min_quantity: Math.max(cur?.min_quantity ?? 0, i.min_quantity),
-    });
+  useEffect(() => {
+    supabase
+      .from("pedidos_comerciais")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "separando")
+      .then(({ count }) => setPedidosSeparando(count ?? 0));
+  }, []);
+
+  // Total de tipos únicos cadastrados (todas as fases)
+  const totalTipos = new Set(items.map(i => i.device_id)).size;
+
+  // Peças na expedição
+  const expedicaoItems = items.filter(i => i.fase === "expedicao");
+  const totalPecasExpedicao = expedicaoItems.reduce((sum, i) => sum + i.quantity, 0);
+
+  // Peças em retrabalho
+  const pecasRetrabalho = items
+    .filter(i => i.fase === "retrabalho")
+    .reduce((sum, i) => sum + i.quantity, 0);
+
+  // Tipos de peça com menos de 100 unidades na expedição (excluindo zerados)
+  const expedicaoByDevice = new Map<string, number>();
+  for (const i of expedicaoItems) {
+    expedicaoByDevice.set(i.device_id, (expedicaoByDevice.get(i.device_id) ?? 0) + i.quantity);
   }
-  const deviceEntries = Array.from(byDevice.values());
-  const total = byDevice.size; // tipos únicos
-  const totalPecas = deviceEntries.reduce((sum, d) => sum + d.quantity, 0);
-  const zerados = deviceEntries.filter(d => d.quantity === 0).length;
-  const baixo = deviceEntries.filter(d => d.quantity > 0 && d.quantity <= d.min_quantity).length;
-  const ok = deviceEntries.filter(d => d.quantity > d.min_quantity).length;
+  const tiposBaixo = Array.from(expedicaoByDevice.values()).filter(qty => qty > 0 && qty < 100).length;
 
   if (loading) {
     return (
@@ -81,38 +93,38 @@ export function StockDashboard({ items, loading }: Props) {
         <KpiCard
           icon={Package}
           label="Total de Peças"
-          value={totalPecas.toLocaleString("pt-BR")}
+          value={totalPecasExpedicao.toLocaleString("pt-BR")}
           color="text-primary"
           bg="bg-primary/5"
           border="border-primary/20"
-          description={`${total} tipos cadastrados`}
+          description={`${totalTipos} tipos cadastrados`}
         />
         <KpiCard
-          icon={TrendingUp}
-          label="Estoque OK"
-          value={ok}
-          color="text-success"
-          bg="bg-success/5"
-          border="border-success/20"
-          description="Acima do mínimo"
+          icon={Wrench}
+          label="Peças em Retrabalho"
+          value={pecasRetrabalho.toLocaleString("pt-BR")}
+          color="text-amber-500"
+          bg="bg-amber-500/5"
+          border="border-amber-500/20"
+          description="Aguardando retrabalho"
         />
         <KpiCard
           icon={TrendingDown}
           label="Estoque Baixo"
-          value={baixo}
+          value={tiposBaixo}
           color="text-warning"
           bg="bg-warning/5"
           border="border-warning/20"
-          description="Abaixo do mínimo"
+          description="Tipos com menos de 100 un."
         />
         <KpiCard
-          icon={AlertTriangle}
-          label="Zerados"
-          value={zerados}
-          color="text-destructive"
-          bg="bg-destructive/5"
-          border="border-destructive/20"
-          description="Sem unidades"
+          icon={PackageCheck}
+          label="Pedidos Separando"
+          value={pedidosSeparando}
+          color="text-blue-500"
+          bg="bg-blue-500/5"
+          border="border-blue-500/20"
+          description="Em separação no estoque"
         />
       </div>
 
