@@ -39,6 +39,11 @@ export function StockDashboard({ items, loading }: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [movLoading, setMovLoading] = useState(true);
   const [pedidosSeparando, setPedidosSeparando] = useState(0);
+  const [totalIntermediaria, setTotalIntermediaria] = useState(0);
+  const [totalExpedicao, setTotalExpedicao] = useState(0);
+  const [totalRetrabalho, setTotalRetrabalho] = useState(0);
+  const [totalTipos, setTotalTipos] = useState(0);
+  const [tiposBaixo, setTiposBaixo] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,32 +55,49 @@ export function StockDashboard({ items, loading }: Props) {
   }, []);
 
   useEffect(() => {
+    // Pedidos separando
     supabase
       .from("pedidos_comerciais")
       .select("id", { count: "exact", head: true })
       .eq("status", "separando")
       .then(({ count }) => setPedidosSeparando(count ?? 0));
+
+    // Totais por fase — busca tudo sem paginação usando aggregate
+    async function loadTotals() {
+      const { data } = await supabase
+        .from("stock_items")
+        .select("device_id, quantity, fase");
+
+      if (!data) return;
+
+      let interm = 0, exped = 0, retrab = 0;
+      const tiposSet = new Set<string>();
+      const expByDevice = new Map<string, number>();
+
+      for (const row of data) {
+        const qty = (row.quantity as number) ?? 0;
+        const fase = row.fase as string;
+        const deviceId = row.device_id as string;
+        tiposSet.add(deviceId);
+        if (fase === "intermediaria") interm += qty;
+        else if (fase === "expedicao") {
+          exped += qty;
+          expByDevice.set(deviceId, (expByDevice.get(deviceId) ?? 0) + qty);
+        }
+        else if (fase === "retrabalho") retrab += qty;
+      }
+
+      const baixo = Array.from(expByDevice.values()).filter(q => q > 0 && q < 100).length;
+
+      setTotalIntermediaria(interm);
+      setTotalExpedicao(exped);
+      setTotalRetrabalho(retrab);
+      setTotalTipos(tiposSet.size);
+      setTiposBaixo(baixo);
+    }
+
+    loadTotals();
   }, []);
-
-  // Total de tipos únicos cadastrados (todas as fases)
-  const totalTipos = new Set(items.map(i => i.device_id)).size;
-
-  // Peças na expedição
-  const expedicaoItems = items.filter(i => i.fase === "expedicao");
-  const totalPecasExpedicao = expedicaoItems.reduce((sum, i) => sum + i.quantity, 0);
-  const totalPecasIntermediaria = items.filter(i => i.fase === "intermediaria").reduce((sum, i) => sum + i.quantity, 0);
-
-  // Peças em retrabalho
-  const pecasRetrabalho = items
-    .filter(i => i.fase === "retrabalho")
-    .reduce((sum, i) => sum + i.quantity, 0);
-
-  // Tipos de peça com menos de 100 unidades na expedição (excluindo zerados)
-  const expedicaoByDevice = new Map<string, number>();
-  for (const i of expedicaoItems) {
-    expedicaoByDevice.set(i.device_id, (expedicaoByDevice.get(i.device_id) ?? 0) + i.quantity);
-  }
-  const tiposBaixo = Array.from(expedicaoByDevice.values()).filter(qty => qty > 0 && qty < 100).length;
 
   if (loading) {
     return (
@@ -94,16 +116,16 @@ export function StockDashboard({ items, loading }: Props) {
         <KpiCard
           icon={Package}
           label="Total de Peças"
-          value={totalPecasIntermediaria.toLocaleString("pt-BR")}
+          value={totalIntermediaria.toLocaleString("pt-BR")}
           color="text-primary"
           bg="bg-primary/5"
           border="border-primary/20"
-          description={`${totalTipos} tipos · ${totalPecasExpedicao} na expedição`}
+          description={`${totalTipos} tipos · ${totalExpedicao} na expedição`}
         />
         <KpiCard
           icon={Wrench}
           label="Peças em Retrabalho"
-          value={pecasRetrabalho.toLocaleString("pt-BR")}
+          value={totalRetrabalho.toLocaleString("pt-BR")}
           color="text-amber-500"
           bg="bg-amber-500/5"
           border="border-amber-500/20"

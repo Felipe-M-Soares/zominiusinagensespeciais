@@ -698,8 +698,6 @@ export default function Estoque() {
 
   // ── Dados do servidor ─────────────────────────────────────────────────────
   const { items: allItems, totalCount, loading, error, refetch } = useStock(querySearch);
-  // Dados sem filtro de busca para o dashboard (sempre mostra totais reais)
-  const { items: allItemsUnfiltered } = useStock("");
 
   // Derivados dos dados (não são hooks — apenas cálculos puros)
   const intermediariaItemsAll = allItems.filter((i) => i.fase === "intermediaria");
@@ -1017,7 +1015,7 @@ export default function Estoque() {
 
         {/* Dashboard View */}
         {activeView === "dashboard" && (
-          <StockDashboard items={allItemsUnfiltered} loading={loading} />
+          <StockDashboard items={allItems} loading={loading} />
         )}
 
         {/* Recebimento View */}
