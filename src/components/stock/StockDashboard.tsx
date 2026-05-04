@@ -64,17 +64,27 @@ export function StockDashboard({ items, loading }: Props) {
 
     // Totais por fase — busca tudo sem paginação usando aggregate
     async function loadTotals() {
-      const { data } = await supabase
-        .from("stock_items")
-        .select("device_id, quantity, fase");
+      let allRows: { device_id: string; quantity: number; fase: string }[] = [];
+      const PAGE_SIZE = 1000;
+      let page = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("stock_items")
+          .select("device_id, quantity, fase")
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+        if (error || !data || data.length === 0) break;
+        allRows = allRows.concat(data as { device_id: string; quantity: number; fase: string }[]);
+        if (data.length < PAGE_SIZE) break;
+        page++;
+      }
 
-      if (!data) return;
+      if (!allRows.length) return;
 
       let interm = 0, exped = 0, retrab = 0;
       const tiposSet = new Set<string>();
       const expByDevice = new Map<string, number>();
 
-      for (const row of data) {
+      for (const row of allRows) {
         const qty = (row.quantity as number) ?? 0;
         const fase = row.fase as string;
         const deviceId = row.device_id as string;
