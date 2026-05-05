@@ -48,6 +48,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useClickOutside } from "@/hooks/useClickOutside";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import type { StockItem } from "@/hooks/useStock";
@@ -282,15 +284,9 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setClientes((data as Cliente[]) ?? []);
   }
 
-  // Fechar dropdowns ao clicar fora
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setShowClienteDrop(false);
-      if (pecaDropRef.current && !pecaDropRef.current.contains(e.target as Node)) setShowPecaDrop(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+  // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
+  useClickOutside(dropRef,    () => setShowClienteDrop(false));
+  useClickOutside(pecaDropRef, () => setShowPecaDrop(false));
 
   const clientesFiltrados = clientes.filter(c =>
     c.nome.toLowerCase().includes(clienteSearch.toLowerCase()) ||

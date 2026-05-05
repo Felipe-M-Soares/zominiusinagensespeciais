@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +28,6 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
   const [results, setResults] = useState<DbDevice[]>([]);
   const [searching, setSearching] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const doSearch = useCallback(async (q: string) => {
@@ -51,22 +51,19 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
 
   function handleChange(v: string) {
     setSearch(v);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSearch(v), 350);
+    debouncedFn(v);
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
     e.preventDefault();
     const v = e.clipboardData.getData("text").trim();
     setSearch(v);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     doSearch(v);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      doSearch(search);
+        doSearch(search);
     }
   }
 

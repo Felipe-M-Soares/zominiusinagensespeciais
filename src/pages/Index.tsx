@@ -1,5 +1,7 @@
 import { useState, useCallback, memo, useRef } from "react";
 import { useDevices, useDeviceOptions, type Filters } from "@/hooks/useDevices";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useClickOutside } from "@/hooks/useClickOutside";
 import { useAuth } from "@/hooks/useAuth";
 import { DeviceCard } from "@/components/DeviceCard";
 import { DeviceDetail } from "@/components/DeviceDetail";
@@ -32,19 +34,18 @@ const SearchBar = memo(function SearchBar({
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localHasValue, setLocalHasValue] = useState(false);
+  const debouncedSearch = useDebounce((v: string) => onSearch(v), 400);
+  useClickOutside(containerRef, onCloseSuggestions);
 
   function handleChange(v: string) {
     setLocalHasValue(!!v.trim());
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!v.trim()) { onClear(); return; }
-    debounceRef.current = setTimeout(() => onSearch(v.trim()), 400);
+    debouncedSearch(v.trim());
   }
 
   function handleClear() {
     if (inputRef.current) inputRef.current.value = "";
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     setLocalHasValue(false);
     onClear();
   }
@@ -60,8 +61,7 @@ const SearchBar = memo(function SearchBar({
         onKeyDown={e => {
           if (e.key === "Enter") {
             const v = (e.target as HTMLInputElement).value.trim();
-            if (debounceRef.current) clearTimeout(debounceRef.current);
-            onSearch(v);
+                    onSearch(v);
             onCloseSuggestions();
             requestAnimationFrame(() => inputRef.current?.select());
           }

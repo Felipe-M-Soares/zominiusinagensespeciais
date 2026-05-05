@@ -1,34 +1,17 @@
 /**
- * ARCH-002 FIX: Unit tests for critical authentication and business logic.
- * These cover the functions most impacted by the security audit findings.
- *
- * FIX: translateError aqui espelha EXATAMENTE o mapa de useAuth.tsx.
- * Manter sincronizado — se alterar as mensagens lá, atualizar aqui também.
+ * TEST-01 + TEST-02 FIX:
+ * - translateError agora importa de @/lib/authErrors (fonte única).
+ *   Antes era uma cópia local com aviso "manter sincronizado" — agora é impossível sair de sincronia.
+ * - validatePassword agora importa de @/lib/passwordUtils e testa a lógica REAL
+ *   (maiúscula, minúscula, número, especial) em vez de apenas `length >= 8`.
+ * - Adicionados testes para loteValido/formatLote (lógica crítica de rastreabilidade).
  */
 import { describe, it, expect } from "vitest";
+import { translateError }        from "@/lib/authErrors";
+import { validatePassword }      from "@/lib/passwordUtils";
+import { loteValido, formatLote, loteStatus } from "@/lib/lote";
 
-// ─── translateError (espelha useAuth.tsx) ────────────────────────────────────
-function translateError(message: string): string {
-  const errors: Record<string, string> = {
-    "Invalid login credentials": "Login ou senha incorretos.",
-    "Invalid email or password": "Login ou senha incorretos.",
-    "invalid_credentials": "Login ou senha incorretos.",
-    "Password should be at least 6 characters": "A senha deve ter no mínimo 6 caracteres.",
-    "Password should be at least 8 characters": "A senha deve ter no mínimo 8 caracteres.",
-    "User not found": "Usuário não encontrado.",
-    "Too many requests": "Muitas tentativas. Aguarde alguns minutos.",
-    "Session expired": "Sua sessão expirou. Faça login novamente.",
-    "User is not authorized": "Sem permissão para realizar esta ação.",
-    "New password should be different from the old password": "A nova senha deve ser diferente da atual.",
-    "Auth session missing": "Sessão não encontrada. Faça login novamente.",
-  };
-  if (errors[message]) return errors[message];
-  for (const [key, value] of Object.entries(errors)) {
-    if (message.toLowerCase().includes(key.toLowerCase())) return value;
-  }
-  return message;
-}
-
+// ─── translateError ──────────────────────────────────────────────────────────
 describe("translateError", () => {
   it("translates Invalid login credentials", () => {
     expect(translateError("Invalid login credentials")).toBe("Login ou senha incorretos.");
@@ -60,21 +43,111 @@ describe("translateError", () => {
   });
 });
 
-// ─── Password validation ─────────────────────────────────────────────────────
-function validatePassword(password: string): string | null {
-  if (password.length < 8) return "A senha deve ter no mínimo 8 caracteres.";
-  return null;
-}
-
+// ─── validatePassword (real implementation) ───────────────────────────────────
 describe("validatePassword", () => {
   it("rejects passwords shorter than 8 chars", () => {
-    expect(validatePassword("abc123")).not.toBeNull();
+    expect(validatePassword("Ab1!")).not.toBeNull();
   });
-  it("accepts passwords of 8+ chars", () => {
-    expect(validatePassword("securePass1")).toBeNull();
+
+  it("rejects passwords without uppercase letter", () => {
+    // TEST-02 FIX: este caso passava antes com a cópia local mas falha na lógica real
+    expect(validatePassword("abcdef1!")).not.toBeNull();
   });
+
+  it("rejects passwords without lowercase letter", () => {
+    expect(validatePassword("ABCDEF1!")).not.toBeNull();
+  });
+
+  it("rejects passwords without number", () => {
+    expect(validatePassword("Abcdefg!")).not.toBeNull();
+  });
+
+  it("rejects passwords without special character", () => {
+    expect(validatePassword("Abcdefg1")).not.toBeNull();
+  });
+
   it("rejects empty password", () => {
     expect(validatePassword("")).not.toBeNull();
+  });
+
+  it("rejects passwords longer than 72 chars", () => {
+    expect(validatePassword("Aa1!" + "x".repeat(70))).not.toBeNull();
+  });
+
+  it("accepts a strong password", () => {
+    expect(validatePassword("Secure@Pass123")).toBeNull();
+  });
+
+  it("accepts minimum valid password", () => {
+    // Mínimo válido: 8 chars com maiúscula, minúscula, número, especial
+    expect(validatePassword("Abcd1!Ef")).toBeNull();
+  });
+});
+
+// ─── loteValido / formatLote / loteStatus (TEST-01 FIX) ─────────────────────
+// Lógica crítica de rastreabilidade — sem testes anteriores
+describe("loteValido", () => {
+  it("accepts valid lote DDMMYYS-NN format", () => {
+    expect(loteValido("0101261-01")).toBe(true);
+  });
+
+  it("accepts valid lote with suffix /A", () => {
+    expect(loteValido("0101261-01/A")).toBe(true);
+  });
+
+  it("rejects lote with too few digits", () => {
+    expect(loteValido("010126-01")).toBe(false);
+  });
+
+  it("rejects lote with too many digits before dash", () => {
+    expect(loteValido("01012612-01")).toBe(false);
+  });
+
+  it("rejects lote without dash", () => {
+    expect(loteValido("010126101")).toBe(false);
+  });
+
+  it("rejects empty string", () => {
+    expect(loteValido("")).toBe(false);
+  });
+
+  it("rejects lote with spaces", () => {
+    expect(loteValido("0101261 01")).toBe(false);
+  });
+});
+
+describe("formatLote", () => {
+  it("formats continuous digits by inserting dash", () => {
+    // 7 digits + 2 digits without dash → auto-inserts dash
+    const result = formatLote("010126101");
+    expect(result).toBe("0101261-01");
+  });
+
+  it("strips non-allowed characters", () => {
+    expect(formatLote("01.01.261-01")).toBe("0101261-01");
+  });
+
+  it("converts to uppercase", () => {
+    expect(formatLote("0101261-01/a")).toBe("0101261-01/A");
+  });
+
+  it("limits output to 13 characters", () => {
+    const result = formatLote("0101261-01/ABCDEF");
+    expect(result.length).toBeLessThanOrEqual(13);
+  });
+});
+
+describe("loteStatus", () => {
+  it("returns empty for empty string", () => {
+    expect(loteStatus("")).toBe("empty");
+  });
+
+  it("returns valid for valid lote", () => {
+    expect(loteStatus("0101261-01")).toBe("valid");
+  });
+
+  it("returns invalid for malformed lote", () => {
+    expect(loteStatus("INVALID")).toBe("invalid");
   });
 });
 

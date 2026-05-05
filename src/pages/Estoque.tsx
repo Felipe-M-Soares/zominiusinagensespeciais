@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useClickOutside } from "@/hooks/useClickOutside";
 import { useAuth } from "@/hooks/useAuth";
 import { useStock } from "@/hooks/useStock";
 import type { StockItem } from "@/hooks/useStock";
@@ -557,20 +559,18 @@ const SearchBar = memo(function SearchBar({
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Estado local para controlar botão de limpar — não propaga re-renders ao pai
   const [localHasValue, setLocalHasValue] = useState(false);
+  const debouncedSearch = useDebounce((v: string) => onSearch(v), 400);
+  useClickOutside(containerRef, onCloseSuggestions);
 
   function handleChange(v: string) {
     setLocalHasValue(!!v.trim());
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!v.trim()) { onClear(); return; }
-    debounceRef.current = setTimeout(() => onSearch(v.trim()), 400);
+    debouncedSearch(v.trim());
   }
 
   function handleClear() {
     if (inputRef.current) inputRef.current.value = "";
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     setLocalHasValue(false);
     onClear();
   }
@@ -586,8 +586,7 @@ const SearchBar = memo(function SearchBar({
         onKeyDown={e => {
           if (e.key === "Enter") {
             const v = (e.target as HTMLInputElement).value.trim();
-            if (debounceRef.current) clearTimeout(debounceRef.current);
-            onSearch(v);
+                    onSearch(v);
             onCloseSuggestions();
             requestAnimationFrame(() => inputRef.current?.select());
           }
@@ -692,7 +691,6 @@ export default function Estoque() {
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autocompleteRef = useRef<HTMLDivElement>(null);
   const adminMenuRef = useRef<HTMLDivElement>(null);
 
@@ -752,50 +750,30 @@ export default function Estoque() {
     return () => clearTimeout(timer);
   }, [search, allItems, filteredItems]);
 
-  // Fecha autocomplete ao clicar fora
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
-        setShowAutocomplete(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  // Fecha menu admin ao clicar fora
-  useEffect(() => {
-    if (!adminMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (adminMenuRef.current && !adminMenuRef.current.contains(e.target as Node)) {
-        setAdminMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [adminMenuOpen]);
+  // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
+  useClickOutside(autocompleteRef, () => setShowAutocomplete(false));
+  useClickOutside(adminMenuRef,    () => { if (adminMenuOpen) setAdminMenuOpen(false); });
 
   const hasSearch = !!querySearch.trim();
   const hasActiveFilters = filterStatus !== "all" || !!filterLocation || !!filterBrand;
 
+  const debouncedSearchUpdate = useDebounce((v: string) => {
+    setSearch(v);
+    setQuerySearch(v);
+    setVisibleCount(ITEMS_PER_PAGE);
+  }, 350);
+
   const handleSearchChange = useCallback((v: string) => {
-    // Não atualiza `search` a cada tecla — só dispara querySearch com debounce
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!v.trim()) {
       setSearch("");
       setQuerySearch("");
       setVisibleCount(ITEMS_PER_PAGE);
       return;
     }
-    debounceRef.current = setTimeout(() => {
-      setSearch(v.trim());
-      setQuerySearch(v.trim());
-      setVisibleCount(ITEMS_PER_PAGE);
-    }, 350);
-  }, []);
+    debouncedSearchUpdate(v.trim());
+  }, [debouncedSearchUpdate]);
 
   function handleSearchSubmit(v: string) {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     setQuerySearch(v);
     setVisibleCount(ITEMS_PER_PAGE);
     setShowAutocomplete(false);

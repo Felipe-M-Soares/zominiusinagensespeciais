@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { z } from "zod";
+import { useDebounce } from "@/hooks/useDebounce";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchDevicesPage } from "@/lib/supabaseUtils";
 import { Button } from "@/components/ui/button";
@@ -78,11 +79,9 @@ export function AdminDevices() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setDebouncedSearch(value), 350);
+    debouncedFn(value);
   }, []);
   const [editDevice, setEditDevice] = useState<Partial<TablesInsert<"devices">> | null>(null);
   const [isNew, setIsNew] = useState(false);

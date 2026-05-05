@@ -17,6 +17,7 @@ import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus, ShieldX, ShieldCheck 
 import type { AppRole } from "@/types/roles";
 import { APP_ROLES, ROLE_LABELS } from "@/types/roles";
 import { logger } from "@/lib/logger";
+import { validatePassword, passwordStrength } from "@/lib/passwordUtils";
 
 interface UserProfile {
   user_id: string;
@@ -27,35 +28,6 @@ interface UserProfile {
   approved: boolean;
   blocked: boolean;
   must_change_password: boolean;
-}
-
-// ── Validação de senha forte ────────────────────────────────────────────────
-function validatePassword(pwd: string): string | null {
-  if (pwd.length < 8)            return "Senha muito curta — mínimo 8 caracteres.";
-  if (pwd.length > 72)           return "Senha longa demais — máximo 72 caracteres.";
-  if (!/[A-Z]/.test(pwd))        return "Precisa de ao menos 1 letra maiúscula.";
-  if (!/[a-z]/.test(pwd))        return "Precisa de ao menos 1 letra minúscula.";
-  if (!/[0-9]/.test(pwd))        return "Precisa de ao menos 1 número.";
-  if (!/[^A-Za-z0-9]/.test(pwd)) return "Precisa de ao menos 1 caractere especial (!@#$%...).";
-  return null;
-}
-
-function passwordStrength(pwd: string): { score: number; label: string; color: string } {
-  let score = 0;
-  if (pwd.length >= 8)  score++;
-  if (pwd.length >= 12) score++;
-  if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
-  if (/[0-9]/.test(pwd)) score++;
-  if (/[^A-Za-z0-9]/.test(pwd)) score++;
-  const levels = [
-    { label: "",           color: "" },
-    { label: "Muito fraca", color: "bg-destructive" },
-    { label: "Fraca",      color: "bg-orange-400" },
-    { label: "Razoável",   color: "bg-warning" },
-    { label: "Boa",        color: "bg-success" },
-    { label: "Forte",      color: "bg-success" },
-  ];
-  return { score, ...levels[score] };
 }
 
 function PasswordStrengthInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {

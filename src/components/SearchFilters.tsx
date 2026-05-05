@@ -1,3 +1,6 @@
+// CODE-01 FIX: Substituído padrão debounceRef inline (que era copiado do Estoque)
+// pelo hook useDebounce compartilhado.
+// CODE-04 FIX: Substituído document.addEventListener("mousedown") pelo useClickOutside.
 import { useState, useRef, memo } from "react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -5,11 +8,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Search, X, SlidersHorizontal, ScanBarcode } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useClickOutside } from "@/hooks/useClickOutside";
 
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 // ── SearchBar isolado — não propaga re-renders ao pai a cada tecla ─────────────
-// COPIADO LITERALMENTE DO ESTOQUE — inputRef e debounceRef ficam DENTRO do memo
 interface SearchBarProps {
   onSearch: (value: string) => void;
   onClear: () => void;
@@ -25,19 +29,22 @@ const SearchBar = memo(function SearchBar({
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localHasValue, setLocalHasValue] = useState(false);
+
+  // CODE-01 FIX: useDebounce substitui debounceRef inline
+  const debouncedSearch = useDebounce((v: string) => onSearch(v), 400);
+
+  // CODE-04 FIX: useClickOutside substitui document.addEventListener
+  useClickOutside(containerRef, onCloseSuggestions);
 
   function handleChange(v: string) {
     setLocalHasValue(!!v.trim());
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!v.trim()) { onClear(); return; }
-    debounceRef.current = setTimeout(() => onSearch(v.trim()), 400);
+    debouncedSearch(v.trim());
   }
 
   function handleClear() {
     if (inputRef.current) inputRef.current.value = "";
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     setLocalHasValue(false);
     onClear();
   }
@@ -53,7 +60,6 @@ const SearchBar = memo(function SearchBar({
         onKeyDown={e => {
           if (e.key === "Enter") {
             const v = (e.target as HTMLInputElement).value.trim();
-            if (debounceRef.current) clearTimeout(debounceRef.current);
             onSearch(v);
             onCloseSuggestions();
             requestAnimationFrame(() => inputRef.current?.select());

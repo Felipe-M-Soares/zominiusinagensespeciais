@@ -3,6 +3,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { LoadingScreen } from "@/components/LoadingScreen";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Admin from "./pages/Admin";
@@ -34,12 +35,12 @@ const queryClient = new QueryClient({
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, approved, blocked } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   // Usuário bloqueado: desloga e mostra mensagem
   if (blocked) return <Navigate to="/pending-approval" replace />;
   // null = aprovação ainda carregando (race condition pós-login), aguarda sem redirecionar
-  if (approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (approved === null) return <LoadingScreen />;
   // Só redireciona se explicitamente false
   if (approved === false) return <Navigate to="/pending-approval" replace />;
   return <>{children}</>;
@@ -49,21 +50,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 // Também evita que usuário já aprovado fique preso nessa página.
 function PendingApprovalRoute() {
   const { user, loading, approved, blocked } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   // null = perfil ainda carregando, aguarda sem redirecionar
-  if (approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (approved === null) return <LoadingScreen />;
   if (approved === true && !blocked) return <Navigate to="/" replace />;
   return <PendingApproval />;
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, isAdmin, approved, blocked } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   if (blocked) return <Navigate to="/pending-approval" replace />;
   // null = aprovação ainda carregando, aguarda
-  if (approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (approved === null) return <LoadingScreen />;
   if (!isAdmin || approved === false) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
@@ -71,19 +72,31 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 // Rota para vendedoras: acesso permitido para role === "vendedora" | "admin"
 function VendedoraRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, role, approved, blocked } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   if (blocked) return <Navigate to="/pending-approval" replace />;
-  if (approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (approved === null) return <LoadingScreen />;
   if (approved === false) return <Navigate to="/pending-approval" replace />;
   if (role !== "vendedora" && role !== "admin") return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+// SEG-03 FIX: Rota exclusiva para financeiro — garante verificação de role no nível da rota,
+// não apenas dentro do componente (que era contornável acessando a URL diretamente).
+function FinanceiroRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading, role, isAdmin, approved, blocked } = useAuth();
+  if (loading || approved === null) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (blocked) return <Navigate to="/pending-approval" replace />;
+  if (approved === false) return <Navigate to="/pending-approval" replace />;
+  if (!isAdmin && role !== "financeiro") return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
 // Index redireciona vendedoras direto para /comercial, financeiro para /financeiro
 function IndexRoute() {
   const { role, loading, approved } = useAuth();
-  if (loading || approved === null) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading || approved === null) return <LoadingScreen />;
   if (role === "vendedora") return <Navigate to="/comercial" replace />;
   if (role === "financeiro") return <Navigate to="/financeiro" replace />;
   return <Index />;
@@ -91,7 +104,7 @@ function IndexRoute() {
 
 function PublicOnly({ children }: { children: React.ReactNode }) {
   const { user, loading, approved } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading) return <LoadingScreen />;
   // Só redireciona para pending-approval se approved for explicitamente false
   // null = perfil ainda carregando, não deve bloquear
   if (user && approved === false) return <Navigate to="/pending-approval" replace />;
@@ -115,7 +128,7 @@ const App = () => (
             <Route path="/manuals" element={<ProtectedRoute><Manuals /></ProtectedRoute>} />
             <Route path="/estoque" element={<ProtectedRoute><Estoque /></ProtectedRoute>} />
             <Route path="/comercial" element={<VendedoraRoute><Comercial /></VendedoraRoute>} />
-            <Route path="/financeiro" element={<ProtectedRoute><Financeiro /></ProtectedRoute>} />
+            <Route path="/financeiro" element={<FinanceiroRoute><Financeiro /></FinanceiroRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

@@ -13,6 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import {
@@ -93,6 +94,10 @@ interface EmitirNFModalProps {
   onSuccess: () => void;
 }
 
+// SEG-02: Constantes de validação do número de NF
+const NF_MAX_LEN = 50;
+const NF_REGEX   = /^[A-Za-z0-9/\-.]+$/;
+
 function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
   const { user } = useAuth();
   const [nf, setNf] = useState("");
@@ -100,87 +105,119 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
 
   useEffect(() => { if (pedido) setNf(""); }, [pedido]);
 
+  // SEG-02 FIX: Validação de formato de NF antes de persistir
+  function nfValida(v: string): boolean {
+    const t = v.trim();
+    return t.length > 0 && t.length <= NF_MAX_LEN && NF_REGEX.test(t);
+  }
+
   async function handleEmitir() {
-    if (!pedido || !user || !nf.trim()) return;
+    if (!pedido || !user) return;
+
+    // SEG-02: valida antes de enviar ao banco
+    if (!nfValida(nf)) {
+      toast.error("Número de NF inválido. Use apenas letras, números, /, - e ponto. Máx 50 caracteres.");
+      return;
+    }
+
+    const nfTrimmed = nf.trim().slice(0, NF_MAX_LEN);
     setSaving(true);
 
-    // 1. Atualiza pedido: pronto → enviado + NF
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("pedidos_comerciais")
-      .update({
-        status: "enviado",
-        nota_fiscal: nf.trim(),
-        nf_criada_por: user.id,
-        nf_criada_em: now,
-        faturado_por: user.id,
-        faturado_em: now,
-        enviado_em: now,
-      })
-      .eq("id", pedido.id);
+    try {
+      // 1. Atualiza pedido: pronto → enviado + NF
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from("pedidos_comerciais")
+        .update({
+          status: "enviado",
+          nota_fiscal: nfTrimmed,
+          nf_criada_por: user.id,
+          nf_criada_em: now,
+          faturado_por: user.id,
+          faturado_em: now,
+          enviado_em: now,
+        })
+        .eq("id", pedido.id);
 
-    if (error) { toast.error("Erro ao emitir nota fiscal."); setSaving(false); return; }
+      if (error) { toast.error("Erro ao emitir nota fiscal."); return; }
 
-    // 2. Dá baixa no estoque e libera reservas
-    for (const item of pedido.itens) {
-      const { data: si } = await supabase
-        .from("stock_items")
-        .select("id, quantity, quantity_reserved, device_id, fase")
-        .eq("id", item.stock_item_id)
-        .single();
-
-      let expItemId = item.stock_item_id;
-      let currentQty = (si as { quantity: number } | null)?.quantity ?? 0;
-      let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-
-      if (si && (si as { fase: string }).fase !== "expedicao") {
-        const { data: expSi } = await supabase
+      // 2. Dá baixa no estoque e libera reservas
+      // BUG-02 FIX: verifica erro de cada operação e alerta se falhar (não bloqueia o fluxo
+      // pois o pedido já foi faturado, mas o operador precisa saber para corrigir manualmente)
+      for (const item of pedido.itens) {
+        const { data: si } = await supabase
           .from("stock_items")
-          .select("id, quantity, quantity_reserved")
-          .eq("device_id", (si as { device_id: string }).device_id)
-          .eq("fase", "expedicao")
+          .select("id, quantity, quantity_reserved, device_id, fase")
+          .eq("id", item.stock_item_id)
           .single();
-        if (expSi) {
-          expItemId = (expSi as { id: string }).id;
-          currentQty = (expSi as { quantity: number }).quantity ?? 0;
-          currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
+
+        let expItemId = item.stock_item_id;
+        let currentQty      = (si as { quantity: number } | null)?.quantity ?? 0;
+        let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+
+        if (si && (si as { fase: string }).fase !== "expedicao") {
+          const { data: expSi } = await supabase
+            .from("stock_items")
+            .select("id, quantity, quantity_reserved")
+            .eq("device_id", (si as { device_id: string }).device_id)
+            .eq("fase", "expedicao")
+            .single();
+          if (expSi) {
+            expItemId       = (expSi as { id: string }).id;
+            currentQty      = (expSi as { quantity: number }).quantity ?? 0;
+            currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
+          }
+        }
+
+        const { error: upErr } = await supabase
+          .from("stock_items")
+          .update({
+            quantity:           Math.max(0, currentQty      - item.quantidade),
+            quantity_reserved:  Math.max(0, currentReserved - item.quantidade),
+          })
+          .eq("id", expItemId);
+
+        if (upErr) {
+          // Alerta mas continua — pedido já faturado, ajuste manual de estoque necessário
+          toast.error(`Atenção: falha ao atualizar estoque do item ${item.device_model ?? ""}. Verifique manualmente.`);
+        }
+
+        const { error: mvErr } = await supabase.from("stock_movements").insert({
+          stock_item_id:     expItemId,
+          type:              "saida",
+          quantity:          item.quantidade,
+          lote:              item.lote,
+          reason:            `NF ${nfTrimmed} — ${pedido.cliente_nome}`,
+          user_id:           user.id,
+          user_display_name: "Financeiro",
+        });
+
+        if (mvErr) {
+          toast.error(`Atenção: movimento de estoque não registrado para ${item.device_model ?? ""}. Verifique manualmente.`);
         }
       }
 
-      await supabase
-        .from("stock_items")
-        .update({
-          quantity: Math.max(0, currentQty - item.quantidade),
-          quantity_reserved: Math.max(0, currentReserved - item.quantidade),
-        })
-        .eq("id", expItemId);
+      // 3. Notificação para a vendedora (falha silenciosa — não crítica)
+      if (pedido.vendedora_id) {
+        await supabase.from("notificacoes").insert({
+          user_id:  pedido.vendedora_id,
+          pedido_id: pedido.id,
+          tipo:     "pedido_enviado",
+          titulo:   "Pedido enviado! 🚚",
+          mensagem: `O pedido de ${pedido.cliente_nome} foi faturado (NF ${nfTrimmed}) e enviado.`,
+        });
+      }
 
-      await supabase.from("stock_movements").insert({
-        stock_item_id: expItemId,
-        type: "saida",
-        quantity: item.quantidade,
-        lote: item.lote,
-        reason: `NF ${nf.trim()} — ${pedido.cliente_nome}`,
-        user_id: user.id,
-        user_display_name: "Financeiro",
-      });
+      toast.success("Nota fiscal emitida e pedido enviado!");
+      onClose();
+      onSuccess();
+    } catch (err) {
+      // BUG-01 FIX: captura exceções de rede para evitar saving=true permanente
+      toast.error("Erro inesperado ao emitir NF. Tente novamente.");
+      logger.error("handleEmitir:", err);
+    } finally {
+      setSaving(false);
     }
-
-    // 3. Notificação para a vendedora
-    if (pedido.vendedora_id) {
-      await supabase.from("notificacoes").insert({
-        user_id: pedido.vendedora_id,
-        pedido_id: pedido.id,
-        tipo: "pedido_enviado",
-        titulo: "Pedido enviado! 🚚",
-        mensagem: `O pedido de ${pedido.cliente_nome} foi faturado (NF ${nf.trim()}) e enviado.`,
-      });
-    }
-
-    setSaving(false);
-    toast.success("Nota fiscal emitida e pedido enviado!");
-    onClose();
-    onSuccess();
   }
 
   if (!pedido) return null;
@@ -243,11 +280,12 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
             <input
               type="text"
               value={nf}
-              onChange={e => setNf(e.target.value)}
+              onChange={e => setNf(e.target.value.replace(/[^A-Za-z0-9/\-.]/g, "").slice(0, NF_MAX_LEN))}
               placeholder="Ex.: 123456 ou NF-2024-001"
+              maxLength={NF_MAX_LEN}
               className="w-full h-10 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
               autoFocus
-              onKeyDown={e => e.key === "Enter" && nf.trim() && handleEmitir()}
+              onKeyDown={e => e.key === "Enter" && nfValida(nf) && handleEmitir()}
             />
           </div>
 
@@ -261,7 +299,7 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
           <button
             type="button"
             onClick={handleEmitir}
-            disabled={saving || !nf.trim()}
+            disabled={saving || !nfValida(nf)}
             className="w-full h-10 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {saving ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-4 w-4" />}

@@ -18,6 +18,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useStock, fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
+import { useClickOutside } from "@/hooks/useClickOutside";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -141,21 +143,30 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
 
   async function handleSave() {
     if (!nome.trim()) { toast.error("Nome obrigatório"); return; }
+    // SEG-05 FIX: validação de e-mail antes de persistir
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast.error("E-mail inválido."); return;
+    }
     setSaving(true);
     try {
+      // SEG-05 FIX: slice garante que nenhum campo ultrapasse o limite antes de chegar ao banco
+      const payload = {
+        nome:        nome.trim().slice(0, 200),
+        documento:   documento.trim().slice(0, 20)  || null,
+        telefone:    telefone.trim().slice(0, 20)   || null,
+        email:       email.trim().slice(0, 200)     || null,
+        endereco:    endereco.trim().slice(0, 300)  || null,
+        observacoes: obs.trim().slice(0, 1000)      || null,
+      };
       let data: Cliente | null = null;
       if (inicial) {
         const { data: d, error } = await supabase
-          .from("clientes")
-          .update({ nome: nome.trim(), documento: documento || null, telefone: telefone || null, email: email || null, endereco: endereco || null, observacoes: obs || null })
-          .eq("id", inicial.id).select().single();
+          .from("clientes").update(payload).eq("id", inicial.id).select().single();
         if (error) throw error;
         data = d as Cliente;
       } else {
         const { data: d, error } = await supabase
-          .from("clientes")
-          .insert({ nome: nome.trim(), documento: documento || null, telefone: telefone || null, email: email || null, endereco: endereco || null, observacoes: obs || null, created_by: user?.id })
-          .select().single();
+          .from("clientes").insert({ ...payload, created_by: user?.id }).select().single();
         if (error) throw error;
         data = d as Cliente;
       }
@@ -183,29 +194,29 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
         <div className="p-5 space-y-3 max-h-[65vh] overflow-y-auto">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Nome *</label>
-            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome completo ou razão social" className="h-9 text-sm" autoFocus />
+            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome completo ou razão social" className="h-9 text-sm" autoFocus maxLength={200} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">CPF / CNPJ</label>
-              <Input value={documento} onChange={e => setDocumento(e.target.value)} placeholder="000.000.000-00" className="h-9 text-sm" />
+              <Input value={documento} onChange={e => setDocumento(e.target.value)} placeholder="000.000.000-00" className="h-9 text-sm" maxLength={20} />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Telefone</label>
-              <Input value={telefone} onChange={e => setTelefone(e.target.value)} placeholder="(00) 00000-0000" className="h-9 text-sm" />
+              <Input value={telefone} onChange={e => setTelefone(e.target.value)} placeholder="(00) 00000-0000" className="h-9 text-sm" maxLength={20} />
             </div>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">E-mail</label>
-            <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="cliente@email.com" type="email" className="h-9 text-sm" />
+            <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="cliente@email.com" type="email" className="h-9 text-sm" maxLength={200} />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Endereço</label>
-            <Input value={endereco} onChange={e => setEndereco(e.target.value)} placeholder="Rua, número, cidade..." className="h-9 text-sm" />
+            <Input value={endereco} onChange={e => setEndereco(e.target.value)} placeholder="Rua, número, cidade..." className="h-9 text-sm" maxLength={300} />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Observações</label>
-            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Informações adicionais..." className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[60px] focus:outline-none focus:ring-2 focus:ring-ring" />
+            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Informações adicionais..." className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[60px] focus:outline-none focus:ring-2 focus:ring-ring" maxLength={1000} />
           </div>
         </div>
         <div className="flex gap-2 p-5 pt-0">
@@ -258,7 +269,10 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const clienteDropRef = useRef<HTMLDivElement>(null);
   const pecaDropRef = useRef<HTMLDivElement>(null);
   const pecaInputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // CODE-04 FIX: useClickOutside substitui o padrão document.addEventListener duplicado
+  useClickOutside(clienteDropRef, () => setShowClienteDrop(false));
+  useClickOutside(pecaDropRef,    () => setShowAutocomp(false));
 
   // Reset ao abrir
   useEffect(() => {
@@ -276,36 +290,26 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setClientes((data as Cliente[]) ?? []);
   }
 
-  // Fecha dropdowns ao clicar fora
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (clienteDropRef.current && !clienteDropRef.current.contains(e.target as Node)) setShowClienteDrop(false);
-      if (pecaDropRef.current && !pecaDropRef.current.contains(e.target as Node)) setShowAutocomp(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+  // CODE-01 FIX: useDebounce substitui o padrão debounceRef inline duplicado
+  const debouncedPecaSearch = useDebounce((v: string) => {
+    const q = v.trim().toLowerCase();
+    const sugestoes = expedicaoItems.filter(i =>
+      !q || i.device?.model?.toLowerCase().includes(q)
+    );
+    const vistos = new Set<string>();
+    const deduped = sugestoes.filter(i => {
+      if (vistos.has(i.device_id)) return false;
+      vistos.add(i.device_id); return true;
+    }).slice(0, 15);
+    setAutocomplete(deduped);
+    setShowAutocomp(deduped.length > 0);
+  }, 80);
 
   // Autocomplete de peça — filtra apenas por NOME (device.model), não mostra lotes
   function handlePecaInput(v: string) {
     setPecaSearch(v);
     setSelectedPeca(null);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const q = v.trim().toLowerCase();
-      // Busca em todos os itens do estoque (não só expedição), por nome
-      const sugestoes = expedicaoItems.filter(i =>
-        !q || i.device?.model?.toLowerCase().includes(q)
-      );
-      // Deduplica por device_id
-      const vistos = new Set<string>();
-      const deduped = sugestoes.filter(i => {
-        if (vistos.has(i.device_id)) return false;
-        vistos.add(i.device_id); return true;
-      }).slice(0, 15);
-      setAutocomplete(deduped);
-      setShowAutocomp(deduped.length > 0);
-    }, 80);
+    debouncedPecaSearch(v);
   }
 
   function handlePecaFocus() {
@@ -360,7 +364,8 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     try {
       const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
       const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
-      const freteVal = parseFloat(frete.replace(",", ".")) || 0;
+      // BUG-06 FIX: garante que o frete seja um número não-negativo e razoável
+      const freteVal = Math.max(0, Math.min(99999.99, parseFloat(frete.replace(",", ".")) || 0));
       const { data: pedido, error: pedidoErr } = await supabase
         .from("pedidos_comerciais")
         .insert({
@@ -724,19 +729,13 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (pedido) { setSearch(""); setSelectedPeca(null); setQtd(1); setTimeout(() => inputRef.current?.focus(), 100); }
   }, [pedido]);
 
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setShowAutocomp(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+  // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
+  useClickOutside(dropRef, () => setShowAutocomp(false));
 
   // Calcula quantas unidades de cada stock_item já estão no pedido atual (ainda não reservadas)
   const jaNosPedido = (pedido?.itens ?? []).reduce<Record<string, number>>((acc, it) => {
@@ -751,20 +750,22 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
     return Math.max(0, bruto - jaAdicionado);
   }
 
+  // CODE-01 FIX: useDebounce substitui debounceRef inline
+  const debouncedInput = useDebounce((v: string) => {
+    const q = v.trim().toLowerCase();
+    const vistos = new Set<string>();
+    const deduped = expedicaoItems.filter(i => {
+      if (!i.device?.model?.toLowerCase().includes(q) && q) return false;
+      if (vistos.has(i.device_id)) return false;
+      if (dispReal(i) <= 0) return false;
+      vistos.add(i.device_id); return true;
+    }).slice(0, 15);
+    setAutocomplete(deduped); setShowAutocomp(deduped.length > 0);
+  }, 80);
+
   function handleInput(v: string) {
     setSearch(v); setSelectedPeca(null);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const q = v.trim().toLowerCase();
-      const vistos = new Set<string>();
-      const deduped = expedicaoItems.filter(i => {
-        if (!i.device?.model?.toLowerCase().includes(q) && q) return false;
-        if (vistos.has(i.device_id)) return false;
-        if (dispReal(i) <= 0) return false; // oculta peças sem saldo real disponível
-        vistos.add(i.device_id); return true;
-      }).slice(0, 15);
-      setAutocomplete(deduped); setShowAutocomp(deduped.length > 0);
-    }, 80);
+    debouncedInput(v);
   }
 
   function handleFocus() {
@@ -1054,12 +1055,8 @@ function NotificacoesBell({ userId }: { userId: string }) {
     return () => { supabase.removeChannel(channel); };
   }, [userId, load]);
 
-  // Fecha ao clicar fora
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+  // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
+  useClickOutside(ref, () => setOpen(false));
 
   async function marcarLidas() {
     const ids = notifs.filter(n => !n.lida).map(n => n.id);

@@ -34,8 +34,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -733,7 +735,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
           pedido_item_id: pid,
           stock_item_id: item.stock_item_id,
           lote,
-          quantidade: quantidade / item.ids.length,
+          quantidade: Math.round(quantidade / item.ids.length),
           device_model: item.device_model,
         }))
       );
@@ -1046,17 +1048,15 @@ interface SearchBarPedidosProps {
 
 const SearchBarPedidos = memo(function SearchBarPedidos({ onSearch, onClear, hasValue }: SearchBarPedidosProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // CODE-01 FIX: useDebounce substitui debounceRef inline
+  const debouncedSearch = useDebounce((v: string) => onSearch(v), 300);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const v = e.target.value;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => onSearch(v.trim()), 300);
+    debouncedSearch(e.target.value.trim());
   }
 
   function handleClear() {
     if (inputRef.current) inputRef.current.value = "";
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     onClear();
   }
 
@@ -1110,7 +1110,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           pedido_item_id: pid,
           stock_item_id: item.stock_item_id,
           lote,
-          quantidade: quantidade / item.ids.length, // distribui proporcionalmente
+          quantidade: Math.round(quantidade / item.ids.length), // distribui proporcionalmente
           device_model: item.device_model,
         }))
       );
@@ -1131,61 +1131,66 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
   const loadPedidos = useCallback(async () => {
     setLoading(true);
-    const query = supabase
-      .from("pedidos_comerciais")
-      .select(`
-        id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
-        created_at, lotes_separados, separado_em,
-        clientes!inner(nome),
-        pedido_itens(
-          id, stock_item_id, lote, quantidade,
-          stock_items!inner(
-            stock_item_id:id,
-            devices!inner(model, reference)
+    try {
+      const query = supabase
+        .from("pedidos_comerciais")
+        .select(`
+          id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
+          created_at, lotes_separados, separado_em,
+          clientes!inner(nome),
+          pedido_itens(
+            id, stock_item_id, lote, quantidade,
+            stock_items!inner(
+              stock_item_id:id,
+              devices!inner(model, reference)
+            )
           )
-        )
-      `)
-      .order("created_at", { ascending: false });
+        `)
+        .order("created_at", { ascending: false });
 
-    const { data, error } = await query;
+      const { data, error } = await query;
 
-    if (error || !data) { setLoading(false); return; }
+      if (error || !data) { return; }
 
-    const mapped: Pedido[] = data.map((p: Record<string, unknown>) => ({
-      id: p.id as string,
-      cliente_nome: (p.clientes as { nome: string }).nome,
-      vendedora_nome: p.vendedora_nome as string | null,
-      vendedora_id: p.vendedora_id as string | null,
-      status: p.status as string,
-      frete: (p.frete as number) ?? 0,
-      observacoes: p.observacoes as string | null,
-      created_at: p.created_at as string,
-      itens: (() => {
-        const raw = ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
-          id: i.id as string,
-          ids: [i.id as string],
-          stock_item_id: i.stock_item_id as string,
-          lote: i.lote as string,
-          quantidade: i.quantidade as number,
-          device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
-          device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
-        }));
-        // Unifica itens com o mesmo stock_item_id somando quantidades
-        const merged: Record<string, typeof raw[0]> = {};
-        for (const item of raw) {
-          if (merged[item.stock_item_id]) {
-            merged[item.stock_item_id].quantidade += item.quantidade;
-            merged[item.stock_item_id].ids.push(item.id);
-          } else {
-            merged[item.stock_item_id] = { ...item };
+      const mapped: Pedido[] = data.map((p: Record<string, unknown>) => ({
+        id: p.id as string,
+        cliente_nome: (p.clientes as { nome: string }).nome,
+        vendedora_nome: p.vendedora_nome as string | null,
+        vendedora_id: p.vendedora_id as string | null,
+        status: p.status as string,
+        frete: (p.frete as number) ?? 0,
+        observacoes: p.observacoes as string | null,
+        created_at: p.created_at as string,
+        itens: (() => {
+          const raw = ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
+            id: i.id as string,
+            ids: [i.id as string],
+            stock_item_id: i.stock_item_id as string,
+            lote: i.lote as string,
+            quantidade: i.quantidade as number,
+            device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
+            device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
+          }));
+          const merged: Record<string, typeof raw[0]> = {};
+          for (const item of raw) {
+            if (merged[item.stock_item_id]) {
+              merged[item.stock_item_id].quantidade += item.quantidade;
+              merged[item.stock_item_id].ids.push(item.id);
+            } else {
+              merged[item.stock_item_id] = { ...item };
+            }
           }
-        }
-        return Object.values(merged);
-      })(),
-    }));
+          return Object.values(merged);
+        })(),
+      }));
 
-    setPedidos(mapped);
-    setLoading(false);
+      setPedidos(mapped);
+    } catch (err) {
+      logger.error("loadPedidos:", err);
+      toast.error("Erro ao carregar pedidos. Tente atualizar a página.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadPedidos(); }, [loadPedidos]);
@@ -1212,131 +1217,148 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           pedido_item_id: pid,
           stock_item_id: item.stock_item_id,
           lote,
-          quantidade: quantidade / item.ids.length,
+          quantidade: Math.round(quantidade / item.ids.length),
           device_model: item.device_model,
         }))
       );
     });
-    // Atualiza lote em cada pedido_item (incluindo duplicatas unificadas)
-    for (const item of pedido.itens) {
-      const sel = lotesSelecionados[item.id] ?? {};
-      const lotePrincipal = Object.keys(sel)[0] ?? null;
-      for (const itemId of item.ids) {
-        await supabase.from("pedido_itens").update({ lote: lotePrincipal }).eq("id", itemId);
+    try {
+      // Atualiza lote em cada pedido_item (incluindo duplicatas unificadas)
+      for (const item of pedido.itens) {
+        const sel = lotesSelecionados[item.id] ?? {};
+        const lotePrincipal = Object.keys(sel)[0] ?? null;
+        for (const itemId of item.ids) {
+          await supabase.from("pedido_itens").update({ lote: lotePrincipal }).eq("id", itemId);
+        }
       }
+      const { error } = await supabase
+        .from("pedidos_comerciais")
+        .update({ lotes_separados: snapshot })
+        .eq("id", pedido.id);
+      if (error) { toast.error("Erro ao salvar lotes."); return; }
+      toast.success("Lotes da separação salvos!");
+      loadPedidos();
+    } catch (err) {
+      toast.error("Erro inesperado ao salvar lotes. Tente novamente.");
+      logger.error("handleSalvarSeparacao:", err);
     }
-    const { error } = await supabase
-      .from("pedidos_comerciais")
-      .update({ lotes_separados: snapshot })
-      .eq("id", pedido.id);
-    if (error) { toast.error("Erro ao salvar lotes."); return; }
-    toast.success("Lotes da separação salvos!");
-    loadPedidos();
   }
 
   async function handleMarcarPronto(pedido: Pedido) {
     if (!user) return;
-
-    // Retirar peças da expedição e liberar reserva
-    for (const item of pedido.itens) {
-      const { data: si } = await supabase
-        .from("stock_items")
-        .select("id, quantity, quantity_reserved, device_id, fase")
-        .eq("id", item.stock_item_id)
-        .single();
-
-      let expItemId = item.stock_item_id;
-      let currentQty = (si as { quantity: number } | null)?.quantity ?? 0;
-      let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-
-      if (si && (si as { fase: string }).fase !== "expedicao") {
-        const { data: expSi } = await supabase
-          .from("stock_items")
-          .select("id, quantity, quantity_reserved")
-          .eq("device_id", (si as { device_id: string }).device_id)
-          .eq("fase", "expedicao")
-          .single();
-        if (expSi) {
-          expItemId = (expSi as { id: string }).id;
-          currentQty = (expSi as { quantity: number }).quantity ?? 0;
-          currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
-        }
-      }
-
-      const novaQtd = Math.max(0, currentQty - item.quantidade);
-      const novaReserva = Math.max(0, currentReserved - item.quantidade);
-
-      await supabase.from("stock_items").update({
-        quantity: novaQtd,
-        quantity_reserved: novaReserva,
-      }).eq("id", expItemId);
-
-      // Registrar saída
-      await supabase.from("stock_movements").insert({
-        stock_item_id: expItemId,
-        type: "saida",
-        quantity: item.quantidade,
-        lote: item.lote ?? null,
-        reason: `Pedido comercial — cliente: ${pedido.cliente_nome} (separação concluída)`,
-        user_display_name: pedido.vendedora_nome ?? "Estoque",
-      });
-    }
-
-    const { error } = await supabase
-      .from("pedidos_comerciais")
-      .update({ status: "pronto" })
-      .eq("id", pedido.id);
-
-    if (error) { toast.error("Erro ao marcar como pronto."); return; }
-    toast.success("Pedido marcado como pronto! Peças retiradas da expedição.");
-    loadPedidos();
-  }
-
-  async function handleCancelar() {
-    if (!cancelarPedido) return;
-    setCancelando(true);
-
-    // Se estava separando, libera as reservas
-    if (cancelarPedido.status === "separando") {
-      for (const item of cancelarPedido.itens) {
+    try {
+      // Retirar peças da expedição e liberar reserva (SEG-04: operações individuais por item)
+      for (const item of pedido.itens) {
         const { data: si } = await supabase
           .from("stock_items")
-          .select("id, quantity_reserved, device_id, fase")
+          .select("id, quantity, quantity_reserved, device_id, fase")
           .eq("id", item.stock_item_id)
           .single();
 
         let expItemId = item.stock_item_id;
+        let currentQty = (si as { quantity: number } | null)?.quantity ?? 0;
         let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
 
         if (si && (si as { fase: string }).fase !== "expedicao") {
           const { data: expSi } = await supabase
             .from("stock_items")
-            .select("id, quantity_reserved")
+            .select("id, quantity, quantity_reserved")
             .eq("device_id", (si as { device_id: string }).device_id)
             .eq("fase", "expedicao")
             .single();
           if (expSi) {
-            expItemId = (expSi as { id: string }).id;
+            expItemId       = (expSi as { id: string }).id;
+            currentQty      = (expSi as { quantity: number }).quantity ?? 0;
             currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
           }
         }
 
-        await supabase
-          .from("stock_items")
-          .update({ quantity_reserved: Math.max(0, currentReserved - item.quantidade) })
-          .eq("id", expItemId);
-      }
-    }
+        const novaQtd     = Math.max(0, currentQty      - item.quantidade);
+        const novaReserva = Math.max(0, currentReserved - item.quantidade);
 
-    const { error } = await supabase
-      .from("pedidos_comerciais")
-      .update({ status: "cancelado" })
-      .eq("id", cancelarPedido.id);
-    setCancelando(false);
-    if (error) { toast.error("Erro ao cancelar."); return; }
-    toast.success("Pedido cancelado. Reservas liberadas.");
-    setCancelarPedido(null);
-    loadPedidos();
+        const { error: upErr } = await supabase.from("stock_items").update({
+          quantity:          novaQtd,
+          quantity_reserved: novaReserva,
+        }).eq("id", expItemId);
+
+        if (upErr) {
+          toast.error(`Falha ao atualizar estoque do item ${item.device_model ?? ""}. Verifique manualmente.`);
+        }
+
+        await supabase.from("stock_movements").insert({
+          stock_item_id:     expItemId,
+          type:              "saida",
+          quantity:          item.quantidade,
+          lote:              item.lote ?? null,
+          reason:            `Pedido comercial — cliente: ${pedido.cliente_nome} (separação concluída)`,
+          user_display_name: pedido.vendedora_nome ?? "Estoque",
+        });
+      }
+
+      const { error } = await supabase
+        .from("pedidos_comerciais")
+        .update({ status: "pronto" })
+        .eq("id", pedido.id);
+
+      if (error) { toast.error("Erro ao marcar como pronto."); return; }
+      toast.success("Pedido marcado como pronto! Peças retiradas da expedição.");
+      loadPedidos();
+    } catch (err) {
+      toast.error("Erro inesperado ao marcar pedido como pronto. Tente novamente.");
+      logger.error("handleMarcarPronto:", err);
+    }
+  }
+
+  async function handleCancelar() {
+    if (!cancelarPedido) return;
+    setCancelando(true);
+    try {
+      // Se estava separando, libera as reservas
+      if (cancelarPedido.status === "separando") {
+        for (const item of cancelarPedido.itens) {
+          const { data: si } = await supabase
+            .from("stock_items")
+            .select("id, quantity_reserved, device_id, fase")
+            .eq("id", item.stock_item_id)
+            .single();
+
+          let expItemId = item.stock_item_id;
+          let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
+
+          if (si && (si as { fase: string }).fase !== "expedicao") {
+            const { data: expSi } = await supabase
+              .from("stock_items")
+              .select("id, quantity_reserved")
+              .eq("device_id", (si as { device_id: string }).device_id)
+              .eq("fase", "expedicao")
+              .single();
+            if (expSi) {
+              expItemId       = (expSi as { id: string }).id;
+              currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
+            }
+          }
+
+          await supabase
+            .from("stock_items")
+            .update({ quantity_reserved: Math.max(0, currentReserved - item.quantidade) })
+            .eq("id", expItemId);
+        }
+      }
+
+      const { error } = await supabase
+        .from("pedidos_comerciais")
+        .update({ status: "cancelado" })
+        .eq("id", cancelarPedido.id);
+      if (error) { toast.error("Erro ao cancelar."); return; }
+      toast.success("Pedido cancelado. Reservas liberadas.");
+      setCancelarPedido(null);
+      loadPedidos();
+    } catch (err) {
+      toast.error("Erro inesperado ao cancelar pedido. Tente novamente.");
+      logger.error("handleCancelar:", err);
+    } finally {
+      setCancelando(false);
+    }
   }
 
   return (
