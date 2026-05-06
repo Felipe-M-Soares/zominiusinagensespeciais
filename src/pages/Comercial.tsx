@@ -1126,12 +1126,14 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
     "Retirada",
   ];
 
-  function isComercialMovement(m: AllMovement) {
+  const isComercialMovement = useCallback((m: AllMovement) => {
     if (m.fase !== "expedicao") return false;
     if (!m.reason) return false;
     if (INTERNAL_REASONS.some(r => m.reason?.startsWith(r))) return false;
     return true;
-  }
+  // INTERNAL_REASONS is a static constant — safe to omit
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1147,7 +1149,7 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
       setMovements([]);
     }
     return () => { cancelled = true; };
-  }, [open]);
+  }, [open, isComercialMovement]);
 
   async function load() {
     setLoading(true);
@@ -1489,12 +1491,12 @@ export default function Comercial() {
 
   // Nome da usuária logada
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const userEmail = user?.email ?? null;
   useEffect(() => {
     if (!user?.id) return;
     supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => setCurrentUserName((data as { display_name?: string } | null)?.display_name ?? user?.email ?? null));
-  }, [user?.id]);
+      .then(({ data }) => setCurrentUserName((data as { display_name?: string } | null)?.display_name ?? userEmail));
+  }, [user?.id, userEmail]);
 
   // Tema
   const [isDark, setIsDark] = useState(() => {

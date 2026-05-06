@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -28,14 +28,14 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
   const [loading, setLoading] = useState(false);
 
   // Exclui movimentos originados pelo Financeiro ou pelo Comercial (pedidos)
-  function filterStockOnly(data: import("@/hooks/useStock").AllMovement[]) {
+  const filterStockOnly = useCallback((data: AllMovement[]) => {
     return data.filter((m) => {
       if (m.user_display_name === "Financeiro") return false;
       if (m.reason?.startsWith("Pedido comercial")) return false;
       if (m.reason?.startsWith("NF ")) return false;
       return fase ? m.fase === fase : true;
     });
-  }
+  }, [fase]);
 
   async function load() {
     setLoading(true);
@@ -58,7 +58,7 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
       setMovements([]);
     }
     return () => { cancelled = true; };
-  }, [open, fase]);
+  }, [open, fase, filterStockOnly]);
 
   function fmtDate(iso: string) {
     const d = new Date(iso);

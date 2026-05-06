@@ -1008,7 +1008,7 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
 
-  async function loadMovements(cancelled: { v: boolean }) {
+  const loadMovements = useCallback(async (cancelled: { v: boolean }) => {
     setLoading(true);
     try {
       const data = await fetchAllMovements(200);
@@ -1023,16 +1023,15 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
     } catch {
       if (!cancelled.v) setLoading(false);
     }
-  }
+  }, [currentUserName, isAdmin]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const cancelled = { v: false };
     if (open) {
       loadMovements(cancelled);
     } else setMovements([]);
     return () => { cancelled.v = true; };
-  }, [open, currentUserName, isAdmin]);
+  }, [open, loadMovements]);
 
   function fmtDate(iso: string) {
     const d = new Date(iso);
@@ -1262,12 +1261,12 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
   // Nome da usuária logada
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const userEmail = user?.email ?? null;
   useEffect(() => {
     if (!user?.id) return;
     supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => setCurrentUserName((data as { display_name?: string } | null)?.display_name ?? user?.email ?? null));
-  }, [user?.id]);
+      .then(({ data }) => setCurrentUserName((data as { display_name?: string } | null)?.display_name ?? userEmail));
+  }, [user?.id, userEmail]);
 
   // Tabs internas
   type SubTab = "dashboard" | "pedidos" | "clientes";
@@ -1369,16 +1368,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
   useEffect(() => { loadPedidos(); loadClientes(); }, [loadPedidos, loadClientes]);
 
-  if (!canAccess) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
-        <ShoppingBag className="h-10 w-10 text-muted-foreground/30" />
-        <p className="text-muted-foreground font-medium">Acesso restrito</p>
-        <p className="text-sm text-muted-foreground/60">Esta área é exclusiva para vendedoras.</p>
-      </div>
-    );
-  }
-
+  // PERF-04: useMemo must be called before any early returns (rules of hooks)
   const pedidosFiltrados = useMemo(
     () => pedidos.filter(p => filtroStatus === "todos" || p.status === filtroStatus),
     [pedidos, filtroStatus]
@@ -1391,6 +1381,16 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     ),
     [clientes, clienteSearchFilter]
   );
+
+  if (!canAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+        <ShoppingBag className="h-10 w-10 text-muted-foreground/30" />
+        <p className="text-muted-foreground font-medium">Acesso restrito</p>
+        <p className="text-sm text-muted-foreground/60">Esta área é exclusiva para vendedoras.</p>
+      </div>
+    );
+  }
 
   const pedidosPendentes = pedidos.filter(p => p.status === "pendente").length;
 
