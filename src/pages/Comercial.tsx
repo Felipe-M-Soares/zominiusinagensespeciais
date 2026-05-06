@@ -927,11 +927,14 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
 
       // BUG-12 / SEG-01: Use atomic RPC — prevents race condition / overselling
       for (const item of pedido.itens) {
-        const { error: reserveErr } = await supabase.rpc("reserve_stock", {
+        const { data: reserveResult, error: reserveErr } = await supabase.rpc("reserve_stock", {
           p_item_id: item.stock_item_id,
           p_qty: item.quantidade,
         });
-        if (reserveErr) throw new Error("Estoque insuficiente para " + (item.device_model ?? item.stock_item_id));
+        if (reserveErr || (reserveResult as { error?: string })?.error) {
+          throw new Error("Estoque insuficiente para " + (item.device_model ?? item.stock_item_id));
+        }
+      }
       }
 
       toast.success("Pedido confirmado! Peças reservadas no estoque.");
@@ -1313,10 +1316,13 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
     }
     const pecasList = Object.values(pecas).sort((a, b) => b.total - a.total);
 
+    // XSS: escape all user-supplied values before injecting into HTML blob
+    const esc = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
     // Monta HTML para impressão
     const html = `
       <!DOCTYPE html><html><head><meta charset="UTF-8">
-      <title>Relatório — ${currentUserName}</title>
+      <title>Relatório — ${esc(currentUserName ?? "")}</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
         h1 { font-size: 18px; margin-bottom: 4px; }
@@ -1329,11 +1335,11 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
         .footer { margin-top: 20px; font-size: 11px; color: #999; }
       </style></head><body>
       <h1>📊 Relatório de Vendas</h1>
-      <p class="sub">Vendedora: <strong>${currentUserName}</strong> &nbsp;·&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
+      <p class="sub">Vendedora: <strong>${esc(currentUserName ?? "")}</strong> &nbsp;·&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
       <table>
         <thead><tr><th>#</th><th>Peça</th><th>Referência</th><th>Qtd. Vendida</th></tr></thead>
         <tbody>
-          ${pecasList.map((p, i) => `<tr><td>${i + 1}</td><td>${p.model}</td><td>${p.ref}</td><td class="total">${p.total}</td></tr>`).join("")}
+          ${pecasList.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.model)}</td><td>${esc(p.ref)}</td><td class="total">${p.total}</td></tr>`).join("")}
         </tbody>
       </table>
       <p class="footer">Total de ${meusPedidos.length} pedido(s) faturado(s) &nbsp;·&nbsp; ${pecasList.reduce((s, p) => s + p.total, 0)} peças no total</p>
@@ -1537,26 +1543,37 @@ export default function Comercial() {
   const [clienteSearchFilter, setClienteSearchFilter] = useState(""); // só atualiza em debounce
   const clienteSearchRef = useRef<HTMLInputElement>(null);
   const clienteSearchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadPedidosAbortRef = useRef<AbortController | null>(null);
   const [clienteModal, setClienteModal] = useState(false);
   const [editCliente, setEditCliente] = useState<Cliente | null>(null);
   const [deleteCliente, setDeleteCliente] = useState<Cliente | null>(null);
   const [deletingCliente, setDeletingCliente] = useState(false);
 
   const loadPedidos = useCallback(async () => {
+    // PERF-05: Cancel any in-flight request before starting a new one
+    loadPedidosAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    loadPedidosAbortRef.current = ctrl;
+
     setLoadingPedidos(true);
     try {
       const { data: pedidosData } = await supabase
         .from("pedidos_comerciais")
         .select("*, clientes(nome)")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .abortSignal(ctrl.signal);
 
+      if (ctrl.signal.aborted) return;
       if (!pedidosData) { setPedidos([]); return; }
 
       const pedidoIds = pedidosData.map((p: Record<string, unknown>) => p.id as string);
       const { data: itensData } = await supabase
         .from("pedido_itens")
         .select("*, stock_items(devices(model, reference))")
-        .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"]);
+        .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"])
+        .abortSignal(ctrl.signal);
+
+      if (ctrl.signal.aborted) return;
 
       const itensPorPedido = new Map<string, PedidoCompleto["itens"]>();
       for (const it of (itensData ?? []) as Record<string, unknown>[]) {

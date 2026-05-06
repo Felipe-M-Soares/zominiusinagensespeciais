@@ -871,10 +871,10 @@ export default function Estoque() {
     // Deleta pedido_itens vinculados (FK restrict impede alterações cascata)
     await supabase.from("pedido_itens").delete().eq("stock_item_id", resetItem.id);
 
-    // Zera a quantidade do item
+    // Zera a quantidade e reserva do item
     const { error: updateErr } = await supabase
       .from("stock_items")
-      .update({ quantity: 0 })
+      .update({ quantity: 0, quantity_reserved: 0 })
       .eq("id", resetItem.id);
     if (updateErr) {
       t.error("Erro ao zerar estoque.");

@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchLotesDisponivelBatch } from "@/hooks/useStock";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -143,57 +144,73 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     setLoadingLotes(true);
 
     async function load() {
+      const itemIds = pedido.itens.map(i => i.stock_item_id);
+
+      // PERF-01: Single batch query for all stock items instead of N queries
+      const { data: siRows } = await supabase
+        .from("stock_items")
+        .select("id, device_id, quantity, fase")
+        .in("id", itemIds);
+
+      const siMap = new Map((siRows ?? []).map((r: Record<string, unknown>) => [r.id as string, r]));
+
+      // Resolve expedicao items in one batch for any non-expedicao items
+      const nonExpIds = (siRows ?? [])
+        .filter((r: Record<string, unknown>) => r.fase !== "expedicao")
+        .map((r: Record<string, unknown>) => r.device_id as string);
+
+      const expMap = new Map<string, { id: string; quantity: number }>();
+      if (nonExpIds.length > 0) {
+        const { data: expRows } = await supabase
+          .from("stock_items")
+          .select("id, device_id, quantity")
+          .in("device_id", nonExpIds)
+          .eq("fase", "expedicao");
+        for (const r of (expRows ?? []) as { id: string; device_id: string; quantity: number }[]) {
+          expMap.set(r.device_id, { id: r.id, quantity: r.quantity });
+        }
+      }
+
+      // Resolve final expedicao item ids
+      const expedicaoIds: string[] = [];
+      const expQtyByPedidoItem: Record<string, { expId: string; qty: number }> = {};
+      for (const item of pedido.itens) {
+        const si = siMap.get(item.stock_item_id) as { device_id: string; quantity: number; fase: string } | undefined;
+        if (!si) { expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: 0 }; continue; }
+        if (si.fase === "expedicao") {
+          expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: si.quantity };
+          expedicaoIds.push(item.stock_item_id);
+        } else {
+          const exp = expMap.get(si.device_id);
+          if (exp) {
+            expQtyByPedidoItem[item.id] = { expId: exp.id, qty: exp.quantity };
+            expedicaoIds.push(exp.id);
+          } else {
+            expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: 0 };
+          }
+        }
+      }
+
+      // PERF-01: Single batch query for all lotes
+      const lotesMap = await fetchLotesDisponivelBatch([...new Set(expedicaoIds)]);
+
       const result: Record<string, StockItemExpedicao> = {};
       const inicialSel: LoteSelecao = {};
 
       for (const item of pedido.itens) {
-        const { data: siData } = await supabase
-          .from("stock_items")
-          .select("device_id, quantity, fase")
-          .eq("id", item.stock_item_id)
-          .single();
-
-        let expedicaoItemId = item.stock_item_id;
-        let expQty = (siData as { quantity: number } | null)?.quantity ?? 0;
-
-        if (siData && (siData as { fase: string }).fase !== "expedicao") {
-          const { data: expItem } = await supabase
-            .from("stock_items")
-            .select("id, quantity")
-            .eq("device_id", (siData as { device_id: string }).device_id)
-            .eq("fase", "expedicao")
-            .single();
-          if (expItem) {
-            expedicaoItemId = (expItem as { id: string }).id;
-            expQty = (expItem as { quantity: number }).quantity ?? 0;
-          }
-        }
-
-        // Calcular saldo por lote via movimentos
-        const { data: movs } = await supabase
-          .from("stock_movements")
-          .select("lote, quantity, type")
-          .eq("stock_item_id", expedicaoItemId)
-          .not("lote", "is", null)
-          .order("created_at", { ascending: false });
-
-        const saldos: Record<string, number> = {};
-        for (const mv of (movs ?? [])) {
-          if (!mv.lote) continue;
-          saldos[mv.lote] = (saldos[mv.lote] ?? 0) + (mv.type === "entrada" ? mv.quantity : -mv.quantity);
-        }
+        const { expId, qty: expQty } = expQtyByPedidoItem[item.id] ?? { expId: item.stock_item_id, qty: 0 };
+        const saldos = lotesMap.get(expId) ?? {};
 
         let lotesList: LoteDisponivel[] = Object.entries(saldos)
-          .map(([lote, qty]) => ({ lote, quantity: Math.max(0, qty), stock_item_id: expedicaoItemId }))
+          .map(([lote, qty]) => ({ lote, quantity: Math.max(0, qty), stock_item_id: expId }))
           .filter(l => l.quantity > 0);
 
         if (lotesList.length === 0 && expQty > 0) {
-          lotesList = [{ lote: "Sem lote", quantity: expQty, stock_item_id: expedicaoItemId }];
+          lotesList = [{ lote: "Sem lote", quantity: expQty, stock_item_id: expId }];
         }
 
-        result[item.id] = { stock_item_id: expedicaoItemId, quantity: expQty, lotes: lotesList, loading: false };
+        result[item.id] = { stock_item_id: expId, quantity: expQty, lotes: lotesList, loading: false };
 
-        // Pré-seleciona distribuindo quantidade pedida entre lotes disponíveis
         const dist: Record<string, number> = {};
         let restante = item.quantidade;
         for (const l of lotesList) {
@@ -619,54 +636,63 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
 
     async function loadLotes() {
       if (!pedido) return;
-      const result: Record<string, LoteDisponivel[]> = {};
+      const itemIds = pedido.itens.map(i => i.stock_item_id);
 
-      for (const item of pedido.itens) {
-        const { data: siData } = await supabase
+      // PERF-01: Batch query for all stock items
+      const { data: siRows } = await supabase
+        .from("stock_items")
+        .select("id, device_id, quantity, fase")
+        .in("id", itemIds);
+
+      const siMap = new Map((siRows ?? []).map((r: Record<string, unknown>) => [r.id as string, r]));
+
+      const nonExpDeviceIds = (siRows ?? [])
+        .filter((r: Record<string, unknown>) => r.fase !== "expedicao")
+        .map((r: Record<string, unknown>) => r.device_id as string);
+
+      const expMap = new Map<string, { id: string; quantity: number }>();
+      if (nonExpDeviceIds.length > 0) {
+        const { data: expRows } = await supabase
           .from("stock_items")
-          .select("device_id, quantity, fase")
-          .eq("id", item.stock_item_id)
-          .single();
-
-        if (!siData) { result[item.id] = []; continue; }
-
-        let expedicaoItemId = item.stock_item_id;
-        if ((siData as { fase: string }).fase !== "expedicao") {
-          const { data: expItem } = await supabase
-            .from("stock_items")
-            .select("id, quantity")
-            .eq("device_id", (siData as { device_id: string }).device_id)
-            .eq("fase", "expedicao")
-            .single();
-          if (!expItem) { result[item.id] = []; continue; }
-          expedicaoItemId = (expItem as { id: string }).id;
+          .select("id, device_id, quantity")
+          .in("device_id", nonExpDeviceIds)
+          .eq("fase", "expedicao");
+        for (const r of (expRows ?? []) as { id: string; device_id: string; quantity: number }[]) {
+          expMap.set(r.device_id, { id: r.id, quantity: r.quantity });
         }
+      }
 
-        const { data: movs } = await supabase
-          .from("stock_movements")
-          .select("lote, quantity, type")
-          .eq("stock_item_id", expedicaoItemId)
-          .not("lote", "is", null)
-          .order("created_at", { ascending: false });
-
-        const saldos: Record<string, number> = {};
-        for (const mv of (movs ?? [])) {
-          if (!mv.lote) continue;
-          saldos[mv.lote] = (saldos[mv.lote] ?? 0) + (mv.type === "entrada" ? mv.quantity : -mv.quantity);
+      const expedicaoIdByItem: Record<string, string> = {};
+      const expedicaoIds: string[] = [];
+      for (const item of pedido.itens) {
+        const si = siMap.get(item.stock_item_id) as { device_id: string; fase: string } | undefined;
+        if (!si) { expedicaoIdByItem[item.id] = item.stock_item_id; continue; }
+        if (si.fase === "expedicao") {
+          expedicaoIdByItem[item.id] = item.stock_item_id;
+          expedicaoIds.push(item.stock_item_id);
+        } else {
+          const exp = expMap.get(si.device_id);
+          expedicaoIdByItem[item.id] = exp?.id ?? item.stock_item_id;
+          if (exp) expedicaoIds.push(exp.id);
         }
+      }
 
-        const lotesList = Object.entries(saldos)
-          .map(([lote, qty]) => ({ lote, quantity: Math.max(0, qty), stock_item_id: expedicaoItemId }))
+      // PERF-01: Single batch query for all lotes
+      const lotesMap = await fetchLotesDisponivelBatch([...new Set(expedicaoIds)]);
+
+      const result: Record<string, LoteDisponivel[]> = {};
+      for (const item of pedido.itens) {
+        const expId = expedicaoIdByItem[item.id] ?? item.stock_item_id;
+        const saldos = lotesMap.get(expId) ?? {};
+
+        const lotesList: LoteDisponivel[] = Object.entries(saldos)
+          .map(([lote, qty]) => ({ lote, quantity: Math.max(0, qty), stock_item_id: expId }))
           .filter(l => l.quantity > 0);
 
         if (lotesList.length === 0) {
-          const { data: expItem2 } = await supabase
-            .from("stock_items")
-            .select("quantity")
-            .eq("id", expedicaoItemId)
-            .single();
-          const qty = (expItem2 as { quantity: number } | null)?.quantity ?? 0;
-          if (qty > 0) lotesList.push({ lote: "Sem lote", quantity: qty, stock_item_id: expedicaoItemId });
+          const si = siMap.get(expId) as { quantity?: number } | undefined;
+          const qty = si?.quantity ?? 0;
+          if (qty > 0) lotesList.push({ lote: "Sem lote", quantity: qty, stock_item_id: expId });
         }
 
         result[item.id] = lotesList;
@@ -1247,60 +1273,17 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   async function handleMarcarPronto(pedido: Pedido) {
     if (!user) return;
     try {
-      // Retirar peças da expedição e liberar reserva (SEG-04: operações individuais por item)
-      for (const item of pedido.itens) {
-        const { data: si } = await supabase
-          .from("stock_items")
-          .select("id, quantity, quantity_reserved, device_id, fase")
-          .eq("id", item.stock_item_id)
-          .single();
+      // Use atomic RPC — deducts stock + releases reservation + marks pronto in one transaction
+      const { data: result, error } = await supabase.rpc("marcar_pedido_pronto", {
+        p_pedido_id: pedido.id,
+        p_user_name: user.email ?? "Estoque",
+      });
 
-        let expItemId = item.stock_item_id;
-        let currentQty = (si as { quantity: number } | null)?.quantity ?? 0;
-        let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-
-        if (si && (si as { fase: string }).fase !== "expedicao") {
-          const { data: expSi } = await supabase
-            .from("stock_items")
-            .select("id, quantity, quantity_reserved")
-            .eq("device_id", (si as { device_id: string }).device_id)
-            .eq("fase", "expedicao")
-            .single();
-          if (expSi) {
-            expItemId       = (expSi as { id: string }).id;
-            currentQty      = (expSi as { quantity: number }).quantity ?? 0;
-            currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
-          }
-        }
-
-        const novaQtd     = Math.max(0, currentQty      - item.quantidade);
-        const novaReserva = Math.max(0, currentReserved - item.quantidade);
-
-        const { error: upErr } = await supabase.from("stock_items").update({
-          quantity:          novaQtd,
-          quantity_reserved: novaReserva,
-        }).eq("id", expItemId);
-
-        if (upErr) {
-          toast.error(`Falha ao atualizar estoque do item ${item.device_model ?? ""}. Verifique manualmente.`);
-        }
-
-        await supabase.from("stock_movements").insert({
-          stock_item_id:     expItemId,
-          type:              "saida",
-          quantity:          item.quantidade,
-          lote:              item.lote ?? null,
-          reason:            `Pedido comercial — cliente: ${pedido.cliente_nome} (separação concluída)`,
-          user_display_name: pedido.vendedora_nome ?? "Estoque",
-        });
+      if (error || (result as { error?: string })?.error) {
+        toast.error("Erro ao marcar como pronto: " + (error?.message ?? (result as { error?: string })?.error));
+        return;
       }
 
-      const { error } = await supabase
-        .from("pedidos_comerciais")
-        .update({ status: "pronto" })
-        .eq("id", pedido.id);
-
-      if (error) { toast.error("Erro ao marcar como pronto."); return; }
       toast.success("Pedido marcado como pronto! Peças retiradas da expedição.");
       loadPedidos();
     } catch (err) {

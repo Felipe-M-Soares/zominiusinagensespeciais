@@ -1,10 +1,41 @@
 /**
  * Logger centralizado.
- * PERF-02 FIX: Em produção, erros não são expostos no console do browser
- * (que poderia vazar nomes de colunas, constraints e detalhes internos do banco).
- * Para monitoramento em produção, integrar Sentry ou similar aqui.
+ * QUAL-04: Em produção integra com Sentry via VITE_SENTRY_DSN.
+ * Em desenvolvimento expõe logs no console normalmente.
  */
+
 const isDev = !import.meta.env.PROD;
+const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
+
+// Lazy-initialise Sentry only in production when DSN is configured
+let sentryReady = false;
+async function initSentry() {
+  if (sentryReady || isDev || !SENTRY_DSN) return;
+  try {
+    const Sentry = await import("@sentry/browser");
+    Sentry.init({
+      dsn: SENTRY_DSN,
+      environment: "production",
+      // Keep a lean sample rate — adjust as needed
+      tracesSampleRate: 0.1,
+    });
+    sentryReady = true;
+  } catch {
+    // Sentry unavailable — degrade silently; don't break the app
+  }
+}
+
+async function captureError(err: unknown) {
+  if (isDev || !SENTRY_DSN) return;
+  await initSentry();
+  if (!sentryReady) return;
+  try {
+    const Sentry = await import("@sentry/browser");
+    Sentry.captureException(err instanceof Error ? err : new Error(String(err)));
+  } catch {
+    // Sentry capture failed — ignore
+  }
+}
 
 export const logger = {
   debug: (...args: unknown[]) => { if (isDev) console.debug(...args); },
@@ -13,9 +44,9 @@ export const logger = {
   error: (...args: unknown[]) => {
     if (isDev) {
       console.error(...args);
+    } else {
+      // QUAL-04: Report to Sentry in production
+      captureError(args[0]);
     }
-    // Em produção: enviar para serviço de monitoramento (ex: Sentry)
-    // Exemplo: Sentry.captureException(args[0] instanceof Error ? args[0] : new Error(String(args[0])));
-    // NÃO usar console.error em produção — expõe detalhes internos no DevTools do usuário
   },
 };

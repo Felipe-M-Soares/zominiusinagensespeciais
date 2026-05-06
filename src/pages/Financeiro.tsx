@@ -129,87 +129,27 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
     setSaving(true);
 
     try {
-      // 1. Atualiza pedido: pronto → enviado + NF
-      const now = new Date().toISOString();
-      const { error } = await supabase
-        .from("pedidos_comerciais")
-        .update({
-          status: "enviado",
-          nota_fiscal: nfTrimmed,
-          nf_criada_por: user.id,
-          nf_criada_em: now,
-          faturado_por: user.id,
-          faturado_em: now,
-          enviado_em: now,
-        })
-        .eq("id", pedido.id);
+      // PERF-02: Use atomic RPC — fatura pedido + baixa estoque + libera reservas em 1 transação
+      const { data: rpcResult, error: rpcErr } = await supabase.rpc("faturar_pedido", {
+        p_pedido_id: pedido.id,
+        p_nf:        nfTrimmed,
+        p_user_id:   user.id,
+        p_user_name: "Financeiro",
+      });
 
-      if (error) { toast.error("Erro ao emitir nota fiscal."); return; }
-
-      // 2. Dá baixa no estoque e libera reservas
-      // BUG-02 FIX: verifica erro de cada operação e alerta se falhar (não bloqueia o fluxo
-      // pois o pedido já foi faturado, mas o operador precisa saber para corrigir manualmente)
-      for (const item of pedido.itens) {
-        const { data: si } = await supabase
-          .from("stock_items")
-          .select("id, quantity, quantity_reserved, device_id, fase")
-          .eq("id", item.stock_item_id)
-          .single();
-
-        let expItemId = item.stock_item_id;
-        let currentQty      = (si as { quantity: number } | null)?.quantity ?? 0;
-        let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-
-        if (si && (si as { fase: string }).fase !== "expedicao") {
-          const { data: expSi } = await supabase
-            .from("stock_items")
-            .select("id, quantity, quantity_reserved")
-            .eq("device_id", (si as { device_id: string }).device_id)
-            .eq("fase", "expedicao")
-            .single();
-          if (expSi) {
-            expItemId       = (expSi as { id: string }).id;
-            currentQty      = (expSi as { quantity: number }).quantity ?? 0;
-            currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
-          }
-        }
-
-        const { error: upErr } = await supabase
-          .from("stock_items")
-          .update({
-            quantity:           Math.max(0, currentQty      - item.quantidade),
-            quantity_reserved:  Math.max(0, currentReserved - item.quantidade),
-          })
-          .eq("id", expItemId);
-
-        if (upErr) {
-          // Alerta mas continua — pedido já faturado, ajuste manual de estoque necessário
-          toast.error(`Atenção: falha ao atualizar estoque do item ${item.device_model ?? ""}. Verifique manualmente.`);
-        }
-
-        const { error: mvErr } = await supabase.from("stock_movements").insert({
-          stock_item_id:     expItemId,
-          type:              "saida",
-          quantity:          item.quantidade,
-          lote:              item.lote,
-          reason:            `NF ${nfTrimmed} — ${pedido.cliente_nome}`,
-          user_id:           user.id,
-          user_display_name: "Financeiro",
-        });
-
-        if (mvErr) {
-          toast.error(`Atenção: movimento de estoque não registrado para ${item.device_model ?? ""}. Verifique manualmente.`);
-        }
+      if (rpcErr || (rpcResult as { error?: string })?.error) {
+        toast.error("Erro ao emitir nota fiscal: " + (rpcErr?.message ?? (rpcResult as { error?: string })?.error));
+        return;
       }
 
-      // 3. Notificação para a vendedora (falha silenciosa — não crítica)
+      // Notificação para a vendedora (falha silenciosa — não crítica)
       if (pedido.vendedora_id) {
         await supabase.from("notificacoes").insert({
-          user_id:  pedido.vendedora_id,
+          user_id:   pedido.vendedora_id,
           pedido_id: pedido.id,
-          tipo:     "pedido_enviado",
-          titulo:   "Pedido enviado! 🚚",
-          mensagem: `O pedido de ${pedido.cliente_nome} foi faturado (NF ${nfTrimmed}) e enviado.`,
+          tipo:      "pedido_enviado",
+          titulo:    "Pedido enviado! 🚚",
+          mensagem:  `O pedido de ${pedido.cliente_nome} foi faturado (NF ${nfTrimmed}) e enviado.`,
         });
       }
 
@@ -428,7 +368,7 @@ function HistoricoFinanceiroModal({ open, onClose }: HistoricoFinanceiroProps) {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("pedidos_comerciais")
@@ -471,12 +411,12 @@ function HistoricoFinanceiroModal({ open, onClose }: HistoricoFinanceiroProps) {
       setPedidos(mapped);
     }
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
     if (open) load();
     else setPedidos([]);
-  }, [open]);
+  }, [open, load]);
 
   function fmtDate(iso: string | null) {
     if (!iso) return { date: "—", time: "" };
@@ -615,7 +555,12 @@ export default function Financeiro() {
   // Só admin ou financeiro pode acessar
   const canAccess = isAdmin || role === "financeiro";
 
+  const loadAbortRef = useRef<AbortController | null>(null);
   const loadPedidos = useCallback(async () => {
+    loadAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    loadAbortRef.current = ctrl;
+
     setLoading(true);
     const { data, error } = await supabase
       .from("pedidos_comerciais")
@@ -630,8 +575,11 @@ export default function Financeiro() {
           )
         )
       `)
-      .order("created_at", { ascending: false });
+      .in("status", ["pronto", "faturado", "enviado"])
+      .order("created_at", { ascending: false })
+      .abortSignal(ctrl.signal);
 
+    if (ctrl.signal.aborted) return;
     if (error || !data) { setLoading(false); return; }
 
     const mapped: Pedido[] = (data as Record<string, unknown>[]).map(p => ({

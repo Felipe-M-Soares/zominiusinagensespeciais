@@ -258,49 +258,23 @@ export async function registerMovement(
   userDisplayName?: string | null,
   lote?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  // 1. Lê quantidade atual
-  const { data: item } = await supabase
-    .from("stock_items")
-    .select("quantity")
-    .eq("id", stockItemId)
-    .single();
+  // BUG-01 / BUG-04: Use atomic RPC — eliminates read-modify-write race condition
+  // and fragile manual rollback. The DB function handles quantity update + movement
+  // insert in a single transaction.
+  const { data, error } = await supabase.rpc("stock_movement_atomic", {
+    p_item_id:   stockItemId,
+    p_type:      type,
+    p_qty:       quantity,
+    p_reason:    reason || null,
+    p_lote:      lote?.trim() || null,
+    p_user_id:   userId,
+    p_user_name: userDisplayName ?? null,
+  });
 
-  if (!item) return { ok: false, error: "Item não encontrado." };
+  if (error) return { ok: false, error: error.message };
 
-  const newQty =
-    type === "entrada" ? item.quantity + quantity : item.quantity - quantity;
-
-  if (newQty < 0) {
-    return { ok: false, error: `Estoque insuficiente. Disponível: ${item.quantity}` };
-  }
-
-  // 2. Insere o movimento primeiro
-  const { data: mvData, error: mvErr } = await supabase
-    .from("stock_movements")
-    .insert({
-      stock_item_id: stockItemId,
-      type,
-      quantity,
-      reason: reason || null,
-      lote: lote?.trim() || null,
-      user_id: userId,
-      user_display_name: userDisplayName ?? null,
-    })
-    .select("id")
-    .single();
-
-  if (mvErr) return { ok: false, error: mvErr.message };
-
-  // 3. Atualiza a quantidade — se falhar, remove o movimento inserido
-  const { error: upErr } = await supabase
-    .from("stock_items")
-    .update({ quantity: newQty })
-    .eq("id", stockItemId);
-
-  if (upErr) {
-    await supabase.from("stock_movements").delete().eq("id", mvData.id);
-    return { ok: false, error: "Erro ao atualizar estoque. Operação cancelada para evitar inconsistência." };
-  }
+  const result = data as { ok?: boolean; error?: string } | null;
+  if (result?.error) return { ok: false, error: result.error };
 
   return { ok: true };
 }
@@ -568,6 +542,34 @@ export async function transferRetrabalhoToExpedicao(
 
 // ─── Lotes de um item de estoque ─────────────────────────────────────────────
 /**
+ * PERF-01: Batch version — fetches lote balances for many stock_item_ids in ONE query.
+ * Returns Map<stock_item_id, Record<lote, saldo>>
+ */
+export async function fetchLotesDisponivelBatch(
+  stockItemIds: string[]
+): Promise<Map<string, Record<string, number>>> {
+  const result = new Map<string, Record<string, number>>();
+  if (stockItemIds.length === 0) return result;
+
+  const { data } = await supabase
+    .from("stock_movements")
+    .select("stock_item_id, lote, type, quantity")
+    .in("stock_item_id", stockItemIds)
+    .not("lote", "is", null);
+
+  for (const id of stockItemIds) result.set(id, {});
+
+  for (const row of (data ?? []) as { stock_item_id: string; lote: string; type: string; quantity: number }[]) {
+    if (!row.lote) continue;
+    const map = result.get(row.stock_item_id) ?? {};
+    map[row.lote] = (map[row.lote] ?? 0) + (row.type === "entrada" ? row.quantity : -row.quantity);
+    result.set(row.stock_item_id, map);
+  }
+
+  return result;
+}
+
+/**
  * Versão batch: busca contagem de lotes com saldo > 0 para vários items em UMA só query.
  * Substitui o padrão de N queries paralelas que causava ERR_INSUFFICIENT_RESOURCES.
  */
@@ -648,47 +650,15 @@ export async function cancelMovement(
   movementId: string,
   stockItemId: string
 ): Promise<{ ok: boolean; error?: string }> {
-  // FIX: parâmetros `type` e `quantity` foram removidos — eram sobrescritos
-  // silenciosamente pelo valor do banco logo na primeira linha, tornando-os
-  // inúteis e potencialmente enganosos para quem chamava a função.
-  const { data: mv } = await supabase
-    .from("stock_movements")
-    .select("stock_item_id, type, quantity")
-    .eq("id", movementId)
-    .maybeSingle();
+  // Use atomic RPC — avoids read-modify-write race condition in cancel
+  const { data, error } = await supabase.rpc("cancel_movement", {
+    p_movement_id:   movementId,
+    p_stock_item_id: stockItemId,
+  });
 
-  if (!mv) return { ok: false, error: "Movimento não encontrado." };
-  if (mv.stock_item_id !== stockItemId) return { ok: false, error: "Movimento não pertence a este item." };
-
-  const type = mv.type as "entrada" | "saida";
-  const quantity = mv.quantity as number;
-
-  const { data: item } = await supabase
-    .from("stock_items")
-    .select("quantity")
-    .eq("id", stockItemId)
-    .single();
-
-  if (!item) return { ok: false, error: "Item não encontrado." };
-
-  const newQty = type === "entrada" ? item.quantity - quantity : item.quantity + quantity;
-
-  if (newQty < 0) {
-    return { ok: false, error: `Não é possível cancelar: estoque ficaria negativo (${newQty}).` };
-  }
-
-  const { error: delErr } = await supabase
-    .from("stock_movements")
-    .delete()
-    .eq("id", movementId);
-  if (delErr) return { ok: false, error: delErr.message };
-
-  const { error: upErr } = await supabase
-    .from("stock_items")
-    .update({ quantity: newQty })
-    .eq("id", stockItemId);
-  if (upErr) return { ok: false, error: upErr.message };
-
+  if (error) return { ok: false, error: error.message };
+  const result = data as { ok?: boolean; error?: string } | null;
+  if (result?.error) return { ok: false, error: result.error };
   return { ok: true };
 }
 
@@ -721,6 +691,7 @@ export interface StockBackup {
   created_name: string | null;
   item_count: number;
   created_at: string;
+  file_path?: string | null;
 }
 
 export const SCHEDULE_LABELS: Record<BackupSchedule, string> = {
@@ -769,11 +740,23 @@ export async function runBackup(
     recent_movements: movRes.data ?? [],
   };
 
+  // PERF-03: Store backup JSON in Storage instead of JSONB column to avoid row bloat
+  const fileName = `backup_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  const filePath = `backups/${fileName}`;
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+
+  const { error: uploadErr } = await supabase.storage
+    .from("stock-backups")
+    .upload(filePath, blob, { contentType: "application/json", upsert: false });
+
+  if (uploadErr) return { ok: false, error: uploadErr.message };
+
   const { error } = await supabase.from("stock_backups").insert({
-    created_by: userId,
+    created_by:  userId,
     created_name: userName,
-    item_count: (itemsRes.data ?? []).length,
-    payload,
+    item_count:  (itemsRes.data ?? []).length,
+    file_path:   filePath,
+    // payload column kept null — data lives in Storage
   });
 
   if (error) return { ok: false, error: error.message };
@@ -789,19 +772,34 @@ export async function runBackup(
 export async function listBackups(limit = 20): Promise<StockBackup[]> {
   const { data } = await supabase
     .from("stock_backups")
-    .select("id, created_by, created_name, item_count, created_at")
+    .select("id, created_by, created_name, item_count, created_at, file_path")
     .order("created_at", { ascending: false })
     .limit(limit);
   return (data as StockBackup[]) ?? [];
 }
 
 export async function downloadBackup(backupId: string): Promise<object | null> {
-  const { data } = await supabase
+  // PERF-03: Fetch from Storage using file_path stored in DB record
+  const { data: row } = await supabase
     .from("stock_backups")
-    .select("payload, created_at")
+    .select("file_path, payload, created_at")
     .eq("id", backupId)
     .single();
-  return data ?? null;
+
+  if (!row) return null;
+
+  // New backups use Storage; old ones fall back to inline payload
+  if ((row as { file_path?: string }).file_path) {
+    const { data: fileData, error } = await supabase.storage
+      .from("stock-backups")
+      .download((row as { file_path: string }).file_path);
+    if (error || !fileData) return null;
+    try {
+      return JSON.parse(await fileData.text());
+    } catch { return null; }
+  }
+
+  return (row as { payload?: object }).payload ?? null;
 }
 
 export type AllMovementFase = StockFase;
