@@ -172,7 +172,7 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
       }
       toast.success(inicial ? "Cliente atualizado!" : "Cliente cadastrado!");
       onSuccess(data!);
-    } catch {
+    } catch (_e) {
       toast.error("Erro ao salvar cliente.");
     } finally {
       setSaving(false);
@@ -390,7 +390,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       if (itensErr) throw itensErr;
       toast.success("Pedido criado! O estoque irá separar os lotes.");
       onSuccess();
-    } catch {
+    } catch (_e) {
       toast.error("Erro ao criar pedido.");
     } finally {
       setSaving(false);
@@ -939,7 +939,7 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
 
       toast.success("Pedido confirmado! Peças reservadas no estoque.");
       onSuccess();
-    } catch {
+    } catch (_e) {
       toast.error("Erro ao confirmar pedido.");
     } finally {
       setSaving(false);
@@ -1588,7 +1588,7 @@ export default function Comercial() {
         const c = p.clientes as Record<string, unknown> | null;
         return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
-    } catch {
+    } catch (_e) {
       toast.error("Erro ao carregar pedidos.");
     } finally {
       setLoadingPedidos(false);
@@ -1601,7 +1601,7 @@ export default function Comercial() {
       const { data, error } = await supabase.from("clientes").select("*").order("nome");
       if (error) { toast.error("Erro ao carregar clientes."); return; }
       setClientes((data as Cliente[]) ?? []);
-    } catch {
+    } catch (_e) {
       toast.error("Erro ao carregar clientes.");
       setClientes([]);
     } finally {
@@ -1622,7 +1622,7 @@ export default function Comercial() {
       setCancelarPedido(null);
       loadPedidos();
       refetchStock();
-    } catch {
+    } catch (_e) {
       toast.error("Erro inesperado ao cancelar pedido.");
     } finally {
       setCancelando(false);
