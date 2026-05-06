@@ -385,7 +385,6 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           throw new Error("Estoque insuficiente para " + item.device_model);
         }
       }
-      }
 
       toast.success("Pedido criado! Peças reservadas na expedição.");
       onSuccess();

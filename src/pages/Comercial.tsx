@@ -935,7 +935,6 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
           throw new Error("Estoque insuficiente para " + (item.device_model ?? item.stock_item_id));
         }
       }
-      }
 
       toast.success("Pedido confirmado! Peças reservadas no estoque.");
       onSuccess();
