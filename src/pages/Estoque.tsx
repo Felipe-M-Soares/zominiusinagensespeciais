@@ -852,6 +852,22 @@ export default function Estoque() {
     setResetting(true);
     const { toast: t } = await import("sonner");
 
+    // BUG-13: Check for active orders referencing this item before deleting
+    const { data: ativos } = await supabase
+      .from("pedido_itens")
+      .select("pedido_id, pedidos_comerciais!inner(status, cliente_nome)")
+      .eq("stock_item_id", resetItem.id)
+      .in("pedidos_comerciais.status", ["aberto", "separando", "pendente"]);
+
+    if (ativos && ativos.length > 0) {
+      t.error(
+        `Existem ${ativos.length} pedido(s) ativo(s) usando este item. ` +
+        "Cancele-os antes de zerar o estoque."
+      );
+      setResetting(false);
+      return;
+    }
+
     // Deleta pedido_itens vinculados (FK restrict impede alterações cascata)
     await supabase.from("pedido_itens").delete().eq("stock_item_id", resetItem.id);
 

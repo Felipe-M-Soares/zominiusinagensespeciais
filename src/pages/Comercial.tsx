@@ -925,18 +925,13 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
         .eq("id", pedido.id);
       if (error) throw error;
 
-      // 2. Incrementa quantity_reserved em cada stock_item reservado
+      // BUG-12 / SEG-01: Use atomic RPC — prevents race condition / overselling
       for (const item of pedido.itens) {
-        const { data: si } = await supabase
-          .from("stock_items")
-          .select("id, quantity_reserved")
-          .eq("id", item.stock_item_id)
-          .maybeSingle();
-        const currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-        await supabase
-          .from("stock_items")
-          .update({ quantity_reserved: currentReserved + item.quantidade })
-          .eq("id", item.stock_item_id);
+        const { error: reserveErr } = await supabase.rpc("reserve_stock", {
+          p_item_id: item.stock_item_id,
+          p_qty: item.quantidade,
+        });
+        if (reserveErr) throw new Error("Estoque insuficiente para " + (item.device_model ?? item.stock_item_id));
       }
 
       toast.success("Pedido confirmado! Peças reservadas no estoque.");
@@ -1345,7 +1340,15 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const w = window.open(url, "_blank");
-    setTimeout(() => { w?.print(); URL.revokeObjectURL(url); }, 500);
+    if (!w) {
+      URL.revokeObjectURL(url);
+      toast.error("Popup bloqueado. Permita popups para imprimir.");
+      return;
+    }
+    w.addEventListener("load", () => {
+      w.print();
+      URL.revokeObjectURL(url);
+    }, { once: true });
   }
 
   if (loading) {
@@ -1575,9 +1578,16 @@ export default function Comercial() {
 
   const loadClientes = useCallback(async () => {
     setLoadingClientes(true);
-    const { data } = await supabase.from("clientes").select("*").order("nome");
-    setClientes((data as Cliente[]) ?? []);
-    setLoadingClientes(false);
+    try {
+      const { data, error } = await supabase.from("clientes").select("*").order("nome");
+      if (error) { toast.error("Erro ao carregar clientes."); return; }
+      setClientes((data as Cliente[]) ?? []);
+    } catch {
+      toast.error("Erro ao carregar clientes.");
+      setClientes([]);
+    } finally {
+      setLoadingClientes(false);
+    }
   }, []);
 
   useEffect(() => { loadPedidos(); loadClientes(); }, [loadPedidos, loadClientes]);
@@ -1585,30 +1595,19 @@ export default function Comercial() {
   async function handleCancelar() {
     if (!cancelarPedido) return;
     setCancelando(true);
-    const { error } = await supabase.from("pedidos_comerciais").update({ status: "cancelado" }).eq("id", cancelarPedido.id);
-    if (error) { setCancelando(false); toast.error("Erro ao cancelar."); return; }
-
-    // Se o pedido já estava confirmado (separando/pronto), libera a reserva no estoque
-    if (cancelarPedido.status === "separando" || cancelarPedido.status === "pronto") {
-      for (const item of cancelarPedido.itens) {
-        const { data: si } = await supabase
-          .from("stock_items")
-          .select("id, quantity_reserved")
-          .eq("id", item.stock_item_id)
-          .maybeSingle();
-        const currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-        await supabase
-          .from("stock_items")
-          .update({ quantity_reserved: Math.max(0, currentReserved - item.quantidade) })
-          .eq("id", item.stock_item_id);
-      }
+    try {
+      // BUG-05: Use atomic RPC — cancels pedido + releases all reservations in one transaction
+      const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
+      if (error) { toast.error("Erro ao cancelar."); return; }
+      toast.success("Pedido cancelado.");
+      setCancelarPedido(null);
+      loadPedidos();
+      refetchStock();
+    } catch {
+      toast.error("Erro inesperado ao cancelar pedido.");
+    } finally {
+      setCancelando(false);
     }
-
-    setCancelando(false);
-    toast.success("Pedido cancelado.");
-    setCancelarPedido(null);
-    loadPedidos();
-    refetchStock();
   }
 
   async function handleDeleteCliente() {

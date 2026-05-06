@@ -126,7 +126,10 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
     const file = e.target.files?.[0];
     if (!file || importing) return;
 
-    if (!file.name.toLowerCase().endsWith(".csv")) {
+    // SEG-05: Validate both extension and MIME type
+    const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/vnd.ms-excel", ""];
+    if (!file.name.toLowerCase().endsWith(".csv") ||
+        (file.type && !ALLOWED_MIME.includes(file.type))) {
       toast.error("Apenas arquivos .csv são aceitos.");
       if (fileRef.current) fileRef.current.value = "";
       return;

@@ -146,6 +146,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    // SEG-04: Prevent admin from resetting another admin's password
+    const { data: targetRoleData } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", target_user_id)
+      .maybeSingle();
+    if (targetRoleData?.role === "admin") {
+      return new Response(
+        JSON.stringify({ error: "Não é possível redefinir senha de outro administrador." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { error: updateError } = await adminClient.auth.admin.updateUserById(
       target_user_id,
       { password: new_password }

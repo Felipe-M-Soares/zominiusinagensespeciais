@@ -8,7 +8,7 @@
  *  4. Vendedora recebe notificação interna
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -102,6 +102,7 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
   const { user } = useAuth();
   const [nf, setNf] = useState("");
   const [saving, setSaving] = useState(false);
+  const submittingRef = useRef(false); // BUG-07: prevents double-submit
 
   useEffect(() => { if (pedido) setNf(""); }, [pedido]);
 
@@ -113,10 +114,14 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
 
   async function handleEmitir() {
     if (!pedido || !user) return;
+    // BUG-07: Idempotency guard — prevents double stock deduction on fast double-click
+    if (submittingRef.current) return;
+    submittingRef.current = true;
 
     // SEG-02: valida antes de enviar ao banco
     if (!nfValida(nf)) {
       toast.error("Número de NF inválido. Use apenas letras, números, /, - e ponto. Máx 50 caracteres.");
+      submittingRef.current = false;
       return;
     }
 
@@ -216,6 +221,7 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
       toast.error("Erro inesperado ao emitir NF. Tente novamente.");
       logger.error("handleEmitir:", err);
     } finally {
+      submittingRef.current = false;
       setSaving(false);
     }
   }

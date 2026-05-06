@@ -111,6 +111,17 @@ export function BarcodeScanner({ open, onClose, onDetected }: Props) {
       }
       detectorRef.current = new window.BarcodeDetector({ formats });
 
+      // UX-03: getUserMedia requires HTTPS — detect and show a clear error
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setErrorMsg(
+          window.location.protocol === "http:"
+            ? "A câmera requer conexão segura (HTTPS)."
+            : "Câmera não disponível neste dispositivo ou navegador."
+        );
+        setStatus("error");
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: "environment" },

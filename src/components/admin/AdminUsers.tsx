@@ -438,12 +438,11 @@ export function AdminUsers() {
             </p>
             <div className="space-y-2">
               <Label>Nova senha</Label>
-              <Input type="password" placeholder="Mínimo 8 caracteres" value={newPassword}
-                onChange={e => setNewPassword(e.target.value)} minLength={8} maxLength={72} />
+              <PasswordStrengthInput value={newPassword} onChange={setNewPassword} />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setPasswordDialog(null)}>Cancelar</Button>
-              <Button onClick={resetPassword} disabled={resettingPassword || newPassword.length < 8}>
+              <Button onClick={resetPassword} disabled={resettingPassword || !!validatePassword(newPassword)}>
                 {resettingPassword ? "Salvando..." : "Alterar senha"}
               </Button>
             </div>

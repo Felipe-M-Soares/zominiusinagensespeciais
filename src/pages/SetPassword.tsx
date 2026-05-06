@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Lock, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { validatePassword, passwordStrength } from "@/lib/passwordUtils";
 
 export default function SetPassword() {
   const { user } = useAuth();
@@ -134,9 +135,9 @@ export default function SetPassword() {
           <div className="flex items-start gap-3 rounded-xl bg-primary/5 border border-primary/20 px-4 py-3">
             <ShieldCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Este é seu primeiro acesso. Crie uma senha pessoal.
+              Esta é sua senha pessoal de acesso. Guarde-a com segurança.
               <strong className="text-foreground block mt-0.5">
-                Você não poderá alterá-la depois — somente o administrador poderá redefinir.
+                Se precisar redefinir, entre em contato com o administrador.
               </strong>
             </p>
           </div>
@@ -190,32 +191,32 @@ export default function SetPassword() {
             </div>
 
             {/* Indicador de força */}
-            {password.length > 0 && (
-              <div className="space-y-1">
-                <div className="flex gap-1">
-                  {[...Array(4)].map((_, i) => (
-                    <div
-                      key={i}
-                      className={`h-1 flex-1 rounded-full transition-colors ${
-                        password.length >= [8, 10, 12, 14][i]
-                          ? i < 2 ? "bg-warning" : "bg-success"
-                          : "bg-muted"
-                      }`}
-                    />
-                  ))}
+            {password.length > 0 && (() => {
+              const strength = passwordStrength(password);
+              const err = validatePassword(password);
+              return (
+                <div className="space-y-1">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <div
+                        key={i}
+                        className={`h-1 flex-1 rounded-full transition-colors ${
+                          i <= strength.score ? strength.color : "bg-muted"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className={`text-[10px] font-medium ${err ? "text-destructive" : "text-muted-foreground"}`}>
+                    {err ?? strength.label}
+                  </p>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  {password.length < 8 ? "Muito curta" :
-                   password.length < 10 ? "Razoável" :
-                   password.length < 12 ? "Boa" : "Forte"}
-                </p>
-              </div>
-            )}
+              );
+            })()}
 
             <Button
               type="submit"
               className="w-full h-11 rounded-xl font-medium text-sm"
-              disabled={loading || password.length < 8 || password !== confirm}
+              disabled={loading || !!validatePassword(password) || password !== confirm}
             >
               {loading ? "Salvando..." : "Definir senha e entrar"}
             </Button>

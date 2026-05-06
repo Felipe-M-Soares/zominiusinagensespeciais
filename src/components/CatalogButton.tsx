@@ -203,16 +203,18 @@ export function CatalogButton() {
     const cat = deleteTarget;
     setDeleteTarget(null);
 
-    // Remove arquivo do storage primeiro
-    const { error: storageErr } = await supabase.storage.from("catalogs").remove([cat.file_path]);
-    if (storageErr) logger.error("Storage delete error:", storageErr.message);
-
-    // Remove registro da tabela
+    // BUG-14: Delete DB record first — if it fails, storage file stays intact (no broken links)
     const { error: dbErr } = await supabase.from("catalogs").delete().eq("id", cat.id);
     if (dbErr) {
       toast.error("Erro ao excluir catálogo: " + dbErr.message);
       return;
     }
+
+    // Only remove from storage after successful DB delete
+    const { error: storageErr } = await supabase.storage.from("catalogs").remove([cat.file_path]);
+    if (storageErr) logger.error("Storage delete error:", storageErr.message);
+    // An orphan file in storage is less harmful than a broken link in the DB
+
     toast.success("Catálogo excluído");
     fetchCatalogs();
   };

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { useDebounce } from "@/hooks/useDebounce";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchDevicesPage } from "@/lib/supabaseUtils";
+import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -264,79 +265,29 @@ export function AdminDevices() {
 
       toast.info(`Importando ${deduped.length} dispositivos...`);
 
-      // 4. Apaga catálogo existente (CASCADE apaga stock_items também — recriamos logo abaixo)
-      const { error: delErr } = await supabase
-        .from("devices")
-        .delete()
-        .neq("id", "00000000-0000-0000-0000-000000000000");
-      if (delErr) { toast.error("Erro ao limpar catálogo: " + delErr.message); return; }
-
-      // 5. Upsert em batches de 200 — .select("id") captura os UUIDs reais de cada batch
-      // O DELETE anterior (passo 4) apagou tudo via CASCADE — todos os devices são inserts novos
-      const BATCH = 200;
-      let inserted = 0;
-      let skipped = 0;
-      const allDeviceIds: string[] = [];
-
-      for (let i = 0; i < deduped.length; i += BATCH) {
-        const batch = deduped.slice(i, i + BATCH);
-        const { data: upserted, error: upsErr } = await supabase
-          .from("devices")
-          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
-          .select("id");
-        if (upsErr) {
-          logger.error("Batch upsert error:", upsErr.message);
-          skipped += batch.length;
-        } else {
-          inserted += batch.length;
-          for (const d of upserted ?? []) allDeviceIds.push(d.id);
+      // BUG-02: Use Edge Function instead of direct DELETE+INSERT
+      // The Edge Function handles the replacement atomically — if it fails, no data is lost
+      const { data: edgeResult, errorMsg } = await invokeWithAuth<{ inserted?: number; skipped?: number; error?: string }>(
+        "import-devices",
+        {
+          body: {
+            devices: deduped,
+            replace_all: true,
+            confirm_replace: "CONFIRMAR_SUBSTITUICAO",
+          },
         }
+      );
+
+      if (errorMsg || edgeResult?.error) {
+        toast.error("Erro ao importar: " + (edgeResult?.error ?? errorMsg));
+        return;
       }
 
+      const inserted = edgeResult?.inserted ?? deduped.length;
+      const skipped  = edgeResult?.skipped  ?? 0;
       toast.success(`Importação concluída: ${inserted} dispositivos${skipped > 0 ? ` (${skipped} com erro)` : ""}`);
       setPage(0);
       fetchDevices(debouncedSearch, 0);
-
-      // 6. Cria stock_items usando os IDs capturados no passo 5
-      // Como CASCADE limpou os stock_items antigos, usamos INSERT direto — sem conflito possível
-      try {
-        if (allDeviceIds.length === 0) {
-          toast.warning(`Dispositivos importados mas IDs não retornados (${inserted} devices). Verifique RLS do Supabase.`);
-          return;
-        }
-
-        const STOCK_BATCH = 200;
-        let syncInserted = 0;
-        let syncError = 0;
-
-        for (let i = 0; i < allDeviceIds.length; i += STOCK_BATCH) {
-          const batch = allDeviceIds.slice(i, i + STOCK_BATCH).map(device_id => ({
-            device_id,
-            quantity: 0,
-            min_quantity: 0,
-            fase: "intermediaria",
-          }));
-          const { error: stockErr } = await supabase
-            .from("stock_items")
-            .insert(batch);
-          if (!stockErr) {
-            syncInserted += batch.length;
-          } else {
-            logger.error(`Stock insert batch ${i}-${i + STOCK_BATCH} error:`, stockErr.message);
-            syncError += batch.length;
-          }
-        }
-
-        if (syncInserted > 0) {
-          toast.success(`${syncInserted} peça${syncInserted > 1 ? "s" : ""} adicionada${syncInserted > 1 ? "s" : ""} ao intermediário`);
-        }
-        if (syncError > 0) {
-          toast.error(`${syncError} peças não adicionadas ao estoque — erro no banco.`);
-        }
-      } catch (stockErr) {
-        logger.error("Erro ao criar stock_items:", stockErr);
-        toast.error("Dispositivos importados, mas erro ao adicionar ao estoque.");
-      }
 
     } catch (err) {
       logger.error("Import error:", err);

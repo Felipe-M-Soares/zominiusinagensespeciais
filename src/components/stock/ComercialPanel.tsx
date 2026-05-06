@@ -10,7 +10,7 @@
  *  5. Estoque fatura o pedido → peças saem da expedição
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   ShoppingBag,
   UserPlus,
@@ -52,6 +52,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { validarEmail, validarDocumento } from "@/lib/validators";
 import type { StockItem } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
@@ -141,6 +142,15 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
 
   async function handleSave() {
     if (!nome.trim()) { toast.error("Nome obrigatório"); return; }
+    // SEG-06: Validate document and email format before persisting
+    if (documento && !validarDocumento(documento)) {
+      toast.error("CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos.");
+      return;
+    }
+    if (email && !validarEmail(email)) {
+      toast.error("E-mail inválido.");
+      return;
+    }
     setSaving(true);
     try {
       let data: Cliente | null = null;
@@ -364,18 +374,13 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       const { error: itensErr } = await supabase.from("pedido_itens").insert(itensInsert);
       if (itensErr) throw itensErr;
 
-      // Reservar peças: incrementar quantity_reserved em cada stock_item da expedição
+      // SEG-01: Use atomic RPC to reserve stock — prevents race condition / overselling
       for (const item of itens) {
-        const { data: si } = await supabase
-          .from("stock_items")
-          .select("quantity_reserved")
-          .eq("id", item.stock_item_id)
-          .single();
-        const currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-        await supabase
-          .from("stock_items")
-          .update({ quantity_reserved: currentReserved + item.quantidade })
-          .eq("id", item.stock_item_id);
+        const { error: reserveErr } = await supabase.rpc("reserve_stock", {
+          p_item_id: item.stock_item_id,
+          p_qty: item.quantidade,
+        });
+        if (reserveErr) throw new Error("Estoque insuficiente para " + item.device_model);
       }
 
       toast.success("Pedido criado! Peças reservadas na expedição.");
@@ -879,7 +884,15 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const w = window.open(url, "_blank");
-    setTimeout(() => { w?.print(); URL.revokeObjectURL(url); }, 500);
+    if (!w) {
+      URL.revokeObjectURL(url);
+      toast.error("Popup bloqueado. Permita popups para imprimir.");
+      return;
+    }
+    w.addEventListener("load", () => {
+      w.print();
+      URL.revokeObjectURL(url);
+    }, { once: true });
   }
 
   if (loading) return (
@@ -1342,9 +1355,16 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
   const loadClientes = useCallback(async () => {
     setLoadingClientes(true);
-    const { data } = await supabase.from("clientes").select("*").order("nome");
-    setClientes((data as Cliente[]) ?? []);
-    setLoadingClientes(false);
+    try {
+      const { data, error } = await supabase.from("clientes").select("*").order("nome");
+      if (error) throw error;
+      setClientes((data as Cliente[]) ?? []);
+    } catch {
+      toast.error("Erro ao carregar clientes.");
+      setClientes([]);
+    } finally {
+      setLoadingClientes(false);
+    }
   }, []);
 
   useEffect(() => { loadPedidos(); loadClientes(); }, [loadPedidos, loadClientes]);
@@ -1359,11 +1379,17 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     );
   }
 
-  const pedidosFiltrados = pedidos.filter(p => filtroStatus === "todos" || p.status === filtroStatus);
-  const clientesFiltrados = clientes.filter(c =>
-    c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
-    (c.documento ?? "").includes(clienteSearchFilter) ||
-    (c.telefone ?? "").includes(clienteSearchFilter)
+  const pedidosFiltrados = useMemo(
+    () => pedidos.filter(p => filtroStatus === "todos" || p.status === filtroStatus),
+    [pedidos, filtroStatus]
+  );
+  const clientesFiltrados = useMemo(
+    () => clientes.filter(c =>
+      c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
+      (c.documento ?? "").includes(clienteSearchFilter) ||
+      (c.telefone ?? "").includes(clienteSearchFilter)
+    ),
+    [clientes, clienteSearchFilter]
   );
 
   const pedidosPendentes = pedidos.filter(p => p.status === "pendente").length;
@@ -1371,25 +1397,18 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
   async function handleCancelar() {
     if (!cancelarPedido) return;
     setCancelando(true);
-    // Liberar reservas das peças
-    for (const item of cancelarPedido.itens) {
-      const { data: si } = await supabase
-        .from("stock_items")
-        .select("quantity_reserved")
-        .eq("id", item.stock_item_id)
-        .single();
-      const currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-      await supabase
-        .from("stock_items")
-        .update({ quantity_reserved: Math.max(0, currentReserved - item.quantidade) })
-        .eq("id", item.stock_item_id);
+    try {
+      // BUG-05: Use atomic RPC to cancel pedido + release reservations in one transaction
+      const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
+      if (error) { toast.error("Erro ao cancelar."); return; }
+      toast.success("Pedido cancelado.");
+      setCancelarPedido(null);
+      loadPedidos();
+    } catch {
+      toast.error("Erro inesperado ao cancelar pedido.");
+    } finally {
+      setCancelando(false);
     }
-    const { error } = await supabase.from("pedidos_comerciais").update({ status: "cancelado" }).eq("id", cancelarPedido.id);
-    setCancelando(false);
-    if (error) { toast.error("Erro ao cancelar."); return; }
-    toast.success("Pedido cancelado.");
-    setCancelarPedido(null);
-    loadPedidos();
   }
 
   async function handleDeleteCliente() {

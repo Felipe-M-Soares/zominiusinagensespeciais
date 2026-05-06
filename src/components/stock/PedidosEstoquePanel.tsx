@@ -184,8 +184,8 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         }
 
         let lotesList: LoteDisponivel[] = Object.entries(saldos)
-          .filter(([, qty]) => qty > 0)
-          .map(([lote, quantity]) => ({ lote, quantity, stock_item_id: expedicaoItemId }));
+          .map(([lote, qty]) => ({ lote, quantity: Math.max(0, qty), stock_item_id: expedicaoItemId }))
+          .filter(l => l.quantity > 0);
 
         if (lotesList.length === 0 && expQty > 0) {
           lotesList = [{ lote: "Sem lote", quantity: expQty, stock_item_id: expedicaoItemId }];
@@ -656,8 +656,8 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
         }
 
         const lotesList = Object.entries(saldos)
-          .filter(([, qty]) => qty > 0)
-          .map(([lote, quantity]) => ({ lote, quantity, stock_item_id: expedicaoItemId }));
+          .map(([lote, qty]) => ({ lote, quantity: Math.max(0, qty), stock_item_id: expedicaoItemId }))
+          .filter(l => l.quantity > 0);
 
         if (lotesList.length === 0) {
           const { data: expItem2 } = await supabase

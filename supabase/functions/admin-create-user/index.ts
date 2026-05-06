@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
 
     const internalEmail = loginToEmail(cleanLogin);
     const cleanName = display_name.trim().slice(0, 100);
-    const validRole = ["admin", "funcionario", "vendedora"].includes(newRole) ? newRole : "funcionario";
+    const validRole = ["admin", "funcionario", "vendedora", "financeiro"].includes(newRole) ? newRole : "funcionario";
 
     // Cria usuário
     const { data: createdUser, error: createError } = await adminClient.auth.admin.createUser({
