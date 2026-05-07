@@ -51,8 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ]);
       setRole((roleData?.role as AppRole) ?? "funcionario");
       if (profileError) {
+        // BUG-03 FIX: fail-closed — em caso de erro ao buscar perfil, nega acesso
+        // para evitar que usuários bloqueados/não aprovados entrem durante falhas de rede.
         logger.error("fetchRoleAndApproval profiles error:", profileError.message);
-        setApproved(true);
+        setApproved(false);
         setBlocked(false);
       } else if (profileData == null) {
         setApproved(null);
@@ -62,9 +64,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setApproved(profileData.approved ?? true);
       }
     } catch (err) {
+      // BUG-03 FIX: fail-closed — em caso de exceção inesperada, nega acesso.
       logger.error("Failed to fetch role/approval:", err);
       setRole("funcionario");
-      setApproved(true);
+      setApproved(false);
       setBlocked(false);
     }
   }, []);

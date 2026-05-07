@@ -1,15 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-function getCorsHeaders(req: Request): Record<string, string> {
-  const allowed = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
-  const origin = req.headers.get("origin") ?? "";
-  const responseOrigin = allowed === "*" ? "*" : (origin === allowed ? origin : allowed);
-  return {
-    "Access-Control-Allow-Origin": responseOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
-}
+// COD-02 FIX: Importado do módulo compartilhado em vez de duplicar
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 function getRequiredEnv(key: string): string {
   const value = Deno.env.get(key);
@@ -152,13 +144,13 @@ Deno.serve(async (req) => {
       { onConflict: "user_id" }
     );
 
-    // Role
-    if (validRole === "admin") {
-      await adminClient.from("user_roles").upsert(
-        { user_id: newUserId, role: "admin" },
-        { onConflict: "user_id" }
-      );
-    }
+    // SEG-03 FIX: Sempre faz upsert do role correto para qualquer role válido.
+    // Antes, apenas "admin" era persistido — vendedora/financeiro recebiam
+    // "funcionario" pelo trigger handle_new_user, ignorando a intenção do admin.
+    await adminClient.from("user_roles").upsert(
+      { user_id: newUserId, role: validRole },
+      { onConflict: "user_id" }
+    );
 
     return new Response(JSON.stringify({ success: true, user_id: newUserId, login: cleanLogin }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

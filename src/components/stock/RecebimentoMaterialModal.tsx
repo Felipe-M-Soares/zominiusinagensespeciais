@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/lib/errorMessages";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { formatLote, loteStatus } from "@/lib/lote";
@@ -85,7 +86,7 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
     setLoading(false);
 
     if (error) {
-      toast.error("Erro ao registrar recebimento: " + error.message);
+      toast.error(friendlyError(error, "Erro ao registrar recebimento."));
     } else {
       toast.success(`Recebimento registrado — ${safeQty} un.`, {
         description: `Lote ${lote.toUpperCase()} · ${descricao.trim()}`,

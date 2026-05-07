@@ -123,7 +123,8 @@ export function useStock(search: string) {
             setLoading(false);
             return;
           }
-          const ids = matched.map((d) => d.id);
+          // BUG-04 FIX: Deduplica IDs e limita para evitar URL too long (414) com muitos resultados
+          const ids = [...new Set(matched.map((d) => d.id))].slice(0, 200);
           query = query.in("device_id", ids);
         }
       }

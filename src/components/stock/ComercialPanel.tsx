@@ -374,14 +374,15 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       const { error: itensErr } = await supabase.from("pedido_itens").insert(itensInsert);
       if (itensErr) throw itensErr;
 
-      // SEG-01: Use atomic RPC to reserve stock — prevents race condition / overselling
+      // BUG-01 FIX: reserve_stock agora retorna boolean (true = reservado, false = insuficiente).
+      // A versão anterior retornava void — qualquer falha por estoque insuficiente era silenciosa
+      // porque reserveResult era sempre null e a checagem de .error nunca disparava.
       for (const item of itens) {
-        const { data: reserveResult, error: reserveErr } = await supabase.rpc("reserve_stock", {
+        const { data: reserved, error: reserveErr } = await supabase.rpc("reserve_stock", {
           p_item_id: item.stock_item_id,
           p_qty: item.quantidade,
         });
-        // reserve_stock returns jsonb — check both network error AND silent WHERE-clause failure
-        if (reserveErr || (reserveResult as { error?: string })?.error) {
+        if (reserveErr || reserved === false) {
           throw new Error("Estoque insuficiente para " + item.device_model);
         }
       }

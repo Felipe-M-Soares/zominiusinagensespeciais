@@ -925,13 +925,14 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
         .eq("id", pedido.id);
       if (error) throw error;
 
-      // BUG-12 / SEG-01: Use atomic RPC — prevents race condition / overselling
+      // BUG-01 FIX: reserve_stock agora retorna boolean (true = reservado, false = insuficiente).
+      // A checagem de (reserveResult as {error?})?.error nunca disparava pois a RPC retornava void.
       for (const item of pedido.itens) {
-        const { data: reserveResult, error: reserveErr } = await supabase.rpc("reserve_stock", {
+        const { data: reserved, error: reserveErr } = await supabase.rpc("reserve_stock", {
           p_item_id: item.stock_item_id,
           p_qty: item.quantidade,
         });
-        if (reserveErr || (reserveResult as { error?: string })?.error) {
+        if (reserveErr || reserved === false) {
           throw new Error("Estoque insuficiente para " + (item.device_model ?? item.stock_item_id));
         }
       }

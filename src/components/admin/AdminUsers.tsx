@@ -17,6 +17,7 @@ import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus, ShieldX, ShieldCheck 
 import type { AppRole } from "@/types/roles";
 import { APP_ROLES, ROLE_LABELS } from "@/types/roles";
 import { logger } from "@/lib/logger";
+import { friendlyError } from "@/lib/errorMessages";
 import { validatePassword, passwordStrength } from "@/lib/passwordUtils";
 
 interface UserProfile {
@@ -104,12 +105,18 @@ export function AdminUsers() {
 
     setLoading(true);
     try {
-      const [{ data: profiles, error: pErr }, { data: roles, error: rErr }] = await Promise.all([
-        supabase.from("profiles").select("*"),
+      // PERF-03 FIX: Adiciona count para detectar truncagem silenciosa a 1000 registros
+      const [{ data: profiles, count: profileCount, error: pErr }, { data: roles, error: rErr }] = await Promise.all([
+        supabase.from("profiles").select("*", { count: "exact" }),
         supabase.from("user_roles").select("*"),
       ]);
       if (controller.signal.aborted) return;
       if (pErr || rErr) { toast.error("Erro ao carregar usuários"); return; }
+      // Avisa se a lista está incompleta (Supabase trunca em 1000 por request sem .range())
+      if (profileCount && profileCount > 1000) {
+        logger.warn(`fetchUsers: ${profileCount} usuários no banco — exibindo apenas os primeiros 1000.`);
+        toast.warning(`Lista incompleta: ${profileCount} usuários encontrados. Exibindo os primeiros 1000.`);
+      }
 
       const roleMap = new Map((roles ?? []).map(r => [r.user_id, r.role]));
       setUsers((profiles ?? []).map(p => ({
@@ -151,13 +158,13 @@ export function AdminUsers() {
 
   const applyRoleChange = async (userId: string, newRole: AppRole) => {
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
-    if (error) toast.error("Erro ao alterar função: " + error.message);
+    if (error) toast.error(friendlyError(error, "Erro ao alterar função."));
     else { toast.success("Função atualizada"); fetchUsers(); }
   };
 
   const toggleApproval = async (userId: string, approve: boolean) => {
     const { error } = await supabase.from("profiles").update({ approved: approve }).eq("user_id", userId);
-    if (error) toast.error("Erro ao alterar aprovação: " + error.message);
+    if (error) toast.error(friendlyError(error, "Erro ao alterar aprovação."));
     else { toast.success(approve ? "Usuário aprovado" : "Aprovação removida"); fetchUsers(); }
   };
 
@@ -181,7 +188,7 @@ export function AdminUsers() {
       .from("profiles")
       .update({ blocked: false, approved: true })
       .eq("user_id", userId);
-    if (error) toast.error("Erro ao desbloquear: " + error.message);
+    if (error) toast.error(friendlyError(error, "Erro ao desbloquear."));
     else { toast.success("Usuário desbloqueado e aprovado"); fetchUsers(); }
   };
 
