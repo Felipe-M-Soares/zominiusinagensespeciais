@@ -617,20 +617,19 @@ export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummar
 
   if (!data || data.length === 0) return [];
 
-  // Reasons de transferência interna entre fases — não contam como entrada/saída real
-  const INTERNAL_REASONS = [
-    "Retrabalho concluído — recebido do Retrabalho",
-    "Retrabalho concluído — enviado para Expedição",
-    "Enviado para Retrabalho",
+  // Ignora apenas Rollbacks — são compensações de erro, não movimentos reais de estoque.
+  // Transferências entre fases (Retrabalho, Expedição) DEVEM contar pois cada fase
+  // tem seu próprio stock_item_id e não há dupla contagem.
+  const ROLLBACK_REASONS = [
     "Rollback — falha ao criar item de retrabalho",
     "Rollback — falha ao criar item de expedição",
     "Rollback — falha ao registrar entrada na expedição",
+    "Rollback — falha ao registrar entrada no retrabalho",
   ];
 
   const map = new Map<string, LoteSummary>();
   for (const row of data as { lote: string; type: string; quantity: number; reason: string | null; created_at: string }[]) {
-    // Ignora movimentos internos de transferência entre fases
-    if (row.reason && INTERNAL_REASONS.includes(row.reason)) continue;
+    if (row.reason && ROLLBACK_REASONS.includes(row.reason)) continue;
 
     const key = row.lote.toUpperCase();
     if (!map.has(key)) {
