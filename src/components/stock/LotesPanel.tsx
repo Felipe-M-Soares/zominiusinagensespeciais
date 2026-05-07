@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tag, TrendingUp, TrendingDown, Minus, RefreshCw } from "lucide-react";
+import { Tag, Package, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchLotesSummary } from "@/hooks/useStock";
 import type { LoteSummary, StockItem } from "@/hooks/useStock";
@@ -43,16 +43,10 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
   if (!item) return null;
 
-  function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString("pt-BR", {
-      day: "2-digit", month: "2-digit", year: "2-digit",
-    });
-  }
-
-  const activeLotes  = lotes.filter((l) => l.saldo > 0);
-  const totalEntrada = lotes.reduce((s, l) => s + l.total_entrada, 0);
-  const totalSaida   = lotes.reduce((s, l) => s + l.total_saida, 0);
-  const activeLotesCount = activeLotes.length;
+  // Apenas lotes com saldo positivo
+  const activeLotes = lotes.filter((l) => l.saldo > 0);
+  // Saldo total real = soma dos saldos dos lotes ativos
+  const totalSaldo = activeLotes.reduce((s, l) => s + l.saldo, 0);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -82,21 +76,17 @@ export function LotesPanel({ item, open, onClose }: Props) {
           </div>
         </div>
 
-        {/* Resumo geral */}
-        {!loading && lotes.length > 0 && (
+        {/* Resumo: lotes ativos + total em estoque */}
+        {!loading && activeLotes.length > 0 && (
           <div className="px-5 pb-3">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2 text-center">
-                <p className="text-[10px] text-muted-foreground">Lotes</p>
-                <p className="text-[15px] font-bold text-foreground">{activeLotesCount}</p>
+                <p className="text-[10px] text-muted-foreground">Lotes ativos</p>
+                <p className="text-[15px] font-bold text-foreground">{activeLotes.length}</p>
               </div>
-              <div className="rounded-xl bg-success/8 border border-success/20 px-3 py-2 text-center">
-                <p className="text-[10px] text-success/70">Entradas</p>
-                <p className="text-[15px] font-bold text-success">{totalEntrada}</p>
-              </div>
-              <div className="rounded-xl bg-destructive/8 border border-destructive/20 px-3 py-2 text-center">
-                <p className="text-[10px] text-destructive/70">Saídas</p>
-                <p className="text-[15px] font-bold text-destructive">{totalSaida}</p>
+              <div className="rounded-xl bg-primary/8 border border-primary/20 px-3 py-2 text-center">
+                <p className="text-[10px] text-primary/70">Total em estoque</p>
+                <p className="text-[15px] font-bold text-primary">{totalSaldo}</p>
               </div>
             </div>
           </div>
@@ -110,7 +100,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
             </div>
           )}
 
-          {!loading && lotes.length === 0 && (
+          {!loading && activeLotes.length === 0 && (
             <div className="text-center py-10 space-y-1">
               <Tag className="h-8 w-8 text-muted-foreground/30 mx-auto" />
               <p className="text-sm text-muted-foreground">Nenhum lote com saldo ativo</p>
@@ -120,69 +110,28 @@ export function LotesPanel({ item, open, onClose }: Props) {
             </div>
           )}
 
-          {lotes.filter((l) => l.saldo > 0).map((l) => {
-            const isActive = true;
-            const isZero   = false;
-            return (
-              <div key={l.lote}
-                className={cn(
-                  "rounded-xl border px-3 py-2.5 transition-colors",
-                  isActive ? "bg-card border-border/40" : "bg-muted/10 border-border/20 opacity-70"
-                )}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  {/* Lote + data */}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <Tag className="h-3 w-3 text-primary/70 shrink-0" />
-                      <span className="text-[13px] font-bold font-mono tracking-wider text-foreground">
-                        {l.lote}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground/60 mt-0.5 pl-4">
-                      Último movimento: {fmtDate(l.last_movement)}
-                    </p>
-                  </div>
-
-                  {/* Saldo */}
-                  <div className={cn(
-                    "flex items-center gap-1 px-2.5 py-1 rounded-lg shrink-0",
-                    isActive ? "bg-success/10 text-success" :
-                    isZero   ? "bg-muted/40 text-muted-foreground" :
-                               "bg-destructive/10 text-destructive"
-                  )}>
-                    {isActive ? <TrendingUp  className="h-3 w-3" /> :
-                     isZero   ? <Minus       className="h-3 w-3" /> :
-                                <TrendingDown className="h-3 w-3" />}
-                    <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
-                    <span className="text-[10px] opacity-70">un.</span>
-                  </div>
+          {activeLotes.map((l) => (
+            <div key={l.lote}
+              className="rounded-xl border bg-card border-border/40 px-3 py-2.5 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-3">
+                {/* Lote */}
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Tag className="h-3 w-3 text-primary/70 shrink-0" />
+                  <span className="text-[13px] font-bold font-mono tracking-wider text-foreground truncate">
+                    {l.lote}
+                  </span>
                 </div>
 
-                {/* Barra de entradas vs saídas */}
-                {l.total_entrada > 0 && (
-                  <div className="mt-2 space-y-1">
-                    <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/30">
-                      <div
-                        className="bg-success/60 rounded-full transition-all"
-                        style={{ width: `${Math.round((l.total_saida / l.total_entrada) * 100)}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-[9px] text-muted-foreground/50">
-                      <span className="flex items-center gap-0.5">
-                        <TrendingUp className="h-2 w-2 text-success" />
-                        {l.total_entrada} entraram
-                      </span>
-                      <span className="flex items-center gap-0.5">
-                        <TrendingDown className="h-2 w-2 text-destructive" />
-                        {l.total_saida} saíram
-                      </span>
-                    </div>
-                  </div>
-                )}
+                {/* Quantidade em estoque */}
+                <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg shrink-0 bg-primary/10 text-primary">
+                  <Package className="h-3 w-3" />
+                  <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
+                  <span className="text-[10px] opacity-70">un.</span>
+                </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </DialogContent>
     </Dialog>
