@@ -172,14 +172,6 @@ async function printPedido(pedido: Pedido) {
 
     const loteHTML = `<span style="font-family:monospace;font-size:12px;font-weight:700;color:#111827;background:#f3f4f6;padding:2px 8px;border-radius:4px;border:1px solid #e5e7eb">${g.lote}</span>`;
 
-    // Checkboxes unitários: uma caixa por unidade neste grupo
-    const checks = Array.from({ length: g.unidades }, (_, i) =>
-      `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;margin-bottom:3px">
-        <span style="display:inline-block;width:14px;height:14px;border:1.5px solid #d1d5db;border-radius:3px;vertical-align:middle"></span>
-        <span style="font-size:11px;color:#6b7280">${g.startIdx + i}</span>
-      </span>`
-    ).join("");
-
     return `
       <tr style="${gi % 2 === 1 ? "background:#f9fafb" : ""}">
         <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;vertical-align:middle">${modelHTML}</td>
@@ -187,7 +179,6 @@ async function printPedido(pedido: Pedido) {
           <span style="font-size:16px;font-weight:700;color:#111827">${g.unidades}</span>
         </td>
         <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;vertical-align:middle">${loteHTML}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;vertical-align:middle">${checks}</td>
       </tr>`;
   }).join("");
 
@@ -208,7 +199,6 @@ async function printPedido(pedido: Pedido) {
     thead tr { background: #f3f4f6; }
     thead th { padding: 9px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; font-weight: 600; border-bottom: 2px solid #e5e7eb; }
     thead th:nth-child(2) { text-align: center; width: 60px; }
-    thead th:nth-child(4) { width: 160px; }
     tfoot td { padding: 10px 12px; font-size: 13px; font-weight: 600; color: #111827; border-top: 2px solid #e5e7eb; }
     .obs { margin-top: 18px; padding: 11px 14px; background: #fffbeb; border-radius: 8px; font-size: 13px; color: #374151; border: 1px solid #fde68a; }
     .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
@@ -231,13 +221,12 @@ async function printPedido(pedido: Pedido) {
         <th>Peça / Modelo</th>
         <th style="text-align:center">Qtd.</th>
         <th>Lote</th>
-        <th>Conferência</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
     <tfoot>
       <tr>
-        <td colspan="4" style="text-align:right">
+        <td colspan="3" style="text-align:right">
           Total: ${totalUnidades} un.
         </td>
       </tr>
