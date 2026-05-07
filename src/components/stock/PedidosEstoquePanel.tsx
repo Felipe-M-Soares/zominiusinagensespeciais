@@ -31,6 +31,7 @@ import {
   Archive,
   Minus,
   Plus,
+  Printer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -60,6 +61,14 @@ interface PedidoItem {
   lote_escolhido?: string;
 }
 
+interface LoteSeparado {
+  pedido_item_id: string;
+  stock_item_id: string;
+  lote: string;
+  quantidade: number;
+  device_model?: string;
+}
+
 interface Pedido {
   id: string;
   cliente_nome: string;
@@ -70,6 +79,7 @@ interface Pedido {
   observacoes: string | null;
   created_at: string;
   itens: PedidoItem[];
+  lotes_separados?: LoteSeparado[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -77,6 +87,96 @@ interface Pedido {
 function fmtDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+function printPedido(pedido: Pedido) {
+  // Agrupa lotes_separados por device_model para exibição
+  const linhasPorPeca: Record<string, { model: string; lotes: { lote: string; quantidade: number }[] }> = {};
+
+  if (pedido.lotes_separados && pedido.lotes_separados.length > 0) {
+    for (const ls of pedido.lotes_separados) {
+      const key = ls.stock_item_id;
+      const model = ls.device_model ?? "—";
+      if (!linhasPorPeca[key]) linhasPorPeca[key] = { model, lotes: [] };
+      linhasPorPeca[key].lotes.push({ lote: ls.lote, quantidade: ls.quantidade });
+    }
+  } else {
+    // Fallback: usa itens sem lote específico
+    for (const item of pedido.itens) {
+      linhasPorPeca[item.stock_item_id] = {
+        model: item.device_model ?? "—",
+        lotes: [{ lote: item.lote ?? "—", quantidade: item.quantidade }],
+      };
+    }
+  }
+
+  const rows = Object.values(linhasPorPeca).map(({ model, lotes }) => {
+    const totalQty = lotes.reduce((s, l) => s + l.quantidade, 0);
+    const lotesStr = lotes.map(l => `${l.lote} (${l.quantidade} un.)`).join(", ");
+    return `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px">${model}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;font-weight:600">${totalQty}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-family:monospace;color:#374151">${lotesStr}</td>
+      </tr>`;
+  }).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Pedido — ${pedido.cliente_nome}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827; background: #fff; padding: 32px; }
+    h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .meta { font-size: 13px; color: #6b7280; margin-bottom: 24px; display: flex; gap: 24px; flex-wrap: wrap; }
+    .meta span { display: flex; align-items: center; gap: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    thead tr { background: #f3f4f6; }
+    thead th { padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #6b7280; font-weight: 600; }
+    thead th:nth-child(2) { text-align: center; }
+    tfoot td { padding: 10px 12px; font-size: 13px; font-weight: 600; color: #374151; }
+    .obs { margin-top: 20px; padding: 12px; background: #f9fafb; border-radius: 8px; font-size: 13px; color: #374151; border: 1px solid #e5e7eb; }
+    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
+    @media print { body { padding: 16px; } }
+  </style>
+</head>
+<body>
+  <h1>Pedido — ${pedido.cliente_nome}</h1>
+  <div class="meta">
+    ${pedido.vendedora_nome ? `<span>👤 ${pedido.vendedora_nome}</span>` : ""}
+    <span>📅 ${fmtDate(pedido.created_at)}</span>
+    <span>Status: ${pedido.status === "pronto" ? "Pronto" : pedido.status}</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Peça / Modelo</th>
+        <th style="text-align:center">Qtd.</th>
+        <th>Lote(s)</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" style="text-align:right;color:#111827">
+          Total: ${pedido.itens.reduce((s, i) => s + i.quantidade, 0)} un.
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+  ${pedido.observacoes ? `<div class="obs">📝 ${pedido.observacoes}</div>` : ""}
+  <div class="footer">Concept Usinagens Especiais LTDA-ME — impresso em ${new Date().toLocaleString("pt-BR")}</div>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=800,height=600");
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); }, 400);
 }
 
 function statusColor(status: string) {
@@ -593,6 +693,17 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Aguardando Nota Fiscal
               </div>
+            )}
+            {/* Botão imprimir — disponível para pedidos separando ou pronto */}
+            {(isSeparando || pedido.status === "pronto") && (
+              <button
+                type="button"
+                onClick={() => printPedido(pedido)}
+                className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors shrink-0"
+                title="Imprimir pedido"
+              >
+                <Printer className="h-3.5 w-3.5" />
+              </button>
             )}
             {(isPendente || isSeparando) && isAdmin && (
               <button
@@ -1210,6 +1321,7 @@ export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoqueP
           }
           return Object.values(merged);
         })(),
+        lotes_separados: (p.lotes_separados as LoteSeparado[] | null) ?? [],
       }));
 
       setPedidos(mapped);
