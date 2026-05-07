@@ -1019,7 +1019,7 @@ export default function Estoque() {
 
         {/* Pedidos View */}
         {activeView === "pedidos" && (
-          <PedidosEstoquePanel isAdmin={isAdmin} />
+          <PedidosEstoquePanel isAdmin={isAdmin} onStockRefresh={refetch} />
         )}
 
         {/* Busca + Filtros — apenas nas abas de lista */}

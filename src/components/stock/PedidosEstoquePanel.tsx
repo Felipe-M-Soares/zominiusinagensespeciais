@@ -1114,9 +1114,10 @@ const SearchBarPedidos = memo(function SearchBarPedidos({ onSearch, onClear, has
 
 interface PedidosEstoquePanelProps {
   isAdmin: boolean;
+  onStockRefresh?: () => void;
 }
 
-export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
+export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoquePanelProps) {
   const { user } = useAuth();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1153,6 +1154,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     if (error) { toast.error("Erro ao iniciar separação."); return; }
     toast.success("Separação iniciada! Peças reservadas.");
     loadPedidos();
+    onStockRefresh?.();
   }
 
   const loadPedidos = useCallback(async () => {
@@ -1264,6 +1266,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       if (error) { toast.error("Erro ao salvar lotes."); return; }
       toast.success("Lotes da separação salvos!");
       loadPedidos();
+      onStockRefresh?.();
     } catch (err) {
       toast.error("Erro inesperado ao salvar lotes. Tente novamente.");
       logger.error("handleSalvarSeparacao:", err);
@@ -1286,6 +1289,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
       toast.success("Pedido marcado como pronto! Peças retiradas da expedição.");
       loadPedidos();
+      onStockRefresh?.();
     } catch (err) {
       toast.error("Erro inesperado ao marcar pedido como pronto. Tente novamente.");
       logger.error("handleMarcarPronto:", err);
@@ -1336,6 +1340,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       toast.success("Pedido cancelado. Reservas liberadas.");
       setCancelarPedido(null);
       loadPedidos();
+      onStockRefresh?.();
     } catch (err) {
       toast.error("Erro inesperado ao cancelar pedido. Tente novamente.");
       logger.error("handleCancelar:", err);
