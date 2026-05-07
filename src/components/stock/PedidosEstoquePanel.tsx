@@ -89,59 +89,109 @@ function fmtDate(iso: string) {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-function printPedido(pedido: Pedido) {
-  // Agrupa por peça, com cada lote em linha separada
-  interface LinhaPeca {
+async function printPedido(pedido: Pedido) {
+  // Monta linhas unitárias: cada unidade de cada lote vira uma linha própria na tabela
+  interface LinhaUnitaria {
     model: string;
     reference: string;
-    lotes: { lote: string; quantidade: number }[];
+    lote: string;
   }
-  const linhasPorPeca: Record<string, LinhaPeca> = {};
+
+  const linhas: LinhaUnitaria[] = [];
 
   if (pedido.lotes_separados && pedido.lotes_separados.length > 0) {
+    // Usa os lotes salvos na separação
     for (const ls of pedido.lotes_separados) {
-      const key = ls.stock_item_id;
-      if (!linhasPorPeca[key]) {
-        // Busca referência nos itens do pedido
-        const itemRef = pedido.itens.find(i => i.stock_item_id === ls.stock_item_id);
-        linhasPorPeca[key] = {
-          model: ls.device_model ?? itemRef?.device_model ?? "—",
-          reference: itemRef?.device_reference ?? "",
-          lotes: [],
-        };
+      const itemRef = pedido.itens.find(i => i.stock_item_id === ls.stock_item_id);
+      const model = ls.device_model ?? itemRef?.device_model ?? "—";
+      const reference = itemRef?.device_reference ?? "";
+      const lote = ls.lote ?? "—";
+      for (let u = 0; u < ls.quantidade; u++) {
+        linhas.push({ model, reference, lote });
       }
-      linhasPorPeca[key].lotes.push({ lote: ls.lote ?? "a-definir", quantidade: ls.quantidade });
     }
   } else {
-    // Fallback: usa pedido.itens
+    // Fallback: busca lotes reais da expedição no banco
+    const stockItemIds = pedido.itens.map(i => i.stock_item_id);
+    const lotesMap = await fetchLotesDisponivelBatch(stockItemIds);
+
     for (const item of pedido.itens) {
-      linhasPorPeca[item.stock_item_id] = {
-        model: item.device_model ?? "—",
-        reference: item.device_reference ?? "",
-        lotes: [{ lote: item.lote ?? "a-definir", quantidade: item.quantidade }],
-      };
+      const saldos = lotesMap.get(item.stock_item_id) ?? {};
+      const lotesAtivos = Object.entries(saldos)
+        .filter(([, qty]) => qty > 0)
+        .sort(([a], [b]) => a.localeCompare(b));
+
+      if (lotesAtivos.length > 0) {
+        let restante = item.quantidade;
+        for (const [lote, qty] of lotesAtivos) {
+          if (restante <= 0) break;
+          const usar = Math.min(qty, restante);
+          for (let u = 0; u < usar; u++) {
+            linhas.push({ model: item.device_model ?? "—", reference: item.device_reference ?? "", lote });
+          }
+          restante -= usar;
+        }
+        for (let u = 0; u < restante; u++) {
+          linhas.push({ model: item.device_model ?? "—", reference: item.device_reference ?? "", lote: "—" });
+        }
+      } else {
+        const lote = item.lote && item.lote.trim() ? item.lote : "—";
+        for (let u = 0; u < item.quantidade; u++) {
+          linhas.push({ model: item.device_model ?? "—", reference: item.device_reference ?? "", lote });
+        }
+      }
     }
   }
 
-  const rows = Object.values(linhasPorPeca).map(({ model, reference, lotes }) => {
-    const totalQty = lotes.reduce((s, l) => s + l.quantidade, 0);
+  // Agrupa linhas consecutivas com mesmo modelo+lote para evitar repetição visual desnecessária
+  // mas mantém cada unidade como linha separada com numeração
+  interface GrupoLinha {
+    model: string;
+    reference: string;
+    lote: string;
+    unidades: number;
+    startIdx: number;
+  }
 
-    // Cada lote em sua própria linha dentro da célula
-    const lotesHTML = lotes.map(l =>
-      `<div style="font-family:monospace;font-size:12px;color:#111827;font-weight:600">${l.lote}</div>` +
-      `<div style="font-size:11px;color:#6b7280">${l.quantidade} un.</div>`
-    ).join(`<div style="height:4px"></div>`);
+  const grupos: GrupoLinha[] = [];
+  let idx = 1;
+  for (const l of linhas) {
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.model === l.model && ultimo.lote === l.lote) {
+      ultimo.unidades++;
+    } else {
+      grupos.push({ model: l.model, reference: l.reference, lote: l.lote, unidades: 1, startIdx: idx });
+    }
+    idx++;
+  }
 
-    const modelHTML = `<div style="font-size:13px;font-weight:500">${model}</div>` +
-      (reference ? `<div style="font-size:10px;color:#9ca3af;font-family:monospace">${reference}</div>` : "");
+  // Gera as linhas da tabela — uma linha por grupo, mas mostrando cada unidade com check box
+  const rows = grupos.map((g, gi) => {
+    const modelHTML = `<div style="font-size:13px;font-weight:500;color:#111827">${g.model}</div>` +
+      (g.reference ? `<div style="font-size:10px;color:#9ca3af;font-family:monospace;margin-top:1px">${g.reference}</div>` : "");
+
+    const loteHTML = `<span style="font-family:monospace;font-size:12px;font-weight:700;color:#111827;background:#f3f4f6;padding:2px 8px;border-radius:4px;border:1px solid #e5e7eb">${g.lote}</span>`;
+
+    // Checkboxes unitários: uma caixa por unidade neste grupo
+    const checks = Array.from({ length: g.unidades }, (_, i) =>
+      `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;margin-bottom:3px">
+        <span style="display:inline-block;width:14px;height:14px;border:1.5px solid #d1d5db;border-radius:3px;vertical-align:middle"></span>
+        <span style="font-size:11px;color:#6b7280">${g.startIdx + i}</span>
+      </span>`
+    ).join("");
 
     return `
-      <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;vertical-align:top">${modelHTML}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:15px;font-weight:700;vertical-align:top">${totalQty}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;vertical-align:top">${lotesHTML}</td>
+      <tr style="${gi % 2 === 1 ? "background:#f9fafb" : ""}">
+        <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;vertical-align:middle">${modelHTML}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;text-align:center;vertical-align:middle">
+          <span style="font-size:16px;font-weight:700;color:#111827">${g.unidades}</span>
+        </td>
+        <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;vertical-align:middle">${loteHTML}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;vertical-align:middle">${checks}</td>
       </tr>`;
   }).join("");
+
+  const totalUnidades = linhas.length;
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -150,18 +200,22 @@ function printPedido(pedido: Pedido) {
   <title>Pedido — ${pedido.cliente_nome}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827; background: #fff; padding: 32px; }
-    h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-    .meta { font-size: 13px; color: #6b7280; margin-bottom: 24px; display: flex; gap: 24px; flex-wrap: wrap; margin-top: 6px; }
-    .meta span { display: flex; align-items: center; gap: 6px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827; background: #fff; padding: 28px 32px; }
+    h1 { font-size: 20px; font-weight: 700; }
+    .meta { font-size: 13px; color: #6b7280; margin-bottom: 20px; display: flex; gap: 20px; flex-wrap: wrap; margin-top: 6px; }
+    .meta span { display: flex; align-items: center; gap: 5px; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     thead tr { background: #f3f4f6; }
-    thead th { padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #6b7280; font-weight: 600; }
-    thead th:nth-child(2) { text-align: center; }
-    tfoot td { padding: 10px 12px; font-size: 13px; font-weight: 600; color: #111827; }
-    .obs { margin-top: 20px; padding: 12px; background: #f9fafb; border-radius: 8px; font-size: 13px; color: #374151; border: 1px solid #e5e7eb; }
-    .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
-    @media print { body { padding: 16px; } }
+    thead th { padding: 9px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; font-weight: 600; border-bottom: 2px solid #e5e7eb; }
+    thead th:nth-child(2) { text-align: center; width: 60px; }
+    thead th:nth-child(4) { width: 160px; }
+    tfoot td { padding: 10px 12px; font-size: 13px; font-weight: 600; color: #111827; border-top: 2px solid #e5e7eb; }
+    .obs { margin-top: 18px; padding: 11px 14px; background: #fffbeb; border-radius: 8px; font-size: 13px; color: #374151; border: 1px solid #fde68a; }
+    .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
+    @media print {
+      body { padding: 12px 16px; }
+      thead { display: table-header-group; }
+    }
   </style>
 </head>
 <body>
@@ -169,21 +223,22 @@ function printPedido(pedido: Pedido) {
   <div class="meta">
     ${pedido.vendedora_nome ? `<span>👤 ${pedido.vendedora_nome}</span>` : ""}
     <span>📅 ${fmtDate(pedido.created_at)}</span>
-    <span>Status: ${pedido.status === "pronto" ? "Pronto" : pedido.status}</span>
+    <span>📦 Status: <strong>${pedido.status === "pronto" ? "Pronto" : pedido.status === "separando" ? "Separando" : pedido.status}</strong></span>
   </div>
   <table>
     <thead>
       <tr>
         <th>Peça / Modelo</th>
         <th style="text-align:center">Qtd.</th>
-        <th>Lote(s)</th>
+        <th>Lote</th>
+        <th>Conferência</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
     <tfoot>
       <tr>
-        <td colspan="3" style="text-align:right;border-top:2px solid #e5e7eb">
-          Total: ${pedido.itens.reduce((s, i) => s + i.quantidade, 0)} un.
+        <td colspan="4" style="text-align:right">
+          Total: ${totalUnidades} un.
         </td>
       </tr>
     </tfoot>
@@ -193,7 +248,7 @@ function printPedido(pedido: Pedido) {
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=800,height=600");
+  const win = window.open("", "_blank", "width=820,height=650");
   if (!win) return;
   win.document.write(html);
   win.document.close();
@@ -253,6 +308,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   const [lotesSel, setLotesSel] = useState<LoteSelecao>({});
   const [loadingLotes, setLoadingLotes] = useState(false);
   const [salvandoSep, setSalvandoSep] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const loadedRef = useRef(false);
 
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
@@ -720,11 +776,14 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
             {(isSeparando || pedido.status === "pronto") && (
               <button
                 type="button"
-                onClick={() => printPedido(pedido)}
-                className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors shrink-0"
+                onClick={async () => { setPrinting(true); try { await printPedido(pedido); } finally { setPrinting(false); } }}
+                disabled={printing}
+                className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors shrink-0 disabled:opacity-50"
                 title="Imprimir pedido"
               >
-                <Printer className="h-3.5 w-3.5" />
+                {printing
+                  ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  : <Printer className="h-3.5 w-3.5" />}
               </button>
             )}
             {(isPendente || isSeparando) && isAdmin && (
