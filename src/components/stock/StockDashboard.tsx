@@ -71,11 +71,11 @@ export function StockDashboard({ items, loading }: Props) {
 
   useEffect(() => {
     async function loadAll() {
-      // 1. Pedidos pendentes (aguardando separação)
+      // 1. Pedidos separando (em separação ativa)
       supabase
         .from("pedidos_comerciais")
         .select("id", { count: "exact", head: true })
-        .eq("status", "pendente")
+        .eq("status", "separando")
         .then(({ count }) => setPedidosPendentes(count ?? 0));
 
       // 2. Totais por fase + peças expedição com estoque baixo
@@ -207,12 +207,12 @@ export function StockDashboard({ items, loading }: Props) {
         />
         <KpiCard
           icon={PackageCheck}
-          label="Pedidos Pendentes"
+          label="Pedidos Separando"
           value={pedidosPendentes}
           color="text-blue-500"
           bg="bg-blue-500/5"
           border="border-blue-500/20"
-          description="Aguardando separação"
+          description="Em separação no estoque"
         />
       </div>
 
