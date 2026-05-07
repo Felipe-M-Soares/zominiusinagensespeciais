@@ -18,10 +18,11 @@ interface Props {
   onClose: () => void;
 }
 
-// Resolve o stock_item_id da expedição para um dado device_id.
-// Se o item já for da expedição, retorna seu próprio id.
-async function resolveExpedicaoId(item: StockItem): Promise<string> {
-  if (item.fase === "expedicao") return item.id;
+// Resolve o stock_item_id correto para exibir lotes:
+// - Expedição e Retrabalho: usa o próprio id (cada fase tem seus lotes)
+// - Intermediária: resolve para o id da expedição (lotes ficam na expedição)
+async function resolveStockItemId(item: StockItem): Promise<string> {
+  if (item.fase === "expedicao" || item.fase === "retrabalho") return item.id;
   const { data } = await supabase
     .from("stock_items")
     .select("id")
@@ -48,7 +49,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
     if (open && item) {
       setLoading(true);
       setLotes([]);
-      resolveExpedicaoId(item).then((expId) => {
+      resolveStockItemId(item).then((expId) => {
         if (cancelled) return;
         setExpedicaoId(expId);
         return fetchLotesSummary(expId);
