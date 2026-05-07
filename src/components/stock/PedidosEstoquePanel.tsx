@@ -90,34 +90,56 @@ function fmtDate(iso: string) {
 }
 
 function printPedido(pedido: Pedido) {
-  // Agrupa lotes_separados por device_model para exibição
-  const linhasPorPeca: Record<string, { model: string; lotes: { lote: string; quantidade: number }[] }> = {};
+  // Agrupa por peça, com cada lote em linha separada
+  interface LinhaPeca {
+    model: string;
+    reference: string;
+    lotes: { lote: string; quantidade: number }[];
+  }
+  const linhasPorPeca: Record<string, LinhaPeca> = {};
 
   if (pedido.lotes_separados && pedido.lotes_separados.length > 0) {
     for (const ls of pedido.lotes_separados) {
       const key = ls.stock_item_id;
-      const model = ls.device_model ?? "—";
-      if (!linhasPorPeca[key]) linhasPorPeca[key] = { model, lotes: [] };
-      linhasPorPeca[key].lotes.push({ lote: ls.lote, quantidade: ls.quantidade });
+      if (!linhasPorPeca[key]) {
+        // Busca referência nos itens do pedido
+        const itemRef = pedido.itens.find(i => i.stock_item_id === ls.stock_item_id);
+        linhasPorPeca[key] = {
+          model: ls.device_model ?? itemRef?.device_model ?? "—",
+          reference: itemRef?.device_reference ?? "",
+          lotes: [],
+        };
+      }
+      linhasPorPeca[key].lotes.push({ lote: ls.lote ?? "a-definir", quantidade: ls.quantidade });
     }
   } else {
-    // Fallback: usa itens sem lote específico
+    // Fallback: usa pedido.itens
     for (const item of pedido.itens) {
       linhasPorPeca[item.stock_item_id] = {
         model: item.device_model ?? "—",
-        lotes: [{ lote: item.lote ?? "—", quantidade: item.quantidade }],
+        reference: item.device_reference ?? "",
+        lotes: [{ lote: item.lote ?? "a-definir", quantidade: item.quantidade }],
       };
     }
   }
 
-  const rows = Object.values(linhasPorPeca).map(({ model, lotes }) => {
+  const rows = Object.values(linhasPorPeca).map(({ model, reference, lotes }) => {
     const totalQty = lotes.reduce((s, l) => s + l.quantidade, 0);
-    const lotesStr = lotes.map(l => `${l.lote} (${l.quantidade} un.)`).join(", ");
+
+    // Cada lote em sua própria linha dentro da célula
+    const lotesHTML = lotes.map(l =>
+      `<div style="font-family:monospace;font-size:12px;color:#111827;font-weight:600">${l.lote}</div>` +
+      `<div style="font-size:11px;color:#6b7280">${l.quantidade} un.</div>`
+    ).join(`<div style="height:4px"></div>`);
+
+    const modelHTML = `<div style="font-size:13px;font-weight:500">${model}</div>` +
+      (reference ? `<div style="font-size:10px;color:#9ca3af;font-family:monospace">${reference}</div>` : "");
+
     return `
       <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px">${model}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;font-weight:600">${totalQty}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;font-family:monospace;color:#374151">${lotesStr}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;vertical-align:top">${modelHTML}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;font-size:15px;font-weight:700;vertical-align:top">${totalQty}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;vertical-align:top">${lotesHTML}</td>
       </tr>`;
   }).join("");
 
@@ -130,13 +152,13 @@ function printPedido(pedido: Pedido) {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827; background: #fff; padding: 32px; }
     h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-    .meta { font-size: 13px; color: #6b7280; margin-bottom: 24px; display: flex; gap: 24px; flex-wrap: wrap; }
+    .meta { font-size: 13px; color: #6b7280; margin-bottom: 24px; display: flex; gap: 24px; flex-wrap: wrap; margin-top: 6px; }
     .meta span { display: flex; align-items: center; gap: 6px; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     thead tr { background: #f3f4f6; }
     thead th { padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #6b7280; font-weight: 600; }
     thead th:nth-child(2) { text-align: center; }
-    tfoot td { padding: 10px 12px; font-size: 13px; font-weight: 600; color: #374151; }
+    tfoot td { padding: 10px 12px; font-size: 13px; font-weight: 600; color: #111827; }
     .obs { margin-top: 20px; padding: 12px; background: #f9fafb; border-radius: 8px; font-size: 13px; color: #374151; border: 1px solid #e5e7eb; }
     .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
     @media print { body { padding: 16px; } }
@@ -160,7 +182,7 @@ function printPedido(pedido: Pedido) {
     <tbody>${rows}</tbody>
     <tfoot>
       <tr>
-        <td colspan="3" style="text-align:right;color:#111827">
+        <td colspan="3" style="text-align:right;border-top:2px solid #e5e7eb">
           Total: ${pedido.itens.reduce((s, i) => s + i.quantidade, 0)} un.
         </td>
       </tr>
