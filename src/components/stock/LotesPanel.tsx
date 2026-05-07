@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { fetchLotesSummary } from "@/hooks/useStock";
 import type { LoteSummary, StockItem } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   item: StockItem | null;
@@ -17,13 +18,27 @@ interface Props {
   onClose: () => void;
 }
 
+// Resolve o stock_item_id da expedição para um dado device_id.
+// Se o item já for da expedição, retorna seu próprio id.
+async function resolveExpedicaoId(item: StockItem): Promise<string> {
+  if (item.fase === "expedicao") return item.id;
+  const { data } = await supabase
+    .from("stock_items")
+    .select("id")
+    .eq("device_id", item.device_id)
+    .eq("fase", "expedicao")
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? item.id;
+}
+
 export function LotesPanel({ item, open, onClose }: Props) {
   const [lotes, setLotes] = useState<LoteSummary[]>([]);
   const [loading, setLoading] = useState(false);
+  const [expedicaoId, setExpedicaoId] = useState<string | null>(null);
 
-  async function load(id: string) {
+  async function load(stockItemId: string) {
     setLoading(true);
-    const data = await fetchLotesSummary(id);
+    const data = await fetchLotesSummary(stockItemId);
     setLotes(data);
     setLoading(false);
   }
@@ -32,11 +47,17 @@ export function LotesPanel({ item, open, onClose }: Props) {
     let cancelled = false;
     if (open && item) {
       setLoading(true);
-      fetchLotesSummary(item.id).then((data) => {
-        if (!cancelled) { setLotes(data); setLoading(false); }
+      setLotes([]);
+      resolveExpedicaoId(item).then((expId) => {
+        if (cancelled) return;
+        setExpedicaoId(expId);
+        return fetchLotesSummary(expId);
+      }).then((data) => {
+        if (!cancelled && data) { setLotes(data); setLoading(false); }
       }).catch(() => { if (!cancelled) setLoading(false); });
     } else {
       setLotes([]);
+      setExpedicaoId(null);
     }
     return () => { cancelled = true; };
   }, [open, item]);
@@ -70,7 +91,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
               </p>
             </div>
             <Button variant="ghost" size="icon" className="h-7 w-7 mt-0.5 shrink-0"
-              onClick={() => load(item.id)} disabled={loading} title="Atualizar">
+              onClick={() => expedicaoId && load(expedicaoId)} disabled={loading} title="Atualizar">
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             </Button>
           </div>
