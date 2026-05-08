@@ -6,7 +6,10 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- BUG-01: reserve_stock retornava void — falha silenciosa em estoque insuficiente
 -- Agora retorna boolean: true = reservado com sucesso, false = estoque insuficiente
+-- DROP obrigatório antes do CREATE: Postgres não permite alterar tipo de retorno
+-- de função existente via CREATE OR REPLACE (erro 42P13).
 -- ─────────────────────────────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.reserve_stock(uuid, integer);
 CREATE OR REPLACE FUNCTION public.reserve_stock(p_item_id uuid, p_qty integer)
 RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
