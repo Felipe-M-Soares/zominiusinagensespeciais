@@ -389,7 +389,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
       toast.success("Pedido criado! Peças reservadas na expedição.");
       onSuccess();
-    } catch {
+    } catch (_e) {
       toast.error("Erro ao criar pedido.");
     } finally {
       setSaving(false);
@@ -793,7 +793,7 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
 
       toast.success("Pedido faturado!");
       onSuccess();
-    } catch {
+    } catch (_e) {
       toast.error("Erro ao faturar pedido.");
     } finally {
       submittingRef.current = false;
@@ -1029,7 +1029,7 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
         return m.user_display_name === currentUserName;
       });
       if (!cancelled.v) { setMovements(filtered); setLoading(false); }
-    } catch {
+    } catch (_e) {
       if (!cancelled.v) setLoading(false);
     }
   }, [currentUserName, isAdmin]);
@@ -1365,7 +1365,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       });
 
       setPedidos(mapped);
-    } catch {
+    } catch (_e) {
       toast.error("Erro ao carregar pedidos.");
     } finally {
       setLoadingPedidos(false);
@@ -1378,7 +1378,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       const { data, error } = await supabase.from("clientes").select("*").order("nome");
       if (error) throw error;
       setClientes((data as Cliente[]) ?? []);
-    } catch {
+    } catch (_e) {
       toast.error("Erro ao carregar clientes.");
       setClientes([]);
     } finally {
@@ -1424,7 +1424,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       toast.success("Pedido cancelado.");
       setCancelarPedido(null);
       loadPedidos();
-    } catch {
+    } catch (_e) {
       toast.error("Erro inesperado ao cancelar pedido.");
     } finally {
       setCancelando(false);
