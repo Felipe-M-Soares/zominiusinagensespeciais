@@ -31,6 +31,7 @@ import {
   Archive,
   Minus,
   Plus,
+  Printer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -127,6 +128,7 @@ interface PedidoCardProps {
 
 function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, isAdmin }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
+
   const [expedicaoData, setExpedicaoData] = useState<Record<string, StockItemExpedicao>>({});
   const [lotesSel, setLotesSel] = useState<LoteSelecao>({});
   const [loadingLotes, setLoadingLotes] = useState(false);
@@ -1325,6 +1327,34 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     }
   }
 
+  function handleImprimirTodos() {
+    const esc = (s: string | null | undefined) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+    const ativos = filtrados.filter(p => p.status === "pendente" || p.status === "separando");
+    if (ativos.length === 0) { toast.error("Nenhum pedido pendente ou em separação para imprimir."); return; }
+    const blocos = ativos.map(pedido => {
+      const rows = pedido.itens.map((item, i) => `<tr><td>${i + 1}</td><td>${esc(item.device_model)}</td><td>${esc(item.device_reference)}</td><td style="text-align:center;font-weight:bold">${item.quantidade}</td></tr>`).join("");
+      return `<div class="pedido">
+        <h2>📦 ${esc(pedido.cliente_nome)}</h2>
+        <p class="meta">Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong> &nbsp;·&nbsp; Status: <strong>${esc(pedido.status)}</strong> &nbsp;·&nbsp; ${fmtDate(pedido.created_at)}</p>
+        ${pedido.observacoes ? `<p class="obs">Obs: ${esc(pedido.observacoes)}</p>` : ""}
+        <table><thead><tr><th>#</th><th>Peça</th><th>Referência</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${rows}</tbody></table>
+        <p class="footer">${pedido.itens.reduce((s, i) => s + i.quantidade, 0)} peças · ${pedido.itens.length} tipo(s)</p>
+      </div>`;
+    }).join("<hr>");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedidos — ${now}</title>
+    <style>body{font-family:Arial,sans-serif;padding:24px;color:#111;font-size:13px}h1{font-size:16px;margin-bottom:4px}p.gen{font-size:11px;color:#888;margin-bottom:20px}button.print-btn{margin-bottom:20px;padding:6px 14px;cursor:pointer;font-size:12px}.pedido{margin-bottom:28px}h2{font-size:14px;margin-bottom:4px}p.meta{font-size:11px;color:#666;margin-bottom:8px}p.obs{font-size:11px;color:#888;font-style:italic;margin-bottom:8px}p.footer{font-size:10px;color:#aaa;margin-top:6px}table{width:100%;border-collapse:collapse}th{text-align:left;padding:6px 8px;background:#f3f0ff;color:#5b21b6;border-bottom:2px solid #ddd6fe;font-size:12px}td{padding:5px 8px;border-bottom:1px solid #eee}hr{border:none;border-top:1px dashed #ddd;margin:20px 0}@media print{button{display:none}}</style></head><body>
+    <h1>Lista de Pedidos para Separação</h1>
+    <p class="gen">Gerado em: ${now} · ${ativos.length} pedido(s)</p>
+    <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+    ${blocos}
+    </body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { toast.error("Popup bloqueado. Permita popups para imprimir."); return; }
+    w.document.write(html);
+    w.document.close();
+  }
+
   return (
     <div className="space-y-4">
       {/* Busca + Atualizar */}
@@ -1334,6 +1364,14 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           onClear={() => { setSearchQuery(""); setHasSearch(false); }}
           hasValue={hasSearch}
         />
+        <button
+          type="button"
+          onClick={handleImprimirTodos}
+          className="h-9 w-9 flex items-center justify-center rounded-full bg-muted/30 border border-border/40 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0"
+          title="Imprimir pedidos pendentes"
+        >
+          <Printer className="h-3.5 w-3.5" />
+        </button>
         <button
           type="button"
           onClick={loadPedidos}

@@ -671,6 +671,7 @@ export default function Estoque() {
   const [listOpen, setListOpen] = useState(false);
   const [allMovOpen, setAllMovOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
+  const [baixoOpen, setBaixoOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [lotesItem, setLotesItem] = useState<StockItem | null>(null);
@@ -1009,7 +1010,7 @@ export default function Estoque() {
 
         {/* Dashboard View */}
         {activeView === "dashboard" && (
-          <StockDashboard items={allItems} loading={loading} />
+          <StockDashboard items={allItems} loading={loading} onEstoqueBaixo={() => setBaixoOpen(true)} />
         )}
 
         {/* Recebimento View */}
@@ -1348,6 +1349,43 @@ export default function Estoque() {
         onClose={() => setAddOpen(false)}
         onSuccess={refetch}
       />
+
+      {/* Modal Estoque Baixo */}
+      {baixoOpen && (() => {
+        const baixoItems = expedicaoItems
+          .filter(i => i.quantity > 0 && i.quantity <= i.min_quantity && i.device)
+          .sort((a, b) => a.quantity - b.quantity);
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setBaixoOpen(false)}>
+            <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200" onClick={e => e.stopPropagation()}>
+              <div className="px-5 pt-5 pb-3 border-b border-border/20 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <span className="text-warning">⚠</span> Estoque Baixo
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{baixoItems.length} tipo{baixoItems.length !== 1 ? "s" : ""} com menos de 100 un.</p>
+                </div>
+                <button type="button" onClick={() => setBaixoOpen(false)} className="h-7 w-7 rounded-lg hover:bg-muted/40 flex items-center justify-center text-muted-foreground transition-colors">✕</button>
+              </div>
+              <div className="max-h-[420px] overflow-y-auto divide-y divide-border/20">
+                {baixoItems.length === 0 ? (
+                  <p className="text-center text-sm text-muted-foreground py-10">Nenhuma peça com estoque baixo</p>
+                ) : baixoItems.map(item => (
+                  <div key={item.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-medium text-foreground line-clamp-1">{item.device.model}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{item.device.reference}</p>
+                    </div>
+                    <span className="text-[13px] font-bold tabular-nums text-warning bg-warning/10 px-2.5 py-1 rounded-lg shrink-0">
+                      {item.quantity} un.
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <StockListModal
         open={listOpen}
