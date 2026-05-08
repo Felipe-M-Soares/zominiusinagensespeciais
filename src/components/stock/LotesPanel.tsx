@@ -50,8 +50,8 @@ export function LotesPanel({ item, open, onClose }: Props) {
   }
 
   const activeLotes  = lotes.filter((l) => l.saldo > 0);
-  const totalEntrada = activeLotes.reduce((s, l) => s + l.total_entrada, 0);
-  const totalSaida   = activeLotes.reduce((s, l) => s + l.total_saida, 0);
+  const totalEntrada = lotes.reduce((s, l) => s + l.total_entrada, 0);
+  const totalSaida   = lotes.reduce((s, l) => s + l.total_saida, 0);
   const activeLotesCount = activeLotes.length;
 
   return (
@@ -165,16 +165,20 @@ export function LotesPanel({ item, open, onClose }: Props) {
                     <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/30">
                       <div
                         className="bg-success/60 rounded-full transition-all"
+                        style={{ width: `${Math.round(((l.total_entrada - l.total_saida) / l.total_entrada) * 100)}%` }}
+                      />
+                      <div
+                        className="bg-destructive/40 rounded-full transition-all"
                         style={{ width: `${Math.round((l.total_saida / l.total_entrada) * 100)}%` }}
                       />
                     </div>
                     <div className="flex justify-between text-[9px] text-muted-foreground/50">
                       <span className="flex items-center gap-0.5">
-                        <TrendingDown className="h-2 w-2 text-success" />
+                        <TrendingUp className="h-2 w-2 text-success" />
                         {l.total_entrada} entraram
                       </span>
                       <span className="flex items-center gap-0.5">
-                        <TrendingUp className="h-2 w-2 text-destructive" />
+                        <TrendingDown className="h-2 w-2 text-destructive" />
                         {l.total_saida} saíram
                       </span>
                     </div>
