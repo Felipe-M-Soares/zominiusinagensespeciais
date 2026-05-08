@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/lib/errorMessages";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -206,7 +207,7 @@ export function CatalogButton() {
     // BUG-14: Delete DB record first — if it fails, storage file stays intact (no broken links)
     const { error: dbErr } = await supabase.from("catalogs").delete().eq("id", cat.id);
     if (dbErr) {
-      toast.error("Erro ao excluir catálogo: " + dbErr.message);
+      toast.error(friendlyError(dbErr, "Erro ao excluir catálogo."));
       return;
     }
 

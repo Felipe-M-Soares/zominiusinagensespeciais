@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/lib/errorMessages";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,7 +81,7 @@ export default function SetPassword() {
       // 1. Atualiza a senha no Supabase Auth
       const { error: pwErr } = await supabase.auth.updateUser({ password });
       if (pwErr) {
-        toast.error("Erro ao definir senha: " + pwErr.message);
+        toast.error(friendlyError(pwErr, "Erro ao definir senha."));
         return;
       }
 

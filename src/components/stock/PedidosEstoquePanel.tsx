@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/lib/errorMessages";
 import { fetchLotesDisponivelBatch } from "@/hooks/useStock";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/hooks/useAuth";
@@ -1465,7 +1466,7 @@ export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoqueP
       });
 
       if (error || (result as { error?: string })?.error) {
-        toast.error("Erro ao marcar como pronto: " + (error?.message ?? (result as { error?: string })?.error));
+        toast.error(friendlyError(error, "Erro ao marcar como pronto."));
         return;
       }
 

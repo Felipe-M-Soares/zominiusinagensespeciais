@@ -174,7 +174,7 @@ export function AdminUsers() {
         .from("profiles")
         .update({ approved: false, blocked: true })
         .eq("user_id", userId);
-      if (profileErr) { toast.error("Erro ao bloquear usuário: " + profileErr.message); return; }
+      if (profileErr) { toast.error(friendlyError(profileErr, "Erro ao bloquear usuário.")); return; }
       toast.success(`Acesso de ${userLogin ?? "usuário"} bloqueado.`);
       fetchUsers();
     } catch (err) {

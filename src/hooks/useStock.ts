@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/lib/errorMessages";
 import { logger } from "@/lib/logger";
 import type { Device } from "@/types/device";
 
@@ -272,7 +273,7 @@ export async function registerMovement(
     p_user_name: userDisplayName ?? null,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyError(error, "Operação falhou.") };
 
   const result = data as { ok?: boolean; error?: string } | null;
   if (result?.error) return { ok: false, error: result.error };
@@ -287,7 +288,7 @@ export async function addDeviceToStock(deviceId: string): Promise<{ ok: boolean;
       { device_id: deviceId, quantity: 0, min_quantity: 0, fase: "intermediaria" },
       { onConflict: "device_id,fase", ignoreDuplicates: true }
     );
-  return error ? { ok: false, error: error.message } : { ok: true };
+  return error ? { ok: false, error: friendlyError(error, "Operação falhou.") } : { ok: true };
 }
 
 /**
@@ -656,7 +657,7 @@ export async function cancelMovement(
     p_stock_item_id: stockItemId,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyError(error, "Operação falhou.") };
   const result = data as { ok?: boolean; error?: string } | null;
   if (result?.error) return { ok: false, error: result.error };
   return { ok: true };
@@ -669,7 +670,7 @@ export async function deleteStockItem(
   const { data, error } = await supabase
     .rpc("delete_stock_item", { p_stock_item_id: stockItemId });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyError(error, "Operação falhou.") };
   const result = data as { ok: boolean; error?: string };
   return result;
 }
@@ -716,7 +717,7 @@ export async function saveBackupConfig(
   const { error } = await supabase
     .from("backup_configs")
     .upsert({ schedule, updated_at: new Date().toISOString() }, { onConflict: "id" });
-  return error ? { ok: false, error: error.message } : { ok: true };
+  return error ? { ok: false, error: friendlyError(error, "Operação falhou.") } : { ok: true };
 }
 
 export async function runBackup(
@@ -759,7 +760,7 @@ export async function runBackup(
     // payload column kept null — data lives in Storage
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyError(error, "Operação falhou.") };
 
   const { data: cfg } = await supabase.from("backup_configs").select("id").maybeSingle();
   if (cfg) {
