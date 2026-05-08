@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { friendlyError } from "@/lib/errorMessages";
 import { logger } from "@/lib/logger";
 import type { Device } from "@/types/device";
 
@@ -45,7 +44,14 @@ export interface LoteSummary {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// NOVO-SEG-02 FIX: sanitize() consolidado em supabaseUtils.ts como sanitizeSearch()
+function sanitize(raw: string): string {
+  return raw
+    .trim()
+    .slice(0, 200)
+    .split("").filter(ch => ch.charCodeAt(0) > 31 && ch.charCodeAt(0) !== 127).join("")
+    .replace(/[(),;'"`]/g, "")
+    .replace(/[%_\\]/g, "\\$&");
+}
 
 // ─── Hook principal de estoque ────────────────────────────────────────────────
 
@@ -117,8 +123,7 @@ export function useStock(search: string) {
             setLoading(false);
             return;
           }
-          // BUG-04 FIX: Deduplica IDs e limita para evitar URL too long (414) com muitos resultados
-          const ids = [...new Set(matched.map((d) => d.id))].slice(0, 200);
+          const ids = matched.map((d) => d.id);
           query = query.in("device_id", ids);
         }
       }
@@ -266,7 +271,7 @@ export async function registerMovement(
     p_user_name: userDisplayName ?? null,
   });
 
-  if (error) return { ok: false, error: friendlyError(error, "Operação falhou.") };
+  if (error) return { ok: false, error: error.message };
 
   const result = data as { ok?: boolean; error?: string } | null;
   if (result?.error) return { ok: false, error: result.error };
@@ -281,7 +286,7 @@ export async function addDeviceToStock(deviceId: string): Promise<{ ok: boolean;
       { device_id: deviceId, quantity: 0, min_quantity: 0, fase: "intermediaria" },
       { onConflict: "device_id,fase", ignoreDuplicates: true }
     );
-  return error ? { ok: false, error: friendlyError(error, "Operação falhou.") } : { ok: true };
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 /**
@@ -612,19 +617,20 @@ export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummar
 
   if (!data || data.length === 0) return [];
 
-  // Ignora apenas Rollbacks — são compensações de erro, não movimentos reais de estoque.
-  // Transferências entre fases (Retrabalho, Expedição) DEVEM contar pois cada fase
-  // tem seu próprio stock_item_id e não há dupla contagem.
-  const ROLLBACK_REASONS = [
+  // Reasons de transferência interna entre fases — não contam como entrada/saída real
+  const INTERNAL_REASONS = [
+    "Retrabalho concluído — recebido do Retrabalho",
+    "Retrabalho concluído — enviado para Expedição",
+    "Enviado para Retrabalho",
     "Rollback — falha ao criar item de retrabalho",
     "Rollback — falha ao criar item de expedição",
     "Rollback — falha ao registrar entrada na expedição",
-    "Rollback — falha ao registrar entrada no retrabalho",
   ];
 
   const map = new Map<string, LoteSummary>();
   for (const row of data as { lote: string; type: string; quantity: number; reason: string | null; created_at: string }[]) {
-    if (row.reason && ROLLBACK_REASONS.includes(row.reason)) continue;
+    // Ignora movimentos internos de transferência entre fases
+    if (row.reason && INTERNAL_REASONS.includes(row.reason)) continue;
 
     const key = row.lote.toUpperCase();
     if (!map.has(key)) {
@@ -650,7 +656,7 @@ export async function cancelMovement(
     p_stock_item_id: stockItemId,
   });
 
-  if (error) return { ok: false, error: friendlyError(error, "Operação falhou.") };
+  if (error) return { ok: false, error: error.message };
   const result = data as { ok?: boolean; error?: string } | null;
   if (result?.error) return { ok: false, error: result.error };
   return { ok: true };
@@ -663,7 +669,7 @@ export async function deleteStockItem(
   const { data, error } = await supabase
     .rpc("delete_stock_item", { p_stock_item_id: stockItemId });
 
-  if (error) return { ok: false, error: friendlyError(error, "Operação falhou.") };
+  if (error) return { ok: false, error: error.message };
   const result = data as { ok: boolean; error?: string };
   return result;
 }
@@ -710,7 +716,7 @@ export async function saveBackupConfig(
   const { error } = await supabase
     .from("backup_configs")
     .upsert({ schedule, updated_at: new Date().toISOString() }, { onConflict: "id" });
-  return error ? { ok: false, error: friendlyError(error, "Operação falhou.") } : { ok: true };
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 export async function runBackup(
@@ -753,7 +759,7 @@ export async function runBackup(
     // payload column kept null — data lives in Storage
   });
 
-  if (error) return { ok: false, error: friendlyError(error, "Operação falhou.") };
+  if (error) return { ok: false, error: error.message };
 
   const { data: cfg } = await supabase.from("backup_configs").select("id").maybeSingle();
   if (cfg) {

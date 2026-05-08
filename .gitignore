@@ -42,7 +42,3 @@ ios/
 # NEVER commit these: they expose infrastructure identifiers.
 # See ARCH-004 / OPS-001 in security audit.
 supabase/.temp/
-
-# Backup files — never commit
-*.bak
-*.orig

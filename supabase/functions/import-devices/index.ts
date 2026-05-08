@@ -1,7 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// COD-02 FIX: Importado do módulo compartilhado em vez de duplicar
-import { getCorsHeaders } from "../_shared/cors.ts";
+function getCorsHeaders(req: Request): Record<string, string> {
+  const allowed = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
+  const origin = req.headers.get("origin") ?? "";
+  const responseOrigin = allowed === "*" ? "*" : (origin === allowed ? origin : allowed);
+  return {
+    "Access-Control-Allow-Origin": responseOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
 }
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB

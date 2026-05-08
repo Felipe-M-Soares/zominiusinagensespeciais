@@ -1,4 +1,4 @@
-import { Package, AlertTriangle, TrendingDown, Wrench, ArrowDownCircle, ArrowUpCircle, Truck, Activity, PackageCheck, X } from "lucide-react";
+import { Package, AlertTriangle, TrendingDown, Wrench, ArrowDownCircle, ArrowUpCircle, Truck, Activity, PackageCheck } from "lucide-react";
 import type { StockItem, AllMovement } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -18,19 +18,11 @@ interface KpiCardProps {
   bg: string;
   border: string;
   description?: string;
-  onClick?: () => void;
 }
 
-function KpiCard({ icon: Icon, label, value, color, bg, border, description, onClick }: KpiCardProps) {
+function KpiCard({ icon: Icon, label, value, color, bg, border, description }: KpiCardProps) {
   return (
-    <div
-      className={cn(
-        "rounded-2xl border p-4 flex items-start gap-3 transition-colors",
-        bg, border,
-        onClick && "cursor-pointer hover:brightness-110"
-      )}
-      onClick={onClick}
-    >
+    <div className={cn("rounded-2xl border p-4 flex items-start gap-3", bg, border)}>
       <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0", bg)}>
         <Icon className={cn("h-5 w-5", color)} />
       </div>
@@ -43,22 +35,15 @@ function KpiCard({ icon: Icon, label, value, color, bg, border, description, onC
   );
 }
 
-interface PecaBaixoEstoque {
-  model: string;
-  reference: string;
-  quantity: number;
-}
-
 export function StockDashboard({ items, loading }: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [movLoading, setMovLoading] = useState(true);
-  const [pedidosPendentes, setPedidosPendentes] = useState(0);
+  const [pedidosSeparando, setPedidosSeparando] = useState(0);
+  const [totalIntermediaria, setTotalIntermediaria] = useState(0);
   const [totalExpedicao, setTotalExpedicao] = useState(0);
+  const [totalRetrabalho, setTotalRetrabalho] = useState(0);
   const [totalTipos, setTotalTipos] = useState(0);
   const [tiposBaixo, setTiposBaixo] = useState(0);
-  const [lotesRetrabalho, setLotesRetrabalho] = useState(0);
-  const [pecasBaixo, setPecasBaixo] = useState<PecaBaixoEstoque[]>([]);
-  const [showBaixoModal, setShowBaixoModal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,17 +55,17 @@ export function StockDashboard({ items, loading }: Props) {
   }, []);
 
   useEffect(() => {
-    async function loadAll() {
-      // 1. Pedidos separando (em separação ativa)
-      supabase
-        .from("pedidos_comerciais")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "separando")
-        .then(({ count }) => setPedidosPendentes(count ?? 0));
+    // Pedidos separando
+    supabase
+      .from("pedidos_comerciais")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "separando")
+      .then(({ count }) => setPedidosSeparando(count ?? 0));
 
-      // 2. Totais por fase + peças expedição com estoque baixo
-      const PAGE_SIZE = 1000;
+    // Totais por fase — busca tudo sem paginação usando aggregate
+    async function loadTotals() {
       let allRows: { device_id: string; quantity: number; fase: string }[] = [];
+      const PAGE_SIZE = 1000;
       let page = 0;
       while (true) {
         const { data, error } = await supabase
@@ -93,74 +78,35 @@ export function StockDashboard({ items, loading }: Props) {
         page++;
       }
 
-      if (allRows.length) {
-        const tiposSet = new Set<string>();
-        const expByDevice = new Map<string, number>();
-        let exped = 0;
+      if (!allRows.length) return;
 
-        for (const row of allRows) {
-          tiposSet.add(row.device_id);
-          if (row.fase === "expedicao") {
-            exped += row.quantity;
-            expByDevice.set(row.device_id, (expByDevice.get(row.device_id) ?? 0) + row.quantity);
-          }
+      let interm = 0, exped = 0, retrab = 0;
+      const tiposSet = new Set<string>();
+      const expByDevice = new Map<string, number>();
+
+      for (const row of allRows) {
+        const qty = (row.quantity as number) ?? 0;
+        const fase = row.fase as string;
+        const deviceId = row.device_id as string;
+        tiposSet.add(deviceId);
+        if (fase === "intermediaria") interm += qty;
+        else if (fase === "expedicao") {
+          exped += qty;
+          expByDevice.set(deviceId, (expByDevice.get(deviceId) ?? 0) + qty);
         }
-
-        const deviceIdsBaixo = Array.from(expByDevice.entries())
-          .filter(([, q]) => q > 0 && q < 100)
-          .map(([id]) => id);
-
-        setTotalExpedicao(exped);
-        setTotalTipos(tiposSet.size);
-        setTiposBaixo(deviceIdsBaixo.length);
-
-        if (deviceIdsBaixo.length > 0) {
-          const { data: devs } = await supabase
-            .from("devices")
-            .select("id, model, reference")
-            .in("id", deviceIdsBaixo);
-          if (devs) {
-            const lista: PecaBaixoEstoque[] = (devs as { id: string; model: string; reference: string }[]).map(d => ({
-              model: d.model,
-              reference: d.reference,
-              quantity: expByDevice.get(d.id) ?? 0,
-            })).sort((a, b) => a.quantity - b.quantity);
-            setPecasBaixo(lista);
-          }
-        } else {
-          setPecasBaixo([]);
-        }
+        else if (fase === "retrabalho") retrab += qty;
       }
 
-      // 3. Lotes em retrabalho — lotes com saldo > 0 nos stock_items de fase retrabalho
-      const { data: retrabItems } = await supabase
-        .from("stock_items")
-        .select("id, quantity")
-        .eq("fase", "retrabalho")
-        .gt("quantity", 0);
+      const baixo = Array.from(expByDevice.values()).filter(q => q > 0 && q < 100).length;
 
-      if (retrabItems && retrabItems.length > 0) {
-        const retrabIds = (retrabItems as { id: string }[]).map(r => r.id);
-        const { data: movs } = await supabase
-          .from("stock_movements")
-          .select("stock_item_id, lote, type, quantity")
-          .in("stock_item_id", retrabIds)
-          .not("lote", "is", null);
-
-        const saldos = new Map<string, number>();
-        for (const m of (movs ?? []) as { stock_item_id: string; lote: string; type: string; quantity: number }[]) {
-          const key = `${m.stock_item_id}|${m.lote.toUpperCase()}`;
-          const cur = saldos.get(key) ?? 0;
-          saldos.set(key, m.type === "entrada" ? cur + m.quantity : cur - m.quantity);
-        }
-        const lotesAtivos = Array.from(saldos.values()).filter(s => s > 0).length;
-        setLotesRetrabalho(lotesAtivos);
-      } else {
-        setLotesRetrabalho(0);
-      }
+      setTotalIntermediaria(interm);
+      setTotalExpedicao(exped);
+      setTotalRetrabalho(retrab);
+      setTotalTipos(tiposSet.size);
+      setTiposBaixo(baixo);
     }
 
-    loadAll();
+    loadTotals();
   }, []);
 
   if (loading) {
@@ -180,20 +126,20 @@ export function StockDashboard({ items, loading }: Props) {
         <KpiCard
           icon={Package}
           label="Total de Peças"
-          value={totalExpedicao.toLocaleString("pt-BR")}
+          value={totalIntermediaria.toLocaleString("pt-BR")}
           color="text-primary"
           bg="bg-primary/5"
           border="border-primary/20"
-          description={`${totalTipos} tipos registrados`}
+          description={`${totalTipos} tipos · ${totalExpedicao} na expedição`}
         />
         <KpiCard
           icon={Wrench}
-          label="Lotes em Retrabalho"
-          value={lotesRetrabalho}
+          label="Peças em Retrabalho"
+          value={totalRetrabalho.toLocaleString("pt-BR")}
           color="text-amber-500"
           bg="bg-amber-500/5"
           border="border-amber-500/20"
-          description="Lotes aguardando retrabalho"
+          description="Aguardando retrabalho"
         />
         <KpiCard
           icon={TrendingDown}
@@ -202,67 +148,18 @@ export function StockDashboard({ items, loading }: Props) {
           color="text-warning"
           bg="bg-warning/5"
           border="border-warning/20"
-          description="Peças na expedição < 100 un."
-          onClick={tiposBaixo > 0 ? () => setShowBaixoModal(true) : undefined}
+          description="Tipos com menos de 100 un."
         />
         <KpiCard
           icon={PackageCheck}
           label="Pedidos Separando"
-          value={pedidosPendentes}
+          value={pedidosSeparando}
           color="text-blue-500"
           bg="bg-blue-500/5"
           border="border-blue-500/20"
           description="Em separação no estoque"
         />
       </div>
-
-      {/* Modal estoque baixo */}
-      {showBaixoModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-          onClick={() => setShowBaixoModal(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border/20">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-warning" />
-                <p className="text-sm font-semibold">Estoque Baixo — Expedição</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowBaixoModal(false)}
-                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="max-h-80 overflow-y-auto divide-y divide-border/20">
-              {pecasBaixo.map((p, i) => (
-                <div key={i} className="flex items-center gap-3 px-5 py-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium truncate">{p.model}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono">{p.reference}</p>
-                  </div>
-                  <span className={cn(
-                    "text-[13px] font-bold tabular-nums shrink-0",
-                    p.quantity < 20 ? "text-destructive" : "text-warning"
-                  )}>
-                    {p.quantity} un.
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="px-5 py-3 border-t border-border/20">
-              <p className="text-[11px] text-muted-foreground/60 text-center">
-                {pecasBaixo.length} {pecasBaixo.length === 1 ? "peça abaixo" : "peças abaixo"} de 100 unidades na expedição
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Últimas Movimentações */}
       <div className="rounded-2xl border border-border/40 overflow-hidden">

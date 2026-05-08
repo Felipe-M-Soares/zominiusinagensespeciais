@@ -16,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { friendlyError } from "@/lib/errorMessages";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { RecebimentoMaterialModal } from "./RecebimentoMaterialModal";
@@ -196,7 +195,7 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
       .eq("id", item.id);
     setLoading(false);
     if (error) {
-      toast.error(friendlyError(error, "Erro ao confirmar retirada."));
+      toast.error("Erro ao confirmar retirada: " + error.message);
     } else {
       toast.success("Retirada confirmada!", {
         description: `${item.quantity} un. · Lote ${item.lote}`,
@@ -278,7 +277,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
       .order("created_at", { ascending: false });
     setLoading(false);
     if (error) {
-      toast.error(friendlyError(error, "Erro ao carregar recebimentos."));
+      toast.error("Erro ao carregar recebimentos: " + error.message);
     } else {
       setItems((data ?? []) as RecebimentoItem[]);
     }
@@ -315,7 +314,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
       .eq("id", deleteItem.id);
     setDeleting(false);
     if (error) {
-      toast.error(friendlyError(error, "Erro ao excluir."));
+      toast.error("Erro ao excluir: " + error.message);
     } else {
       toast.success("Recebimento excluído.");
       setDeleteItem(null);

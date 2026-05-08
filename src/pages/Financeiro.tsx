@@ -12,7 +12,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { friendlyError } from "@/lib/errorMessages";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
@@ -139,7 +138,7 @@ function EmitirNFModal({ pedido, onClose, onSuccess }: EmitirNFModalProps) {
       });
 
       if (rpcErr || (rpcResult as { error?: string })?.error) {
-        toast.error(friendlyError(rpcErr, "Erro ao emitir nota fiscal."));
+        toast.error("Erro ao emitir nota fiscal: " + (rpcErr?.message ?? (rpcResult as { error?: string })?.error));
         return;
       }
 

@@ -318,6 +318,35 @@ export function StockNav({
         })}
       </div>
 
+      {/* ── Preview card (aparece sempre, animado) ── */}
+      {!loading && (
+        <div
+          key={activeView}
+          className={cn(
+            "rounded-2xl border border-border/30 bg-muted/20 px-3 py-2.5",
+            "animate-in fade-in slide-in-from-top-1 duration-200"
+          )}
+        >
+          <div className="flex items-center gap-1.5 mb-2">
+            <activeTab.Icon
+              className={cn("h-3 w-3", activeTab.activeColor)}
+            />
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              {activeTab.label === "Interm." ? "Intermediário" : activeTab.label}
+            </span>
+          </div>
+          <PreviewCard
+            items={previewItems[activeView]}
+            view={activeView}
+            label={activeTab.label}
+            pecasExpedicao={pecasExpedicao}
+            pecasRetrabalho={pecasRetrabalho}
+            tiposBaixo={tiposBaixo}
+            pedidosSeparando={pedidosPendentes ?? 0}
+          />
+        </div>
+      )}
+
       <style>{`
         @keyframes navIconPop {
           0%   { transform: scale(1.1); }

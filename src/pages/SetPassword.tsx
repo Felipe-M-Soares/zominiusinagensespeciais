@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { friendlyError } from "@/lib/errorMessages";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,17 +22,14 @@ export default function SetPassword() {
   // diretamente pela URL e trocar a senha à vontade, ignorando o fluxo normal.
   const [mustChange, setMustChange] = useState<boolean | null>(null);
 
-  // NOVO-COD-01 FIX: AbortController evita atualizar state de componente desmontado
   useEffect(() => {
     if (!user?.id) return;
-    let cancelled = false;
     supabase
       .from("profiles")
       .select("must_change_password")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (cancelled) return;
         if (data?.must_change_password === false) {
           // Não precisa trocar senha — redireciona para home
           navigate("/", { replace: true });
@@ -41,7 +37,6 @@ export default function SetPassword() {
           setMustChange(true);
         }
       });
-    return () => { cancelled = true; };
   }, [user?.id, navigate]);
 
   const displayName =
@@ -85,7 +80,7 @@ export default function SetPassword() {
       // 1. Atualiza a senha no Supabase Auth
       const { error: pwErr } = await supabase.auth.updateUser({ password });
       if (pwErr) {
-        toast.error(friendlyError(pwErr, "Erro ao definir senha."));
+        toast.error("Erro ao definir senha: " + pwErr.message);
         return;
       }
 

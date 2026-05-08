@@ -31,11 +31,9 @@ import {
   Archive,
   Minus,
   Plus,
-  Printer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { friendlyError } from "@/lib/errorMessages";
 import { fetchLotesDisponivelBatch } from "@/hooks/useStock";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/hooks/useAuth";
@@ -62,14 +60,6 @@ interface PedidoItem {
   lote_escolhido?: string;
 }
 
-interface LoteSeparado {
-  pedido_item_id: string;
-  stock_item_id: string;
-  lote: string;
-  quantidade: number;
-  device_model?: string;
-}
-
 interface Pedido {
   id: string;
   cliente_nome: string;
@@ -80,7 +70,6 @@ interface Pedido {
   observacoes: string | null;
   created_at: string;
   itens: PedidoItem[];
-  lotes_separados?: LoteSeparado[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -88,162 +77,6 @@ interface Pedido {
 function fmtDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-}
-
-async function printPedido(pedido: Pedido) {
-  // Monta linhas unitárias: cada unidade de cada lote vira uma linha própria na tabela
-  interface LinhaUnitaria {
-    model: string;
-    reference: string;
-    lote: string;
-  }
-
-  const linhas: LinhaUnitaria[] = [];
-
-  if (pedido.lotes_separados && pedido.lotes_separados.length > 0) {
-    // Usa os lotes salvos na separação
-    for (const ls of pedido.lotes_separados) {
-      const itemRef = pedido.itens.find(i => i.stock_item_id === ls.stock_item_id);
-      const model = ls.device_model ?? itemRef?.device_model ?? "—";
-      const reference = itemRef?.device_reference ?? "";
-      const lote = ls.lote ?? "—";
-      for (let u = 0; u < ls.quantidade; u++) {
-        linhas.push({ model, reference, lote });
-      }
-    }
-  } else {
-    // Fallback: busca lotes reais da expedição no banco
-    const stockItemIds = pedido.itens.map(i => i.stock_item_id);
-    const lotesMap = await fetchLotesDisponivelBatch(stockItemIds);
-
-    for (const item of pedido.itens) {
-      const saldos = lotesMap.get(item.stock_item_id) ?? {};
-      const lotesAtivos = Object.entries(saldos)
-        .filter(([, qty]) => qty > 0)
-        .sort(([a], [b]) => a.localeCompare(b));
-
-      if (lotesAtivos.length > 0) {
-        let restante = item.quantidade;
-        for (const [lote, qty] of lotesAtivos) {
-          if (restante <= 0) break;
-          const usar = Math.min(qty, restante);
-          for (let u = 0; u < usar; u++) {
-            linhas.push({ model: item.device_model ?? "—", reference: item.device_reference ?? "", lote });
-          }
-          restante -= usar;
-        }
-        for (let u = 0; u < restante; u++) {
-          linhas.push({ model: item.device_model ?? "—", reference: item.device_reference ?? "", lote: "—" });
-        }
-      } else {
-        const lote = item.lote && item.lote.trim() ? item.lote : "—";
-        for (let u = 0; u < item.quantidade; u++) {
-          linhas.push({ model: item.device_model ?? "—", reference: item.device_reference ?? "", lote });
-        }
-      }
-    }
-  }
-
-  // Agrupa linhas consecutivas com mesmo modelo+lote para evitar repetição visual desnecessária
-  // mas mantém cada unidade como linha separada com numeração
-  interface GrupoLinha {
-    model: string;
-    reference: string;
-    lote: string;
-    unidades: number;
-    startIdx: number;
-  }
-
-  const grupos: GrupoLinha[] = [];
-  let idx = 1;
-  for (const l of linhas) {
-    const ultimo = grupos[grupos.length - 1];
-    if (ultimo && ultimo.model === l.model && ultimo.lote === l.lote) {
-      ultimo.unidades++;
-    } else {
-      grupos.push({ model: l.model, reference: l.reference, lote: l.lote, unidades: 1, startIdx: idx });
-    }
-    idx++;
-  }
-
-  // Gera as linhas da tabela — uma linha por grupo, mas mostrando cada unidade com check box
-  const rows = grupos.map((g, gi) => {
-    const modelHTML = `<div style="font-size:13px;font-weight:500;color:#111827">${g.model}</div>` +
-      (g.reference ? `<div style="font-size:10px;color:#9ca3af;font-family:monospace;margin-top:1px">${g.reference}</div>` : "");
-
-    const loteHTML = `<span style="font-family:monospace;font-size:12px;font-weight:700;color:#111827;background:#f3f4f6;padding:2px 8px;border-radius:4px;border:1px solid #e5e7eb">${g.lote}</span>`;
-
-    return `
-      <tr style="${gi % 2 === 1 ? "background:#f9fafb" : ""}">
-        <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;vertical-align:middle">${modelHTML}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;text-align:center;vertical-align:middle">
-          <span style="font-size:16px;font-weight:700;color:#111827">${g.unidades}</span>
-        </td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;vertical-align:middle">${loteHTML}</td>
-      </tr>`;
-  }).join("");
-
-  const totalUnidades = linhas.length;
-
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8"/>
-  <title>Pedido — ${pedido.cliente_nome}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827; background: #fff; padding: 28px 32px; }
-    h1 { font-size: 20px; font-weight: 700; }
-    .meta { font-size: 13px; color: #6b7280; margin-bottom: 20px; display: flex; gap: 20px; flex-wrap: wrap; margin-top: 6px; }
-    .meta span { display: flex; align-items: center; gap: 5px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    thead tr { background: #f3f4f6; }
-    thead th { padding: 9px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; font-weight: 600; border-bottom: 2px solid #e5e7eb; }
-    thead th:nth-child(2) { text-align: center; width: 60px; }
-    tfoot td { padding: 10px 12px; font-size: 13px; font-weight: 600; color: #111827; border-top: 2px solid #e5e7eb; }
-    .obs { margin-top: 18px; padding: 11px 14px; background: #fffbeb; border-radius: 8px; font-size: 13px; color: #374151; border: 1px solid #fde68a; }
-    .footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
-    @media print {
-      body { padding: 12px 16px; }
-      thead { display: table-header-group; }
-    }
-  </style>
-</head>
-<body>
-  <h1>Pedido — ${pedido.cliente_nome}</h1>
-  <div class="meta">
-    ${pedido.vendedora_nome ? `<span>👤 ${pedido.vendedora_nome}</span>` : ""}
-    <span>📅 ${fmtDate(pedido.created_at)}</span>
-    <span>📦 Status: <strong>${pedido.status === "pronto" ? "Pronto" : pedido.status === "separando" ? "Separando" : pedido.status}</strong></span>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Peça / Modelo</th>
-        <th style="text-align:center">Qtd.</th>
-        <th>Lote</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-    <tfoot>
-      <tr>
-        <td colspan="3" style="text-align:right">
-          Total: ${totalUnidades} un.
-        </td>
-      </tr>
-    </tfoot>
-  </table>
-  ${pedido.observacoes ? `<div class="obs">📝 ${pedido.observacoes}</div>` : ""}
-  <div class="footer">Concept Usinagens Especiais LTDA-ME — impresso em ${new Date().toLocaleString("pt-BR")}</div>
-</body>
-</html>`;
-
-  const win = window.open("", "_blank", "width=820,height=650");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => { win.print(); }, 400);
 }
 
 function statusColor(status: string) {
@@ -298,7 +131,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   const [lotesSel, setLotesSel] = useState<LoteSelecao>({});
   const [loadingLotes, setLoadingLotes] = useState(false);
   const [salvandoSep, setSalvandoSep] = useState(false);
-  const [printing, setPrinting] = useState(false);
   const loadedRef = useRef(false);
 
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
@@ -762,20 +594,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                 Aguardando Nota Fiscal
               </div>
             )}
-            {/* Botão imprimir — disponível para pedidos separando ou pronto */}
-            {(isSeparando || pedido.status === "pronto") && (
-              <button
-                type="button"
-                onClick={async () => { setPrinting(true); try { await printPedido(pedido); } finally { setPrinting(false); } }}
-                disabled={printing}
-                className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors shrink-0 disabled:opacity-50"
-                title="Imprimir pedido"
-              >
-                {printing
-                  ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  : <Printer className="h-3.5 w-3.5" />}
-              </button>
-            )}
             {(isPendente || isSeparando) && isAdmin && (
               <button
                 type="button"
@@ -804,12 +622,12 @@ interface SepararLotesModalProps {
 function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProps) {
   const { user } = useAuth();
 
-  // Para cada item do pedido: mapa de lote → quantidade escolhida
   const [lotesSelecionados, setLotesSelecionados] = useState<Record<string, Record<string, number>>>({});
   const [lotesDisponiveis, setLotesDisponiveis] = useState<Record<string, LoteDisponivel[]>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (!pedido) return;
@@ -932,7 +750,8 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
   }
 
   async function handleConfirmar() {
-    if (!pedido || !user) return;
+    if (!pedido || !user || submittingRef.current) return;
+    submittingRef.current = true;
     setSaving(true);
 
     // Snapshot com todos os lotes e quantidades escolhidas
@@ -959,9 +778,10 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
       })
       .eq("id", pedido.id);
 
-    if (error) { setSaving(false); toast.error("Erro ao iniciar separação."); return; }
+    if (error) { submittingRef.current = false; setSaving(false); toast.error("Erro ao iniciar separação."); return; }
 
     setSaving(false);
+    submittingRef.current = false;
     setSaved(true);
     toast.success("Separação iniciada! Peças reservadas.");
     onClose();
@@ -1146,21 +966,18 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
   async function handleSalvar() {
     if (!item || qtd < 1) return;
     setSaving(true);
-    // Se há múltiplos itens unificados, distribuímos a nova quantidade entre eles
     const count = item.ids.length;
     const base = Math.floor(qtd / count);
     const remainder = qtd % count;
-    let hasError = false;
-    for (let i = 0; i < item.ids.length; i++) {
-      const novaQtd = base + (i < remainder ? 1 : 0);
-      const { error } = await supabase
-        .from("pedido_itens")
-        .update({ quantidade: novaQtd })
-        .eq("id", item.ids[i]);
-      if (error) { hasError = true; break; }
-    }
+
+    // Run all updates in parallel — independent rows, no ordering dependency
+    const results = await Promise.all(
+      item.ids.map((id, i) =>
+        supabase.from("pedido_itens").update({ quantidade: base + (i < remainder ? 1 : 0) }).eq("id", id)
+      )
+    );
     setSaving(false);
-    if (hasError) { toast.error("Erro ao atualizar quantidade."); return; }
+    if (results.some(r => r.error)) { toast.error("Erro ao atualizar quantidade."); return; }
     toast.success("Quantidade atualizada!");
     onSuccess();
     onClose();
@@ -1296,10 +1113,9 @@ const SearchBarPedidos = memo(function SearchBarPedidos({ onSearch, onClear, has
 
 interface PedidosEstoquePanelProps {
   isAdmin: boolean;
-  onStockRefresh?: () => void;
 }
 
-export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoquePanelProps) {
+export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   const { user } = useAuth();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1319,30 +1135,38 @@ export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoqueP
           pedido_item_id: pid,
           stock_item_id: item.stock_item_id,
           lote,
-          quantidade: Math.round(quantidade / item.ids.length), // distribui proporcionalmente
+          quantidade: Math.round(quantidade / item.ids.length),
           device_model: item.device_model,
         }))
       );
     });
-    const { error } = await supabase
-      .from("pedidos_comerciais")
-      .update({
-        status: "separando",
-        lotes_separados: snapshot,
-        separado_por: user.id,
-        separado_em: new Date().toISOString(),
-      })
-      .eq("id", pedido.id);
-    if (error) { toast.error("Erro ao iniciar separação."); return; }
-    toast.success("Separação iniciada! Peças reservadas.");
-    loadPedidos();
-    onStockRefresh?.();
+    try {
+      const { error } = await supabase
+        .from("pedidos_comerciais")
+        .update({
+          status: "separando",
+          lotes_separados: snapshot,
+          separado_por: user.id,
+          separado_em: new Date().toISOString(),
+        })
+        .eq("id", pedido.id);
+      if (error) { toast.error("Erro ao iniciar separação."); return; }
+      toast.success("Separação iniciada! Peças reservadas.");
+      loadPedidos();
+    } catch (err) {
+      toast.error("Erro inesperado ao iniciar separação.");
+      logger.error("handleIniciarSeparacao:", err);
+    }
   }
 
+  const loadAbortRef = useRef<AbortController | null>(null);
   const loadPedidos = useCallback(async () => {
+    loadAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    loadAbortRef.current = ctrl;
     setLoading(true);
     try {
-      const query = supabase
+      const { data, error } = await supabase
         .from("pedidos_comerciais")
         .select(`
           id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
@@ -1356,10 +1180,11 @@ export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoqueP
             )
           )
         `)
-        .order("created_at", { ascending: false });
+        .in("status", ["pendente", "separando", "pronto"])
+        .order("created_at", { ascending: false })
+        .abortSignal(ctrl.signal);
 
-      const { data, error } = await query;
-
+      if (ctrl.signal.aborted) return;
       if (error || !data) { return; }
 
       const mapped: Pedido[] = data.map((p: Record<string, unknown>) => ({
@@ -1392,7 +1217,6 @@ export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoqueP
           }
           return Object.values(merged);
         })(),
-        lotes_separados: (p.lotes_separados as LoteSeparado[] | null) ?? [],
       }));
 
       setPedidos(mapped);
@@ -1434,14 +1258,20 @@ export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoqueP
       );
     });
     try {
-      // Atualiza lote em cada pedido_item (incluindo duplicatas unificadas)
+      // Batch: collect all itemId → lote pairs and update in one loop without extra await-in-loop
+      const updates: { id: string; lote: string | null }[] = [];
       for (const item of pedido.itens) {
         const sel = lotesSelecionados[item.id] ?? {};
         const lotePrincipal = Object.keys(sel)[0] ?? null;
-        for (const itemId of item.ids) {
-          await supabase.from("pedido_itens").update({ lote: lotePrincipal }).eq("id", itemId);
-        }
+        for (const itemId of item.ids) updates.push({ id: itemId, lote: lotePrincipal });
       }
+      // Run updates in parallel — all independent rows
+      const results = await Promise.all(
+        updates.map(u => supabase.from("pedido_itens").update({ lote: u.lote }).eq("id", u.id))
+      );
+      const hasError = results.some(r => r.error);
+      if (hasError) { toast.error("Erro ao salvar alguns lotes."); return; }
+
       const { error } = await supabase
         .from("pedidos_comerciais")
         .update({ lotes_separados: snapshot })
@@ -1449,7 +1279,6 @@ export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoqueP
       if (error) { toast.error("Erro ao salvar lotes."); return; }
       toast.success("Lotes da separação salvos!");
       loadPedidos();
-      onStockRefresh?.();
     } catch (err) {
       toast.error("Erro inesperado ao salvar lotes. Tente novamente.");
       logger.error("handleSalvarSeparacao:", err);
@@ -1466,13 +1295,12 @@ export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoqueP
       });
 
       if (error || (result as { error?: string })?.error) {
-        toast.error(friendlyError(error, "Erro ao marcar como pronto."));
+        toast.error("Erro ao marcar como pronto: " + (error?.message ?? (result as { error?: string })?.error));
         return;
       }
 
       toast.success("Pedido marcado como pronto! Peças retiradas da expedição.");
       loadPedidos();
-      onStockRefresh?.();
     } catch (err) {
       toast.error("Erro inesperado ao marcar pedido como pronto. Tente novamente.");
       logger.error("handleMarcarPronto:", err);
@@ -1483,47 +1311,12 @@ export function PedidosEstoquePanel({ isAdmin, onStockRefresh }: PedidosEstoqueP
     if (!cancelarPedido) return;
     setCancelando(true);
     try {
-      // Se estava separando, libera as reservas
-      if (cancelarPedido.status === "separando") {
-        for (const item of cancelarPedido.itens) {
-          const { data: si } = await supabase
-            .from("stock_items")
-            .select("id, quantity_reserved, device_id, fase")
-            .eq("id", item.stock_item_id)
-            .single();
-
-          let expItemId = item.stock_item_id;
-          let currentReserved = (si as { quantity_reserved: number } | null)?.quantity_reserved ?? 0;
-
-          if (si && (si as { fase: string }).fase !== "expedicao") {
-            const { data: expSi } = await supabase
-              .from("stock_items")
-              .select("id, quantity_reserved")
-              .eq("device_id", (si as { device_id: string }).device_id)
-              .eq("fase", "expedicao")
-              .single();
-            if (expSi) {
-              expItemId       = (expSi as { id: string }).id;
-              currentReserved = (expSi as { quantity_reserved: number }).quantity_reserved ?? 0;
-            }
-          }
-
-          await supabase
-            .from("stock_items")
-            .update({ quantity_reserved: Math.max(0, currentReserved - item.quantidade) })
-            .eq("id", expItemId);
-        }
-      }
-
-      const { error } = await supabase
-        .from("pedidos_comerciais")
-        .update({ status: "cancelado" })
-        .eq("id", cancelarPedido.id);
+      // Use atomic RPC — cancels pedido + releases all reservations in one transaction
+      const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
       if (error) { toast.error("Erro ao cancelar."); return; }
       toast.success("Pedido cancelado. Reservas liberadas.");
       setCancelarPedido(null);
       loadPedidos();
-      onStockRefresh?.();
     } catch (err) {
       toast.error("Erro inesperado ao cancelar pedido. Tente novamente.");
       logger.error("handleCancelar:", err);

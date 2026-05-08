@@ -279,7 +279,7 @@ export function AdminDevices() {
       );
 
       if (errorMsg || edgeResult?.error) {
-        toast.error("Erro ao importar dispositivos. Verifique o arquivo e tente novamente.");
+        toast.error("Erro ao importar: " + (edgeResult?.error ?? errorMsg));
         return;
       }
 

@@ -374,22 +374,22 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       const { error: itensErr } = await supabase.from("pedido_itens").insert(itensInsert);
       if (itensErr) throw itensErr;
 
-      // BUG-01 FIX: reserve_stock agora retorna boolean (true = reservado, false = insuficiente).
-      // A versão anterior retornava void — qualquer falha por estoque insuficiente era silenciosa
-      // porque reserveResult era sempre null e a checagem de .error nunca disparava.
+      // SEG-01: Use atomic RPC to reserve stock — prevents race condition / overselling
       for (const item of itens) {
-        const { data: reserved, error: reserveErr } = await supabase.rpc("reserve_stock", {
+        const { data: reserveResult, error: reserveErr } = await supabase.rpc("reserve_stock", {
           p_item_id: item.stock_item_id,
           p_qty: item.quantidade,
         });
-        if (reserveErr || reserved === false) {
+        // reserve_stock returns jsonb — check both network error AND silent WHERE-clause failure
+        if (reserveErr || (reserveResult as { error?: string })?.error) {
           throw new Error("Estoque insuficiente para " + item.device_model);
         }
+      }
       }
 
       toast.success("Pedido criado! Peças reservadas na expedição.");
       onSuccess();
-    } catch (_e) {
+    } catch {
       toast.error("Erro ao criar pedido.");
     } finally {
       setSaving(false);
@@ -793,7 +793,7 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
 
       toast.success("Pedido faturado!");
       onSuccess();
-    } catch (_e) {
+    } catch {
       toast.error("Erro ao faturar pedido.");
     } finally {
       submittingRef.current = false;
@@ -1029,7 +1029,7 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
         return m.user_display_name === currentUserName;
       });
       if (!cancelled.v) { setMovements(filtered); setLoading(false); }
-    } catch (_e) {
+    } catch {
       if (!cancelled.v) setLoading(false);
     }
   }, [currentUserName, isAdmin]);
@@ -1365,7 +1365,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       });
 
       setPedidos(mapped);
-    } catch (_e) {
+    } catch {
       toast.error("Erro ao carregar pedidos.");
     } finally {
       setLoadingPedidos(false);
@@ -1378,7 +1378,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       const { data, error } = await supabase.from("clientes").select("*").order("nome");
       if (error) throw error;
       setClientes((data as Cliente[]) ?? []);
-    } catch (_e) {
+    } catch {
       toast.error("Erro ao carregar clientes.");
       setClientes([]);
     } finally {
@@ -1424,7 +1424,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       toast.success("Pedido cancelado.");
       setCancelarPedido(null);
       loadPedidos();
-    } catch (_e) {
+    } catch {
       toast.error("Erro inesperado ao cancelar pedido.");
     } finally {
       setCancelando(false);

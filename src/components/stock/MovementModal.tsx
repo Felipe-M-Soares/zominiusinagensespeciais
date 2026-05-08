@@ -59,6 +59,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
   const [lote, setLote]           = useState("");
   const [reason, setReason]       = useState("");
   const [loading, setLoading]     = useState(false);
+  const submittingRef             = useRef(false);
 
   // Lotes existentes para seleção na saída
   const [existingLotes, setExistingLotes] = useState<LoteSummary[]>([]);
@@ -124,12 +125,12 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
   }
 
   async function handleSubmit() {
-    // SECURITY: força inteiro — Math.trunc() descarta decimais que possam ter
-    // chegado via teclado numérico móvel ou cópia/cola (ex.: "1.5" → 1).
     const safeQty = Math.trunc(resolvedQty);
     if (!item || safeQty < 1) return;
     if (!lote.trim()) { toast.error("Informe o número do lote."); return; }
     if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMYYS-NN ou DDMMYYS-NN/A\nEx: 0101261-01 ou 0101261-01/A"); return; }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
 
     setLoading(true);
     const result = await registerMovement(
@@ -137,6 +138,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
       user?.id ?? null, displayName, lote.trim().toUpperCase()
     );
     setLoading(false);
+    submittingRef.current = false;
     if (result.ok) {
       toast.success(
         type === "entrada"

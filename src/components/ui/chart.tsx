@@ -90,9 +90,6 @@ ${colorConfig
     const color = rawColor ? sanitizeColor(rawColor) : null;
     // SEC: key também sanitizado — apenas identificadores CSS válidos
     const safeKey = key.replace(/[^a-z0-9-]/gi, "");
-    // NOVO-COD-02 FIX: Ignora keys que ficam vazias após sanitização (ex: key = "!!!")
-    // Sem este guard, o CSS gerado seria "--color-: transparent;" que é CSS inválido.
-    if (!safeKey) return null;
     return color ? `  --color-${safeKey}: ${color};` : null;
   })
   .join("\n")}

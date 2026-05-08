@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { sanitizeSearch } from "@/lib/supabaseUtils";
 import { logger } from "@/lib/logger";
 import type { Tables } from "@/integrations/supabase/types";
 import type { Device } from "@/types/device";
@@ -49,7 +48,13 @@ function toDevice(d: DbDevice): Device {
  * Também remove curingas extras (`%`, `_`) que o usuário poderia usar para
  * forçar full-table-scans caros via ILIKE.
  */
-// NOVO-SEG-02 FIX: sanitizeSearch() consolidado em supabaseUtils.ts como sanitizeSearch()
+function sanitizeSearchQuery(raw: string): string {
+  return raw
+    .trim()
+    .slice(0, 200) // limita o tamanho para evitar queries absurdas
+    .replace(/[(),]/g, "")    // remove metacaracteres do parser PostgREST
+    .replace(/[%_\\]/g, "\\$&"); // escapa curingas ILIKE nativos do Postgres
+}
 
 async function queryDevices(
   search: string,
@@ -64,7 +69,7 @@ async function queryDevices(
     .order("model")
     .range(offset, offset + PAGE_SIZE - 1);
 
-  const q = sanitizeSearch(search);
+  const q = sanitizeSearchQuery(search);
   if (q) {
     query = query.or(
       [

@@ -2,26 +2,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 
 /**
- * NOVO-SEG-02 FIX: Sanitiza inputs de busca antes de interpolar em queries
- * PostgREST (.ilike, .or). Exportada para uso em qualquer componente que
- * construa filtros dinamicamente.
- *
- * Remove metacaracteres do parser PostgREST: ( ) , ; ' " `
- * Escapa curingas nativos do ILIKE: % _ \
- * Limita tamanho a 200 chars para evitar queries absurdas.
- */
-export function sanitizeSearch(raw: string): string {
-  return raw
-    .trim()
-    .slice(0, 200)
-    .split("").filter(ch => ch.charCodeAt(0) > 31 && ch.charCodeAt(0) !== 127).join("")
-    .replace(/[(),;'"`]/g, "")
-    .replace(/[%_\\]/g, "\\$&");
-}
-
-
-
-/**
  * CODE-001 FIX: Single shared implementation of paginated "fetch all" from Supabase.
  *
  * PERF-001 NOTE: For large datasets (10 000+ records) prefer server-side pagination

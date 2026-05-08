@@ -73,29 +73,21 @@ export default function Manuals() {
     applyTheme(next ? "dark" : "light");
   }, [isDark]);
 
-  // NOVO-COD-01 FIX: Adicionado AbortController para cancelar fetch ao desmontar
-  // o componente — evita atualizar state de componente desmontado.
-  const fetchManuals = useCallback(async (signal?: AbortSignal) => {
+  const fetchManuals = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from("manuals").select("*").order("created_at", { ascending: false });
-      if (signal?.aborted) return;
       if (error) { logger.error("fetchManuals:", error); toast.error("Erro ao carregar manuais"); }
       else setManuals((data as Manual[]) ?? []);
     } catch (err) {
-      if (signal?.aborted) return;
       logger.error("fetchManuals unexpected:", err);
       toast.error("Erro ao carregar manuais");
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchManuals(controller.signal);
-    return () => controller.abort();
-  }, [fetchManuals]);
+  useEffect(() => { fetchManuals(); }, [fetchManuals]);
 
   const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files ?? []);

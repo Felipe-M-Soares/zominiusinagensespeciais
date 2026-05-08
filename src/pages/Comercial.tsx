@@ -172,7 +172,7 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
       }
       toast.success(inicial ? "Cliente atualizado!" : "Cliente cadastrado!");
       onSuccess(data!);
-    } catch (_e) {
+    } catch {
       toast.error("Erro ao salvar cliente.");
     } finally {
       setSaving(false);
@@ -390,7 +390,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       if (itensErr) throw itensErr;
       toast.success("Pedido criado! O estoque irá separar os lotes.");
       onSuccess();
-    } catch (_e) {
+    } catch {
       toast.error("Erro ao criar pedido.");
     } finally {
       setSaving(false);
@@ -925,21 +925,21 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
         .eq("id", pedido.id);
       if (error) throw error;
 
-      // BUG-01 FIX: reserve_stock agora retorna boolean (true = reservado, false = insuficiente).
-      // A checagem de (reserveResult as {error?})?.error nunca disparava pois a RPC retornava void.
+      // BUG-12 / SEG-01: Use atomic RPC — prevents race condition / overselling
       for (const item of pedido.itens) {
-        const { data: reserved, error: reserveErr } = await supabase.rpc("reserve_stock", {
+        const { data: reserveResult, error: reserveErr } = await supabase.rpc("reserve_stock", {
           p_item_id: item.stock_item_id,
           p_qty: item.quantidade,
         });
-        if (reserveErr || reserved === false) {
+        if (reserveErr || (reserveResult as { error?: string })?.error) {
           throw new Error("Estoque insuficiente para " + (item.device_model ?? item.stock_item_id));
         }
+      }
       }
 
       toast.success("Pedido confirmado! Peças reservadas no estoque.");
       onSuccess();
-    } catch (_e) {
+    } catch {
       toast.error("Erro ao confirmar pedido.");
     } finally {
       setSaving(false);
@@ -1588,7 +1588,7 @@ export default function Comercial() {
         const c = p.clientes as Record<string, unknown> | null;
         return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
-    } catch (_e) {
+    } catch {
       toast.error("Erro ao carregar pedidos.");
     } finally {
       setLoadingPedidos(false);
@@ -1601,7 +1601,7 @@ export default function Comercial() {
       const { data, error } = await supabase.from("clientes").select("*").order("nome");
       if (error) { toast.error("Erro ao carregar clientes."); return; }
       setClientes((data as Cliente[]) ?? []);
-    } catch (_e) {
+    } catch {
       toast.error("Erro ao carregar clientes.");
       setClientes([]);
     } finally {
@@ -1622,7 +1622,7 @@ export default function Comercial() {
       setCancelarPedido(null);
       loadPedidos();
       refetchStock();
-    } catch (_e) {
+    } catch {
       toast.error("Erro inesperado ao cancelar pedido.");
     } finally {
       setCancelando(false);
