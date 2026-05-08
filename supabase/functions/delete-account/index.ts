@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // O CORS estático com domínio hardcoded bloqueia requests quando o domínio de produção
 // não bate exatamente (ex: www. vs sem www, ou domínios custom no Vercel).
 // COD-02 FIX: Importado do módulo compartilhado em vez de duplicar
-import { getCorsHeaders } from "../_shared/cors.ts";;
+import { getCorsHeaders } from "../_shared/cors.ts";
 }
 
 // CODE-006: Validate env vars at startup

@@ -23,14 +23,17 @@ export default function SetPassword() {
   // diretamente pela URL e trocar a senha à vontade, ignorando o fluxo normal.
   const [mustChange, setMustChange] = useState<boolean | null>(null);
 
+  // NOVO-COD-01 FIX: AbortController evita atualizar state de componente desmontado
   useEffect(() => {
     if (!user?.id) return;
+    let cancelled = false;
     supabase
       .from("profiles")
       .select("must_change_password")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
+        if (cancelled) return;
         if (data?.must_change_password === false) {
           // Não precisa trocar senha — redireciona para home
           navigate("/", { replace: true });
@@ -38,6 +41,7 @@ export default function SetPassword() {
           setMustChange(true);
         }
       });
+    return () => { cancelled = true; };
   }, [user?.id, navigate]);
 
   const displayName =

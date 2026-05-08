@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // COD-02 FIX: Importado do módulo compartilhado em vez de duplicar
-import { getCorsHeaders } from "../_shared/cors.ts";;
+import { getCorsHeaders } from "../_shared/cors.ts";
 }
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB

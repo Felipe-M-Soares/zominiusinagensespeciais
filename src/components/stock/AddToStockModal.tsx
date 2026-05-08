@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Search, Plus, ScanBarcode, CheckCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { sanitizeSearch } from "@/lib/supabaseUtils";
 import { addDeviceToStock } from "@/hooks/useStock";
 import type { Device } from "@/types/device";
 import { toast } from "sonner";
@@ -33,16 +34,20 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
   const doSearch = useCallback(async (q: string) => {
     const s = q.trim().slice(0, 200).replace(/[(),]/g, "").replace(/[%_\\]/g, "\\$&");
     if (!s) { setResults([]); return; }
+    // NOVO-SEG-02 FIX: Sanitiza input antes de interpolar em query PostgREST.
+    // Input raw pode conter metacaracteres ( ) , que alteram a estrutura do filtro.
+    const safe = sanitizeSearch(s);
+    if (!safe) { setResults([]); return; }
     setSearching(true);
     const { data } = await supabase
       .from("devices")
       .select("id, udi_di, reference, model, brand_name, internal_code, anvisa_registration, manufacturer_country, classification_code, risk_class, sterile, single_use, implantable, intended_use, body_region, primary_material, secondary_material, surface_treatment, exocad_compatibility, compatible_systems, icon_url")
       .or([
-        `model.ilike.%${s}%`,
-        `reference.ilike.%${s}%`,
-        `udi_di.ilike.%${s}%`,
-        `internal_code.ilike.%${s}%`,
-        `brand_name.ilike.%${s}%`,
+        `model.ilike.%${safe}%`,
+        `reference.ilike.%${safe}%`,
+        `udi_di.ilike.%${safe}%`,
+        `internal_code.ilike.%${safe}%`,
+        `brand_name.ilike.%${safe}%`,
       ].join(","))
       .limit(20);
     setResults((data as DbDevice[]) ?? []);

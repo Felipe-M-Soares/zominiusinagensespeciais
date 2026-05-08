@@ -45,14 +45,7 @@ export interface LoteSummary {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function sanitize(raw: string): string {
-  return raw
-    .trim()
-    .slice(0, 200)
-    .split("").filter(ch => ch.charCodeAt(0) > 31 && ch.charCodeAt(0) !== 127).join("")
-    .replace(/[(),;'"`]/g, "")
-    .replace(/[%_\\]/g, "\\$&");
-}
+// NOVO-SEG-02 FIX: sanitize() consolidado em supabaseUtils.ts como sanitizeSearch()
 
 // ─── Hook principal de estoque ────────────────────────────────────────────────
 

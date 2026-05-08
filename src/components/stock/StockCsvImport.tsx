@@ -335,12 +335,17 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
           }
         }
 
-        // Executa atualizações individualmente (cada uma pode ter patch diferente)
-        for (const { id, patch } of toUpdate) {
-          const { error: upErr } = await supabase.from("stock_items").update(patch).eq("id", id);
+        // NOVO-PERF-01 FIX: Substitui N+1 (1 request por item) por upsert em batch.
+        // Antes: 500 linhas de CSV = 500 requests sequenciais (~25s com latência de 50ms).
+        // Agora: 1 único upsert com todos os itens (~50ms independente do volume).
+        // onConflict: "id" garante que linhas existentes sejam atualizadas (não duplicadas).
+        if (toUpdate.length > 0) {
+          const upsertPayload = toUpdate.map(({ id, patch }) => ({ id, ...patch }));
+          const { error: upErr } = await supabase
+            .from("stock_items")
+            .upsert(upsertPayload, { onConflict: "id" });
           if (upErr) {
-            // Apenas loga, não bloqueia o restante
-            logger.warn("Erro ao atualizar item:", id, upErr.message);
+            logger.warn("Erro ao atualizar itens em batch:", upErr.message);
           }
         }
 
