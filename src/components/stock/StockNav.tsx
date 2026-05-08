@@ -170,14 +170,8 @@ function PreviewCard({
     );
   }
 
-  return (
-    <div className="grid grid-cols-4 gap-2">
-      <PreviewStat value={ok} label="OK" color="text-success" />
-      <PreviewStat value={low} label="Baixo" color="text-warning" />
-      <PreviewStat value={empty} label="Zerado" color="text-destructive" />
-      <PreviewStat value={total} label="Peças" color="text-primary" />
-    </div>
-  );
+  // Sem preview de stats para as abas de lista
+  return null;
 }
 
 function PreviewStat({
