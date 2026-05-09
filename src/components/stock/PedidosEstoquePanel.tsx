@@ -32,6 +32,7 @@ import {
   Minus,
   Plus,
   Printer,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,6 +87,7 @@ function statusColor(status: string) {
   if (status === "pronto") return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
   if (status === "faturado") return "bg-violet-500/10 text-violet-600 border-violet-500/20";
   if (status === "enviado") return "bg-success/10 text-success border-success/20";
+  if (status === "cancelado") return "bg-destructive/10 text-destructive border-destructive/20";
   return "bg-muted/30 text-muted-foreground border-border/30";
 }
 
@@ -124,18 +126,28 @@ interface PedidoCardProps {
   onCancelar: (pedido: Pedido) => void;
   onEditarItem: (pedido: Pedido, item: PedidoItem) => void;
   isAdmin: boolean;
+  readOnly?: boolean;
 }
 
-function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, isAdmin }: PedidoCardProps) {
+function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, isAdmin, readOnly }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   function handleImprimir() {
     const esc = (s: string | null | undefined) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+    const statusTitles: Record<string, string> = {
+      separando: "Pedido em Separação",
+      pronto: "Pedido Pronto",
+      faturado: "Pedido Faturado",
+      enviado: "Pedido Enviado",
+      cancelado: "Pedido Cancelado",
+      pendente: "Pedido Pendente",
+    };
+    const titulo = statusTitles[pedido.status] ?? "Pedido em Separação";
     const rows = pedido.itens.map((item, i) => `<tr><td>${i+1}</td><td>${esc(item.device_model)}</td><td>${esc(item.device_reference)}</td><td style="text-align:center;font-weight:bold">${item.quantidade}</td></tr>`).join("");
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedido em Separação</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
     <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin-bottom:4px}p.sub{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padding:8px 10px;background:#f3f0ff;color:#5b21b6;border-bottom:2px solid #ddd6fe}td{padding:7px 10px;border-bottom:1px solid #eee}.footer{margin-top:20px;font-size:11px;color:#999}@media print{button{display:none}}</style></head><body>
-    <h1>📦 Pedido em Separação</h1>
+    <h1>📦 ${titulo}</h1>
     <p class="sub">Cliente: <strong>${esc(pedido.cliente_nome)}</strong> &nbsp;·&nbsp; Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong> &nbsp;·&nbsp; Gerado em: ${now}</p>
     ${pedido.observacoes ? `<p style="font-size:12px;color:#555;margin-bottom:16px">Obs: ${esc(pedido.observacoes)}</p>` : ""}
     <table><thead><tr><th>#</th><th>Peça</th><th>Referência</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${rows}</tbody></table>
@@ -291,6 +303,9 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       isPendente    ? "border-amber-500/25 bg-amber-500/3" :
       isSeparando   ? "border-blue-500/25 bg-blue-500/3" :
       pedido.status === "pronto" ? "border-emerald-500/25 bg-emerald-500/3" :
+      pedido.status === "faturado" ? "border-violet-500/25 bg-violet-500/3" :
+      pedido.status === "enviado" ? "border-success/25 bg-success/3" :
+      pedido.status === "cancelado" ? "border-destructive/20 bg-destructive/3" :
       "border-border/30 bg-card"
     )}>
       {/* Header — sempre visível */}
@@ -301,11 +316,17 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       >
         <div className={cn(
           "h-9 w-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5",
-          isPendente ? "bg-amber-500/10" : isSeparando ? "bg-blue-500/10" : "bg-muted/30"
+          isPendente ? "bg-amber-500/10" : isSeparando ? "bg-blue-500/10" :
+          pedido.status === "faturado" ? "bg-violet-500/10" :
+          pedido.status === "enviado" ? "bg-success/10" :
+          pedido.status === "cancelado" ? "bg-destructive/10" : "bg-muted/30"
         )}>
           <ShoppingBag className={cn(
             "h-4 w-4",
-            isPendente ? "text-amber-500" : isSeparando ? "text-blue-500" : "text-muted-foreground"
+            isPendente ? "text-amber-500" : isSeparando ? "text-blue-500" :
+            pedido.status === "faturado" ? "text-violet-500" :
+            pedido.status === "enviado" ? "text-success" :
+            pedido.status === "cancelado" ? "text-destructive" : "text-muted-foreground"
           )} />
         </div>
         <div className="flex-1 min-w-0">
@@ -596,7 +617,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
             >
               <Printer className="h-3.5 w-3.5" />
             </button>
-            {isPendente && (
+            {!readOnly && isPendente && (
               <button
                 type="button"
                 onClick={() => onIniciarSeparacao(pedido, lotesSel)}
@@ -607,7 +628,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                 Iniciar Separação
               </button>
             )}
-            {isSeparando && (
+            {!readOnly && isSeparando && (
               <button
                 type="button"
                 onClick={() => onMarcarPronto(pedido)}
@@ -617,13 +638,24 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                 Marcar como Pronto
               </button>
             )}
-            {pedido.status === "pronto" && (
+            {!readOnly && pedido.status === "pronto" && (
               <div className="flex-1 h-9 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-emerald-600 text-[12px] font-medium flex items-center justify-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Aguardando Nota Fiscal
               </div>
             )}
-            {(isPendente || isSeparando) && isAdmin && (
+            {readOnly && (
+              <div className={cn(
+                "flex-1 h-9 rounded-xl border text-[12px] font-medium flex items-center justify-center gap-1.5",
+                pedido.status === "faturado" ? "bg-violet-500/5 border-violet-500/20 text-violet-600" :
+                pedido.status === "enviado" ? "bg-success/5 border-success/20 text-success" :
+                pedido.status === "cancelado" ? "bg-destructive/5 border-destructive/20 text-destructive" :
+                "bg-muted/20 border-border/30 text-muted-foreground"
+              )}>
+                {statusLabel(pedido.status)}
+              </div>
+            )}
+            {!readOnly && (isPendente || isSeparando) && isAdmin && (
               <button
                 type="button"
                 onClick={() => onCancelar(pedido)}
@@ -1147,8 +1179,10 @@ interface PedidosEstoquePanelProps {
 export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   const { user } = useAuth();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [pedidosFinalizados, setPedidosFinalizados] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filtroStatus] = useState<string>("separando_pronto");
+  const [loadingFinalizados, setLoadingFinalizados] = useState(false);
+  const [abaAtiva, setAbaAtiva] = useState<"ativos" | "finalizados">("ativos");
   const [searchQuery, setSearchQuery] = useState("");
   const [hasSearch, setHasSearch] = useState(false);
   const [cancelarPedido, setCancelarPedido] = useState<Pedido | null>(null);
@@ -1169,6 +1203,12 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         }))
       );
     });
+
+    // Atualização otimista: muda status localmente antes da resposta do servidor
+    setPedidos(prev => prev.map(p =>
+      p.id === pedido.id ? { ...p, status: "separando" } : p
+    ));
+
     try {
       const { error } = await supabase
         .from("pedidos_comerciais")
@@ -1179,16 +1219,60 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           separado_em: new Date().toISOString(),
         })
         .eq("id", pedido.id);
-      if (error) { toast.error("Erro ao iniciar separação."); return; }
+      if (error) {
+        // Reverte em caso de erro
+        setPedidos(prev => prev.map(p =>
+          p.id === pedido.id ? { ...p, status: "pendente" } : p
+        ));
+        toast.error("Erro ao iniciar separação."); return;
+      }
       toast.success("Separação iniciada! Peças reservadas.");
       loadPedidos();
     } catch (err) {
+      setPedidos(prev => prev.map(p =>
+        p.id === pedido.id ? { ...p, status: "pendente" } : p
+      ));
       toast.error("Erro inesperado ao iniciar separação.");
       logger.error("handleIniciarSeparacao:", err);
     }
   }
 
   const loadAbortRef = useRef<AbortController | null>(null);
+
+  function mapPedidosData(data: Record<string, unknown>[]): Pedido[] {
+    return data.map((p: Record<string, unknown>) => ({
+      id: p.id as string,
+      cliente_nome: (p.clientes as { nome: string }).nome,
+      vendedora_nome: p.vendedora_nome as string | null,
+      vendedora_id: p.vendedora_id as string | null,
+      status: p.status as string,
+      frete: (p.frete as number) ?? 0,
+      observacoes: p.observacoes as string | null,
+      created_at: p.created_at as string,
+      itens: (() => {
+        const raw = ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
+          id: i.id as string,
+          ids: [i.id as string],
+          stock_item_id: i.stock_item_id as string,
+          lote: i.lote as string,
+          quantidade: i.quantidade as number,
+          device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
+          device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
+        }));
+        const merged: Record<string, typeof raw[0]> = {};
+        for (const item of raw) {
+          if (merged[item.stock_item_id]) {
+            merged[item.stock_item_id].quantidade += item.quantidade;
+            merged[item.stock_item_id].ids.push(item.id);
+          } else {
+            merged[item.stock_item_id] = { ...item };
+          }
+        }
+        return Object.values(merged);
+      })(),
+    }));
+  }
+
   const loadPedidos = useCallback(async () => {
     loadAbortRef.current?.abort();
     const ctrl = new AbortController();
@@ -1216,39 +1300,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       if (ctrl.signal.aborted) return;
       if (error || !data) { return; }
 
-      const mapped: Pedido[] = data.map((p: Record<string, unknown>) => ({
-        id: p.id as string,
-        cliente_nome: (p.clientes as { nome: string }).nome,
-        vendedora_nome: p.vendedora_nome as string | null,
-        vendedora_id: p.vendedora_id as string | null,
-        status: p.status as string,
-        frete: (p.frete as number) ?? 0,
-        observacoes: p.observacoes as string | null,
-        created_at: p.created_at as string,
-        itens: (() => {
-          const raw = ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
-            id: i.id as string,
-            ids: [i.id as string],
-            stock_item_id: i.stock_item_id as string,
-            lote: i.lote as string,
-            quantidade: i.quantidade as number,
-            device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
-            device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
-          }));
-          const merged: Record<string, typeof raw[0]> = {};
-          for (const item of raw) {
-            if (merged[item.stock_item_id]) {
-              merged[item.stock_item_id].quantidade += item.quantidade;
-              merged[item.stock_item_id].ids.push(item.id);
-            } else {
-              merged[item.stock_item_id] = { ...item };
-            }
-          }
-          return Object.values(merged);
-        })(),
-      }));
-
-      setPedidos(mapped);
+      setPedidos(mapPedidosData(data as Record<string, unknown>[]));
     } catch (err) {
       logger.error("loadPedidos:", err);
       toast.error("Erro ao carregar pedidos. Tente atualizar a página.");
@@ -1257,12 +1309,58 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     }
   }, []);
 
+  const loadPedidosFinalizados = useCallback(async () => {
+    setLoadingFinalizados(true);
+    try {
+      const { data, error } = await supabase
+        .from("pedidos_comerciais")
+        .select(`
+          id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
+          created_at, lotes_separados, separado_em,
+          clientes!inner(nome),
+          pedido_itens(
+            id, stock_item_id, lote, quantidade,
+            stock_items!inner(
+              stock_item_id:id,
+              devices!inner(model, reference)
+            )
+          )
+        `)
+        .in("status", ["faturado", "enviado", "cancelado"])
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (error || !data) { return; }
+      setPedidosFinalizados(mapPedidosData(data as Record<string, unknown>[]));
+    } catch (err) {
+      logger.error("loadPedidosFinalizados:", err);
+      toast.error("Erro ao carregar pedidos finalizados.");
+    } finally {
+      setLoadingFinalizados(false);
+    }
+  }, []);
+
   useEffect(() => { loadPedidos(); }, [loadPedidos]);
 
+  // Carrega finalizados ao trocar para aba finalizados
+  useEffect(() => {
+    if (abaAtiva === "finalizados" && pedidosFinalizados.length === 0) {
+      loadPedidosFinalizados();
+    }
+  }, [abaAtiva, loadPedidosFinalizados, pedidosFinalizados.length]);
 
   const filtrados = pedidos.filter(p => {
-    const matchStatus = p.status === "separando" || p.status === "pronto";
+    const matchStatus = p.status === "separando" || p.status === "pronto" || p.status === "pendente";
     if (!matchStatus) return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      p.cliente_nome.toLowerCase().includes(q) ||
+      (p.vendedora_nome ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const filtradosFinalizados = pedidosFinalizados.filter(p => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -1356,6 +1454,41 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
   return (
     <div className="space-y-4">
+      {/* Abas Ativos / Finalizados */}
+      <div className="flex items-center gap-2 border-b border-border/30 pb-0">
+        <button
+          type="button"
+          onClick={() => setAbaAtiva("ativos")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 pb-2.5 text-[12px] font-semibold border-b-2 transition-colors -mb-px",
+            abaAtiva === "ativos"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <ShoppingBag className="h-3.5 w-3.5" />
+          Em Andamento
+          {filtrados.length > 0 && (
+            <span className="bg-primary/15 text-primary rounded-full px-1.5 py-0.5 text-[10px] font-bold">
+              {filtrados.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setAbaAtiva("finalizados")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 pb-2.5 text-[12px] font-semibold border-b-2 transition-colors -mb-px",
+            abaAtiva === "finalizados"
+              ? "border-violet-500 text-violet-600"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <History className="h-3.5 w-3.5" />
+          Finalizados
+        </button>
+      </div>
+
       {/* Busca + Atualizar */}
       <div className="flex items-center gap-2">
         <SearchBarPedidos
@@ -1365,39 +1498,71 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         />
         <button
           type="button"
-          onClick={loadPedidos}
+          onClick={abaAtiva === "ativos" ? loadPedidos : loadPedidosFinalizados}
           className="h-9 w-9 flex items-center justify-center rounded-full bg-muted/30 border border-border/40 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0"
           title="Atualizar"
         >
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          <RefreshCw className={cn("h-3.5 w-3.5", (loading || loadingFinalizados) && "animate-spin")} />
         </button>
       </div>
 
-      {/* Lista */}
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
-        </div>
-      ) : filtrados.length === 0 ? (
-        <div className="text-center py-16 space-y-2">
-          <ShoppingBag className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-          <p className="text-sm text-muted-foreground">Nenhum pedido encontrado</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {filtrados.map(pedido => (
-            <PedidoCard
-              key={pedido.id}
-              pedido={pedido}
-              onIniciarSeparacao={handleIniciarSeparacao}
-              onSalvarSeparacao={handleSalvarSeparacao}
-              onMarcarPronto={handleMarcarPronto}
-              onCancelar={setCancelarPedido}
-              onEditarItem={(pedido, item) => setEditarItem({ pedido, item })}
-              isAdmin={isAdmin}
-            />
-          ))}
-        </div>
+      {/* Lista Ativos */}
+      {abaAtiva === "ativos" && (
+        loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+          </div>
+        ) : filtrados.length === 0 ? (
+          <div className="text-center py-16 space-y-2">
+            <ShoppingBag className="h-10 w-10 text-muted-foreground/30 mx-auto" />
+            <p className="text-sm text-muted-foreground">Nenhum pedido em andamento</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filtrados.map(pedido => (
+              <PedidoCard
+                key={pedido.id}
+                pedido={pedido}
+                onIniciarSeparacao={handleIniciarSeparacao}
+                onSalvarSeparacao={handleSalvarSeparacao}
+                onMarcarPronto={handleMarcarPronto}
+                onCancelar={setCancelarPedido}
+                onEditarItem={(pedido, item) => setEditarItem({ pedido, item })}
+                isAdmin={isAdmin}
+              />
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Lista Finalizados */}
+      {abaAtiva === "finalizados" && (
+        loadingFinalizados ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin h-6 w-6 border-2 border-violet-500 border-t-transparent rounded-full" />
+          </div>
+        ) : filtradosFinalizados.length === 0 ? (
+          <div className="text-center py-16 space-y-2">
+            <History className="h-10 w-10 text-muted-foreground/30 mx-auto" />
+            <p className="text-sm text-muted-foreground">Nenhum pedido finalizado encontrado</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filtradosFinalizados.map(pedido => (
+              <PedidoCard
+                key={pedido.id}
+                pedido={pedido}
+                onIniciarSeparacao={handleIniciarSeparacao}
+                onSalvarSeparacao={handleSalvarSeparacao}
+                onMarcarPronto={handleMarcarPronto}
+                onCancelar={setCancelarPedido}
+                onEditarItem={(pedido, item) => setEditarItem({ pedido, item })}
+                isAdmin={isAdmin}
+                readOnly
+              />
+            ))}
+          </div>
+        )
       )}
 
       {/* Modal editar quantidade de item pendente */}
