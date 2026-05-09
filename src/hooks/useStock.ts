@@ -184,7 +184,18 @@ export function useStock(search: string) {
 
 // ─── Hook de movimentos de um item ────────────────────────────────────────────
 
-export function useStockMovements(stockItemId: string | null) {
+// Reasons de movimentos internos entre fases — nunca devem aparecer no histórico da expedição
+const EXPEDICAO_INTERNAL_REASONS = [
+  "Recebido de Intermediário",
+  "Enviado para Retrabalho",
+  "Retrabalho concluído — recebido do Retrabalho",
+  "Retrabalho concluído — enviado para Expedição",
+  "Rollback — falha ao criar item de retrabalho",
+  "Rollback — falha ao criar item de expedição",
+  "Rollback — falha ao registrar entrada na expedição",
+];
+
+export function useStockMovements(stockItemId: string | null, fase?: StockFase) {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(false);
   const cancelledRef = useRef<boolean>(false);
@@ -201,7 +212,12 @@ export function useStockMovements(stockItemId: string | null) {
         .limit(100);
       if (cancelledRef.current) return;
       if (error) throw error;
-      setMovements((data as StockMovement[]) ?? []);
+      let rows = (data as StockMovement[]) ?? [];
+      // Na expedição, filtra movimentos internos de transferência entre fases
+      if (fase === "expedicao") {
+        rows = rows.filter(m => !m.reason || !EXPEDICAO_INTERNAL_REASONS.includes(m.reason));
+      }
+      setMovements(rows);
     } catch (err) {
       if (!cancelledRef.current) {
         logger.error("useStockMovements error:", err);
@@ -210,7 +226,7 @@ export function useStockMovements(stockItemId: string | null) {
     } finally {
       if (!cancelledRef.current) setLoading(false);
     }
-  }, []);
+  }, [fase]);
 
   useEffect(() => {
     cancelledRef.current = false;

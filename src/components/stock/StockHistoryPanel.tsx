@@ -21,7 +21,7 @@ interface Props {
 }
 
 export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
-  const { movements, loading, refetch } = useStockMovements(open && item ? item.id : null);
+  const { movements, loading, refetch } = useStockMovements(open && item ? item.id : null, item?.fase);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
 
