@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import {
   Dialog,
@@ -435,8 +436,8 @@ export function BackupPanel({ open, onClose }: Props) {
     </Dialog>
 
     {/* Modal de confirmação — apagar histórico */}
-    {clearConfirm && (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    {clearConfirm && createPortal(
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
         <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
@@ -483,7 +484,7 @@ export function BackupPanel({ open, onClose }: Props) {
           </div>
         </div>
       </div>
-    )}
+    , document.body)}
     </>
   );
 }
