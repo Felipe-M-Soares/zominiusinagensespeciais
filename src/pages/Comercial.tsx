@@ -918,25 +918,16 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
     if (!pedido) return;
     setSaving(true);
     try {
-      // 1. Muda status do pedido para "separando"
+      // Apenas muda o status — a reserva já foi feita quando o pedido foi criado.
+      // Chamar reserve_stock aqui causaria reserva dupla, inflando quantity_reserved
+      // e fazendo quantity_available ficar negativo ou zerar todo o estoque ao marcar pronto.
       const { error } = await supabase
         .from("pedidos_comerciais")
         .update({ status: "separando" })
         .eq("id", pedido.id);
       if (error) throw error;
 
-      // BUG-12 / SEG-01: Use atomic RPC — prevents race condition / overselling
-      for (const item of pedido.itens) {
-        const { data: reserveResult, error: reserveErr } = await supabase.rpc("reserve_stock", {
-          p_item_id: item.stock_item_id,
-          p_qty: item.quantidade,
-        });
-        if (reserveErr || (reserveResult as { error?: string })?.error) {
-          throw new Error("Estoque insuficiente para " + (item.device_model ?? item.stock_item_id));
-        }
-      }
-
-      toast.success("Pedido confirmado! Peças reservadas no estoque.");
+      toast.success("Pedido confirmado! Encaminhado para separação.");
       onSuccess();
     } catch (_e) {
       toast.error("Erro ao confirmar pedido.");
@@ -963,7 +954,7 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
           <p className="text-[12px] text-muted-foreground">
             <strong className="text-foreground">{total} unidade{total !== 1 ? "s" : ""}</strong> serão encaminhadas ao estoque para separação.
           </p>
-          <p className="text-[11px] text-muted-foreground/70">O estoque vai separar os lotes → financeiro emite a NF → cliente recebe.</p>
+          <p className="text-[11px] text-muted-foreground/70">As peças já estão reservadas. O estoque irá separar os lotes e confirmar o envio.</p>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
