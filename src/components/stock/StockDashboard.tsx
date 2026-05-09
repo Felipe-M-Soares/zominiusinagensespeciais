@@ -103,7 +103,7 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
 
         <div className="px-5 py-3 border-t border-border/40 bg-muted/10">
           <p className="text-[11px] text-muted-foreground/60">
-            {lotes.length} {lotes.length === 1 ? "lote abaixo" : "lotes abaixo"} de 100 unidades na expedição
+            {lotes.length} {lotes.length === 1 ? "lote abaixo" : "lotes abaixo"} de 100 unidades na expedição (incluindo zerados)
           </p>
         </div>
       </div>
@@ -226,10 +226,10 @@ export function StockDashboard({ items, loading }: Props) {
         countLotesComSaldo(retrabalhoItemIds),
       ]);
 
-      // 4. Lotes (devices) na expedição com quantidade < 100
+      // 4. Lotes (devices) na expedição com quantidade < 100 (incluindo zerados)
       const baixoDeviceIds: string[] = [];
       for (const [deviceId, qty] of expByDevice.entries()) {
-        if (qty > 0 && qty < 100) baixoDeviceIds.push(deviceId);
+        if (qty < 100) baixoDeviceIds.push(deviceId);
       }
 
       let baixoLotes: LoteBaixo[] = [];
@@ -305,7 +305,7 @@ export function StockDashboard({ items, loading }: Props) {
           color="text-warning"
           bg="bg-warning/5"
           border="border-warning/20"
-          description="Lotes na expedição abaixo de 100 un."
+          description="Lotes na expedição zerados ou abaixo de 100 un."
           onClick={() => setModalBaixoOpen(true)}
         />
 
