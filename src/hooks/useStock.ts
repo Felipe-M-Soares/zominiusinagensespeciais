@@ -163,6 +163,48 @@ export function useStock(search: string) {
         // Filtra itens órfãos: stock_items sem device associado causam crash no render
         .filter((item) => item.device != null);
 
+      // Recalcula quantity_reserved a partir dos pedido_itens ativos (pedidos pendentes/separando/pronto)
+      // Garante que o badge "Reservado" no card reflita a realidade independente do RPC reserve_stock.
+      try {
+        const expedicaoIds = normalized.filter(i => i.fase === "expedicao").map(i => i.id);
+        if (expedicaoIds.length > 0) {
+          // Busca pedidos ativos primeiro
+          const { data: pedidosAtivos } = await supabase
+            .from("pedidos_comerciais")
+            .select("id")
+            .in("status", ["pendente", "separando", "pronto"]);
+
+          const pedidoIds = (pedidosAtivos ?? []).map((p: { id: string }) => p.id);
+
+          // Monta mapa de reservas reais (zero para itens sem pedido ativo)
+          const reservaMap = new Map<string, number>();
+          for (const id of expedicaoIds) reservaMap.set(id, 0);
+
+          if (pedidoIds.length > 0) {
+            const { data: pedidoItens } = await supabase
+              .from("pedido_itens")
+              .select("stock_item_id, quantidade")
+              .in("stock_item_id", expedicaoIds)
+              .in("pedido_id", pedidoIds);
+
+            for (const pi of (pedidoItens ?? []) as { stock_item_id: string; quantidade: number }[]) {
+              reservaMap.set(pi.stock_item_id, (reservaMap.get(pi.stock_item_id) ?? 0) + pi.quantidade);
+            }
+          }
+
+          // Aplica o recálculo em todos os itens de expedição
+          for (const item of normalized) {
+            if (item.fase === "expedicao") {
+              const reservaReal = reservaMap.get(item.id) ?? 0;
+              item.quantity_reserved = reservaReal;
+              item.quantity_available = Math.max(0, item.quantity - reservaReal);
+            }
+          }
+        }
+      } catch {
+        // Falha silenciosa — usa o quantity_reserved do banco como fallback
+      }
+
       setItems(normalized);
       setTotalCount(fetchedCount);
     } catch (e: unknown) {

@@ -380,9 +380,10 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           p_item_id: item.stock_item_id,
           p_qty: item.quantidade,
         });
-        // reserve_stock returns jsonb — check both network error AND silent WHERE-clause failure
-        if (reserveErr || (reserveResult as { error?: string })?.error) {
-          throw new Error("Estoque insuficiente para " + item.device_model);
+        // reserve_stock returns jsonb { ok, error? } — check network error AND business logic failure
+        const result = reserveResult as { ok?: boolean; error?: string } | null;
+        if (reserveErr || result?.ok === false) {
+          throw new Error(result?.error ?? ("Estoque insuficiente para " + item.device_model));
         }
       }
 

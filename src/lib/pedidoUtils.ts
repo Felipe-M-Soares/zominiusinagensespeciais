@@ -73,16 +73,17 @@ export async function criarPedidoComReserva(
   if (itensErr) return { ok: false, error: "Erro ao inserir itens do pedido." };
 
   // 3. Reserva estoque atomicamente para cada item
-  // BUG-01 FIX: reserve_stock retorna boolean — false = estoque insuficiente
+  // reserve_stock retorna jsonb { ok, error? } — verifica falha de negócio E de rede
   for (const item of itens) {
     const { data: reserved, error: reserveErr } = await supabase.rpc("reserve_stock", {
       p_item_id: item.stock_item_id,
       p_qty: item.quantidade,
     });
-    if (reserveErr || reserved === false) {
+    const result = reserved as { ok?: boolean; error?: string } | null;
+    if (reserveErr || result?.ok === false) {
       return {
         ok: false,
-        error: `Estoque insuficiente para ${item.device_model ?? item.stock_item_id}`,
+        error: result?.error ?? `Estoque insuficiente para ${item.device_model ?? item.stock_item_id}`,
       };
     }
   }
