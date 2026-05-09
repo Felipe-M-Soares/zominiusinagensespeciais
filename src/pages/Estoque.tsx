@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -678,6 +679,21 @@ export default function Estoque() {
   const [csvOpen, setCsvOpen] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deleteAllTyped, setDeleteAllTyped] = useState("");
+  const [clearHistConfirm, setClearHistConfirm] = useState(false);
+  const [clearingHist, setClearingHist] = useState(false);
+
+  async function clearAllHistory() {
+    setClearingHist(true);
+    const { error: e1 } = await supabase.from("pedido_itens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (!e1) await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (!e1) await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (!e1) await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
+    setClearingHist(false);
+    if (e1) { toast.error("Erro ao apagar histórico."); return; }
+    toast.success("Histórico apagado com sucesso.");
+    setClearHistConfirm(false);
+    refetch();
+  }
   const [deletingAll, setDeletingAll] = useState(false);
   const [transferItem, setTransferItem] = useState<StockItem | null>(null);
   const [retrabalhoItem, setRetrabalhoItem] = useState<StockItem | null>(null);
@@ -938,6 +954,14 @@ export default function Estoque() {
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
                     <DatabaseBackup className="h-3.5 w-3.5" /> Backup
                   </Button>
+                  <button
+                    type="button"
+                    onClick={() => setClearHistConfirm(true)}
+                    title="Apagar todo o histórico"
+                    className="h-8 w-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                   <Button size="sm" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setAddOpen(true)}>
                     <Plus className="h-3.5 w-3.5" /> Adicionar
                   </Button>
@@ -958,6 +982,7 @@ export default function Estoque() {
                         { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
                         { label: "Importar CSV", icon: ScanBarcode, action: () => setCsvOpen(true) },
                         { label: "Backup", icon: DatabaseBackup, action: () => setBackupOpen(true) },
+                        { label: "Apagar Histórico", icon: Trash2, action: () => setClearHistConfirm(true), danger: true },
                         { label: "Excluir Todo Estoque", icon: Trash2, action: () => setDeleteAllOpen(true), danger: true },
                       ].map(({ label, icon: Icon, action, danger }) => (
                         <button
@@ -1548,5 +1573,37 @@ export default function Estoque() {
         </div>
       )}
     </div>
+
+    {/* Modal confirmar apagar histórico */}
+    {clearHistConfirm && createPortal(
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-destructive">Apagar todo o histórico?</p>
+              <p className="text-[12px] text-muted-foreground mt-1">
+                Isso vai apagar <strong>todos os movimentos</strong>, pedidos comerciais e zerar o estoque de todas as peças. Esta ação <strong>não pode ser desfeita</strong>.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setClearHistConfirm(false)} disabled={clearingHist}
+              className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">
+              Cancelar
+            </button>
+            <button type="button" onClick={clearAllHistory} disabled={clearingHist}
+              className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
+              {clearingHist
+                ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                : <Trash2 className="h-3.5 w-3.5" />}
+              Apagar tudo
+            </button>
+          </div>
+        </div>
+      </div>
+    , document.body)}
   );
 }
