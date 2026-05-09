@@ -420,12 +420,14 @@ export async function transferToRetrabalho(
   );
   if (!saidaResult.ok) return saidaResult;
 
-  // 2. Localiza ou cria item de retrabalho para o mesmo device
+  // 2. Localiza ou cria item de retrabalho para o mesmo device+lote
+  // Cada lote deve ter seu próprio stock_item de retrabalho para aparecer separado no painel
   const { data: existing } = await supabase
     .from("stock_items")
     .select("id")
     .eq("device_id", deviceId)
     .eq("fase", "retrabalho")
+    .filter("notes", "ilike", `%lote:${lote.toUpperCase()}%`)
     .maybeSingle();
 
   let retrabalhoItemId: string | null = existing?.id ?? null;
@@ -444,7 +446,7 @@ export async function transferToRetrabalho(
         quantity: 0,
         min_quantity: 0,
         location: srcItem?.location ?? null,
-        notes: srcItem?.notes ?? null,
+        notes: `lote:${lote.toUpperCase()}${srcItem?.notes ? ` | ${srcItem.notes}` : ""}`,
         fase: "retrabalho",
       })
       .select("id")
