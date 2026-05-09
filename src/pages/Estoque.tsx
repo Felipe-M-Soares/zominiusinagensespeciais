@@ -91,9 +91,9 @@ const IntermediaryCard = memo(function IntermediaryCard({
   item, onEntrada, onTransfer, onHistory, onDelete, onLotes, onReset, loteCount, isAdmin,
 }: IntermediaryCardProps) {
   const d = item.device;
-  const available = item.quantity_available;
-  const isLow = available > 0 && available <= item.min_quantity;
-  const isEmpty = available === 0;
+  const qty = item.quantity;
+  const isLow = qty > 0 && qty <= item.min_quantity;
+  const isEmpty = qty === 0;
 
   return (
     <div
@@ -109,7 +109,6 @@ const IntermediaryCard = memo(function IntermediaryCard({
       )} />
 
       <div className="p-4 space-y-3">
-        {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-0.5">
             <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
@@ -122,7 +121,6 @@ const IntermediaryCard = memo(function IntermediaryCard({
 
         {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
 
-        {/* Badges */}
         <div className="flex flex-wrap gap-1 -mt-1">
           {d.sterile && (
             <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
@@ -141,26 +139,24 @@ const IntermediaryCard = memo(function IntermediaryCard({
           )}
         </div>
 
-        {/* Quantidade */}
         <div className={cn(
           "flex items-center justify-between rounded-xl px-3 py-2 border",
-          isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-muted/20 border-border/30"
+          isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-primary/8 border-primary/25"
         )}>
           <div className="flex items-center gap-1.5">
-            <Package className={cn("h-3.5 w-3.5", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-muted-foreground")} />
+            <PackageCheck className={cn("h-3.5 w-3.5", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")} />
             <span className="text-[11px] font-medium text-muted-foreground">Intermediário</span>
           </div>
           <div className="flex items-center gap-1.5">
             {isEmpty && <AlertTriangle className="h-3 w-3 text-destructive" />}
             {isLow && !isEmpty && <TrendingDown className="h-3 w-3 text-warning" />}
-            <span className={cn("text-[15px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-foreground")}>
-              {item.quantity}
+            <span className={cn("text-[15px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")}>
+              {qty}
             </span>
             <span className="text-[10px] text-muted-foreground">un.</span>
           </div>
         </div>
 
-        {/* Lotes */}
         {loteCount > 0 && (
           <button
             type="button"
@@ -173,22 +169,6 @@ const IntermediaryCard = memo(function IntermediaryCard({
           </button>
         )}
 
-        {/* Min e localização */}
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
-          <span>Mín: {item.min_quantity} un.</span>
-          {item.location && <span className="truncate ml-2">📍 {item.location}</span>}
-        </div>
-
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
-          <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
-          {d.manufacturer_country && (
-            <span className="flex items-center gap-0.5 shrink-0 ml-2" title={d.manufacturer_country}>
-              <span>{countryFlag(d.manufacturer_country)}</span>
-            </span>
-          )}
-        </div>
-
-        {/* Botões */}
         <div className="space-y-1.5 pt-1 border-t border-border/20">
           <button
             type="button"
@@ -201,7 +181,7 @@ const IntermediaryCard = memo(function IntermediaryCard({
           <button
             type="button"
             onClick={() => onTransfer(item)}
-            disabled={item.quantity === 0}
+            disabled={qty === 0}
             className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
             <Truck className="h-3.5 w-3.5" />
@@ -250,7 +230,6 @@ const IntermediaryCard = memo(function IntermediaryCard({
     </div>
   );
 });
-
 interface RetrabalhoCardProps {
   item: StockItem;
   onConcluir: (item: StockItem) => void;

@@ -133,15 +133,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   function handleImprimir() {
     const esc = (s: string | null | undefined) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
-    const statusTitles: Record<string, string> = {
-      separando: "Pedido em Separação",
-      pronto: "Pedido Pronto",
-      faturado: "Pedido Faturado",
-      enviado: "Pedido Enviado",
-      cancelado: "Pedido Cancelado",
-      pendente: "Pedido Pendente",
-    };
-    const titulo = statusTitles[pedido.status] ?? "Pedido em Separação";
+    const titulo = "Pedido";
     const rows = pedido.itens.map((item, i) => `<tr><td>${i+1}</td><td>${esc(item.device_model)}</td><td>${esc(item.device_reference)}</td><td style="text-align:center;font-weight:bold">${item.quantidade}</td></tr>`).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
     <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin-bottom:4px}p.sub{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padding:8px 10px;background:#f3f0ff;color:#5b21b6;border-bottom:2px solid #ddd6fe}td{padding:7px 10px;border-bottom:1px solid #eee}.footer{margin-top:20px;font-size:11px;color:#999}@media print{button{display:none}}</style></head><body>
