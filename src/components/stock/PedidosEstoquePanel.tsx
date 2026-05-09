@@ -152,7 +152,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     ${pedido.observacoes ? `<p style="font-size:12px;color:#555;margin-bottom:16px">Obs: ${esc(pedido.observacoes)}</p>` : ""}
     <table><thead><tr><th>#</th><th>Peça</th><th>Referência</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${rows}</tbody></table>
     <p class="footer">Total: ${pedido.itens.reduce((s,i)=>s+i.quantidade,0)} peças · ${pedido.itens.length} tipo(s)</p>
-    <script>window.onload = function(){ window.print(); }<\/script>
+    <script>window.onload = function(){ window.print(); }</` + `script>
     </body></html>`;
     const w = window.open("", "_blank");
     if (!w) return;

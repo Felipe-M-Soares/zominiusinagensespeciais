@@ -42,7 +42,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
       setLotes([]);
     }
     return () => { cancelled = true; };
-  }, [open, item]);
+  }, [open, item, isExpedicao]);
 
   if (!item) return null;
 
