@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tag, TrendingUp, TrendingDown, Minus, RefreshCw } from "lucide-react";
+import { Tag, TrendingUp, TrendingDown, Minus, RefreshCw, PackageCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchLotesSummary } from "@/hooks/useStock";
 import type { LoteSummary, StockItem } from "@/hooks/useStock";
@@ -21,7 +21,10 @@ export function LotesPanel({ item, open, onClose }: Props) {
   const [lotes, setLotes] = useState<LoteSummary[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const isExpedicao = item?.fase === "expedicao";
+
   async function load(id: string) {
+    if (isExpedicao) return; // expedição não precisa buscar lotes
     setLoading(true);
     const data = await fetchLotesSummary(id);
     setLotes(data);
@@ -30,7 +33,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    if (open && item) {
+    if (open && item && !isExpedicao) {
       setLoading(true);
       fetchLotesSummary(item.id).then((data) => {
         if (!cancelled) { setLotes(data); setLoading(false); }
@@ -49,6 +52,87 @@ export function LotesPanel({ item, open, onClose }: Props) {
     });
   }
 
+  // ── Expedição: mostra apenas nome + quantidade exata do card ──────────────
+  if (isExpedicao) {
+    const available = item.quantity_available;
+    const isEmpty = available === 0;
+    const isLow = available > 0 && available <= item.min_quantity;
+
+    return (
+      <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+        <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
+          {/* Header */}
+          <div className="relative px-5 pt-5 pb-3">
+            <div className="absolute inset-0 bg-gradient-to-b from-success/5 to-transparent" />
+            <div className="relative">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <PackageCheck className="h-4 w-4 text-success" />
+                  Estoque — Expedição
+                </DialogTitle>
+              </DialogHeader>
+              <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
+                {item.device.model}
+              </p>
+              <p className="text-[10px] text-muted-foreground/60 font-mono mt-0.5">
+                {item.device.reference}
+              </p>
+            </div>
+          </div>
+
+          {/* Quantidade disponível */}
+          <div className="px-5 pb-5 space-y-3">
+            <div className={cn(
+              "rounded-2xl border px-5 py-4 flex items-center justify-between",
+              isEmpty ? "bg-destructive/8 border-destructive/25"
+              : isLow  ? "bg-warning/8 border-warning/25"
+                       : "bg-success/8 border-success/25"
+            )}>
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  Disponível em estoque
+                </p>
+                <p className="text-[10px] text-muted-foreground/50">
+                  Descontando reservas de pedidos
+                </p>
+              </div>
+              <div className="text-right">
+                <p className={cn(
+                  "text-3xl font-bold tabular-nums",
+                  isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success"
+                )}>
+                  {available}
+                </p>
+                <p className="text-[10px] text-muted-foreground/60">unidades</p>
+              </div>
+            </div>
+
+            {item.quantity_reserved > 0 && (
+              <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 flex items-center justify-between">
+                <p className="text-[11px] text-muted-foreground">Reservado (pedidos)</p>
+                <div className="flex items-center gap-1">
+                  <span className="text-[15px] font-bold text-amber-500 tabular-nums">{item.quantity_reserved}</span>
+                  <span className="text-[10px] text-muted-foreground/60">un.</span>
+                </div>
+              </div>
+            )}
+
+            {item.quantity !== item.quantity_available && (
+              <div className="rounded-xl border border-border/30 bg-muted/10 px-4 py-3 flex items-center justify-between">
+                <p className="text-[11px] text-muted-foreground">Total em expedição</p>
+                <div className="flex items-center gap-1">
+                  <span className="text-[15px] font-bold text-foreground tabular-nums">{item.quantity}</span>
+                  <span className="text-[10px] text-muted-foreground/60">un.</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ── Intermediário / Retrabalho: comportamento original com lotes ──────────
   const activeLotes  = lotes.filter((l) => l.saldo > 0);
   const totalEntrada = lotes.reduce((s, l) => s + l.total_entrada, 0);
   const totalSaida   = lotes.reduce((s, l) => s + l.total_saida, 0);
@@ -131,7 +215,6 @@ export function LotesPanel({ item, open, onClose }: Props) {
                 )}
               >
                 <div className="flex items-center justify-between gap-3">
-                  {/* Lote + data */}
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <Tag className="h-3 w-3 text-primary/70 shrink-0" />
@@ -144,7 +227,6 @@ export function LotesPanel({ item, open, onClose }: Props) {
                     </p>
                   </div>
 
-                  {/* Saldo */}
                   <div className={cn(
                     "flex items-center gap-1 px-2.5 py-1 rounded-lg shrink-0",
                     isActive ? "bg-success/10 text-success" :
@@ -159,7 +241,6 @@ export function LotesPanel({ item, open, onClose }: Props) {
                   </div>
                 </div>
 
-                {/* Barra de entradas vs saídas */}
                 {l.total_entrada > 0 && (
                   <div className="mt-2 space-y-1">
                     <div className="flex h-1.5 rounded-full overflow-hidden bg-muted/30">
