@@ -42,7 +42,12 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
       setLotesLoading(true);
       fetchLotesSummary(item.id, item.fase).then((data) => {
         if (!cancelled) {
-          setExistingLotes(data.filter((l) => l.saldo > 0));
+          let lotesComSaldo = data.filter((l) => l.saldo > 0);
+          if (lotesComSaldo.length === 0 && item.quantity > 0) {
+            const now = new Date().toISOString();
+            lotesComSaldo = [{ lote: "SEM LOTE", total_entrada: item.quantity, total_saida: 0, saldo: item.quantity, last_movement: now }];
+          }
+          setExistingLotes(lotesComSaldo);
           setLotesLoading(false);
         }
       }).catch(() => { if (!cancelled) setLotesLoading(false); });

@@ -638,7 +638,7 @@ export async function fetchLotesSummaryBatch(
   return result;
 }
 
-export async function fetchLotesSummary(stockItemId: string, fase?: string): Promise<LoteSummary[]> {
+export async function fetchLotesSummary(stockItemId: string, _fase?: string): Promise<LoteSummary[]> {
   const { data } = await supabase
     .from("stock_movements")
     .select("lote, type, quantity, reason, created_at")
@@ -648,29 +648,18 @@ export async function fetchLotesSummary(stockItemId: string, fase?: string): Pro
 
   if (!data || data.length === 0) return [];
 
-  // Movimentos de rollback são sempre ignorados (estornos artificiais).
-  // Para itens de expedição, movimentos internos de transferência entre fases também
-  // são ignorados para evitar dupla contagem — o saldo real vem apenas das entradas
-  // externas (recebimento) e saídas para clientes/retrabalho.
+  // Ignora apenas rollbacks — estornos artificiais que não representam movimentação real.
+  // Transferências internas (Intermediário→Expedição, Retrabalho→Expedição, etc.) DEVEM
+  // contar no saldo do item de destino, pois são as entradas legítimas daquele item.
   const ROLLBACK_REASONS = [
     "Rollback — falha ao criar item de retrabalho",
     "Rollback — falha ao criar item de expedição",
     "Rollback — falha ao registrar entrada na expedição",
   ];
 
-  const EXPEDICAO_INTERNAL = [
-    "Transferência para Expedição",
-    "Recebido de Intermediário",
-    "Retrabalho concluído — recebido do Retrabalho",
-    "Retrabalho concluído — enviado para Expedição",
-    "Enviado para Retrabalho",
-  ];
-
   const map = new Map<string, LoteSummary>();
   for (const row of data as { lote: string; type: string; quantity: number; reason: string | null; created_at: string }[]) {
     if (row.reason && ROLLBACK_REASONS.includes(row.reason)) continue;
-    // Para itens de expedição, ignora movimentos internos entre fases (evita dupla contagem)
-    if (fase === "expedicao" && row.reason && EXPEDICAO_INTERNAL.includes(row.reason)) continue;
 
     const key = row.lote.toUpperCase();
     if (!map.has(key)) {
