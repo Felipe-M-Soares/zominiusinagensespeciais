@@ -913,13 +913,6 @@ export default function Estoque() {
             <div className="flex items-center gap-2">
               <Boxes className="h-4 w-4 text-primary" />
               <h1 className="text-sm font-semibold">Estoque</h1>
-              {/* Badge de alerta no header */}
-              {!loading && totalAlertCount > 0 && (
-                <span className="flex items-center gap-0.5 bg-warning/15 text-warning border border-warning/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  <AlertTriangle className="h-2.5 w-2.5" />
-                  {totalAlertCount}
-                </span>
-              )}
             </div>
           </div>
 
