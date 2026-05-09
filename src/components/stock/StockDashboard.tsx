@@ -126,8 +126,20 @@ export function StockDashboard({ items, loading }: Props) {
   useEffect(() => {
     let cancelled = false;
     setMovLoading(true);
-    fetchAllMovements(10).then(data => {
-      if (!cancelled) { setMovements(data); setMovLoading(false); }
+    // Busca mais para compensar os filtrados; exclui movimentos comerciais e financeiros
+    fetchAllMovements(50).then(data => {
+      if (!cancelled) {
+        const soEstoque = data.filter(m => {
+          const r = m.reason ?? "";
+          // Exclui saídas de pedido comercial (separação concluída)
+          if (r.startsWith("Pedido comercial")) return false;
+          // Exclui faturamentos (NF emitida pelo financeiro)
+          if (/^NF\s/i.test(r)) return false;
+          return true;
+        }).slice(0, 10);
+        setMovements(soEstoque);
+        setMovLoading(false);
+      }
     }).catch(() => { if (!cancelled) setMovLoading(false); });
     return () => { cancelled = true; };
   }, []);
