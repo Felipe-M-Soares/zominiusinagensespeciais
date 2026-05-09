@@ -580,16 +580,28 @@ export async function fetchLotesSummaryBatch(
 
   const { data } = await supabase
     .from("stock_movements")
-    .select("stock_item_id, lote, type, quantity")
+    .select("stock_item_id, lote, type, quantity, reason")
     .in("stock_item_id", stockItemIds)
     .not("lote", "is", null);
 
   if (!data || data.length === 0) return new Map();
 
-  // Agrupa por (stock_item_id, lote) e calcula saldo
-  type Row = { stock_item_id: string; lote: string; type: string; quantity: number };
+  const INTERNAL_REASONS = [
+    "Transferência para Expedição",
+    "Recebido de Intermediário",
+    "Retrabalho concluído — recebido do Retrabalho",
+    "Retrabalho concluído — enviado para Expedição",
+    "Enviado para Retrabalho",
+    "Rollback — falha ao criar item de retrabalho",
+    "Rollback — falha ao criar item de expedição",
+    "Rollback — falha ao registrar entrada na expedição",
+  ];
+
+  // Agrupa por (stock_item_id, lote) e calcula saldo — ignora movimentos internos entre fases
+  type Row = { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null };
   const saldos = new Map<string, number>(); // chave: "itemId|lote"
   for (const row of data as Row[]) {
+    if (row.reason && INTERNAL_REASONS.includes(row.reason)) continue;
     const key = `${row.stock_item_id}|${row.lote.toUpperCase()}`;
     const current = saldos.get(key) ?? 0;
     saldos.set(key, row.type === "entrada" ? current + row.quantity : current - row.quantity);
@@ -619,6 +631,8 @@ export async function fetchLotesSummary(stockItemId: string): Promise<LoteSummar
 
   // Reasons de transferência interna entre fases — não contam como entrada/saída real
   const INTERNAL_REASONS = [
+    "Transferência para Expedição",
+    "Recebido de Intermediário",
     "Retrabalho concluído — recebido do Retrabalho",
     "Retrabalho concluído — enviado para Expedição",
     "Enviado para Retrabalho",
