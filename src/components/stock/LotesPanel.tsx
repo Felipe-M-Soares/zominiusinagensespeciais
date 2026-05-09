@@ -26,7 +26,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
   async function load(id: string) {
     if (isExpedicao) return; // expedição não precisa buscar lotes
     setLoading(true);
-    const data = await fetchLotesSummary(id);
+    const data = await fetchLotesSummary(id, item?.fase);
     setLotes(data);
     setLoading(false);
   }
@@ -35,7 +35,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
     let cancelled = false;
     if (open && item && !isExpedicao) {
       setLoading(true);
-      fetchLotesSummary(item.id).then((data) => {
+      fetchLotesSummary(item.id, item.fase).then((data) => {
         if (!cancelled) { setLotes(data); setLoading(false); }
       }).catch(() => { if (!cancelled) setLoading(false); });
     } else {

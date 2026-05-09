@@ -40,7 +40,7 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
     let cancelled = false;
     if (open && item) {
       setLotesLoading(true);
-      fetchLotesSummary(item.id).then((data) => {
+      fetchLotesSummary(item.id, item.fase).then((data) => {
         if (!cancelled) {
           setExistingLotes(data.filter((l) => l.saldo > 0));
           setLotesLoading(false);

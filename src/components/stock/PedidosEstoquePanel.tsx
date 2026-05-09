@@ -106,6 +106,7 @@ function statusLabel(status: string) {
 interface StockItemExpedicao {
   stock_item_id: string;
   quantity: number; // total na expedição
+  quantity_reserved: number; // reservado em pedidos
   lotes: LoteDisponivel[];
   loading: boolean;
 }
@@ -149,12 +150,14 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     ${pedido.observacoes ? `<p style="font-size:12px;color:#555;margin-bottom:16px">Obs: ${esc(pedido.observacoes)}</p>` : ""}
     <table><thead><tr><th>#</th><th>Peça</th><th>Referência</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${rows}</tbody></table>
     <p class="footer">Total: ${pedido.itens.reduce((s,i)=>s+i.quantidade,0)} peças · ${pedido.itens.length} tipo(s)</p>
-    <script>window.onload = function(){ window.print(); }<` + `/script>
     </body></html>`;
     const w = window.open("", "_blank");
     if (!w) return;
+    w.document.open();
     w.document.write(html);
     w.document.close();
+    // Aguarda o layout renderizar antes de abrir o diálogo de impressão
+    setTimeout(() => { w.focus(); w.print(); }, 250);
   }
 
   const [expedicaoData, setExpedicaoData] = useState<Record<string, StockItemExpedicao>>({});
@@ -179,7 +182,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       // PERF-01: Single batch query for all stock items instead of N queries
       const { data: siRows } = await supabase
         .from("stock_items")
-        .select("id, device_id, quantity, fase")
+        .select("id, device_id, quantity, quantity_reserved, fase")
         .in("id", itemIds);
 
       const siMap = new Map((siRows ?? []).map((r: Record<string, unknown>) => [r.id as string, r]));
@@ -189,34 +192,34 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         .filter((r: Record<string, unknown>) => r.fase !== "expedicao")
         .map((r: Record<string, unknown>) => r.device_id as string);
 
-      const expMap = new Map<string, { id: string; quantity: number }>();
+      const expMap = new Map<string, { id: string; quantity: number; quantity_reserved: number }>();
       if (nonExpIds.length > 0) {
         const { data: expRows } = await supabase
           .from("stock_items")
-          .select("id, device_id, quantity")
+          .select("id, device_id, quantity, quantity_reserved")
           .in("device_id", nonExpIds)
           .eq("fase", "expedicao");
-        for (const r of (expRows ?? []) as { id: string; device_id: string; quantity: number }[]) {
-          expMap.set(r.device_id, { id: r.id, quantity: r.quantity });
+        for (const r of (expRows ?? []) as { id: string; device_id: string; quantity: number; quantity_reserved: number }[]) {
+          expMap.set(r.device_id, { id: r.id, quantity: r.quantity, quantity_reserved: r.quantity_reserved ?? 0 });
         }
       }
 
       // Resolve final expedicao item ids
       const expedicaoIds: string[] = [];
-      const expQtyByPedidoItem: Record<string, { expId: string; qty: number }> = {};
+      const expQtyByPedidoItem: Record<string, { expId: string; qty: number; reserved: number }> = {};
       for (const item of pedido.itens) {
-        const si = siMap.get(item.stock_item_id) as { device_id: string; quantity: number; fase: string } | undefined;
-        if (!si) { expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: 0 }; continue; }
+        const si = siMap.get(item.stock_item_id) as { device_id: string; quantity: number; quantity_reserved: number; fase: string } | undefined;
+        if (!si) { expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: 0, reserved: 0 }; continue; }
         if (si.fase === "expedicao") {
-          expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: si.quantity };
+          expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: si.quantity, reserved: si.quantity_reserved ?? 0 };
           expedicaoIds.push(item.stock_item_id);
         } else {
           const exp = expMap.get(si.device_id);
           if (exp) {
-            expQtyByPedidoItem[item.id] = { expId: exp.id, qty: exp.quantity };
+            expQtyByPedidoItem[item.id] = { expId: exp.id, qty: exp.quantity, reserved: exp.quantity_reserved };
             expedicaoIds.push(exp.id);
           } else {
-            expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: 0 };
+            expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: 0, reserved: 0 };
           }
         }
       }
@@ -228,18 +231,19 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       const inicialSel: LoteSelecao = {};
 
       for (const item of pedido.itens) {
-        const { expId, qty: expQty } = expQtyByPedidoItem[item.id] ?? { expId: item.stock_item_id, qty: 0 };
+        const { expId, qty: expQty, reserved: expReserved } = expQtyByPedidoItem[item.id] ?? { expId: item.stock_item_id, qty: 0, reserved: 0 };
         const saldos = lotesMap.get(expId) ?? {};
+        const expAvailable = Math.max(0, expQty - expReserved);
 
         let lotesList: LoteDisponivel[] = Object.entries(saldos)
           .map(([lote, qty]) => ({ lote, quantity: Math.max(0, qty), stock_item_id: expId }))
           .filter(l => l.quantity > 0);
 
         if (lotesList.length === 0 && expQty > 0) {
-          lotesList = [{ lote: "Sem lote", quantity: expQty, stock_item_id: expId }];
+          lotesList = [{ lote: "Sem lote", quantity: expAvailable, stock_item_id: expId }];
         }
 
-        result[item.id] = { stock_item_id: expId, quantity: expQty, lotes: lotesList, loading: false };
+        result[item.id] = { stock_item_id: expId, quantity: expQty, quantity_reserved: expReserved, lotes: lotesList, loading: false };
 
         const dist: Record<string, number> = {};
         let restante = item.quantidade;
@@ -399,6 +403,11 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                           totalNaExpedicao < item.quantidade ? "text-amber-500" :
                           "text-emerald-500"
                         )}>{totalNaExpedicao} un.</span>
+                        {(exp?.quantity_reserved ?? 0) > 0 && (
+                          <span className="text-[10px] text-amber-500 leading-none">
+                            {exp!.quantity_reserved} reserv.
+                          </span>
+                        )}
                       </div>
 
                       {/* Editar qty (pendente) */}
