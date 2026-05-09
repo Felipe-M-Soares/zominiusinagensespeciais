@@ -109,20 +109,20 @@ const IntermediaryCard = memo(function IntermediaryCard({
 
       <div className="p-4 space-y-3">
         {/* Cabeçalho */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0 space-y-0.5">
             <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
+            <p className="text-[11px] text-muted-foreground font-mono tracking-tight truncate">{d.reference}</p>
           </div>
-          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-primary/25 text-primary/80 bg-primary/5 rounded-lg">
+          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-primary/25 text-primary/80 bg-primary/5 rounded-lg whitespace-nowrap">
             {d.classification_code}
           </Badge>
         </div>
 
-        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
+        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate">{d.brand_name}</p>}
 
         {/* Badges */}
-        <div className="flex flex-wrap gap-1 -mt-1">
+        <div className="flex flex-wrap gap-1">
           {d.sterile && (
             <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
               <Shield className="h-2.5 w-2.5" /> Estéril
@@ -273,25 +273,25 @@ const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistor
 
       <div className="p-4 space-y-3">
         {/* Cabeçalho */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0 space-y-0.5">
             <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
+            <p className="text-[11px] text-muted-foreground font-mono tracking-tight truncate">{d.reference}</p>
           </div>
-          <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/25 px-2 py-0.5 text-[10px] font-medium text-orange-500">
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/25 px-2 py-0.5 text-[10px] font-medium text-orange-500 whitespace-nowrap">
             <Wrench className="h-2.5 w-2.5" /> Retrabalho
           </span>
         </div>
 
-        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
+        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate">{d.brand_name}</p>}
 
         {/* Quantidade em retrabalho */}
         <div className="flex items-center justify-between rounded-xl px-3 py-2 border bg-orange-500/8 border-orange-500/25">
-          <div className="flex items-center gap-1.5">
-            <Wrench className="h-3.5 w-3.5 text-orange-500" />
-            <span className="text-[11px] font-medium text-muted-foreground">Em retrabalho</span>
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <Wrench className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+            <span className="text-[11px] font-medium text-muted-foreground truncate">Em retrabalho</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 shrink-0 ml-2">
             <span className="text-[15px] font-bold tabular-nums text-orange-500">{item.quantity}</span>
             <span className="text-[10px] text-muted-foreground">un.</span>
           </div>
@@ -388,19 +388,19 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
       )} />
 
       <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0 space-y-0.5">
             <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
+            <p className="text-[11px] text-muted-foreground font-mono tracking-tight truncate">{d.reference}</p>
           </div>
-          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-success/25 text-success/80 bg-success/5 rounded-lg">
+          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-success/25 text-success/80 bg-success/5 rounded-lg whitespace-nowrap">
             {d.classification_code}
           </Badge>
         </div>
 
-        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
+        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate">{d.brand_name}</p>}
 
-        <div className="flex flex-wrap gap-1 -mt-1">
+        <div className="flex flex-wrap gap-1">
           {d.sterile && (
             <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
               <Shield className="h-2.5 w-2.5" /> Estéril
