@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Upload, Trash2, Download, FileText, Plus, Loader2, X, CheckCircle2, AlertCircle, BookOpen } from "lucide-react";
 import { toast } from "sonner";
-import { Logo } from "@/components/Logo";
 import { logger } from "@/lib/logger";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 
@@ -256,7 +255,6 @@ export default function Manuals() {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <Logo className="h-8 object-contain" />
           <h1 className="text-sm font-semibold">Manuais</h1>
           <div className="ml-auto flex items-center gap-1">
             <button

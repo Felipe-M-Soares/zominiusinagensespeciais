@@ -16,7 +16,7 @@ export function getStoredTheme(): Theme {
   if (stored && VALID_THEMES.has(stored as Theme)) {
     return stored as Theme;
   }
-  return "system";
+  return "light";
 }
 
 export function applyTheme(theme: Theme) {
