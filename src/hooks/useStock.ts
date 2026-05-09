@@ -422,14 +422,15 @@ export async function transferToRetrabalho(
 
   // 2. Localiza ou cria item de retrabalho para o mesmo device+lote
   // Cada lote deve ter seu próprio stock_item de retrabalho para aparecer separado no painel
-  const { data: existing } = await supabase
+  const { data: existingList } = await supabase
     .from("stock_items")
     .select("id")
     .eq("device_id", deviceId)
     .eq("fase", "retrabalho")
     .filter("notes", "ilike", `%lote:${lote.toUpperCase()}%`)
-    .maybeSingle();
+    .limit(1);
 
+  const existing = existingList?.[0] ?? null;
   let retrabalhoItemId: string | null = existing?.id ?? null;
 
   if (!retrabalhoItemId) {
