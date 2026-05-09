@@ -198,6 +198,21 @@ export function BackupPanel({ open, onClose }: Props) {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [deleteBackupsConfirm, setDeleteBackupsConfirm] = useState(false);
+  const [deletingBackups, setDeletingBackups] = useState(false);
+
+  async function handleDeleteAllBackups() {
+    setDeletingBackups(true);
+    const { error } = await supabase
+      .from("stock_backups")
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+    setDeletingBackups(false);
+    if (error) { toast.error("Erro ao apagar backups."); return; }
+    toast.success("Todos os backups foram apagados.");
+    setDeleteBackupsConfirm(false);
+    load();
+  }
 
   async function load() {
     setLoading(true);
@@ -274,9 +289,21 @@ export function BackupPanel({ open, onClose }: Props) {
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
           <div className="relative">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
-                <DatabaseBackup className="h-4 w-4 text-primary" />
-                Backup e Exportação
+              <DialogTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <DatabaseBackup className="h-4 w-4 text-primary" />
+                  Backup e Exportação
+                </span>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setClearConfirm(true)}
+                    title="Apagar todo o histórico"
+                    className="h-7 w-7 flex items-center justify-center rounded-lg text-destructive/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </DialogTitle>
             </DialogHeader>
             <p className="text-[12px] text-muted-foreground mt-0.5">
@@ -373,9 +400,21 @@ export function BackupPanel({ open, onClose }: Props) {
               {/* ── Lista de backups ──────────────────────────────────────── */}
               {isAdmin && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Backups salvos ({backups.length})
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Backups salvos ({backups.length})
+                    </p>
+                    {backups.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteBackupsConfirm(true)}
+                        title="Apagar todos os backups"
+                        className="h-6 w-6 flex items-center justify-center rounded-lg text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
 
                   {backups.length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-4">
@@ -415,22 +454,6 @@ export function BackupPanel({ open, onClose }: Props) {
             </>
           )}
 
-          {/* ── Zona de Perigo — sempre visível para admin ──────────────── */}
-          {isAdmin && (
-            <div className="pt-2 border-t border-border/30">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                Zona de Perigo
-              </p>
-              <button
-                type="button"
-                onClick={() => setClearConfirm(true)}
-                className="w-full flex items-center justify-center gap-2 h-9 rounded-xl border border-destructive/40 text-destructive text-xs font-semibold hover:bg-destructive/10 transition-colors"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Apagar todo o histórico do site
-              </button>
-            </div>
-          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -451,17 +474,11 @@ export function BackupPanel({ open, onClose }: Props) {
             </div>
           </div>
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setClearConfirm(false)}
-              disabled={clearing}
-              className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
-            >
+            <button type="button" onClick={() => setClearConfirm(false)} disabled={clearing}
+              className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">
               Cancelar
             </button>
-            <button
-              type="button"
-              disabled={clearing}
+            <button type="button" disabled={clearing}
               onClick={async () => {
                 setClearing(true);
                 const result = await clearAllHistory();
@@ -480,6 +497,39 @@ export function BackupPanel({ open, onClose }: Props) {
                 ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <Trash2 className="h-3.5 w-3.5" />}
               Apagar tudo
+            </button>
+          </div>
+        </div>
+      </div>
+    , document.body)}
+
+    {/* Modal de confirmação — apagar backups */}
+    {deleteBackupsConfirm && createPortal(
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-destructive">Apagar todos os backups?</p>
+              <p className="text-[12px] text-muted-foreground mt-1">
+                Todos os <strong>{backups.length} backups salvos</strong> serão removidos permanentemente. Esta ação <strong>não pode ser desfeita</strong>.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setDeleteBackupsConfirm(false)} disabled={deletingBackups}
+              className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">
+              Cancelar
+            </button>
+            <button type="button" disabled={deletingBackups} onClick={handleDeleteAllBackups}
+              className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
+            >
+              {deletingBackups
+                ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                : <Trash2 className="h-3.5 w-3.5" />}
+              Apagar backups
             </button>
           </div>
         </div>
