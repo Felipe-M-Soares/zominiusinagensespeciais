@@ -132,6 +132,63 @@ export function LotesPanel({ item, open, onClose }: Props) {
     );
   }
 
+  // ── Retrabalho: mesmo layout do card de expedição, cor laranja ────────────
+  if (item.fase === "retrabalho") {
+    const qty = item.quantity;
+    const isEmpty = qty === 0;
+
+    return (
+      <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+        <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
+          {/* Header */}
+          <div className="relative px-5 pt-5 pb-3">
+            <div className="absolute inset-0 bg-gradient-to-b from-orange-500/5 to-transparent" />
+            <div className="relative">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <Tag className="h-4 w-4 text-orange-500" />
+                  Estoque — Retrabalho
+                </DialogTitle>
+              </DialogHeader>
+              <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
+                {item.device.model}
+              </p>
+              <p className="text-[10px] text-muted-foreground/60 font-mono mt-0.5">
+                {item.device.reference}
+              </p>
+            </div>
+          </div>
+
+          {/* Quantidade em retrabalho */}
+          <div className="px-5 pb-5 space-y-3">
+            <div className={cn(
+              "rounded-2xl border px-5 py-4 flex items-center justify-between",
+              isEmpty ? "bg-destructive/8 border-destructive/25" : "bg-orange-500/8 border-orange-500/25"
+            )}>
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  Em retrabalho
+                </p>
+                <p className="text-[10px] text-muted-foreground/50">
+                  Aguardando conclusão
+                </p>
+              </div>
+              <div className="text-right">
+                <p className={cn(
+                  "text-3xl font-bold tabular-nums",
+                  isEmpty ? "text-destructive" : "text-orange-500"
+                )}>
+                  {qty}
+                </p>
+                <p className="text-[10px] text-muted-foreground/60">unidades</p>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   // ── Intermediário / Retrabalho: comportamento original com lotes ──────────
   const activeLotes  = lotes.filter((l) => l.saldo > 0);
   const totalEntrada = lotes.reduce((s, l) => s + l.total_entrada, 0);
