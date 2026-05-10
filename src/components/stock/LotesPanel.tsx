@@ -45,12 +45,6 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
   if (!item) return null;
 
-  function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString("pt-BR", {
-      day: "2-digit", month: "2-digit", year: "2-digit",
-    });
-  }
-
   // ── Expedição: mostra nome, lotes com saldo e quantidade total ───────────
   if (isExpedicao) {
     const available = item.quantity_available;
@@ -161,9 +155,6 @@ export function LotesPanel({ item, open, onClose }: Props) {
                         {l.lote}
                       </span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground/60 mt-0.5 pl-4">
-                      Último movimento: {fmtDate(l.last_movement)}
-                    </p>
                   </div>
                   <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg shrink-0 bg-success/10 text-success">
                     <TrendingUp className="h-3 w-3" />
@@ -279,9 +270,6 @@ export function LotesPanel({ item, open, onClose }: Props) {
                         {l.lote}
                       </span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground/60 mt-0.5 pl-4">
-                      Último movimento: {fmtDate(l.last_movement)}
-                    </p>
                   </div>
                   <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg shrink-0 bg-orange-500/10 text-orange-500">
                     <TrendingUp className="h-3 w-3" />
@@ -387,9 +375,6 @@ export function LotesPanel({ item, open, onClose }: Props) {
                         {l.lote}
                       </span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground/60 mt-0.5 pl-4">
-                      Último movimento: {fmtDate(l.last_movement)}
-                    </p>
                   </div>
 
                   <div className={cn(

@@ -262,9 +262,6 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
                               <span className="text-[13px] font-mono font-bold text-foreground tracking-wider">
                                 {l.lote}
                               </span>
-                              <p className="text-[10px] text-muted-foreground">
-                                Último mov.: {new Date(l.last_movement).toLocaleDateString("pt-BR")}
-                              </p>
                             </div>
                             <div className="flex items-center gap-1 text-success">
                               <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
