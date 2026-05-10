@@ -623,6 +623,28 @@ export async function transferRetrabalhoToExpedicao(
  * PERF-01: Batch version — fetches lote balances for many stock_item_ids in ONE query.
  * Returns Map<stock_item_id, Record<lote, saldo>>
  */
+/**
+ * Ordena lotes do mais antigo para o mais novo usando o código do lote (DDMMYYA-NN).
+ * Lotes mais antigos devem ser usados primeiro (FIFO por data de produção).
+ */
+function sortLotesByDate(lotes: Record<string, number>): Record<string, number> {
+  const entries = Object.entries(lotes).filter(([, qty]) => qty > 0);
+  entries.sort(([a], [b]) => {
+    // Formato esperado: DDMMYYA-NN (ex: 0101261-01)
+    // Extrai a parte da data: primeiros 7 chars sem o separador
+    const dateA = a.replace("-", "").slice(0, 7);
+    const dateB = b.replace("-", "").slice(0, 7);
+    // Reordena para YYMMDD para comparação cronológica correta
+    // DDMMYYA → YYA + MM + DD  (índices: DD=0-1, MM=2-3, YYA=4-6)
+    const toComp = (s: string) => s.slice(4) + s.slice(2, 4) + s.slice(0, 2);
+    return toComp(dateA).localeCompare(toComp(dateB));
+  });
+  // Reconstrói objeto mantendo a ordem (JS Objects preservam insertion order para strings)
+  const ordered: Record<string, number> = {};
+  for (const [k, v] of entries) ordered[k] = v;
+  return ordered;
+}
+
 export async function fetchLotesDisponivelBatch(
   stockItemIds: string[]
 ): Promise<Map<string, Record<string, number>>> {
@@ -642,6 +664,11 @@ export async function fetchLotesDisponivelBatch(
     const map = result.get(row.stock_item_id) ?? {};
     map[row.lote] = (map[row.lote] ?? 0) + (row.type === "entrada" ? row.quantity : -row.quantity);
     result.set(row.stock_item_id, map);
+  }
+
+  // Ordena cada mapa de lotes do mais antigo ao mais novo (FIFO por data de produção)
+  for (const [id, lotesMap] of result.entries()) {
+    result.set(id, sortLotesByDate(lotesMap));
   }
 
   return result;
@@ -706,12 +733,13 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     .not("lote", "is", null)
     .order("created_at", { ascending: false });
 
-  // 2. Busca TODOS os pedido_itens para este stock_item (pedidos separando/pendente)
-  //    Inclui itens com lote "a-definir" para deduzir reservas sem lote definido proporcionalmente
+  // 2. Busca pedido_itens com lote real para este stock_item (pedidos separando/pendente)
+  //    O lote é atribuído automaticamente (mais antigo primeiro) — nunca mais "a-definir"
   const { data: pedidoItensReservados } = await supabase
     .from("pedido_itens")
     .select("lote, quantidade, pedido_id, pedidos_comerciais!inner(status)")
-    .eq("stock_item_id", stockItemId);
+    .eq("stock_item_id", stockItemId)
+    .not("lote", "is", null);
 
   if ((!movimentos || movimentos.length === 0) && (!pedidoItensReservados || pedidoItensReservados.length === 0)) return [];
 
@@ -742,46 +770,19 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     if (row.created_at > entry.last_movement) entry.last_movement = row.created_at;
   }
 
-  // Deduz reservas de pedidos (pendente e separando) dos saldos de lotes.
-  // Reservas com lote definido: deduzidas diretamente do lote correspondente.
-  // Reservas sem lote ("a-definir" ou null): distribuídas proporcionalmente.
-  let reservaSemLote = 0;
+  // Deduz reservas de pedidos (pendente e separando) diretamente do lote correspondente.
+  // O lote é sempre definido no momento da criação do pedido (mais antigo primeiro).
   for (const pi of (pedidoItensReservados ?? []) as { lote: string | null; quantidade: number; pedidos_comerciais: { status: string } }[]) {
     const status = pi.pedidos_comerciais?.status;
     // Consistente com quantity_available: considera pendente E separando
     if (status !== "separando" && status !== "pendente") continue;
+    if (!pi.lote) continue;
 
-    const loteRaw = (pi.lote ?? "").trim().toLowerCase();
-    const isIndefinido = !loteRaw || LOTE_INDEFINIDO.has(loteRaw) || loteRaw === "a-definir";
-
-    if (isIndefinido) {
-      reservaSemLote += pi.quantidade;
-    } else {
-      const key = loteRaw.toUpperCase();
-      if (map.has(key)) {
-        const entry = map.get(key)!;
-        entry.saldo = Math.max(0, entry.saldo - pi.quantidade);
-        map.set(key, entry);
-      }
-    }
-  }
-
-  // Distribui reservas sem lote proporcionalmente aos saldos dos lotes existentes
-  if (reservaSemLote > 0 && map.size > 0) {
-    const saldoTotal = [...map.values()].reduce((s, l) => s + l.saldo, 0);
-    if (saldoTotal > 0) {
-      let restante = reservaSemLote;
-      const entries = [...map.entries()].sort((a, b) => b[1].saldo - a[1].saldo);
-      for (let i = 0; i < entries.length; i++) {
-        const [key, entry] = entries[i];
-        const isLast = i === entries.length - 1;
-        const proporcao = isLast ? restante : Math.round((entry.saldo / saldoTotal) * reservaSemLote);
-        const deduzir = Math.min(proporcao, entry.saldo);
-        entry.saldo = Math.max(0, entry.saldo - deduzir);
-        restante -= deduzir;
-        map.set(key, entry);
-        if (restante <= 0) break;
-      }
+    const key = pi.lote.trim().toUpperCase();
+    if (map.has(key)) {
+      const entry = map.get(key)!;
+      entry.saldo = Math.max(0, entry.saldo - pi.quantidade);
+      map.set(key, entry);
     }
   }
 

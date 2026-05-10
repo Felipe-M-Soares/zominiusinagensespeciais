@@ -270,7 +270,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const [pecaSearch, setPecaSearch] = useState("");
   const [showPecaDrop, setShowPecaDrop] = useState(false);
   const [selectedPeca, setSelectedPeca] = useState<StockItem | null>(null);
-  const [lote, setLote] = useState("");
+
   const [qtd, setQtd] = useState(1);
 
   const dropRef = useRef<HTMLDivElement>(null);
@@ -284,7 +284,6 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setObs("");
     setPecaSearch("");
     setSelectedPeca(null);
-    setLote("");
     setQtd(1);
     loadClientes();
   }, [open, clienteFixo]);
@@ -323,7 +322,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     );
 
   function addItem() {
-    if (!selectedPeca || !lote.trim() || qtd < 1) return;
+    if (!selectedPeca || qtd < 1) return;
     const dispBruto = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
     const jaAdicionado = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
     const dispReal = dispBruto - jaAdicionado;
@@ -333,14 +332,13 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     }
     setItens(prev => [...prev, {
       stock_item_id: selectedPeca.id,
-      lote: lote.trim(),
+      lote: "", // lote será atribuído automaticamente (mais antigo primeiro) na separação
       quantidade: qtd,
       device_model: selectedPeca.device?.model ?? "",
       device_reference: selectedPeca.device?.reference ?? "",
     }]);
     setSelectedPeca(null);
     setPecaSearch("");
-    setLote("");
     setQtd(1);
   }
 
@@ -366,7 +364,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       const itensInsert = itens.map(i => ({
         pedido_id: pedidoId,
         stock_item_id: i.stock_item_id,
-        lote: i.lote,
+        lote: null, // lote será definido pelo estoque na separação (mais antigo primeiro)
         quantidade: i.quantidade,
         quantidade_reservada: i.quantidade,
       }));
@@ -504,50 +502,41 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 )}
               </div>
 
-              {/* Lote e quantidade */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground font-medium">Lote</label>
-                  <div className="relative">
-                    <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
-                    <Input value={lote} onChange={e => setLote(formatLote(e.target.value))} placeholder="0101261-01" className="pl-7 h-8 text-xs font-mono" />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground font-medium">
-                    Quantidade
-                    {selectedPeca && (() => {
+              {/* Quantidade */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-muted-foreground font-medium">
+                  Quantidade
+                  {selectedPeca && (() => {
+                    const dispBruto = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
+                    const jaAd = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
+                    const dispReal = dispBruto - jaAd;
+                    return dispReal > 0 ? <span className="text-muted-foreground/60"> (máx {dispReal})</span> : null;
+                  })()}
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={selectedPeca ? Math.max(1, (selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved)) - (jaAdicionadoNoPedido[selectedPeca.id] ?? 0)) : undefined}
+                  value={qtd}
+                  onChange={e => {
+                    const val = Math.max(1, parseInt(e.target.value) || 1);
+                    if (selectedPeca) {
                       const dispBruto = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
                       const jaAd = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
                       const dispReal = dispBruto - jaAd;
-                      return dispReal > 0 ? <span className="text-muted-foreground/60"> (máx {dispReal})</span> : null;
-                    })()}
-                  </label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={selectedPeca ? Math.max(1, (selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved)) - (jaAdicionadoNoPedido[selectedPeca.id] ?? 0)) : undefined}
-                    value={qtd}
-                    onChange={e => {
-                      const val = Math.max(1, parseInt(e.target.value) || 1);
-                      if (selectedPeca) {
-                        const dispBruto = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
-                        const jaAd = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
-                        const dispReal = dispBruto - jaAd;
-                        setQtd(Math.min(val, Math.max(1, dispReal)));
-                      } else {
-                        setQtd(val);
-                      }
-                    }}
-                    className="h-8 text-xs"
-                  />
-                </div>
+                      setQtd(Math.min(val, Math.max(1, dispReal)));
+                    } else {
+                      setQtd(val);
+                    }
+                  }}
+                  className="h-8 text-xs"
+                />
               </div>
 
               <button
                 type="button"
                 onClick={addItem}
-                disabled={!selectedPeca || !lote.trim() || qtd < 1}
+                disabled={!selectedPeca || qtd < 1}
                 className="w-full h-8 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-xs font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
               >
                 <Plus className="h-3.5 w-3.5" /> Adicionar ao pedido
@@ -564,9 +553,9 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-medium truncate">{it.device_model}</p>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <span className="font-mono">{it.lote}</span>
-                          <span>·</span>
                           <span>{it.quantidade} un.</span>
+                          <span>·</span>
+                          <span className="text-muted-foreground/50 italic">lote definido na separação</span>
                         </div>
                       </div>
                       <button

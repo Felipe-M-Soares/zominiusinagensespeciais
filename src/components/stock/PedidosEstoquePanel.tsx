@@ -1259,6 +1259,15 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       );
     });
     try {
+      // Atualiza o lote principal em cada pedido_item (lote com maior qty)
+      const loteUpdates: { id: string; lote: string | null }[] = [];
+      for (const item of pedido.itens) {
+        const sel = lotesSelecionados[item.id] ?? {};
+        const lotePrincipal = Object.entries(sel).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+        for (const pid of item.ids) loteUpdates.push({ id: pid, lote: lotePrincipal });
+      }
+      await Promise.all(loteUpdates.map(u => supabase.from("pedido_itens").update({ lote: u.lote }).eq("id", u.id)));
+
       const { error } = await supabase
         .from("pedidos_comerciais")
         .update({
@@ -1384,11 +1393,12 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       );
     });
     try {
-      // Batch: collect all itemId → lote pairs and update in one loop without extra await-in-loop
+      // Salva o lote principal (maior qty) em cada pedido_item para rastreabilidade
       const updates: { id: string; lote: string | null }[] = [];
       for (const item of pedido.itens) {
         const sel = lotesSelecionados[item.id] ?? {};
-        const lotePrincipal = Object.keys(sel)[0] ?? null;
+        // Lote principal = o com maior quantidade selecionada
+        const lotePrincipal = Object.entries(sel).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
         for (const itemId of item.ids) updates.push({ id: itemId, lote: lotePrincipal });
       }
       // Run updates in parallel — all independent rows
