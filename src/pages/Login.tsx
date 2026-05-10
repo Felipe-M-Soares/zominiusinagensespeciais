@@ -180,7 +180,7 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete="current-password"
-                  className="pl-10 pr-11 h-12 rounded-xl border-0 text-[13px] font-medium transition-all ring-1 focus-visible:ring-2"
+                  className="pl-10 pr-11 h-12 rounded-xl border-0 text-[13px] font-medium transition-all ring-1 focus-visible:ring-2 [&::-ms-reveal]:hidden [&::-webkit-contacts-auto-fill-button]:hidden [&::-webkit-credentials-auto-fill-button]:hidden"
                   style={{
                     background: "rgba(240,249,255,0.8)",
                     boxShadow: "inset 0 1px 3px rgba(0,120,160,0.08)",
