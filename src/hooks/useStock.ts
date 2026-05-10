@@ -221,6 +221,23 @@ export function useStock(search: string) {
     return () => abortRef.current?.abort();
   }, [search, loadItems]);
 
+  // Recarrega automaticamente quando o usuario volta para a aba/janela,
+  // garantindo que reservas confirmadas em outras abas sejam refletidas.
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === "visible") loadItems(search);
+    }
+    function handleFocus() {
+      loadItems(search);
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [search, loadItems]);
+
   return { items, totalCount, loading, error, refetch: () => loadItems(search) };
 }
 
