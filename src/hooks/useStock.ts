@@ -733,14 +733,26 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     .not("lote", "is", null)
     .order("created_at", { ascending: false });
 
-  // 2. Busca TODOS os pedido_itens para este stock_item (pendente/separando)
-  //    Inclui lote null: quando null, deduz do lote mais antigo (FIFO), igual ao quantity_available
-  const { data: pedidoItensReservados } = await supabase
-    .from("pedido_itens")
-    .select("lote, quantidade, pedido_id, pedidos_comerciais!inner(status)")
-    .eq("stock_item_id", stockItemId);
+  // 2. Busca pedidos ativos (pendente/separando) e depois os itens desse stock_item
+  //    Duas queries separadas evitam ambiguidade do join aninhado com !inner
+  const { data: pedidosAtivos } = await supabase
+    .from("pedidos_comerciais")
+    .select("id")
+    .in("status", ["pendente", "separando"]);
 
-  if ((!movimentos || movimentos.length === 0) && (!pedidoItensReservados || pedidoItensReservados.length === 0)) return [];
+  const pedidoIdsAtivos = (pedidosAtivos ?? []).map((p: { id: string }) => p.id);
+
+  const pedidoItensReservados: { lote: string | null; quantidade: number }[] = [];
+  if (pedidoIdsAtivos.length > 0) {
+    const { data: piData } = await supabase
+      .from("pedido_itens")
+      .select("lote, quantidade")
+      .eq("stock_item_id", stockItemId)
+      .in("pedido_id", pedidoIdsAtivos);
+    pedidoItensReservados.push(...((piData ?? []) as { lote: string | null; quantidade: number }[]));
+  }
+
+  if ((!movimentos || movimentos.length === 0) && pedidoItensReservados.length === 0) return [];
 
   const ROLLBACK_REASONS = [
     "Rollback — falha ao criar item de retrabalho",
@@ -785,10 +797,7 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     });
   }
 
-  for (const pi of (pedidoItensReservados ?? []) as { lote: string | null; quantidade: number; pedidos_comerciais: { status: string } }[]) {
-    const status = pi.pedidos_comerciais?.status;
-    if (status !== "separando" && status !== "pendente") continue;
-
+  for (const pi of pedidoItensReservados) {
     const loteDefinido = pi.lote?.trim();
 
     if (loteDefinido) {
