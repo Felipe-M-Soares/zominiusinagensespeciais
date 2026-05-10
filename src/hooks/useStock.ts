@@ -706,14 +706,12 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     .not("lote", "is", null)
     .order("created_at", { ascending: false });
 
-  // 2. Busca pedido_itens com lote real para este stock_item (pedidos separando/pendente)
-  //    Esses lotes já foram escolhidos na separação mas ainda não viraram stock_movements
+  // 2. Busca TODOS os pedido_itens para este stock_item (pedidos separando/pendente)
+  //    Inclui itens com lote "a-definir" para deduzir reservas sem lote definido proporcionalmente
   const { data: pedidoItensReservados } = await supabase
     .from("pedido_itens")
     .select("lote, quantidade, pedido_id, pedidos_comerciais!inner(status)")
-    .eq("stock_item_id", stockItemId)
-    .not("lote", "is", null)
-    .not("lote", "eq", "a-definir");
+    .eq("stock_item_id", stockItemId);
 
   if ((!movimentos || movimentos.length === 0) && (!pedidoItensReservados || pedidoItensReservados.length === 0)) return [];
 
@@ -744,19 +742,46 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     if (row.created_at > entry.last_movement) entry.last_movement = row.created_at;
   }
 
-  // Deduz reservas de pedidos (separando) que já têm lote escolhido mas ainda
-  // não geraram stock_movement de saída. Esses representam o estoque separado
-  // fisicamente mas não confirmado como "pronto".
-  for (const pi of (pedidoItensReservados ?? []) as { lote: string; quantidade: number; pedidos_comerciais: { status: string } }[]) {
+  // Deduz reservas de pedidos (pendente e separando) dos saldos de lotes.
+  // Reservas com lote definido: deduzidas diretamente do lote correspondente.
+  // Reservas sem lote ("a-definir" ou null): distribuídas proporcionalmente.
+  let reservaSemLote = 0;
+  for (const pi of (pedidoItensReservados ?? []) as { lote: string | null; quantidade: number; pedidos_comerciais: { status: string } }[]) {
     const status = pi.pedidos_comerciais?.status;
-    if (status !== "separando") continue; // só conta quem está em separação ativa
+    // Consistente com quantity_available: considera pendente E separando
+    if (status !== "separando" && status !== "pendente") continue;
 
-    const key = pi.lote.trim().toUpperCase();
-    if (map.has(key)) {
-      const entry = map.get(key)!;
-      // Deduz a reserva do saldo visível (não mexe em total_saida para não confundir histórico)
-      entry.saldo = Math.max(0, entry.saldo - pi.quantidade);
-      map.set(key, entry);
+    const loteRaw = (pi.lote ?? "").trim().toLowerCase();
+    const isIndefinido = !loteRaw || LOTE_INDEFINIDO.has(loteRaw) || loteRaw === "a-definir";
+
+    if (isIndefinido) {
+      reservaSemLote += pi.quantidade;
+    } else {
+      const key = loteRaw.toUpperCase();
+      if (map.has(key)) {
+        const entry = map.get(key)!;
+        entry.saldo = Math.max(0, entry.saldo - pi.quantidade);
+        map.set(key, entry);
+      }
+    }
+  }
+
+  // Distribui reservas sem lote proporcionalmente aos saldos dos lotes existentes
+  if (reservaSemLote > 0 && map.size > 0) {
+    const saldoTotal = [...map.values()].reduce((s, l) => s + l.saldo, 0);
+    if (saldoTotal > 0) {
+      let restante = reservaSemLote;
+      const entries = [...map.entries()].sort((a, b) => b[1].saldo - a[1].saldo);
+      for (let i = 0; i < entries.length; i++) {
+        const [key, entry] = entries[i];
+        const isLast = i === entries.length - 1;
+        const proporcao = isLast ? restante : Math.round((entry.saldo / saldoTotal) * reservaSemLote);
+        const deduzir = Math.min(proporcao, entry.saldo);
+        entry.saldo = Math.max(0, entry.saldo - deduzir);
+        restante -= deduzir;
+        map.set(key, entry);
+        if (restante <= 0) break;
+      }
     }
   }
 
