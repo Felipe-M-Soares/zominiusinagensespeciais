@@ -698,27 +698,40 @@ export async function fetchLotesSummaryBatch(
 }
 
 export async function fetchLotesSummary(stockItemId: string, _fase?: string): Promise<LoteSummary[]> {
-  const { data } = await supabase
+  // 1. Busca todos os movimentos com lote real (exclui null e 'a-definir')
+  const { data: movimentos } = await supabase
     .from("stock_movements")
     .select("lote, type, quantity, reason, created_at")
     .eq("stock_item_id", stockItemId)
     .not("lote", "is", null)
     .order("created_at", { ascending: false });
 
-  if (!data || data.length === 0) return [];
+  // 2. Busca pedido_itens com lote real para este stock_item (pedidos separando/pendente)
+  //    Esses lotes já foram escolhidos na separação mas ainda não viraram stock_movements
+  const { data: pedidoItensReservados } = await supabase
+    .from("pedido_itens")
+    .select("lote, quantidade, pedido_id, pedidos_comerciais!inner(status)")
+    .eq("stock_item_id", stockItemId)
+    .not("lote", "is", null)
+    .not("lote", "eq", "a-definir");
 
-  // Ignora apenas rollbacks — estornos artificiais que não representam movimentação real.
-  // Transferências internas (Intermediário→Expedição, Retrabalho→Expedição, etc.) DEVEM
-  // contar no saldo do item de destino, pois são as entradas legítimas daquele item.
+  if ((!movimentos || movimentos.length === 0) && (!pedidoItensReservados || pedidoItensReservados.length === 0)) return [];
+
   const ROLLBACK_REASONS = [
     "Rollback — falha ao criar item de retrabalho",
     "Rollback — falha ao criar item de expedição",
     "Rollback — falha ao registrar entrada na expedição",
   ];
 
+  // Lotes sem definição real que o sistema usa como placeholder
+  const LOTE_INDEFINIDO = new Set(["a-definir", "a definir", "sem lote"]);
+
+  // Calcula saldo bruto por lote a partir dos stock_movements
   const map = new Map<string, LoteSummary>();
-  for (const row of data as { lote: string; type: string; quantity: number; reason: string | null; created_at: string }[]) {
+
+  for (const row of (movimentos ?? []) as { lote: string; type: string; quantity: number; reason: string | null; created_at: string }[]) {
     if (row.reason && ROLLBACK_REASONS.includes(row.reason)) continue;
+    if (LOTE_INDEFINIDO.has(row.lote.trim().toLowerCase())) continue;
 
     const key = row.lote.toUpperCase();
     if (!map.has(key)) {
@@ -731,7 +744,25 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     if (row.created_at > entry.last_movement) entry.last_movement = row.created_at;
   }
 
-  return [...map.values()].sort((a, b) => b.last_movement.localeCompare(a.last_movement));
+  // Deduz reservas de pedidos (separando) que já têm lote escolhido mas ainda
+  // não geraram stock_movement de saída. Esses representam o estoque separado
+  // fisicamente mas não confirmado como "pronto".
+  for (const pi of (pedidoItensReservados ?? []) as { lote: string; quantidade: number; pedidos_comerciais: { status: string } }[]) {
+    const status = pi.pedidos_comerciais?.status;
+    if (status !== "separando") continue; // só conta quem está em separação ativa
+
+    const key = pi.lote.trim().toUpperCase();
+    if (map.has(key)) {
+      const entry = map.get(key)!;
+      // Deduz a reserva do saldo visível (não mexe em total_saida para não confundir histórico)
+      entry.saldo = Math.max(0, entry.saldo - pi.quantidade);
+      map.set(key, entry);
+    }
+  }
+
+  return [...map.values()]
+    .filter(l => l.saldo > 0)
+    .sort((a, b) => b.last_movement.localeCompare(a.last_movement));
 }
 
 export async function cancelMovement(
