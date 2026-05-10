@@ -163,16 +163,16 @@ export function useStock(search: string) {
         // Filtra itens órfãos: stock_items sem device associado causam crash no render
         .filter((item) => item.device != null);
 
-      // Recalcula quantity_reserved a partir dos pedido_itens ativos (pedidos pendentes/separando/pronto)
-      // Garante que o badge "Reservado" no card reflita a realidade independente do RPC reserve_stock.
+      // Recalcula quantity_reserved a partir dos pedido_itens ativos (apenas pendente/separando).
+      // "pronto" NÃO conta como reserva — o estoque já foi deduzido ao marcar como pronto.
       try {
         const expedicaoIds = normalized.filter(i => i.fase === "expedicao").map(i => i.id);
         if (expedicaoIds.length > 0) {
-          // Busca pedidos ativos primeiro
+          // Apenas pedidos pendente e separando geram reserva de estoque
           const { data: pedidosAtivos } = await supabase
             .from("pedidos_comerciais")
             .select("id")
-            .in("status", ["pendente", "separando", "pronto"]);
+            .in("status", ["pendente", "separando"]);
 
           const pedidoIds = (pedidosAtivos ?? []).map((p: { id: string }) => p.id);
 
