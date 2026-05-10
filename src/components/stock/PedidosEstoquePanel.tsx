@@ -61,6 +61,13 @@ interface PedidoItem {
   lote_escolhido?: string;
 }
 
+interface LoteSeparado {
+  stock_item_id: string;
+  lote: string;
+  quantidade: number;
+  device_model?: string;
+}
+
 interface Pedido {
   id: string;
   cliente_nome: string;
@@ -71,6 +78,7 @@ interface Pedido {
   observacoes: string | null;
   created_at: string;
   itens: PedidoItem[];
+  lotes_separados: LoteSeparado[] | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -134,11 +142,32 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const esc = (s: string | null | undefined) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
     const titulo = "Pedido";
-    const rows = pedido.itens.map((item, i) => {
-      const loteCell = item.lote && item.lote !== "SEM LOTE"
-        ? `<span style="display:inline-block;background:#f3f0ff;color:#5b21b6;font-family:monospace;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.05em">${esc(item.lote)}</span>`
+    // Agrupa lotes_separados por stock_item_id para lookup rápido
+    const lotesSepMap: Record<string, { lote: string; quantidade: number }[]> = {};
+    for (const ls of (pedido.lotes_separados ?? [])) {
+      if (!lotesSepMap[ls.stock_item_id]) lotesSepMap[ls.stock_item_id] = [];
+      const existing = lotesSepMap[ls.stock_item_id].find(x => x.lote === ls.lote);
+      if (existing) existing.quantidade += ls.quantidade;
+      else lotesSepMap[ls.stock_item_id].push({ lote: ls.lote, quantidade: ls.quantidade });
+    }
+    // Expande itens: se há múltiplos lotes separados para um item, gera uma linha por lote
+    const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
+    for (const item of pedido.itens) {
+      const lotesDoItem = lotesSepMap[item.stock_item_id];
+      if (lotesDoItem && lotesDoItem.length > 0) {
+        for (const ls of lotesDoItem) {
+          printRows.push({ model: item.device_model, reference: item.device_reference, lote: ls.lote, quantidade: ls.quantidade });
+        }
+      } else {
+        // Fallback: sem separação registrada, usa dados do pedido_item original
+        printRows.push({ model: item.device_model, reference: item.device_reference, lote: item.lote ?? "", quantidade: item.quantidade });
+      }
+    }
+    const rows = printRows.map((row, i) => {
+      const loteCell = row.lote && row.lote !== "SEM LOTE" && row.lote !== "a-definir"
+        ? `<span style="display:inline-block;background:#f3f0ff;color:#5b21b6;font-family:monospace;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.05em">${esc(row.lote)}</span>`
         : `<span style="color:#aaa;font-size:11px">—</span>`;
-      return `<tr><td>${i+1}</td><td>${esc(item.device_model)}</td><td>${esc(item.device_reference)}</td><td style="text-align:center">${loteCell}</td><td style="text-align:center;font-weight:bold">${item.quantidade}</td></tr>`;
+      return `<tr><td>${i+1}</td><td>${esc(row.model)}</td><td>${esc(row.reference)}</td><td style="text-align:center">${loteCell}</td><td style="text-align:center;font-weight:bold">${row.quantidade}</td></tr>`;
     }).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
     <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin-bottom:4px}p.sub{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padding:8px 10px;background:#f3f0ff;color:#5b21b6;border-bottom:2px solid #ddd6fe}td{padding:7px 10px;border-bottom:1px solid #eee}.footer{margin-top:20px;font-size:11px;color:#999}@media print{button{display:none}}</style></head><body>
@@ -146,7 +175,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     <p class="sub">Cliente: <strong>${esc(pedido.cliente_nome)}</strong> &nbsp;·&nbsp; Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong> &nbsp;·&nbsp; Gerado em: ${now}</p>
     ${pedido.observacoes ? `<p style="font-size:12px;color:#555;margin-bottom:16px">Obs: ${esc(pedido.observacoes)}</p>` : ""}
     <table><thead><tr><th>#</th><th>Peça</th><th>Referência</th><th style="text-align:center">Lote</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="footer">Total: ${pedido.itens.reduce((s,i)=>s+i.quantidade,0)} peças · ${pedido.itens.length} tipo(s)</p>
+    <p class="footer">Total: ${printRows.reduce((s,r)=>s+r.quantidade,0)} peças · ${pedido.itens.length} tipo(s)</p>
     </body></html>`;
     const w = window.open("", "_blank");
     if (!w) return;
@@ -1240,6 +1269,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         frete: (p.frete as number) ?? 0,
         observacoes: p.observacoes as string | null,
         created_at: p.created_at as string,
+        lotes_separados: (p.lotes_separados as LoteSeparado[] | null) ?? null,
         itens: (() => {
           const raw = ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
             id: i.id as string,
