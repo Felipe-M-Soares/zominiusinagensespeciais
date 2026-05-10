@@ -79,6 +79,7 @@ interface Pedido {
   created_at: string;
   itens: PedidoItem[];
   lotes_separados: LoteSeparado[] | null;
+  itens_raw: { stock_item_id: string; lote: string; quantidade: number; device_model?: string; device_reference?: string }[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -150,17 +151,24 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       if (existing) existing.quantidade += ls.quantidade;
       else lotesSepMap[ls.stock_item_id].push({ lote: ls.lote, quantidade: ls.quantidade });
     }
-    // Expande itens: se há múltiplos lotes separados para um item, gera uma linha por lote
+    // Expande itens: se há lotes_separados usa eles; senão usa itens_raw (um por linha, com lote real)
+    const hasSep = (pedido.lotes_separados ?? []).length > 0;
     const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
-    for (const item of pedido.itens) {
-      const lotesDoItem = lotesSepMap[item.stock_item_id];
-      if (lotesDoItem && lotesDoItem.length > 0) {
-        for (const ls of lotesDoItem) {
-          printRows.push({ model: item.device_model, reference: item.device_reference, lote: ls.lote, quantidade: ls.quantidade });
+    if (hasSep) {
+      for (const item of pedido.itens) {
+        const lotesDoItem = lotesSepMap[item.stock_item_id];
+        if (lotesDoItem && lotesDoItem.length > 0) {
+          for (const ls of lotesDoItem) {
+            printRows.push({ model: item.device_model, reference: item.device_reference, lote: ls.lote, quantidade: ls.quantidade });
+          }
+        } else {
+          printRows.push({ model: item.device_model, reference: item.device_reference, lote: item.lote ?? "", quantidade: item.quantidade });
         }
-      } else {
-        // Fallback: sem separação registrada, usa dados do pedido_item original
-        printRows.push({ model: item.device_model, reference: item.device_reference, lote: item.lote ?? "", quantidade: item.quantidade });
+      }
+    } else {
+      // Sem lotes_separados: usa itens_raw preservando lote individual de cada pedido_item
+      for (const raw of pedido.itens_raw) {
+        printRows.push({ model: raw.device_model, reference: raw.device_reference, lote: raw.lote ?? "", quantidade: raw.quantidade });
       }
     }
     const rows = printRows.map((row, i) => {
@@ -1291,6 +1299,13 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           }
           return Object.values(merged);
         })(),
+        itens_raw: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
+          stock_item_id: i.stock_item_id as string,
+          lote: i.lote as string,
+          quantidade: i.quantidade as number,
+          device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
+          device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
+        })),
       }));
 
       setPedidos(mapped);
