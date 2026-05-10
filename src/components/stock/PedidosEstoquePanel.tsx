@@ -151,8 +151,11 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       if (existing) existing.quantidade += ls.quantidade;
       else lotesSepMap[ls.stock_item_id].push({ lote: ls.lote, quantidade: ls.quantidade });
     }
-    // Expande itens: se há lotes_separados usa eles; senão usa itens_raw (um por linha, com lote real)
+    // Expande itens para impressão:
+    // 1ª opção: lotes_separados (seleção explícita do separador) — mais preciso
+    // 2ª opção: itens_raw com lote real do pedido_itens (atualizado na separação)
     const hasSep = (pedido.lotes_separados ?? []).length > 0;
+    const LOTE_PLACEHOLDER = new Set(["a-definir", "a definir", "sem lote", ""]);
     const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
     if (hasSep) {
       for (const item of pedido.itens) {
@@ -166,9 +169,10 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         }
       }
     } else {
-      // Sem lotes_separados: usa itens_raw preservando lote individual de cada pedido_item
+      // Usa itens_raw: lote já foi atualizado com o lote real na separação
       for (const raw of pedido.itens_raw) {
-        printRows.push({ model: raw.device_model, reference: raw.device_reference, lote: raw.lote ?? "", quantidade: raw.quantidade });
+        const loteReal = raw.lote && !LOTE_PLACEHOLDER.has(raw.lote.trim().toLowerCase()) ? raw.lote : "";
+        printRows.push({ model: raw.device_model, reference: raw.device_reference, lote: loteReal, quantidade: raw.quantidade });
       }
     }
     const rows = printRows.map((row, i) => {
@@ -457,6 +461,39 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                       )}
                     </div>
                   </div>
+
+                  {/* Lotes separados — exibe no card quando pronto */}
+                  {pedido.status === "pronto" && (() => {
+                    const lotesSepMap2: Record<string, { lote: string; quantidade: number }[]> = {};
+                    for (const ls of (pedido.lotes_separados ?? [])) {
+                      if (!lotesSepMap2[ls.stock_item_id]) lotesSepMap2[ls.stock_item_id] = [];
+                      const ex = lotesSepMap2[ls.stock_item_id].find(x => x.lote === ls.lote);
+                      if (ex) ex.quantidade += ls.quantidade; else lotesSepMap2[ls.stock_item_id].push({ lote: ls.lote, quantidade: ls.quantidade });
+                    }
+                    const LOTE_PH = new Set(["a-definir", "a definir", "sem lote", ""]);
+                    // Usa lotes_separados se disponível, senão itens_raw com lote real
+                    let lotesParaExibir: { lote: string; quantidade: number }[] = lotesSepMap2[item.stock_item_id] ?? [];
+                    if (lotesParaExibir.length === 0) {
+                      const rawsDoItem = pedido.itens_raw.filter(r => r.stock_item_id === item.stock_item_id && r.lote && !LOTE_PH.has(r.lote.trim().toLowerCase()));
+                      if (rawsDoItem.length > 0) {
+                        const agg: Record<string, number> = {};
+                        for (const r of rawsDoItem) agg[r.lote] = (agg[r.lote] ?? 0) + r.quantidade;
+                        lotesParaExibir = Object.entries(agg).map(([lote, quantidade]) => ({ lote, quantidade }));
+                      }
+                    }
+                    if (lotesParaExibir.length === 0) return null;
+                    return (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {lotesParaExibir.map(l => (
+                          <div key={l.lote} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
+                            <Tag className="h-2.5 w-2.5 text-emerald-500/70 shrink-0" />
+                            <span className="text-[11px] font-mono font-bold text-emerald-600 tracking-wider">{l.lote}</span>
+                            <span className="text-[10px] text-emerald-500/70">{l.quantidade} un.</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
 
                   {/* Seleção de lotes — só mostra em pedidos pendentes */}
                   {isPendente && (
