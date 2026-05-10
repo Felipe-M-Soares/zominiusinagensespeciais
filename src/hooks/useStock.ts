@@ -733,13 +733,12 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     .not("lote", "is", null)
     .order("created_at", { ascending: false });
 
-  // 2. Busca pedido_itens com lote real para este stock_item (pedidos separando/pendente)
-  //    O lote é atribuído automaticamente (mais antigo primeiro) — nunca mais "a-definir"
+  // 2. Busca TODOS os pedido_itens para este stock_item (pendente/separando)
+  //    Inclui lote null: quando null, deduz do lote mais antigo (FIFO), igual ao quantity_available
   const { data: pedidoItensReservados } = await supabase
     .from("pedido_itens")
     .select("lote, quantidade, pedido_id, pedidos_comerciais!inner(status)")
-    .eq("stock_item_id", stockItemId)
-    .not("lote", "is", null);
+    .eq("stock_item_id", stockItemId);
 
   if ((!movimentos || movimentos.length === 0) && (!pedidoItensReservados || pedidoItensReservados.length === 0)) return [];
 
@@ -770,19 +769,47 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     if (row.created_at > entry.last_movement) entry.last_movement = row.created_at;
   }
 
-  // Deduz reservas de pedidos (pendente e separando) diretamente do lote correspondente.
-  // O lote é sempre definido no momento da criação do pedido (mais antigo primeiro).
+  // Deduz reservas de pedidos (pendente e separando) dos saldos dos lotes.
+  // - lote definido: deduz diretamente daquele lote
+  // - lote null (pedido criado sem lote): deduz do mais antigo primeiro (FIFO),
+  //   completando com o próximo se necessário — idêntico ao que o separador fará
+  //
+  // Lotes ordenados do mais antigo ao mais novo para FIFO correto
+  function lotesOrdenadosFIFO(): string[] {
+    return [...map.keys()].sort((a, b) => {
+      const toComp = (s: string) => {
+        const d = s.replace("-", "").slice(0, 7); // DDMMYYA
+        return d.slice(4) + d.slice(2, 4) + d.slice(0, 2); // → YYAMMDD
+      };
+      return toComp(a).localeCompare(toComp(b));
+    });
+  }
+
   for (const pi of (pedidoItensReservados ?? []) as { lote: string | null; quantidade: number; pedidos_comerciais: { status: string } }[]) {
     const status = pi.pedidos_comerciais?.status;
-    // Consistente com quantity_available: considera pendente E separando
     if (status !== "separando" && status !== "pendente") continue;
-    if (!pi.lote) continue;
 
-    const key = pi.lote.trim().toUpperCase();
-    if (map.has(key)) {
-      const entry = map.get(key)!;
-      entry.saldo = Math.max(0, entry.saldo - pi.quantidade);
-      map.set(key, entry);
+    const loteDefinido = pi.lote?.trim();
+
+    if (loteDefinido) {
+      // Lote já escolhido: deduz direto
+      const key = loteDefinido.toUpperCase();
+      if (map.has(key)) {
+        const entry = map.get(key)!;
+        entry.saldo = Math.max(0, entry.saldo - pi.quantidade);
+        map.set(key, entry);
+      }
+    } else {
+      // Lote ainda não definido: deduz FIFO (mais antigo primeiro)
+      let restante = pi.quantidade;
+      for (const key of lotesOrdenadosFIFO()) {
+        if (restante <= 0) break;
+        const entry = map.get(key)!;
+        const deduzir = Math.min(entry.saldo, restante);
+        entry.saldo = Math.max(0, entry.saldo - deduzir);
+        restante -= deduzir;
+        map.set(key, entry);
+      }
     }
   }
 
