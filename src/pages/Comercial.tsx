@@ -802,8 +802,8 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
   if (!pedido) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-2xl flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-200" style={{ minHeight: 480 }}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
           <div className="flex items-center gap-2">
@@ -815,84 +815,103 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
           </button>
         </div>
 
-        <div className="p-4 space-y-3 overflow-y-auto flex-1">
+        <div className="p-5 space-y-4 flex-1 flex flex-col">
           {/* Info */}
-          <div className="rounded-xl bg-violet-500/8 border border-violet-500/20 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-400">
+          <div className="rounded-xl bg-violet-500/8 border border-violet-500/20 px-3 py-2.5 text-[12px] text-violet-700 dark:text-violet-400">
             Pedido de <strong>{pedido.cliente_nome}</strong> — ainda pendente, pode adicionar peças
           </div>
 
-          {/* Busca com autocomplete */}
-          <div className="relative" ref={dropRef}>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <input
-              ref={inputRef}
-              value={search}
-              onChange={e => handleInput(e.target.value)}
-              onFocus={handleFocus}
-              placeholder="Buscar peça por modelo..."
-              className="w-full h-9 pl-9 pr-3 rounded-xl border border-border/40 bg-muted/20 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-            />
-            {showAutocomp && autocomplete.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 rounded-xl border border-border/30 bg-card shadow-xl z-10 overflow-hidden max-h-48 overflow-y-auto">
-                {autocomplete.map(item => (
+          {/* Busca com autocomplete — lista inline, não dropdown flutuante */}
+          <div className="flex flex-col flex-1" ref={dropRef}>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <input
+                ref={inputRef}
+                value={search}
+                onChange={e => handleInput(e.target.value)}
+                onFocus={handleFocus}
+                placeholder="Buscar peça por modelo..."
+                className="w-full h-11 pl-10 pr-3 rounded-xl border border-border/40 bg-muted/20 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/40"
+              />
+            </div>
+
+            {/* Lista de resultados inline — sempre visível */}
+            {showAutocomp && autocomplete.length > 0 && !selectedPeca && (
+              <div className="mt-2 rounded-xl border border-border/30 bg-muted/10 overflow-hidden flex-1" style={{ maxHeight: 260, overflowY: 'auto' }}>
+                {autocomplete.map((item, idx) => (
                   <button
                     key={item.id}
                     type="button"
                     onMouseDown={e => { e.preventDefault(); setSelectedPeca(item); setSearch(item.device?.model ?? ""); setShowAutocomp(false); setQtd(1); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/40 text-left transition-colors"
+                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-violet-500/8 text-left transition-colors ${idx > 0 ? 'border-t border-border/20' : ''}`}
                   >
-                    <Package className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <Package className="h-4 w-4 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-medium truncate">{item.device?.model}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{item.device?.reference}</p>
+                      <p className="text-[13px] font-medium">{item.device?.model}</p>
+                      <p className="text-[11px] text-muted-foreground font-mono mt-0.5">{item.device?.reference}</p>
                     </div>
-                    <span className="text-[10px] font-bold text-emerald-600 shrink-0">{dispReal(item)} disp.</span>
+                    <div className="text-right shrink-0">
+                      <p className="text-[13px] font-bold text-emerald-500">{dispReal(item)}</p>
+                      <p className="text-[10px] text-muted-foreground">disp.</p>
+                    </div>
                   </button>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Quantidade */}
-          {selectedPeca && (
-            <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 space-y-3">
-              <div>
-                <p className="text-[12px] font-semibold">{selectedPeca.device?.model}</p>
-                <p className="text-[10px] text-muted-foreground font-mono">{selectedPeca.device?.reference}</p>
-                <p className="text-[10px] text-emerald-600 mt-0.5">{maxDisponivel} disponíveis na expedição{(jaNosPedido[selectedPeca!.id] ?? 0) > 0 ? ` (${jaNosPedido[selectedPeca!.id]} já no pedido)` : ""}</p>
+            {/* Peça selecionada + quantidade */}
+            {selectedPeca && (
+              <div className="mt-3 rounded-xl border border-violet-500/25 bg-violet-500/5 px-4 py-4 space-y-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[13px] font-semibold">{selectedPeca.device?.model}</p>
+                    <p className="text-[11px] text-muted-foreground font-mono mt-0.5">{selectedPeca.device?.reference}</p>
+                    <p className="text-[11px] text-emerald-500 mt-1 font-medium">
+                      {maxDisponivel} disponíveis na expedição
+                      {(jaNosPedido[selectedPeca!.id] ?? 0) > 0 && <span className="text-muted-foreground font-normal"> · {jaNosPedido[selectedPeca!.id]} já no pedido</span>}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedPeca(null); setSearch(""); setTimeout(() => inputRef.current?.focus(), 50); }}
+                    className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 shrink-0 mt-0.5"
+                  >
+                    trocar
+                  </button>
+                </div>
+                <div className="flex items-center justify-center gap-5">
+                  <button type="button" onClick={() => setQtd(q => Math.max(1, q - 1))} className="h-11 w-11 rounded-xl bg-muted/40 hover:bg-muted/70 flex items-center justify-center transition-colors text-lg font-bold">
+                    <Minus className="h-5 w-5" />
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={maxDisponivel}
+                    value={qtd}
+                    onChange={e => setQtd(Math.max(1, Math.min(maxDisponivel, parseInt(e.target.value) || 1)))}
+                    className="w-20 text-center text-[22px] font-bold bg-transparent border border-border/40 rounded-xl h-12 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  />
+                  <button type="button" onClick={() => setQtd(q => Math.min(maxDisponivel, q + 1))} className="h-11 w-11 rounded-xl bg-muted/40 hover:bg-muted/70 flex items-center justify-center transition-colors">
+                    <Plus className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center justify-center gap-4">
-                <button type="button" onClick={() => setQtd(q => Math.max(1, q - 1))} className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 flex items-center justify-center transition-colors">
-                  <Minus className="h-4 w-4" />
-                </button>
-                <input
-                  type="number"
-                  min={1}
-                  max={maxDisponivel}
-                  value={qtd}
-                  onChange={e => setQtd(Math.max(1, Math.min(maxDisponivel, parseInt(e.target.value) || 1)))}
-                  className="w-16 text-center text-[20px] font-bold bg-transparent border border-border/40 rounded-xl h-10 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-                />
-                <button type="button" onClick={() => setQtd(q => Math.min(maxDisponivel, q + 1))} className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 flex items-center justify-center transition-colors">
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="px-4 pb-4 pt-3 shrink-0 border-t border-border/20 flex gap-2">
-          <button type="button" onClick={onClose} className="flex-1 h-10 rounded-xl border border-border/30 text-[12px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
+        <div className="px-5 pb-5 pt-3 shrink-0 border-t border-border/20 flex gap-3">
+          <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border border-border/30 text-[13px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
             Cancelar
           </button>
           <button
             type="button"
             onClick={handleAdd}
             disabled={!selectedPeca || saving}
-            className="flex-1 h-10 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+            className="flex-1 h-11 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[13px] font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-2"
           >
-            {saving ? <div className="h-3.5 w-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            {saving ? <div className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" /> : <Plus className="h-4 w-4" />}
             Adicionar ao Pedido
           </button>
         </div>
