@@ -151,13 +151,13 @@ export function AdminUsers() {
 
   const applyRoleChange = async (userId: string, newRole: AppRole) => {
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
-    if (error) toast.error("Erro ao alterar função: " + error.message);
+    if (error) toast.error("Erro ao alterar função. Tente novamente.");
     else { toast.success("Função atualizada"); fetchUsers(); }
   };
 
   const toggleApproval = async (userId: string, approve: boolean) => {
     const { error } = await supabase.from("profiles").update({ approved: approve }).eq("user_id", userId);
-    if (error) toast.error("Erro ao alterar aprovação: " + error.message);
+    if (error) toast.error("Erro ao alterar aprovação. Tente novamente.");
     else { toast.success(approve ? "Usuário aprovado" : "Aprovação removida"); fetchUsers(); }
   };
 
@@ -167,7 +167,7 @@ export function AdminUsers() {
         .from("profiles")
         .update({ approved: false, blocked: true })
         .eq("user_id", userId);
-      if (profileErr) { toast.error("Erro ao bloquear usuário: " + profileErr.message); return; }
+      if (profileErr) { toast.error("Erro ao bloquear usuário. Tente novamente."); return; }
       toast.success(`Acesso de ${userLogin ?? "usuário"} bloqueado.`);
       fetchUsers();
     } catch (err) {
@@ -181,7 +181,7 @@ export function AdminUsers() {
       .from("profiles")
       .update({ blocked: false, approved: true })
       .eq("user_id", userId);
-    if (error) toast.error("Erro ao desbloquear: " + error.message);
+    if (error) toast.error("Erro ao desbloquear. Tente novamente.");
     else { toast.success("Usuário desbloqueado e aprovado"); fetchUsers(); }
   };
 

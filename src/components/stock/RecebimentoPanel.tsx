@@ -195,7 +195,7 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
       .eq("id", item.id);
     setLoading(false);
     if (error) {
-      toast.error("Erro ao confirmar retirada: " + error.message);
+      toast.error("Erro ao confirmar retirada. Tente novamente.");
     } else {
       toast.success("Retirada confirmada!", {
         description: `${item.quantity} un. · Lote ${item.lote}`,
@@ -277,7 +277,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
       .order("created_at", { ascending: false });
     setLoading(false);
     if (error) {
-      toast.error("Erro ao carregar recebimentos: " + error.message);
+      toast.error("Erro ao carregar recebimentos. Verifique sua conexão.");
     } else {
       setItems((data ?? []) as RecebimentoItem[]);
     }
@@ -314,7 +314,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
       .eq("id", deleteItem.id);
     setDeleting(false);
     if (error) {
-      toast.error("Erro ao excluir: " + error.message);
+      toast.error("Erro ao excluir recebimento. Tente novamente.");
     } else {
       toast.success("Recebimento excluído.");
       setDeleteItem(null);

@@ -1539,7 +1539,7 @@ export default function Estoque() {
                     setDeleteItem(null);
                     refetch();
                   } else {
-                    t.error(result.error ?? "Erro ao remover peça.");
+                    t.error("Erro ao remover peça. Tente novamente.");
                   }
                 }}
               >

@@ -75,7 +75,7 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
       toast.success("Peça adicionada ao estoque", { description: device.model });
       onSuccess();
     } else {
-      toast.error(result.error ?? "Erro ao adicionar peça.");
+      toast.error("Erro ao adicionar peça. Tente novamente.");
     }
   }
 

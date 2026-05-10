@@ -85,7 +85,7 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
     setLoading(false);
 
     if (error) {
-      toast.error("Erro ao registrar recebimento: " + error.message);
+      toast.error("Erro ao registrar recebimento. Tente novamente.");
     } else {
       toast.success(`Recebimento registrado — ${safeQty} un.`, {
         description: `Lote ${lote.toUpperCase()} · ${descricao.trim()}`,
