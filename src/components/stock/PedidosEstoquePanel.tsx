@@ -143,33 +143,57 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const esc = (s: string | null | undefined) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
     const titulo = "Pedido";
-    // Agrupa lotes_separados por stock_item_id para lookup rápido
-    const lotesSepMap: Record<string, { lote: string; quantidade: number }[]> = {};
+
+    // Agrupa lotes_separados por pedido_item_id E por stock_item_id (dois índices para lookup robusto)
+    const lotesByPedidoItemId: Record<string, { lote: string; quantidade: number }[]> = {};
+    const lotesByStockItemId: Record<string, { lote: string; quantidade: number }[]> = {};
     for (const ls of (pedido.lotes_separados ?? [])) {
-      if (!lotesSepMap[ls.stock_item_id]) lotesSepMap[ls.stock_item_id] = [];
-      const existing = lotesSepMap[ls.stock_item_id].find(x => x.lote === ls.lote);
-      if (existing) existing.quantidade += ls.quantidade;
-      else lotesSepMap[ls.stock_item_id].push({ lote: ls.lote, quantidade: ls.quantidade });
+      // índice por pedido_item_id
+      const pid = (ls as Record<string, unknown>).pedido_item_id as string | undefined;
+      if (pid) {
+        if (!lotesByPedidoItemId[pid]) lotesByPedidoItemId[pid] = [];
+        const ex1 = lotesByPedidoItemId[pid].find(x => x.lote === ls.lote);
+        if (ex1) ex1.quantidade += ls.quantidade;
+        else lotesByPedidoItemId[pid].push({ lote: ls.lote, quantidade: ls.quantidade });
+      }
+      // índice por stock_item_id
+      if (!lotesByStockItemId[ls.stock_item_id]) lotesByStockItemId[ls.stock_item_id] = [];
+      const ex2 = lotesByStockItemId[ls.stock_item_id].find(x => x.lote === ls.lote);
+      if (ex2) ex2.quantidade += ls.quantidade;
+      else lotesByStockItemId[ls.stock_item_id].push({ lote: ls.lote, quantidade: ls.quantidade });
     }
-    // Expande itens para impressão:
-    // 1ª opção: lotes_separados (seleção explícita do separador) — mais preciso
-    // 2ª opção: itens_raw com lote real do pedido_itens (atualizado na separação)
+
     const hasSep = (pedido.lotes_separados ?? []).length > 0;
     const LOTE_PLACEHOLDER = new Set(["a-definir", "a definir", "sem lote", ""]);
     const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
+
     if (hasSep) {
       for (const item of pedido.itens) {
-        const lotesDoItem = lotesSepMap[item.stock_item_id];
-        if (lotesDoItem && lotesDoItem.length > 0) {
-          for (const ls of lotesDoItem) {
-            printRows.push({ model: item.device_model, reference: item.device_reference, lote: ls.lote, quantidade: ls.quantidade });
+        // Lookup: tenta por cada pedido_item_id do item, depois por stock_item_id
+        const lotesAgregados: Record<string, number> = {};
+        for (const pid of item.ids) {
+          for (const l of (lotesByPedidoItemId[pid] ?? [])) {
+            lotesAgregados[l.lote] = (lotesAgregados[l.lote] ?? 0) + l.quantidade;
+          }
+        }
+        // Fallback: stock_item_id
+        if (Object.keys(lotesAgregados).length === 0) {
+          for (const l of (lotesByStockItemId[item.stock_item_id] ?? [])) {
+            lotesAgregados[l.lote] = (lotesAgregados[l.lote] ?? 0) + l.quantidade;
+          }
+        }
+        if (Object.keys(lotesAgregados).length > 0) {
+          for (const [lote, quantidade] of Object.entries(lotesAgregados)) {
+            printRows.push({ model: item.device_model, reference: item.device_reference, lote, quantidade });
           }
         } else {
-          printRows.push({ model: item.device_model, reference: item.device_reference, lote: item.lote ?? "", quantidade: item.quantidade });
+          // Último recurso: lote do pedido_itens (pode ser null)
+          const loteRaw = item.lote && !LOTE_PLACEHOLDER.has(item.lote.trim().toLowerCase()) ? item.lote : "";
+          printRows.push({ model: item.device_model, reference: item.device_reference, lote: loteRaw, quantidade: item.quantidade });
         }
       }
     } else {
-      // Usa itens_raw: lote já foi atualizado com o lote real na separação
+      // Sem lotes_separados: usa itens_raw com lote real do pedido_itens
       for (const raw of pedido.itens_raw) {
         const loteReal = raw.lote && !LOTE_PLACEHOLDER.has(raw.lote.trim().toLowerCase()) ? raw.lote : "";
         printRows.push({ model: raw.device_model, reference: raw.device_reference, lote: loteReal, quantidade: raw.quantidade });
