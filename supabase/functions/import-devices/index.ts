@@ -55,7 +55,7 @@ function parseCSV(text: string): Record<string, string>[] {
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "") // remove diacritics (acentos)
       .toLowerCase()
-      .replace(/[\s\-]+/g, "_")        // espaço/hífen → underscore
+      .replace(/[\s-]+/g, "_")          // espaço/hífen → underscore
       .replace(/[^a-z0-9_]/g, "");     // remove caracteres especiais restantes
 
   const rawHeaders = parseRow(lines[0]);
@@ -100,7 +100,7 @@ function t(s: unknown, max: number): string {
  * Ex: "Região" → "regiao", "Titânio" → "titanio"
  */
 function normalizeKey(s: string): string {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s\-]+/g, "_").replace(/[^a-z0-9_]/g, "");
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s-]+/g, "_").replace(/[^a-z0-9_]/g, "");
 }
 
 function g(r: Record<string, string>, ...keys: string[]): string {

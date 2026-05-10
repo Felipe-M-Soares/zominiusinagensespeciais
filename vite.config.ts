@@ -16,10 +16,15 @@ export default defineConfig(({ mode }) => ({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ["react", "react-dom", "react-router-dom"],
-          supabase: ["@supabase/supabase-js"],
-          ui: ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-select"],
+        // Vite 8 / rolldown requer função em vez de objeto estático
+        manualChunks(id: string) {
+          if (id.includes("node_modules/@supabase")) return "supabase";
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/react-router-dom/")
+          ) return "vendor";
+          if (id.includes("node_modules/@radix-ui")) return "ui";
         },
       },
     },

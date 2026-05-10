@@ -26,7 +26,6 @@ const EMAIL_SUBJECTS: Record<string, string> = {
   reauthentication: 'Seu código de verificação',
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const EMAIL_TEMPLATES: Record<string, React.ComponentType<Record<string, unknown>>> = {
   signup: SignupEmail,
   invite: InviteEmail,

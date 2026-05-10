@@ -72,6 +72,7 @@ import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { countryFlag } from "@/components/DeviceCard";
+import { toast } from "sonner";
 
 // ─── Card de Intermediária ────────────────────────────────────────────────────
 
@@ -830,13 +831,12 @@ export default function Estoque() {
 
   async function handleDeleteAll() {
     setDeletingAll(true);
-    const { toast: t } = await import("sonner");
     const { error } = await supabase.from("stock_items").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     setDeletingAll(false);
     if (error) {
-      t.error("Erro ao excluir estoque.");
+      toast.error("Erro ao excluir estoque.");
     } else {
-      t.success("Todo o estoque foi excluído.");
+      toast.success("Todo o estoque foi excluído.");
       setDeleteAllOpen(false);
       setDeleteAllTyped("");
       refetch();
@@ -846,7 +846,6 @@ export default function Estoque() {
   async function handleResetItem() {
     if (!resetItem) return;
     setResetting(true);
-    const { toast: t } = await import("sonner");
 
     // BUG-13: Check for active orders referencing this item before deleting
     const { data: ativos } = await supabase
@@ -856,7 +855,7 @@ export default function Estoque() {
       .in("pedidos_comerciais.status", ["aberto", "separando", "pendente"]);
 
     if (ativos && ativos.length > 0) {
-      t.error(
+      toast.error(
         `Existem ${ativos.length} pedido(s) ativo(s) usando este item. ` +
         "Cancele-os antes de zerar o estoque."
       );
@@ -873,7 +872,7 @@ export default function Estoque() {
       .update({ quantity: 0, quantity_reserved: 0 })
       .eq("id", resetItem.id);
     if (updateErr) {
-      t.error("Erro ao zerar estoque.");
+      toast.error("Erro ao zerar estoque.");
       setResetting(false);
       return;
     }
@@ -884,9 +883,9 @@ export default function Estoque() {
       .eq("stock_item_id", resetItem.id);
     setResetting(false);
     if (movErr) {
-      t.error("Estoque zerado, mas não foi possível limpar o histórico.");
+      toast.error("Estoque zerado, mas não foi possível limpar o histórico.");
     } else {
-      t.success("Estoque e histórico zerados com sucesso.");
+      toast.success("Estoque e histórico zerados com sucesso.");
     }
     setResetItem(null);
     refetch();
@@ -1531,15 +1530,14 @@ export default function Estoque() {
                 onClick={async () => {
                   if (!deleteItem) return;
                   setDeleting(true);
-                  const { toast: t } = await import("sonner");
                   const result = await deleteStockItem(deleteItem.id);
                   setDeleting(false);
                   if (result.ok) {
-                    t.success("Peça removida do estoque.", { description: deleteItem.device.model });
+                    toast.success("Peça removida do estoque.", { description: deleteItem.device.model });
                     setDeleteItem(null);
                     refetch();
                   } else {
-                    t.error("Erro ao remover peça. Tente novamente.");
+                    toast.error("Erro ao remover peça. Tente novamente.");
                   }
                 }}
               >

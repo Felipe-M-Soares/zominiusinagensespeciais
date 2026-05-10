@@ -24,20 +24,12 @@ import { cn } from "@/lib/utils";
 
 
 // ─── Apagar todo o histórico ─────────────────────────────────────────────────
+// SEG-02: usa a RPC server-side admin_clear_history que:
+// 1. Verifica role admin no banco (não pode ser bypassado pelo frontend)
+// 2. Executa todas as deleções em uma única transação atômica
 async function clearAllHistory(): Promise<{ ok: boolean; error?: string }> {
-  // Deleta na ordem correta para respeitar FKs:
-  // 1. pedido_itens (referencia stock_items e pedidos_comerciais)
-  const { error: e1 } = await supabase.from("pedido_itens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-  if (e1) return { ok: false, error: e1.message };
-  // 2. pedidos_comerciais
-  const { error: e2 } = await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-  if (e2) return { ok: false, error: e2.message };
-  // 3. stock_movements
-  const { error: e3 } = await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-  if (e3) return { ok: false, error: e3.message };
-  // 4. Zera quantities nos stock_items
-  const { error: e4 } = await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
-  if (e4) return { ok: false, error: e4.message };
+  const { error } = await supabase.rpc("admin_clear_history");
+  if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
 
