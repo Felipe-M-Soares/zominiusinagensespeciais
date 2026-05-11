@@ -806,23 +806,39 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     .not("lote", "is", null)
     .order("created_at", { ascending: false });
 
-  // 2. Busca pedidos ativos (pendente/separando) e depois os itens desse stock_item
-  //    Duas queries separadas evitam ambiguidade do join aninhado com !inner
+  // 2. Busca pedidos ativos (pendente/separando) com lotes_separados e pedido_itens
+  //    lotes_separados tem a distribuição real por lote (ex: 100 do lote A + 50 do lote B).
+  //    pedido_itens.lote só guarda o lote principal — insuficiente quando há múltiplos lotes.
   const { data: pedidosAtivos } = await supabase
     .from("pedidos_comerciais")
-    .select("id")
+    .select("id, lotes_separados")
     .in("status", ["pendente", "separando"]);
 
   const pedidoIdsAtivos = (pedidosAtivos ?? []).map((p: { id: string }) => p.id);
 
+  // Reservas por lote: prefere lotes_separados (distribuição real), cai para pedido_itens.lote
   const pedidoItensReservados: { lote: string | null; quantidade: number }[] = [];
+
   if (pedidoIdsAtivos.length > 0) {
-    const { data: piData } = await supabase
-      .from("pedido_itens")
-      .select("lote, quantidade")
-      .eq("stock_item_id", stockItemId)
-      .in("pedido_id", pedidoIdsAtivos);
-    pedidoItensReservados.push(...((piData ?? []) as { lote: string | null; quantidade: number }[]));
+    // Tenta extrair do lotes_separados de cada pedido ativo
+    for (const pedido of (pedidosAtivos ?? []) as { id: string; lotes_separados: { stock_item_id: string; lote: string; quantidade: number }[] | null }[]) {
+      const sep = pedido.lotes_separados ?? [];
+      const sepDoItem = sep.filter(s => s.stock_item_id === stockItemId);
+      if (sepDoItem.length > 0) {
+        // Usa lotes_separados — tem a distribuição real por lote
+        for (const s of sepDoItem) {
+          pedidoItensReservados.push({ lote: s.lote, quantidade: s.quantidade });
+        }
+      } else {
+        // Pedido sem lotes_separados (pendente sem separação iniciada): usa pedido_itens.lote
+        const { data: piData } = await supabase
+          .from("pedido_itens")
+          .select("lote, quantidade")
+          .eq("stock_item_id", stockItemId)
+          .eq("pedido_id", pedido.id);
+        pedidoItensReservados.push(...((piData ?? []) as { lote: string | null; quantidade: number }[]));
+      }
+    }
   }
 
   if ((!movimentos || movimentos.length === 0) && pedidoItensReservados.length === 0) return [];
