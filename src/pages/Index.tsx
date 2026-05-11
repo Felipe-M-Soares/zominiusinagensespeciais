@@ -162,7 +162,7 @@ const Index = () => {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-transparent">
       <header className="border-b border-border/50 bg-card/80 backdrop-blur-md sticky top-0 z-10">
         <div className="container mx-auto px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">

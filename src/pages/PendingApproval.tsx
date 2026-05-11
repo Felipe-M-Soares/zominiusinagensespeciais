@@ -38,7 +38,7 @@ export default function PendingApproval() {
   // ── TELA DE BLOQUEADO ──────────────────────────────────────────────────────
   if (blocked) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/30 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-gradient-to-br from-transparent via-transparent to-accent/20 flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center space-y-6">
           <Logo className="h-14 object-contain mx-auto" />
 
@@ -75,7 +75,7 @@ export default function PendingApproval() {
 
   // ── TELA DE AGUARDANDO APROVAÇÃO ───────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/30 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-transparent via-transparent to-accent/20 flex items-center justify-center px-4">
       <div className="w-full max-w-sm text-center space-y-6">
         <Logo className="h-14 object-contain mx-auto" />
 

@@ -4,17 +4,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { LoadingScreen } from "@/components/LoadingScreen";
-import Index from "./pages/Index";
+import { lazy, Suspense } from "react";
+
+// Páginas always-needed: carregadas de imediato (sem lazy)
 import Login from "./pages/Login";
-import Admin from "./pages/Admin";
-import SettingsPage from "./pages/Settings";
-import Manuals from "./pages/Manuals";
-import Estoque from "./pages/Estoque";
-import Comercial from "./pages/Comercial";
-import Financeiro from "./pages/Financeiro";
 import SetPassword from "./pages/SetPassword";
 import PendingApproval from "./pages/PendingApproval";
 import NotFound from "./pages/NotFound";
+
+// Code splitting: páginas autenticadas carregadas sob demanda
+// Reduz o bundle inicial; o fallback é o mesmo LoadingScreen já usado no auth
+const Index      = lazy(() => import("./pages/Index"));
+const Admin      = lazy(() => import("./pages/Admin"));
+const SettingsPage = lazy(() => import("./pages/Settings"));
+const Manuals    = lazy(() => import("./pages/Manuals"));
+const Estoque    = lazy(() => import("./pages/Estoque"));
+const Comercial  = lazy(() => import("./pages/Comercial"));
+const Financeiro = lazy(() => import("./pages/Financeiro"));
 
 // FIX: QueryClient sem config usa retry=3 por padrão — em erros de rede isso causa
 // 3 tentativas com backoff exponencial antes de mostrar erro ao usuário (~30s de espera).
@@ -118,6 +124,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
             <Route path="/set-password" element={<ProtectedRoute><SetPassword /></ProtectedRoute>} />
@@ -131,6 +138,7 @@ const App = () => (
             <Route path="/financeiro" element={<FinanceiroRoute><Financeiro /></FinanceiroRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

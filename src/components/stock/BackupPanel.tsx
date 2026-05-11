@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +38,7 @@ interface Props {
   onClose: () => void;
 }
 
-// ─── Export Excel (.xlsx via SheetJS) ────────────────────────────────────────
+// ─── Export Excel (.xlsx via ExcelJS) ────────────────────────────────────────
 async function exportExcel() {
   const { data: items, error } = await supabase
     .from("stock_items")
@@ -54,120 +54,103 @@ async function exportExcel() {
     return;
   }
 
-  // Importa SheetJS (pacote npm local)
   const bool = (v: unknown) => v === true ? "Sim" : v === false ? "Não" : "";
 
-  // Monta linhas de dados
   const dataRows = (items as Record<string, unknown>[]).map((row) => {
     const d = (Array.isArray(row.device) ? row.device[0] : row.device) as Record<string, unknown> | null ?? {};
     return {
-      "Modelo":            String(d.model ?? ""),
-      "Referência":        String(d.reference ?? ""),
-      "UDI-DI":            String(d.udi_di ?? ""),
-      "Cód. Interno":      String(d.internal_code ?? ""),
-      "Classificação":     String(d.classification_code ?? ""),
-      "Classe de Risco":   String(d.risk_class ?? ""),
-      "Material":          String(d.primary_material ?? ""),
-      "Estéril":           bool(d.sterile),
-      "Uso Único":         bool(d.single_use),
-      "Quantidade":        Number(row.quantity ?? 0),
-      "Estoque Mínimo":    Number(row.min_quantity ?? 0),
-      "Localização":       String(row.location ?? ""),
-      "Observações":       String(row.notes ?? ""),
+      "Modelo":             String(d.model ?? ""),
+      "Referência":         String(d.reference ?? ""),
+      "UDI-DI":             String(d.udi_di ?? ""),
+      "Cód. Interno":       String(d.internal_code ?? ""),
+      "Classificação":      String(d.classification_code ?? ""),
+      "Classe de Risco":    String(d.risk_class ?? ""),
+      "Material":           String(d.primary_material ?? ""),
+      "Estéril":            bool(d.sterile),
+      "Uso Único":          bool(d.single_use),
+      "Quantidade":         Number(row.quantity ?? 0),
+      "Estoque Mínimo":     Number(row.min_quantity ?? 0),
+      "Localização":        String(row.location ?? ""),
+      "Observações":        String(row.notes ?? ""),
       "Última Atualização": row.updated_at
         ? new Date(row.updated_at as string).toLocaleDateString("pt-BR")
         : "",
     };
   });
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(dataRows);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Estoque");
 
-  // Larguras de coluna
   const colWidths = [40, 18, 22, 16, 16, 14, 22, 9, 10, 12, 15, 20, 30, 20];
-  ws["!cols"] = colWidths.map((w) => ({ wch: w }));
+  const headers = Object.keys(dataRows[0] ?? {});
 
-  // Estilo do cabeçalho: fundo azul escuro, texto branco, negrito
-  const headerKeys = Object.keys(dataRows[0] ?? {});
-  headerKeys.forEach((_, colIdx) => {
-    const cellAddr = XLSX.utils.encode_cell({ r: 0, c: colIdx });
-    if (!ws[cellAddr]) return;
-    ws[cellAddr].s = {
-      font:      { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 10 },
-      fill:      { fgColor: { rgb: "1E3A5F" }, patternType: "solid" },
-      alignment: { horizontal: "center", vertical: "center", wrapText: true },
-      border: {
-        bottom: { style: "thin", color: { rgb: "CCCCCC" } },
-        right:  { style: "thin", color: { rgb: "CCCCCC" } },
-      },
+  ws.columns = headers.map((h, i) => ({ header: h, key: h, width: colWidths[i] ?? 16 }));
+
+  // Estilo do cabeçalho
+  ws.getRow(1).eachCell((cell) => {
+    cell.font      = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 10 };
+    cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border    = {
+      bottom: { style: "thin", color: { argb: "FFCCCCCC" } },
+      right:  { style: "thin", color: { argb: "FFCCCCCC" } },
     };
   });
+  ws.getRow(1).height = 20;
+  ws.views = [{ state: "frozen", ySplit: 1 }];
 
-  // Estilo das linhas de dados
-  const numericCols = new Set(["Quantidade", "Estoque Mínimo"]);
+  // Linhas de dados
   dataRows.forEach((row, rowIdx) => {
+    const exRow = ws.addRow(row);
     const isEven = rowIdx % 2 === 0;
-    headerKeys.forEach((key, colIdx) => {
-      const cellAddr = XLSX.utils.encode_cell({ r: rowIdx + 1, c: colIdx });
-      if (!ws[cellAddr]) return;
-      const isNum = numericCols.has(key);
-      ws[cellAddr].s = {
-        font:      { name: "Arial", sz: 10, color: { rgb: "222222" } },
-        fill:      { fgColor: { rgb: isEven ? "F0F4FA" : "FFFFFF" }, patternType: "solid" },
-        alignment: { horizontal: isNum ? "center" : "left", vertical: "center" },
-        border: {
-          bottom: { style: "thin", color: { rgb: "E0E0E0" } },
-          right:  { style: "thin", color: { rgb: "E0E0E0" } },
-        },
-      };
-      // Destaque vermelho para quantidade zero
-      if (key === "Quantidade" && Number(row["Quantidade"]) === 0) {
-        ws[cellAddr].s.font = { ...ws[cellAddr].s.font, color: { rgb: "CC0000" }, bold: true };
-        ws[cellAddr].s.fill = { fgColor: { rgb: "FFEAEA" }, patternType: "solid" };
-      }
-      // Destaque laranja para estoque baixo (qty > 0 mas <= min)
+    const qty = Number(row["Quantidade"]);
+    const min = Number(row["Estoque Mínimo"]);
+
+    exRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      const key = headers[colNumber - 1];
+      const isNum = key === "Quantidade" || key === "Estoque Mínimo";
+
+      let bgArgb = isEven ? "FFF0F4FA" : "FFFFFFFF";
+      let fgArgb = "FF222222";
+      let bold   = false;
+
       if (key === "Quantidade") {
-        const qty = Number(row["Quantidade"]);
-        const min = Number(row["Estoque Mínimo"]);
-        if (qty > 0 && qty <= min) {
-          ws[cellAddr].s.font = { ...ws[cellAddr].s.font, color: { rgb: "B45309" }, bold: true };
-          ws[cellAddr].s.fill = { fgColor: { rgb: "FFF7E0" }, patternType: "solid" };
-        }
+        if (qty === 0)           { bgArgb = "FFFFEAEA"; fgArgb = "FFCC0000"; bold = true; }
+        else if (qty <= min)     { bgArgb = "FFFFF7E0"; fgArgb = "FFB45309"; bold = true; }
       }
+
+      cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: bgArgb } };
+      cell.font      = { name: "Arial", size: 10, color: { argb: fgArgb }, bold };
+      cell.alignment = { horizontal: isNum ? "center" : "left", vertical: "middle" };
+      cell.border    = {
+        bottom: { style: "thin", color: { argb: "FFE0E0E0" } },
+        right:  { style: "thin", color: { argb: "FFE0E0E0" } },
+      };
     });
   });
 
-  // Congela a linha do cabeçalho
-  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
-
-  XLSX.utils.book_append_sheet(wb, ws, "Estoque");
-
-  // Aba de resumo
+  // Aba Resumo
   const total   = dataRows.length;
   const zerados = dataRows.filter((r) => Number(r["Quantidade"]) === 0).length;
-  const baixos  = dataRows.filter((r) => {
-    const q = Number(r["Quantidade"]); const m = Number(r["Estoque Mínimo"]);
-    return q > 0 && q <= m;
-  }).length;
-  const ok = total - zerados - baixos;
+  const baixos  = dataRows.filter((r) => { const q = Number(r["Quantidade"]); const m = Number(r["Estoque Mínimo"]); return q > 0 && q <= m; }).length;
+  const ok      = total - zerados - baixos;
 
-  const summaryData = [
-    { "Indicador": "Total de peças no estoque",   "Valor": total },
-    { "Indicador": "Peças com estoque OK",         "Valor": ok },
-    { "Indicador": "Peças com estoque baixo",      "Valor": baixos },
-    { "Indicador": "Peças zeradas (sem estoque)",  "Valor": zerados },
-    { "Indicador": "Data de exportação",           "Valor": new Date().toLocaleString("pt-BR") },
-  ];
-  const ws2 = XLSX.utils.json_to_sheet(summaryData);
-  ws2["!cols"] = [{ wch: 35 }, { wch: 20 }];
-  XLSX.utils.book_append_sheet(wb, ws2, "Resumo");
+  const ws2 = wb.addWorksheet("Resumo");
+  ws2.columns = [{ header: "Indicador", key: "Indicador", width: 35 }, { header: "Valor", key: "Valor", width: 20 }];
+  [
+    { Indicador: "Total de peças no estoque",  Valor: total },
+    { Indicador: "Peças com estoque OK",        Valor: ok },
+    { Indicador: "Peças com estoque baixo",     Valor: baixos },
+    { Indicador: "Peças zeradas (sem estoque)", Valor: zerados },
+    { Indicador: "Data de exportação",          Valor: new Date().toLocaleString("pt-BR") },
+  ].forEach((r) => ws2.addRow(r));
 
-  // Gera o arquivo e dispara download
-  const buf = XLSX.write(wb, { bookType: "xlsx", type: "array", cellStyles: true });
+  // Gera buffer e dispara download
+  const buf  = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement("a");
-  a.href    = url;
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
   a.download = `estoque-${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);

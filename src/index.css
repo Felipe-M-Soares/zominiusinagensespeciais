@@ -130,10 +130,37 @@
   * {
     @apply border-border;
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
     font-family: var(--font-body);
+
+    /* Mesh gradient — light mode
+       Base neutra do tema + 4 orbs ciano (cor primária do projeto) nos cantos.
+       background-attachment: fixed cria efeito parallax: o padrão não rola com a página. */
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 47% / 0.10) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 47% / 0.08) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(197 80%  65% / 0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(197 60%  45% / 0.05) 0%, transparent 55%);
+    background-attachment: fixed;
+    background-size: 100% 100%;
+    min-height: 100vh;
   }
+
+  /* Dark mode — orbs um pouco mais vivos sobre fundo escuro */
+  .dark body {
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 55% / 0.13) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 55% / 0.10) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(197 80%  65% / 0.07) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(197 60%  45% / 0.06) 0%, transparent 55%);
+    background-attachment: fixed;
+    background-size: 100% 100%;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
   }

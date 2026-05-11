@@ -232,7 +232,7 @@ export default function Manuals() {
   const hasQueue = queue.length > 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-accent/20">
+    <div className="min-h-screen bg-gradient-to-br from-transparent to-accent/10">
       <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -620,7 +620,7 @@ export default function Financeiro() {
 
   if (!canAccess) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
         <div className="text-center space-y-2">
           <Ban className="h-10 w-10 text-destructive/40 mx-auto" />
           <p className="text-sm text-muted-foreground">Acesso restrito ao financeiro.</p>
@@ -631,7 +631,7 @@ export default function Financeiro() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-transparent">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-3">

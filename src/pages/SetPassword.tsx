@@ -115,7 +115,7 @@ export default function SetPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/30 flex items-center justify-center px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-transparent via-transparent to-accent/20 flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {/* Logo */}
         <div className="flex flex-col items-center gap-3 text-center">

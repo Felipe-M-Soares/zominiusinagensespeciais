@@ -25,7 +25,7 @@ const toggleTheme = useCallback(() => {
 }, [isDark]);
 
 return (
-  <div className="min-h-screen bg-background">
+  <div className="min-h-screen bg-transparent">
     <header className="border-b border-border bg-card sticky top-0 z-10">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">

@@ -153,7 +153,7 @@ export default function Contacts() {
   const getAccent = (n: string) => ACCENT_COLORS[(n.charCodeAt(0) || 0) % ACCENT_COLORS.length];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-accent/20">
+    <div className="min-h-screen bg-gradient-to-br from-transparent to-accent/10">
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
