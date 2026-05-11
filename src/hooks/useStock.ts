@@ -820,23 +820,32 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
   const pedidoItensReservados: { lote: string | null; quantidade: number }[] = [];
 
   if (pedidoIdsAtivos.length > 0) {
-    // Tenta extrair do lotes_separados de cada pedido ativo
+    // PERF: busca todos os pedido_itens relevantes em UMA query (evita N+1)
+    const { data: piDataAll } = await supabase
+      .from("pedido_itens")
+      .select("pedido_id, lote, quantidade")
+      .eq("stock_item_id", stockItemId)
+      .in("pedido_id", pedidoIdsAtivos);
+
+    const piByPedido = new Map<string, { lote: string | null; quantidade: number }[]>();
+    for (const pi of (piDataAll ?? []) as { pedido_id: string; lote: string | null; quantidade: number }[]) {
+      const arr = piByPedido.get(pi.pedido_id) ?? [];
+      arr.push({ lote: pi.lote, quantidade: pi.quantidade });
+      piByPedido.set(pi.pedido_id, arr);
+    }
+
     for (const pedido of (pedidosAtivos ?? []) as { id: string; lotes_separados: { stock_item_id: string; lote: string; quantidade: number }[] | null }[]) {
-      const sep = pedido.lotes_separados ?? [];
-      const sepDoItem = sep.filter(s => s.stock_item_id === stockItemId);
-      if (sepDoItem.length > 0) {
-        // Usa lotes_separados — tem a distribuição real por lote
-        for (const s of sepDoItem) {
+      const sep = (pedido.lotes_separados ?? []).filter(s => s.stock_item_id === stockItemId);
+      if (sep.length > 0) {
+        // Usa lotes_separados — distribuição real por lote (após separação iniciada)
+        for (const s of sep) {
           pedidoItensReservados.push({ lote: s.lote, quantidade: s.quantidade });
         }
       } else {
-        // Pedido sem lotes_separados (pendente sem separação iniciada): usa pedido_itens.lote
-        const { data: piData } = await supabase
-          .from("pedido_itens")
-          .select("lote, quantidade")
-          .eq("stock_item_id", stockItemId)
-          .eq("pedido_id", pedido.id);
-        pedidoItensReservados.push(...((piData ?? []) as { lote: string | null; quantidade: number }[]));
+        // Pedido pendente sem separação: usa pedido_itens (já carregados em batch)
+        for (const pi of (piByPedido.get(pedido.id) ?? [])) {
+          pedidoItensReservados.push(pi);
+        }
       }
     }
   }

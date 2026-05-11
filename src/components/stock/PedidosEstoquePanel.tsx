@@ -128,8 +128,8 @@ interface LoteSelecao {
 
 interface PedidoCardProps {
   pedido: Pedido;
-  onIniciarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao) => void;
-  onSalvarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao) => Promise<void>;
+  onIniciarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao, expIdByItem: Record<string, string>) => void;
+  onSalvarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao, expIdByItem: Record<string, string>) => Promise<void>;
   onMarcarPronto: (pedido: Pedido) => void;
   onCancelar: (pedido: Pedido) => void;
   onEditarItem: (pedido: Pedido, item: PedidoItem) => void;
@@ -168,19 +168,27 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
 
     if (hasSep) {
-      // SNAPSHOT-FIX: snapshot agora tem uma entrada por lote por stock_item_id (quantidade total).
-      // Usa lotesByStockItemId diretamente — é o índice correto e já agrega tudo.
-      for (const item of pedido.itens) {
-        const lotesDoItem = lotesByStockItemId[item.stock_item_id] ?? [];
-        if (lotesDoItem.length > 0) {
-          for (const l of lotesDoItem) {
-            printRows.push({ model: item.device_model, reference: item.device_reference, lote: l.lote, quantidade: l.quantidade });
-          }
+      // EXPID-FIX: itera lotes_separados diretamente — evita mismatch entre
+      // item.stock_item_id (pode ser intermediária) e expId gravado no snapshot.
+      // lotes_separados já tem device_model e a quantidade real por lote.
+      // Agrupa por (device_model + lote) para colapsar entradas duplicadas.
+      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
+      for (const ls of (pedido.lotes_separados ?? [])) {
+        // Resolve model e reference: lotes_separados tem device_model; reference vem do pedido.itens
+        const model = ls.device_model ?? pedido.itens.find(i => i.stock_item_id === ls.stock_item_id)?.device_model;
+        const matchedItem = pedido.itens.find(i => i.stock_item_id === ls.stock_item_id)
+          ?? (model ? pedido.itens.find(i => i.device_model === model) : undefined);
+        const reference = matchedItem?.device_reference;
+        const key = `${model}||${ls.lote}`;
+        const existing = rowMap.get(key);
+        if (existing) {
+          existing.quantidade += ls.quantidade;
         } else {
-          // Fallback: lote do pedido_itens
-          const loteRaw = item.lote && !LOTE_PLACEHOLDER.has(item.lote.trim().toLowerCase()) ? item.lote : "";
-          printRows.push({ model: item.device_model, reference: item.device_reference, lote: loteRaw, quantidade: item.quantidade });
+          rowMap.set(key, { model, reference, lote: ls.lote, quantidade: ls.quantidade });
         }
+      }
+      for (const row of rowMap.values()) {
+        printRows.push(row);
       }
     } else {
       // BUG-FIX-1: pedido pendente — lote salvo é "a-definir" (placeholder).
@@ -750,7 +758,9 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
             {isPendente && (
               <button
                 type="button"
-                onClick={() => onIniciarSeparacao(pedido, lotesSel)}
+                onClick={() => onIniciarSeparacao(pedido, lotesSel, Object.fromEntries(
+              Object.entries(expQtyByPedidoItem).map(([itemId, v]) => [itemId, v.expId])
+            ))}
                 disabled={!canConfirmar || loadingLotes}
                 className="flex-1 h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
               >
@@ -939,11 +949,13 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
     // Snapshot com todos os lotes e quantidades escolhidas
     const snapshot = pedido.itens.flatMap(item => {
       const sel = lotesSelecionados[item.id] ?? {};
-      // SNAPSHOT-FIX: grava UMA entrada por lote (quantidade total, não dividida por ids).
-      // A divisão por ids.length causava quantidades erradas na impressão e no histórico.
+      // EXPID-FIX: usa stock_item_id do item de expedição real (pode diferir do pedido_item
+      // quando o item veio de intermediária e foi transferido para expedição com novo id).
+      // lotesDisponiveis[item.id][0].stock_item_id é sempre o expId correto.
+      const expStockItemId = (lotesDisponiveis[item.id]?.[0]?.stock_item_id) ?? item.stock_item_id;
       return Object.entries(sel).map(([lote, quantidade]) => ({
-        pedido_item_id: item.ids[0],   // referência ao primeiro pedido_item do grupo
-        stock_item_id: item.stock_item_id,
+        pedido_item_id: item.ids[0],
+        stock_item_id: expStockItemId,
         lote,
         quantidade,
         device_model: item.device_model,
@@ -1308,15 +1320,19 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   const [cancelando, setCancelando] = useState(false);
   const [editarItem, setEditarItem] = useState<{ pedido: Pedido; item: PedidoItem } | null>(null);
 
-  async function handleIniciarSeparacao(pedido: Pedido, lotesSelecionados: LoteSelecao) {
+  async function handleIniciarSeparacao(
+    pedido: Pedido,
+    lotesSelecionados: LoteSelecao,
+    expIdByItem: Record<string, string>   // item.id → expedicao stock_item_id
+  ) {
     if (!user) return;
     const snapshot = pedido.itens.flatMap(item => {
       const sel = lotesSelecionados[item.id] ?? {};
-      // SNAPSHOT-FIX: grava UMA entrada por lote (quantidade total, não dividida por ids).
-      // A divisão por ids.length causava quantidades erradas na impressão e no histórico.
+      // EXPID-FIX: grava o stock_item_id do item de expedição real, não do pedido_item.
+      const expStockItemId = expIdByItem[item.id] ?? item.stock_item_id;
       return Object.entries(sel).map(([lote, quantidade]) => ({
-        pedido_item_id: item.ids[0],   // referência ao primeiro pedido_item do grupo
-        stock_item_id: item.stock_item_id,
+        pedido_item_id: item.ids[0],
+        stock_item_id: expStockItemId,
         lote,
         quantidade,
         device_model: item.device_model,
@@ -1442,15 +1458,19 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   });
 
 
-  async function handleSalvarSeparacao(pedido: Pedido, lotesSelecionados: LoteSelecao) {
+  async function handleSalvarSeparacao(
+    pedido: Pedido,
+    lotesSelecionados: LoteSelecao,
+    expIdByItem: Record<string, string>   // item.id → expedicao stock_item_id
+  ) {
     if (!user) return;
     const snapshot = pedido.itens.flatMap(item => {
       const sel = lotesSelecionados[item.id] ?? {};
-      // SNAPSHOT-FIX: grava UMA entrada por lote (quantidade total, não dividida por ids).
-      // A divisão por ids.length causava quantidades erradas na impressão e no histórico.
+      // EXPID-FIX: grava o stock_item_id do item de expedição real, não do pedido_item.
+      const expStockItemId = expIdByItem[item.id] ?? item.stock_item_id;
       return Object.entries(sel).map(([lote, quantidade]) => ({
-        pedido_item_id: item.ids[0],   // referência ao primeiro pedido_item do grupo
-        stock_item_id: item.stock_item_id,
+        pedido_item_id: item.ids[0],
+        stock_item_id: expStockItemId,
         lote,
         quantidade,
         device_model: item.device_model,
