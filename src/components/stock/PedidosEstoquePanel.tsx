@@ -168,26 +168,16 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
 
     if (hasSep) {
+      // SNAPSHOT-FIX: snapshot agora tem uma entrada por lote por stock_item_id (quantidade total).
+      // Usa lotesByStockItemId diretamente — é o índice correto e já agrega tudo.
       for (const item of pedido.itens) {
-        // Lookup: tenta por cada pedido_item_id do item, depois por stock_item_id
-        const lotesAgregados: Record<string, number> = {};
-        for (const pid of item.ids) {
-          for (const l of (lotesByPedidoItemId[pid] ?? [])) {
-            lotesAgregados[l.lote] = (lotesAgregados[l.lote] ?? 0) + l.quantidade;
-          }
-        }
-        // Fallback: stock_item_id
-        if (Object.keys(lotesAgregados).length === 0) {
-          for (const l of (lotesByStockItemId[item.stock_item_id] ?? [])) {
-            lotesAgregados[l.lote] = (lotesAgregados[l.lote] ?? 0) + l.quantidade;
-          }
-        }
-        if (Object.keys(lotesAgregados).length > 0) {
-          for (const [lote, quantidade] of Object.entries(lotesAgregados)) {
-            printRows.push({ model: item.device_model, reference: item.device_reference, lote, quantidade });
+        const lotesDoItem = lotesByStockItemId[item.stock_item_id] ?? [];
+        if (lotesDoItem.length > 0) {
+          for (const l of lotesDoItem) {
+            printRows.push({ model: item.device_model, reference: item.device_reference, lote: l.lote, quantidade: l.quantidade });
           }
         } else {
-          // Último recurso: lote do pedido_itens (pode ser null)
+          // Fallback: lote do pedido_itens
           const loteRaw = item.lote && !LOTE_PLACEHOLDER.has(item.lote.trim().toLowerCase()) ? item.lote : "";
           printRows.push({ model: item.device_model, reference: item.device_reference, lote: loteRaw, quantidade: item.quantidade });
         }
@@ -949,15 +939,15 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
     // Snapshot com todos os lotes e quantidades escolhidas
     const snapshot = pedido.itens.flatMap(item => {
       const sel = lotesSelecionados[item.id] ?? {};
-      return Object.entries(sel).flatMap(([lote, quantidade]) =>
-        item.ids.map(pid => ({
-          pedido_item_id: pid,
-          stock_item_id: item.stock_item_id,
-          lote,
-          quantidade: Math.round(quantidade / item.ids.length),
-          device_model: item.device_model,
-        }))
-      );
+      // SNAPSHOT-FIX: grava UMA entrada por lote (quantidade total, não dividida por ids).
+      // A divisão por ids.length causava quantidades erradas na impressão e no histórico.
+      return Object.entries(sel).map(([lote, quantidade]) => ({
+        pedido_item_id: item.ids[0],   // referência ao primeiro pedido_item do grupo
+        stock_item_id: item.stock_item_id,
+        lote,
+        quantidade,
+        device_model: item.device_model,
+      }));
     });
 
     const { error } = await supabase
@@ -1322,15 +1312,15 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     if (!user) return;
     const snapshot = pedido.itens.flatMap(item => {
       const sel = lotesSelecionados[item.id] ?? {};
-      return Object.entries(sel).flatMap(([lote, quantidade]) =>
-        item.ids.map(pid => ({
-          pedido_item_id: pid,
-          stock_item_id: item.stock_item_id,
-          lote,
-          quantidade: Math.round(quantidade / item.ids.length),
-          device_model: item.device_model,
-        }))
-      );
+      // SNAPSHOT-FIX: grava UMA entrada por lote (quantidade total, não dividida por ids).
+      // A divisão por ids.length causava quantidades erradas na impressão e no histórico.
+      return Object.entries(sel).map(([lote, quantidade]) => ({
+        pedido_item_id: item.ids[0],   // referência ao primeiro pedido_item do grupo
+        stock_item_id: item.stock_item_id,
+        lote,
+        quantidade,
+        device_model: item.device_model,
+      }));
     });
     try {
       // Atualiza o lote principal em cada pedido_item (lote com maior qty)
@@ -1456,15 +1446,15 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     if (!user) return;
     const snapshot = pedido.itens.flatMap(item => {
       const sel = lotesSelecionados[item.id] ?? {};
-      return Object.entries(sel).flatMap(([lote, quantidade]) =>
-        item.ids.map(pid => ({
-          pedido_item_id: pid,
-          stock_item_id: item.stock_item_id,
-          lote,
-          quantidade: Math.round(quantidade / item.ids.length),
-          device_model: item.device_model,
-        }))
-      );
+      // SNAPSHOT-FIX: grava UMA entrada por lote (quantidade total, não dividida por ids).
+      // A divisão por ids.length causava quantidades erradas na impressão e no histórico.
+      return Object.entries(sel).map(([lote, quantidade]) => ({
+        pedido_item_id: item.ids[0],   // referência ao primeiro pedido_item do grupo
+        stock_item_id: item.stock_item_id,
+        lote,
+        quantidade,
+        device_model: item.device_model,
+      }));
     });
     try {
       // Salva o lote principal (maior qty) em cada pedido_item para rastreabilidade
