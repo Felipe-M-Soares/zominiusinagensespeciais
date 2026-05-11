@@ -139,7 +139,7 @@ interface PedidoCardProps {
 function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, isAdmin }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  function handleImprimir() {
+  async function handleImprimir() {
     const esc = (s: string | null | undefined) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
     const titulo = "Pedido";
@@ -193,10 +193,56 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         }
       }
     } else {
-      // Sem lotes_separados: usa itens_raw com lote real do pedido_itens
+      // BUG-FIX-1: pedido pendente — lote salvo é "a-definir" (placeholder).
+      // Busca os lotes reais com saldo positivo do stock_movements para cada item.
+      const stockItemIds = [...new Set(pedido.itens_raw.map(r => r.stock_item_id))];
+      const { data: movs } = await supabase
+        .from("stock_movements")
+        .select("stock_item_id, lote, type, quantity, reason")
+        .in("stock_item_id", stockItemIds)
+        .not("lote", "is", null);
+
+      // Calcula saldo por (stock_item_id, lote)
+      const ROLLBACK_REASONS_P = new Set([
+        "Rollback — falha ao criar item de retrabalho",
+        "Rollback — falha ao criar item de expedição",
+        "Rollback — falha ao registrar entrada na expedição",
+      ]);
+      const saldoMap = new Map<string, Map<string, number>>();
+      for (const m of ((movs ?? []) as { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null }[])) {
+        if (m.reason && ROLLBACK_REASONS_P.has(m.reason)) continue;
+        if (LOTE_PLACEHOLDER.has(m.lote.trim().toLowerCase())) continue;
+        const loteKey = m.lote.toUpperCase();
+        if (!saldoMap.has(m.stock_item_id)) saldoMap.set(m.stock_item_id, new Map());
+        const loteM = saldoMap.get(m.stock_item_id)!;
+        loteM.set(loteKey, (loteM.get(loteKey) ?? 0) + (m.type === "entrada" ? m.quantity : -m.quantity));
+      }
+
+      // Agrupa itens_raw por stock_item_id para somar quantidades
+      const itemsByStockId = new Map<string, typeof pedido.itens_raw[0]>();
       for (const raw of pedido.itens_raw) {
-        const loteReal = raw.lote && !LOTE_PLACEHOLDER.has(raw.lote.trim().toLowerCase()) ? raw.lote : "";
-        printRows.push({ model: raw.device_model, reference: raw.device_reference, lote: loteReal, quantidade: raw.quantidade });
+        if (!itemsByStockId.has(raw.stock_item_id)) {
+          itemsByStockId.set(raw.stock_item_id, { ...raw });
+        } else {
+          itemsByStockId.get(raw.stock_item_id)!.quantidade += raw.quantidade;
+        }
+      }
+
+      for (const [sid, raw] of itemsByStockId.entries()) {
+        const lotesDoItem = saldoMap.get(sid);
+        const lotesComSaldo = lotesDoItem
+          ? [...lotesDoItem.entries()].filter(([, saldo]) => saldo > 0).map(([lote]) => lote)
+          : [];
+
+        if (lotesComSaldo.length > 0) {
+          // Mostra cada lote disponível (sem quebrar por quantidade — o separador fará isso)
+          lotesComSaldo.forEach(lote => {
+            printRows.push({ model: raw.device_model, reference: raw.device_reference, lote, quantidade: raw.quantidade });
+          });
+        } else {
+          // Nenhum lote com saldo encontrado — imprime sem lote
+          printRows.push({ model: raw.device_model, reference: raw.device_reference, lote: "", quantidade: raw.quantidade });
+        }
       }
     }
     const rows = printRows.map((row, i) => {

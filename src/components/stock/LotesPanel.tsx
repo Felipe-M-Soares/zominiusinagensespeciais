@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { fetchLotesSummary } from "@/hooks/useStock";
 import type { LoteSummary, StockItem } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   item: StockItem | null;
@@ -20,25 +21,66 @@ interface Props {
 export function LotesPanel({ item, open, onClose }: Props) {
   const [lotes, setLotes] = useState<LoteSummary[]>([]);
   const [loading, setLoading] = useState(false);
+  // BUG-FIX-2: valores ao vivo buscados do banco ao abrir o painel, evitando
+  // exibir o quantity_available stale que vem das props (calculado no mount).
+  const [liveReserved, setLiveReserved] = useState<number | null>(null);
+  const [liveQty, setLiveQty] = useState<number | null>(null);
 
   const isExpedicao = item?.fase === "expedicao";
 
   async function load(id: string) {
     setLoading(true);
-    const data = await fetchLotesSummary(id, item?.fase);
-    setLotes(data);
+    const [lotesData] = await Promise.all([
+      fetchLotesSummary(id, item?.fase),
+      isExpedicao ? refreshLive(id) : Promise.resolve(),
+    ]);
+    setLotes(lotesData);
     setLoading(false);
+  }
+
+  // Busca do banco a reserva real e quantidade total ao vivo
+  async function refreshLive(id: string) {
+    const { data: si } = await supabase
+      .from("stock_items")
+      .select("quantity")
+      .eq("id", id)
+      .maybeSingle();
+
+    const { data: pedidosAtivos } = await supabase
+      .from("pedidos_comerciais")
+      .select("id")
+      .in("status", ["pendente", "separando"]);
+
+    const pedidoIds = (pedidosAtivos ?? []).map((p: { id: string }) => p.id);
+    let reserved = 0;
+    if (pedidoIds.length > 0) {
+      const { data: pi } = await supabase
+        .from("pedido_itens")
+        .select("quantidade")
+        .eq("stock_item_id", id)
+        .in("pedido_id", pedidoIds);
+      reserved = (pi ?? []).reduce((s: number, r: { quantidade: number }) => s + r.quantidade, 0);
+    }
+    setLiveReserved(reserved);
+    setLiveQty((si as { quantity: number } | null)?.quantity ?? null);
   }
 
   useEffect(() => {
     let cancelled = false;
     if (open && item) {
       setLoading(true);
-      fetchLotesSummary(item.id, item.fase).then((data) => {
+      setLiveReserved(null);
+      setLiveQty(null);
+      Promise.all([
+        fetchLotesSummary(item.id, item.fase),
+        isExpedicao ? refreshLive(item.id) : Promise.resolve(undefined),
+      ]).then(([data]) => {
         if (!cancelled) { setLotes(data); setLoading(false); }
       }).catch(() => { if (!cancelled) setLoading(false); });
     } else {
       setLotes([]);
+      setLiveReserved(null);
+      setLiveQty(null);
     }
     return () => { cancelled = true; };
   }, [open, item, isExpedicao]);
@@ -47,7 +89,11 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
   // ── Expedição: mostra nome, lotes com saldo e quantidade total ───────────
   if (isExpedicao) {
-    const available = item.quantity_available;
+    // BUG-FIX-2: usa valores ao vivo (refreshLive) quando disponíveis;
+    // cai back nos props enquanto o fetch ainda está em curso.
+    const qty = liveQty !== null ? liveQty : item.quantity;
+    const reserved = liveReserved !== null ? liveReserved : item.quantity_reserved;
+    const available = Math.max(0, qty - reserved);
     const isEmpty = available === 0;
     const isLow = available > 0 && available <= item.min_quantity;
     const activeLotesExp = lotes.filter((l) => l.saldo > 0);
@@ -107,21 +153,21 @@ export function LotesPanel({ item, open, onClose }: Props) {
               </div>
             </div>
 
-            {item.quantity_reserved > 0 && (
+            {(liveReserved !== null ? liveReserved : item.quantity_reserved) > 0 && (
               <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 flex items-center justify-between">
                 <p className="text-[11px] text-muted-foreground">Reservado (pedidos)</p>
                 <div className="flex items-center gap-1">
-                  <span className="text-[15px] font-bold text-amber-500 tabular-nums">{item.quantity_reserved}</span>
+                  <span className="text-[15px] font-bold text-amber-500 tabular-nums">{liveReserved !== null ? liveReserved : item.quantity_reserved}</span>
                   <span className="text-[10px] text-muted-foreground/60">un.</span>
                 </div>
               </div>
             )}
 
-            {item.quantity !== item.quantity_available && (
+            {qty !== available && (
               <div className="rounded-xl border border-border/30 bg-muted/10 px-4 py-3 flex items-center justify-between">
                 <p className="text-[11px] text-muted-foreground">Total em expedição</p>
                 <div className="flex items-center gap-1">
-                  <span className="text-[15px] font-bold text-foreground tabular-nums">{item.quantity}</span>
+                  <span className="text-[15px] font-bold text-foreground tabular-nums">{liveQty !== null ? liveQty : item.quantity}</span>
                   <span className="text-[10px] text-muted-foreground/60">un.</span>
                 </div>
               </div>
