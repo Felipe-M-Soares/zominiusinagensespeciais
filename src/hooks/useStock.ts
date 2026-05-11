@@ -651,6 +651,7 @@ export async function fetchLotesDisponivelBatch(
   const result = new Map<string, Record<string, number>>();
   if (stockItemIds.length === 0) return result;
 
+  // 1. Saldo bruto por lote a partir dos movimentos de estoque
   const { data } = await supabase
     .from("stock_movements")
     .select("stock_item_id, lote, type, quantity")
@@ -659,14 +660,82 @@ export async function fetchLotesDisponivelBatch(
 
   for (const id of stockItemIds) result.set(id, {});
 
+  const LOTE_PLACEHOLDER = new Set(["a-definir", "a definir", "sem lote"]);
+
   for (const row of (data ?? []) as { stock_item_id: string; lote: string; type: string; quantity: number }[]) {
-    if (!row.lote) continue;
+    if (!row.lote || LOTE_PLACEHOLDER.has(row.lote.trim().toLowerCase())) continue;
     const map = result.get(row.stock_item_id) ?? {};
-    map[row.lote] = (map[row.lote] ?? 0) + (row.type === "entrada" ? row.quantity : -row.quantity);
+    const key = row.lote.toUpperCase();
+    map[key] = (map[key] ?? 0) + (row.type === "entrada" ? row.quantity : -row.quantity);
     result.set(row.stock_item_id, map);
   }
 
-  // Ordena cada mapa de lotes do mais antigo ao mais novo (FIFO por data de produção)
+  // 2. Desconta reservas de pedidos ativos (pendente/separando) por lote.
+  //    - lote definido no pedido_item → deduz direto daquele lote
+  //    - lote indefinido ("a-definir", null) → deduz FIFO do mais antigo
+  try {
+    const { data: pedidosAtivos } = await supabase
+      .from("pedidos_comerciais")
+      .select("id")
+      .in("status", ["pendente", "separando"]);
+
+    const pedidoIds = (pedidosAtivos ?? []).map((p: { id: string }) => p.id);
+
+    if (pedidoIds.length > 0) {
+      const { data: piData } = await supabase
+        .from("pedido_itens")
+        .select("stock_item_id, lote, quantidade")
+        .in("stock_item_id", stockItemIds)
+        .in("pedido_id", pedidoIds);
+
+      for (const pi of (piData ?? []) as { stock_item_id: string; lote: string | null; quantidade: number }[]) {
+        const map = result.get(pi.stock_item_id);
+        if (!map) continue;
+
+        const loteRaw = pi.lote?.trim() ?? "";
+        const loteIndefinido = !loteRaw || LOTE_PLACEHOLDER.has(loteRaw.toLowerCase());
+
+        if (!loteIndefinido) {
+          // Lote definido: deduz direto
+          const key = loteRaw.toUpperCase();
+          if (key in map) {
+            map[key] = Math.max(0, (map[key] ?? 0) - pi.quantidade);
+          } else {
+            // Lote definido mas não encontrado: deduz FIFO como fallback
+            let restante = pi.quantidade;
+            for (const k of Object.keys(map)) {
+              if (restante <= 0) break;
+              const deduzir = Math.min(map[k], restante);
+              map[k] = Math.max(0, map[k] - deduzir);
+              restante -= deduzir;
+            }
+          }
+        } else {
+          // Lote indefinido: FIFO pelo mais antigo
+          let restante = pi.quantidade;
+          const fifoKeys = Object.keys(map).sort((a, b) => {
+            const toComp = (s: string) => {
+              const d = s.replace("-", "").slice(0, 7);
+              return d.slice(4) + d.slice(2, 4) + d.slice(0, 2);
+            };
+            return toComp(a).localeCompare(toComp(b));
+          });
+          for (const k of fifoKeys) {
+            if (restante <= 0) break;
+            const deduzir = Math.min(map[k], restante);
+            map[k] = Math.max(0, map[k] - deduzir);
+            restante -= deduzir;
+          }
+        }
+
+        result.set(pi.stock_item_id, map);
+      }
+    }
+  } catch {
+    // Falha silenciosa — usa saldo bruto como fallback
+  }
+
+  // 3. Ordena cada mapa de lotes do mais antigo ao mais novo (FIFO por data de produção)
   for (const [id, lotesMap] of result.entries()) {
     result.set(id, sortLotesByDate(lotesMap));
   }
@@ -798,26 +867,41 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
   }
 
   for (const pi of pedidoItensReservados) {
-    const loteDefinido = pi.lote?.trim();
+    const loteRaw = pi.lote?.trim() ?? "";
+    // BUG-FIX: pedidos criados antes da correção usam "a-definir" como placeholder.
+    // Esses também devem cair no FIFO — caso contrário a dedução tenta descontar
+    // do lote literal "A-DEFINIR" que não existe no map e a reserva nunca é aplicada.
+    const loteEhIndefinido = !loteRaw || LOTE_INDEFINIDO.has(loteRaw.toLowerCase());
 
-    if (loteDefinido) {
-      // Lote já escolhido: deduz direto
-      const key = loteDefinido.toUpperCase();
+    if (!loteEhIndefinido) {
+      // Lote real já escolhido: deduz direto
+      const key = loteRaw.toUpperCase();
       if (map.has(key)) {
         const entry = map.get(key)!;
         entry.saldo = Math.max(0, entry.saldo - pi.quantidade);
         map.set(key, entry);
+      } else {
+        // Lote definido mas não encontrado nos movimentos: cai para FIFO como fallback
+        let restante = pi.quantidade;
+        for (const fifoKey of lotesOrdenadosFIFO()) {
+          if (restante <= 0) break;
+          const entry = map.get(fifoKey)!;
+          const deduzir = Math.min(entry.saldo, restante);
+          entry.saldo = Math.max(0, entry.saldo - deduzir);
+          restante -= deduzir;
+          map.set(fifoKey, entry);
+        }
       }
     } else {
-      // Lote ainda não definido: deduz FIFO (mais antigo primeiro)
+      // Lote indefinido (null, "", "a-definir", etc.): deduz FIFO (mais antigo primeiro)
       let restante = pi.quantidade;
-      for (const key of lotesOrdenadosFIFO()) {
+      for (const fifoKey of lotesOrdenadosFIFO()) {
         if (restante <= 0) break;
-        const entry = map.get(key)!;
+        const entry = map.get(fifoKey)!;
         const deduzir = Math.min(entry.saldo, restante);
         entry.saldo = Math.max(0, entry.saldo - deduzir);
         restante -= deduzir;
-        map.set(key, entry);
+        map.set(fifoKey, entry);
       }
     }
   }
