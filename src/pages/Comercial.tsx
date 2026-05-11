@@ -347,13 +347,24 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       toast.error(`Disponível na expedição: ${maxDisponivel} un.`);
       return;
     }
-    setItens(prev => [...prev, {
-      stock_item_id: selectedPeca.id,
-      lote: "",  // lote será escolhido pelo estoque na separação
-      quantidade: qtd,
-      device_model: selectedPeca.device?.model ?? "",
-      device_reference: selectedPeca.device?.reference ?? "",
-    }]);
+    // DEDUP-FIX: se a peça já está no pedido, soma a quantidade em vez de criar linha duplicada.
+    // Duplicatas causavam snapshot dobrado: dois pedido_itens com mesmo stock_item_id
+    // → dois conjuntos de entradas de lote no snapshot → quantidades duplicadas na impressão.
+    setItens(prev => {
+      const idx = prev.findIndex(i => i.stock_item_id === selectedPeca!.id);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], quantidade: updated[idx].quantidade + qtd };
+        return updated;
+      }
+      return [...prev, {
+        stock_item_id: selectedPeca!.id,
+        lote: "",
+        quantidade: qtd,
+        device_model: selectedPeca!.device?.model ?? "",
+        device_reference: selectedPeca!.device?.reference ?? "",
+      }];
+    });
     setSelectedPeca(null); setPecaSearch(""); setQtd(1);
     setTimeout(() => pecaInputRef.current?.focus(), 50);
   }

@@ -362,14 +362,26 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
         // Para pedidos já em separação: restaura do snapshot salvo em lotes_separados.
         // Para pedidos pendentes: distribui FIFO pela quantidade do pedido.
-        const expIdResolvido = expId;
-        const savedLotes = (pedido.lotes_separados ?? []).filter(
-          ls => ls.stock_item_id === expIdResolvido
-        );
-        if (savedLotes.length > 0) {
-          // Restaura exatamente o que foi salvo no snapshot
+        // DEDUP-FIX: se outro item.id já inicializou com este expId, não duplica —
+        // divide as quantidades do snapshot pro-rata pela quantidade de cada item.
+        const savedLotes = (pedido.lotes_separados ?? []).filter(ls => ls.stock_item_id === expId);
+        const alreadyInitialized = Object.values(inicialSel).length > 0 &&
+          Object.keys(inicialSel).some(prevItemId => {
+            const prevExpId = expQtyByPedidoItem[prevItemId]?.expId;
+            return prevExpId === expId;
+          });
+
+        if (savedLotes.length > 0 && !alreadyInitialized) {
+          // Primeiro item com este expId: carrega tudo do snapshot
           const dist: Record<string, number> = {};
           for (const ls of savedLotes) dist[ls.lote] = (dist[ls.lote] ?? 0) + ls.quantidade;
+          inicialSel[item.id] = dist;
+        } else if (savedLotes.length > 0 && alreadyInitialized) {
+          // Segundo item com mesmo expId: usa qty do item como proporção do snapshot total
+          const snapTotal = savedLotes.reduce((s, ls) => s + ls.quantidade, 0);
+          const ratio = snapTotal > 0 ? item.quantidade / snapTotal : 1;
+          const dist: Record<string, number> = {};
+          for (const ls of savedLotes) dist[ls.lote] = Math.round(ls.quantidade * ratio);
           inicialSel[item.id] = dist;
         } else {
           // Pedido pendente: distribui FIFO pelo disponível
@@ -1361,18 +1373,23 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     expIdByItem: Record<string, string>   // item.id → expedicao stock_item_id
   ) {
     if (!user) return;
-    const snapshot = pedido.itens.flatMap(item => {
+    // DEDUP-FIX: merge entradas com mesmo (expId, lote) — evita dobrar quantidades
+    // quando dois pedido_itens diferentes resolvem para o mesmo item de expedição.
+    const snapshotMap = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
+    for (const item of pedido.itens) {
       const sel = lotesSelecionados[item.id] ?? {};
-      // EXPID-FIX: grava o stock_item_id do item de expedição real, não do pedido_item.
       const expStockItemId = expIdByItem[item.id] ?? item.stock_item_id;
-      return Object.entries(sel).map(([lote, quantidade]) => ({
-        pedido_item_id: item.ids[0],
-        stock_item_id: expStockItemId,
-        lote,
-        quantidade,
-        device_model: item.device_model,
-      }));
-    });
+      for (const [lote, quantidade] of Object.entries(sel)) {
+        const key = `${expStockItemId}||${lote}`;
+        const existing = snapshotMap.get(key);
+        if (existing) {
+          existing.quantidade += quantidade;
+        } else {
+          snapshotMap.set(key, { pedido_item_id: item.ids[0], stock_item_id: expStockItemId, lote, quantidade, device_model: item.device_model });
+        }
+      }
+    }
+    const snapshot = [...snapshotMap.values()];
     try {
       // Atualiza o lote principal em cada pedido_item (lote com maior qty)
       const loteUpdates: { id: string; lote: string | null }[] = [];
@@ -1499,18 +1516,22 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     expIdByItem: Record<string, string>   // item.id → expedicao stock_item_id
   ) {
     if (!user) return;
-    const snapshot = pedido.itens.flatMap(item => {
+    // DEDUP-FIX: merge entradas com mesmo (expId, lote)
+    const snapshotMap = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
+    for (const item of pedido.itens) {
       const sel = lotesSelecionados[item.id] ?? {};
-      // EXPID-FIX: grava o stock_item_id do item de expedição real, não do pedido_item.
       const expStockItemId = expIdByItem[item.id] ?? item.stock_item_id;
-      return Object.entries(sel).map(([lote, quantidade]) => ({
-        pedido_item_id: item.ids[0],
-        stock_item_id: expStockItemId,
-        lote,
-        quantidade,
-        device_model: item.device_model,
-      }));
-    });
+      for (const [lote, quantidade] of Object.entries(sel)) {
+        const key = `${expStockItemId}||${lote}`;
+        const existing = snapshotMap.get(key);
+        if (existing) {
+          existing.quantidade += quantidade;
+        } else {
+          snapshotMap.set(key, { pedido_item_id: item.ids[0], stock_item_id: expStockItemId, lote, quantidade, device_model: item.device_model });
+        }
+      }
+    }
+    const snapshot = [...snapshotMap.values()];
     try {
       // Salva o lote principal (maior qty) em cada pedido_item para rastreabilidade
       const updates: { id: string; lote: string | null }[] = [];
