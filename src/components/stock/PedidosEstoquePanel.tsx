@@ -168,27 +168,34 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
 
     if (hasSep) {
-      // EXPID-FIX: itera lotes_separados diretamente — evita mismatch entre
-      // item.stock_item_id (pode ser intermediária) e expId gravado no snapshot.
-      // lotes_separados já tem device_model e a quantidade real por lote.
-      // Agrupa por (device_model + lote) para colapsar entradas duplicadas.
-      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
-      for (const ls of (pedido.lotes_separados ?? [])) {
-        // Resolve model e reference: lotes_separados tem device_model; reference vem do pedido.itens
-        const model = ls.device_model ?? pedido.itens.find(i => i.stock_item_id === ls.stock_item_id)?.device_model;
-        const matchedItem = pedido.itens.find(i => i.stock_item_id === ls.stock_item_id)
-          ?? (model ? pedido.itens.find(i => i.device_model === model) : undefined);
-        const reference = matchedItem?.device_reference;
-        const key = `${model}||${ls.lote}`;
-        const existing = rowMap.get(key);
-        if (existing) {
-          existing.quantidade += ls.quantidade;
-        } else {
-          rowMap.set(key, { model, reference, lote: ls.lote, quantidade: ls.quantidade });
+      // PRINT-FIX: usa lotesSel (o que está na tela) se o pedido estiver expandido e carregado,
+      // pois o snapshot em lotes_separados pode estar desatualizado em relação ao que o
+      // separador ajustou. Fallback para lotes_separados se lotesSel ainda não foi carregado.
+      const hasLotesSel = Object.keys(lotesSel).length > 0;
+
+      if (hasLotesSel) {
+        // Usa lotesSel — reflete os valores atuais na tela (mais recente que o snapshot)
+        for (const item of pedido.itens) {
+          const sel = lotesSel[item.id] ?? {};
+          for (const [lote, quantidade] of Object.entries(sel)) {
+            if (quantidade > 0) {
+              printRows.push({ model: item.device_model, reference: item.device_reference, lote, quantidade });
+            }
+          }
         }
-      }
-      for (const row of rowMap.values()) {
-        printRows.push(row);
+      } else {
+        // Fallback: lotes_separados do banco (pedido não expandido ou lotes não carregados)
+        const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
+        for (const ls of (pedido.lotes_separados ?? [])) {
+          const model = ls.device_model ?? pedido.itens.find(i => i.device_model === ls.device_model)?.device_model;
+          const matchedItem = pedido.itens.find(i => i.device_model === model);
+          const reference = matchedItem?.device_reference;
+          const key = `${model}||${ls.lote}`;
+          const existing = rowMap.get(key);
+          if (existing) { existing.quantidade += ls.quantidade; }
+          else { rowMap.set(key, { model, reference, lote: ls.lote, quantidade: ls.quantidade }); }
+        }
+        for (const row of rowMap.values()) printRows.push(row);
       }
     } else {
       // BUG-FIX-1: pedido pendente — lote salvo é "a-definir" (placeholder).
@@ -353,15 +360,29 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
         result[item.id] = { stock_item_id: expId, quantity: expQty, quantity_reserved: expReserved, lotes: lotesList, loading: false };
 
-        const dist: Record<string, number> = {};
-        let restante = item.quantidade;
-        for (const l of lotesList) {
-          if (restante <= 0) break;
-          const usar = Math.min(l.quantity, restante);
-          dist[l.lote] = usar;
-          restante -= usar;
+        // Para pedidos já em separação: restaura do snapshot salvo em lotes_separados.
+        // Para pedidos pendentes: distribui FIFO pela quantidade do pedido.
+        const expIdResolvido = expId;
+        const savedLotes = (pedido.lotes_separados ?? []).filter(
+          ls => ls.stock_item_id === expIdResolvido
+        );
+        if (savedLotes.length > 0) {
+          // Restaura exatamente o que foi salvo no snapshot
+          const dist: Record<string, number> = {};
+          for (const ls of savedLotes) dist[ls.lote] = (dist[ls.lote] ?? 0) + ls.quantidade;
+          inicialSel[item.id] = dist;
+        } else {
+          // Pedido pendente: distribui FIFO pelo disponível
+          const dist: Record<string, number> = {};
+          let restante = item.quantidade;
+          for (const l of lotesList) {
+            if (restante <= 0) break;
+            const usar = Math.min(l.quantity, restante);
+            dist[l.lote] = usar;
+            restante -= usar;
+          }
+          inicialSel[item.id] = dist;
         }
-        inicialSel[item.id] = dist;
       }
 
       setExpedicaoData(result);
@@ -766,6 +787,20 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
               >
                 <PackageCheck className="h-3.5 w-3.5" />
                 Iniciar Separação
+              </button>
+            )}
+            {isSeparando && (
+              <button
+                type="button"
+                onClick={() => onSalvarSeparacao(pedido, lotesSel, Object.fromEntries(
+                  Object.entries(expQtyByPedidoItem).map(([itemId, v]) => [itemId, v.expId])
+                ))}
+                disabled={loadingLotes}
+                className="h-9 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
+                title="Salvar distribuição de lotes"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Salvar Lotes
               </button>
             )}
             {isSeparando && (
