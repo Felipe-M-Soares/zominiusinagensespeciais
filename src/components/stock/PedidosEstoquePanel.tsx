@@ -333,7 +333,9 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       }
 
       // PERF-01: Single batch query for all lotes
-      const lotesMap = await fetchLotesDisponivelBatch([...new Set(expedicaoIds)]);
+      // Passa pedido.id para excluir as próprias reservas do pedido — o separador
+      // vê o saldo disponível para outros pedidos + o que já reservou para este.
+      const lotesMap = await fetchLotesDisponivelBatch([...new Set(expedicaoIds)], pedido.id);
 
       const result: Record<string, StockItemExpedicao> = {};
       const inicialSel: LoteSelecao = {};
@@ -866,7 +868,9 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
       }
 
       // PERF-01: Single batch query for all lotes
-      const lotesMap = await fetchLotesDisponivelBatch([...new Set(expedicaoIds)]);
+      // Passa pedido.id para excluir as próprias reservas do pedido — o separador
+      // vê o saldo disponível para outros pedidos + o que já reservou para este.
+      const lotesMap = await fetchLotesDisponivelBatch([...new Set(expedicaoIds)], pedido.id);
 
       const result: Record<string, LoteDisponivel[]> = {};
       for (const item of pedido.itens) {

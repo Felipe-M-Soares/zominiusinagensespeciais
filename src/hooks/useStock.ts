@@ -646,7 +646,8 @@ function sortLotesByDate(lotes: Record<string, number>): Record<string, number> 
 }
 
 export async function fetchLotesDisponivelBatch(
-  stockItemIds: string[]
+  stockItemIds: string[],
+  excludePedidoId?: string  // exclui as reservas deste pedido (o próprio pedido em separação)
 ): Promise<Map<string, Record<string, number>>> {
   const result = new Map<string, Record<string, number>>();
   if (stockItemIds.length === 0) return result;
@@ -682,11 +683,14 @@ export async function fetchLotesDisponivelBatch(
     const pedidoIds = (pedidosAtivos ?? []).map((p: { id: string }) => p.id);
 
     if (pedidoIds.length > 0) {
-      const { data: piData } = await supabase
+      let piQuery = supabase
         .from("pedido_itens")
         .select("stock_item_id, lote, quantidade")
         .in("stock_item_id", stockItemIds)
         .in("pedido_id", pedidoIds);
+      // Exclui reservas do próprio pedido em separação — essas já pertencem a ele
+      if (excludePedidoId) piQuery = piQuery.neq("pedido_id", excludePedidoId);
+      const { data: piData } = await piQuery;
 
       for (const pi of (piData ?? []) as { stock_item_id: string; lote: string | null; quantidade: number }[]) {
         const map = result.get(pi.stock_item_id);
