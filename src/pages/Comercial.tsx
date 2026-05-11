@@ -67,6 +67,7 @@ import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { Logo } from "@/components/Logo";
 
 import { formatLote, loteValido } from "@/lib/lote";
+import { criarPedidoComReserva } from "@/lib/pedidoUtils";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -366,28 +367,33 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
       // BUG-06 FIX: garante que o frete seja um número não-negativo e razoável
       const freteVal = Math.max(0, Math.min(99999.99, parseFloat(frete.replace(",", ".")) || 0));
-      const { data: pedido, error: pedidoErr } = await supabase
-        .from("pedidos_comerciais")
-        .insert({
-          cliente_id: clienteId,
-          vendedora_id: user?.id,
-          vendedora_nome: vendedoraNome,
-          observacoes: obs || null,
-          frete: freteVal,
-          status: "pendente",
-        })
-        .select().single();
-      if (pedidoErr) throw pedidoErr;
-      const { error: itensErr } = await supabase.from("pedido_itens").insert(
-        itens.map(i => ({
-          pedido_id: (pedido as { id: string }).id,
+
+      // COD-01 FIX: usa criarPedidoComReserva para garantir que reserve_stock
+      // seja chamado e quantity_reserved seja incrementado corretamente no banco.
+      // Antes: inseria pedido_itens com quantidade_reservada: 0 e nunca chamava reserve_stock.
+      const result = await criarPedidoComReserva({
+        clienteId,
+        itens: itens.map(i => ({
           stock_item_id: i.stock_item_id,
           lote: i.lote || "a-definir",
           quantidade: i.quantidade,
-          quantidade_reservada: 0,
-        }))
-      );
-      if (itensErr) throw itensErr;
+          device_model: i.device_model,
+        })),
+        vendedoraId: user?.id,
+        vendedoraNome,
+        observacoes: obs || null,
+      });
+
+      // Aplica frete ao pedido criado (campo extra não suportado pelo util genérico)
+      if (result.ok && result.pedidoId && freteVal > 0) {
+        await supabase.from("pedidos_comerciais").update({ frete: freteVal }).eq("id", result.pedidoId);
+      }
+
+      if (!result.ok) {
+        toast.error(result.error ?? "Erro ao criar pedido.");
+        return;
+      }
+
       toast.success("Pedido criado! O estoque irá separar os lotes.");
       onSuccess();
     } catch (_e) {
@@ -790,10 +796,24 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
       stock_item_id: selectedPeca.id,
       lote: "a-definir",
       quantidade: qtd,
-      quantidade_reservada: 0,
+      quantidade_reservada: qtd,
     });
+    if (error) { setSaving(false); toast.error("Erro ao adicionar peça."); return; }
+
+    // COD-01 FIX: chama reserve_stock para incrementar quantity_reserved no banco.
+    // Antes: inseria com quantidade_reservada: 0 e nunca chamava reserve_stock.
+    const { data: reserved, error: reserveErr } = await supabase.rpc("reserve_stock", {
+      p_item_id: selectedPeca.id,
+      p_qty: qtd,
+    });
+    const result = reserved as { ok?: boolean; error?: string } | null;
+    if (reserveErr || result?.ok === false) {
+      toast.error(result?.error ?? "Estoque insuficiente.");
+      setSaving(false);
+      return;
+    }
+
     setSaving(false);
-    if (error) { toast.error("Erro ao adicionar peça."); return; }
     toast.success(`${selectedPeca.device?.model} adicionada ao pedido!`);
     onSuccess();
     onClose();
