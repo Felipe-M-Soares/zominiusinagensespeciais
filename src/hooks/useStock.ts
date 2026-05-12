@@ -687,7 +687,7 @@ export async function fetchLotesDisponivelBatch(
     if (pedidoIds.length > 0) {
       // Para pedidos sem lotes_separados (pendente): busca via pedido_itens
       // Inclui todos os stock_item_ids passados (já são expIds)
-      let piQuery = supabase
+      const piQuery = supabase
         .from("pedido_itens")
         .select("stock_item_id, lote, quantidade, pedido_id")
         .in("stock_item_id", stockItemIds)
