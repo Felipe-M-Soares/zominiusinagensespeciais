@@ -208,75 +208,89 @@ export function AdminDevices() {
 
     setImporting(true);
     try {
-      // 1. Lê com encoding correto
+      // 1. Lê arquivo com encoding correto (UTF-8, fallback windows-1252/ISO-8859-1)
       let text = await readFileWithEncoding(file, "UTF-8");
       if (looksCorrupted(text)) {
         const w = await readFileWithEncoding(file, "windows-1252");
         text = looksCorrupted(w) ? await readFileWithEncoding(file, "ISO-8859-1") : w;
       }
 
-      // 2. Para CSV: envia o texto bruto para a Edge Function (que tem parser próprio completo).
-      //    Isso evita o "Failed to fetch" causado por payloads JSON enormes (5000+ registros
-      //    serializados como objetos são muito maiores que o CSV original em texto plano).
-      //    Para JSON: faz parse mínimo para validar e envia no formato esperado pela Edge Function.
-      let requestBody: Record<string, unknown>;
+      // 2. Parse → array de dispositivos mapeados (tudo no browser, sem Edge Function)
+      type DeviceInsert = ReturnType<typeof mapRow>;
+      let mapped: DeviceInsert[] = [];
 
       if (isCsv) {
-        // Validação rápida no browser antes de enviar (evita roundtrip desnecessário)
-        const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/).find(l => l.trim()) ?? "";
-        const delim = firstLine.includes(";") ? ";" : ",";
-        const headers = firstLine.split(delim).map(h => h.replace(/^["']|["']$/g, "").trim().toLowerCase()
-          .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\s-]+/g, "_").replace(/[^a-z0-9_]/g, ""));
-        const hasUdi   = headers.some(h => ["udi_di","udidi","udi","udidi"].includes(h));
-        const hasModel = headers.some(h => ["model","modelo","nome"].includes(h));
+        const rows = parseCSVBrowser(text);
+        if (rows.length === 0) { toast.error("CSV vazio ou sem dados."); return; }
+
+        const firstRow = rows[0];
+        const hasUdi   = Object.keys(firstRow).some(k => ["udi_di","udidi","udi","udi-di"].includes(normalizeKey(k)));
+        const hasModel = Object.keys(firstRow).some(k => ["model","modelo","nome"].includes(normalizeKey(k)));
         if (!hasUdi || !hasModel) {
-          toast.error(`CSV inválido. Necessário: 'udi_di' e 'model'. Detectado: ${headers.slice(0, 8).join(", ")}`);
+          toast.error(`CSV inválido. Necessário: 'udi_di' e 'model'. Detectado: ${Object.keys(firstRow).filter((_, i) => i < 8).join(", ")}`);
           return;
         }
-
-        // Conta linhas para mostrar no toast (descontando cabeçalho e linhas vazias)
-        const rowCount = text.split(/\r?\n/).filter((l, i) => i > 0 && l.trim()).length;
-        toast.info(`Importando ${rowCount} dispositivos...`);
-
-        // Envia CSV como string — a Edge Function faz o parse e mapeamento
-        requestBody = {
-          csv: text,
-          replace_all: true,
-          confirm_replace: "CONFIRMAR_SUBSTITUICAO",
-        };
+        mapped = rows.map(mapRow).filter(d => d.udi_di.length > 0);
       } else {
-        // JSON
         let parsed: unknown;
-        try { parsed = JSON.parse(text); } catch {
-          toast.error("Arquivo JSON inválido."); return;
-        }
+        try { parsed = JSON.parse(text); } catch { toast.error("Arquivo JSON inválido."); return; }
         const safe = parsed as Record<string, unknown>;
-        if (Array.isArray(safe.devices)) {
-          const count = (safe.devices as unknown[]).length;
-          toast.info(`Importando ${count} dispositivos...`);
-          requestBody = { devices: safe.devices, replace_all: true, confirm_replace: "CONFIRMAR_SUBSTITUICAO" };
-        } else if (Array.isArray(safe.dispositivos_medicos)) {
-          const count = (safe.dispositivos_medicos as unknown[]).length;
-          toast.info(`Importando ${count} dispositivos...`);
-          requestBody = { dispositivos_medicos: safe.dispositivos_medicos, replace_all: true, confirm_replace: "CONFIRMAR_SUBSTITUICAO" };
-        } else {
-          toast.error("JSON deve ter campo 'devices' ou 'dispositivos_medicos'."); return;
-        }
+        const list = (Array.isArray(safe.devices) ? safe.devices :
+                      Array.isArray(safe.dispositivos_medicos) ? safe.dispositivos_medicos : null) as Record<string,unknown>[] | null;
+        if (!list) { toast.error("JSON deve ter campo 'devices' ou 'dispositivos_medicos'."); return; }
+        mapped = list.map(d => mapRow(d as Record<string, string>)).filter(d => d.udi_di.length > 0);
       }
 
-      // 3. Envia para a Edge Function
-      const { data: edgeResult, errorMsg } = await invokeWithAuth<{ inserted?: number; skipped?: number; error?: string }>(
-        "import-devices",
-        { body: requestBody }
-      );
+      if (mapped.length === 0) { toast.error("Nenhum dispositivo válido encontrado."); return; }
 
-      if (errorMsg || edgeResult?.error) {
-        toast.error("Erro ao importar: " + (edgeResult?.error ?? errorMsg));
+      // 3. Deduplicar por udi_di
+      const seen = new Map<string, number>();
+      for (const d of mapped) {
+        const orig = d.udi_di;
+        const cnt = seen.get(orig) ?? 0;
+        seen.set(orig, cnt + 1);
+        if (cnt > 0) d.udi_di = `${orig}-${d.internal_code || cnt}`;
+      }
+      const deduped = Array.from(new Map(mapped.map(d => [d.udi_di, d])).values());
+
+      toast.info(`Importando ${deduped.length} dispositivos...`);
+
+      // 4. Apaga catálogo atual e insere em batches diretamente via supabase client.
+      //    O RLS já garante que só admins conseguem fazer DELETE e INSERT na tabela devices.
+      //    Isso elimina a dependência da Edge Function (que estava causando erros de CORS/rede).
+      const { error: deleteError } = await supabase
+        .from("devices")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (deleteError) {
+        toast.error("Erro ao limpar catálogo: " + deleteError.message);
         return;
       }
 
-      const inserted = edgeResult?.inserted ?? 0;
-      const skipped  = edgeResult?.skipped  ?? 0;
+      const BATCH = 500;
+      let inserted = 0;
+      let skipped  = 0;
+
+      for (let i = 0; i < deduped.length; i += BATCH) {
+        const batch = deduped.slice(i, i + BATCH);
+        const { error } = await supabase
+          .from("devices")
+          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false });
+
+        if (error) {
+          logger.error(`Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
+          skipped += batch.length;
+        } else {
+          inserted += batch.length;
+        }
+      }
+
+      if (inserted === 0) {
+        toast.error("Nenhum dispositivo foi importado. Verifique o arquivo e tente novamente.");
+        return;
+      }
+
       toast.success(`Importação concluída: ${inserted} dispositivos${skipped > 0 ? ` (${skipped} com erro)` : ""}`);
       setPage(0);
       fetchDevices(debouncedSearch, 0);
