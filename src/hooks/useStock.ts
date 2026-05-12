@@ -820,11 +820,34 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
   const pedidoItensReservados: { lote: string | null; quantidade: number }[] = [];
 
   if (pedidoIdsAtivos.length > 0) {
-    // PERF: busca todos os pedido_itens relevantes em UMA query (evita N+1)
+    // Para pedidos com lotes_separados: já filtrado por expId (stock_item_id da expedição).
+    // Para pedidos pendentes (sem lotes_separados): pedido_itens.stock_item_id pode ser
+    // da intermediária — precisamos resolver via device_id para encontrar o expId correto.
+
+    // 1. Descobre o device_id do item de expedição atual
+    const { data: expItem } = await supabase
+      .from("stock_items")
+      .select("device_id")
+      .eq("id", stockItemId)
+      .maybeSingle();
+    const deviceId = (expItem as { device_id: string } | null)?.device_id;
+
+    // 2. Busca todos os stock_item_ids que pertencem ao mesmo device (intermediária + expedição)
+    let allStockItemIds = [stockItemId];
+    if (deviceId) {
+      const { data: siblings } = await supabase
+        .from("stock_items")
+        .select("id")
+        .eq("device_id", deviceId);
+      allStockItemIds = (siblings ?? []).map((s: { id: string }) => s.id);
+      if (!allStockItemIds.includes(stockItemId)) allStockItemIds.push(stockItemId);
+    }
+
+    // 3. Busca pedido_itens por todos os stock_item_ids do mesmo device
     const { data: piDataAll } = await supabase
       .from("pedido_itens")
       .select("pedido_id, lote, quantidade")
-      .eq("stock_item_id", stockItemId)
+      .in("stock_item_id", allStockItemIds)
       .in("pedido_id", pedidoIdsAtivos);
 
     const piByPedido = new Map<string, { lote: string | null; quantidade: number }[]>();
@@ -842,7 +865,7 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
           pedidoItensReservados.push({ lote: s.lote, quantidade: s.quantidade });
         }
       } else {
-        // Pedido pendente sem separação: usa pedido_itens (já carregados em batch)
+        // Pedido pendente: usa pedido_itens (encontrado via todos os stock_item_ids do device)
         for (const pi of (piByPedido.get(pedido.id) ?? [])) {
           pedidoItensReservados.push(pi);
         }
