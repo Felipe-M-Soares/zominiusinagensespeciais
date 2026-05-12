@@ -219,7 +219,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       //    - pendente:  auto-distribute FIFO by item.quantidade
       const newSel: LoteSelecao = {};
 
-      if (isSeparando && (pedido.lotes_separados ?? []).length > 0) {
+      if (pedido.status === "separando" && (pedido.lotes_separados ?? []).length > 0) {
         // Build a map: expId → [{ lote, quantidade }] from snapshot
         // Each entry in lotes_separados is already deduplicated (one per expId+lote)
         const snapByExpId = new Map<string, { lote: string; quantidade: number }[]>();
@@ -271,7 +271,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     }
 
     load();
-  }, [expanded, pedido]);
+  }, [expanded, pedido]); // isSeparando derived from pedido.status — pedido covers it
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function totalSel(itemId: string) {
