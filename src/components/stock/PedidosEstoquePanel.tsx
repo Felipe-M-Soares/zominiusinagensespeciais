@@ -139,328 +139,289 @@ interface PedidoCardProps {
 function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, isAdmin }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  async function handleImprimir() {
-    const esc = (s: string | null | undefined) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-    const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
-    const titulo = "Pedido";
-
-    // Agrupa lotes_separados por pedido_item_id E por stock_item_id (dois índices para lookup robusto)
-    const lotesByPedidoItemId: Record<string, { lote: string; quantidade: number }[]> = {};
-    const lotesByStockItemId: Record<string, { lote: string; quantidade: number }[]> = {};
-    for (const ls of (pedido.lotes_separados ?? [])) {
-      // índice por pedido_item_id
-      const pid = (ls as Record<string, unknown>).pedido_item_id as string | undefined;
-      if (pid) {
-        if (!lotesByPedidoItemId[pid]) lotesByPedidoItemId[pid] = [];
-        const ex1 = lotesByPedidoItemId[pid].find(x => x.lote === ls.lote);
-        if (ex1) ex1.quantidade += ls.quantidade;
-        else lotesByPedidoItemId[pid].push({ lote: ls.lote, quantidade: ls.quantidade });
-      }
-      // índice por stock_item_id
-      if (!lotesByStockItemId[ls.stock_item_id]) lotesByStockItemId[ls.stock_item_id] = [];
-      const ex2 = lotesByStockItemId[ls.stock_item_id].find(x => x.lote === ls.lote);
-      if (ex2) ex2.quantidade += ls.quantidade;
-      else lotesByStockItemId[ls.stock_item_id].push({ lote: ls.lote, quantidade: ls.quantidade });
-    }
-
-    const hasSep = (pedido.lotes_separados ?? []).length > 0;
-    const LOTE_PLACEHOLDER = new Set(["a-definir", "a definir", "sem lote", ""]);
-    const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
-
-    if (hasSep) {
-      // PRINT-FIX: usa lotesSel (o que está na tela) se o pedido estiver expandido e carregado,
-      // pois o snapshot em lotes_separados pode estar desatualizado em relação ao que o
-      // separador ajustou. Fallback para lotes_separados se lotesSel ainda não foi carregado.
-      const hasLotesSel = Object.keys(lotesSel).length > 0;
-
-      if (hasLotesSel) {
-        // Usa lotesSel — reflete os valores atuais na tela (mais recente que o snapshot)
-        for (const item of pedido.itens) {
-          const sel = lotesSel[item.id] ?? {};
-          for (const [lote, quantidade] of Object.entries(sel)) {
-            if (quantidade > 0) {
-              printRows.push({ model: item.device_model, reference: item.device_reference, lote, quantidade });
-            }
-          }
-        }
-      } else {
-        // Fallback: lotes_separados do banco (pedido não expandido ou lotes não carregados)
-        const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
-        for (const ls of (pedido.lotes_separados ?? [])) {
-          const model = ls.device_model ?? pedido.itens.find(i => i.device_model === ls.device_model)?.device_model;
-          const matchedItem = pedido.itens.find(i => i.device_model === model);
-          const reference = matchedItem?.device_reference;
-          const key = `${model}||${ls.lote}`;
-          const existing = rowMap.get(key);
-          if (existing) { existing.quantidade += ls.quantidade; }
-          else { rowMap.set(key, { model, reference, lote: ls.lote, quantidade: ls.quantidade }); }
-        }
-        for (const row of rowMap.values()) printRows.push(row);
-      }
-    } else {
-      // BUG-FIX-1: pedido pendente — lote salvo é "a-definir" (placeholder).
-      // Busca os lotes reais com saldo positivo do stock_movements para cada item.
-      const stockItemIds = [...new Set(pedido.itens_raw.map(r => r.stock_item_id))];
-      const { data: movs } = await supabase
-        .from("stock_movements")
-        .select("stock_item_id, lote, type, quantity, reason")
-        .in("stock_item_id", stockItemIds)
-        .not("lote", "is", null);
-
-      // Calcula saldo por (stock_item_id, lote)
-      const ROLLBACK_REASONS_P = new Set([
-        "Rollback — falha ao criar item de retrabalho",
-        "Rollback — falha ao criar item de expedição",
-        "Rollback — falha ao registrar entrada na expedição",
-      ]);
-      const saldoMap = new Map<string, Map<string, number>>();
-      for (const m of ((movs ?? []) as { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null }[])) {
-        if (m.reason && ROLLBACK_REASONS_P.has(m.reason)) continue;
-        if (LOTE_PLACEHOLDER.has(m.lote.trim().toLowerCase())) continue;
-        const loteKey = m.lote.toUpperCase();
-        if (!saldoMap.has(m.stock_item_id)) saldoMap.set(m.stock_item_id, new Map());
-        const loteM = saldoMap.get(m.stock_item_id)!;
-        loteM.set(loteKey, (loteM.get(loteKey) ?? 0) + (m.type === "entrada" ? m.quantity : -m.quantity));
-      }
-
-      // Agrupa itens_raw por stock_item_id para somar quantidades
-      const itemsByStockId = new Map<string, typeof pedido.itens_raw[0]>();
-      for (const raw of pedido.itens_raw) {
-        if (!itemsByStockId.has(raw.stock_item_id)) {
-          itemsByStockId.set(raw.stock_item_id, { ...raw });
-        } else {
-          itemsByStockId.get(raw.stock_item_id)!.quantidade += raw.quantidade;
-        }
-      }
-
-      for (const [sid, raw] of itemsByStockId.entries()) {
-        const lotesDoItem = saldoMap.get(sid);
-        const lotesComSaldo = lotesDoItem
-          ? [...lotesDoItem.entries()].filter(([, saldo]) => saldo > 0).map(([lote]) => lote)
-          : [];
-
-        if (lotesComSaldo.length > 0) {
-          // Mostra cada lote disponível (sem quebrar por quantidade — o separador fará isso)
-          lotesComSaldo.forEach(lote => {
-            printRows.push({ model: raw.device_model, reference: raw.device_reference, lote, quantidade: raw.quantidade });
-          });
-        } else {
-          // Nenhum lote com saldo encontrado — imprime sem lote
-          printRows.push({ model: raw.device_model, reference: raw.device_reference, lote: "", quantidade: raw.quantidade });
-        }
-      }
-    }
-    const rows = printRows.map((row, i) => {
-      const loteCell = row.lote && row.lote !== "SEM LOTE" && row.lote !== "a-definir"
-        ? `<span style="display:inline-block;background:#f3f0ff;color:#5b21b6;font-family:monospace;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.05em">${esc(row.lote)}</span>`
-        : `<span style="color:#aaa;font-size:11px">—</span>`;
-      return `<tr><td>${i+1}</td><td>${esc(row.model)}</td><td>${esc(row.reference)}</td><td style="text-align:center">${loteCell}</td><td style="text-align:center;font-weight:bold">${row.quantidade}</td></tr>`;
-    }).join("");
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titulo}</title>
-    <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin-bottom:4px}p.sub{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padding:8px 10px;background:#f3f0ff;color:#5b21b6;border-bottom:2px solid #ddd6fe}td{padding:7px 10px;border-bottom:1px solid #eee}.footer{margin-top:20px;font-size:11px;color:#999}@media print{button{display:none}}</style></head><body>
-    <h1>📦 ${titulo}</h1>
-    <p class="sub">Cliente: <strong>${esc(pedido.cliente_nome)}</strong> &nbsp;·&nbsp; Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong> &nbsp;·&nbsp; Gerado em: ${now}</p>
-    ${pedido.observacoes ? `<p style="font-size:12px;color:#555;margin-bottom:16px">Obs: ${esc(pedido.observacoes)}</p>` : ""}
-    <table><thead><tr><th>#</th><th>Peça</th><th>Referência</th><th style="text-align:center">Lote</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="footer">Total: ${printRows.reduce((s,r)=>s+r.quantidade,0)} peças · ${pedido.itens.length} tipo(s)</p>
-    </body></html>`;
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-    // Aguarda o layout renderizar antes de abrir o diálogo de impressão
-    setTimeout(() => { w.focus(); w.print(); }, 250);
-  }
-
-  const [expedicaoData, setExpedicaoData] = useState<Record<string, StockItemExpedicao>>({});
-  const [lotesSel, setLotesSel] = useState<LoteSelecao>({});
+  // ── State ──────────────────────────────────────────────────────────────────
+  // expId per item: the real expedição stock_item_id (may differ from pedido_item.stock_item_id)
+  const [expIdByItem, setExpIdByItem] = useState<Record<string, string>>({});
+  // available lotes per item (keyed by item.id)
+  const [lotesDisp, setLotesDisp] = useState<Record<string, LoteDisponivel[]>>({});
+  // user selection: { [item.id]: { [lote]: qty } }
+  const [sel, setSel] = useState<LoteSelecao>({});
   const [loadingLotes, setLoadingLotes] = useState(false);
-  const [salvandoSep, setSalvandoSep] = useState(false);
   const loadedRef = useRef(false);
 
-  const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const isSeparando = pedido.status === "separando";
-  const isPendente = pedido.status === "pendente";
+  const isPendente  = pedido.status === "pendente";
+  const totalItens  = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
 
-  // Carrega dados da expedição ao expandir (uma vez por card)
+  // ── Load lotes on expand ───────────────────────────────────────────────────
   useEffect(() => {
     if (!expanded || loadedRef.current) return;
     loadedRef.current = true;
     setLoadingLotes(true);
 
     async function load() {
+      // 1. Resolve expId for each item (intermediária → expedição if needed)
       const itemIds = pedido.itens.map(i => i.stock_item_id);
-
-      // PERF-01: Single batch query for all stock items instead of N queries
       const { data: siRows } = await supabase
         .from("stock_items")
         .select("id, device_id, quantity, quantity_reserved, fase")
         .in("id", itemIds);
 
-      const siMap = new Map((siRows ?? []).map((r: Record<string, unknown>) => [r.id as string, r]));
+      const siMap = new Map((siRows ?? []).map((r: Record<string,unknown>) => [r.id as string, r]));
 
-      // Resolve expedicao items in one batch for any non-expedicao items
-      const nonExpIds = (siRows ?? [])
-        .filter((r: Record<string, unknown>) => r.fase !== "expedicao")
-        .map((r: Record<string, unknown>) => r.device_id as string);
+      const nonExpDeviceIds = (siRows ?? [])
+        .filter((r: Record<string,unknown>) => r.fase !== "expedicao")
+        .map((r: Record<string,unknown>) => r.device_id as string);
 
       const expMap = new Map<string, { id: string; quantity: number; quantity_reserved: number }>();
-      if (nonExpIds.length > 0) {
+      if (nonExpDeviceIds.length > 0) {
         const { data: expRows } = await supabase
           .from("stock_items")
           .select("id, device_id, quantity, quantity_reserved")
-          .in("device_id", nonExpIds)
+          .in("device_id", nonExpDeviceIds)
           .eq("fase", "expedicao");
         for (const r of (expRows ?? []) as { id: string; device_id: string; quantity: number; quantity_reserved: number }[]) {
-          expMap.set(r.device_id, { id: r.id, quantity: r.quantity, quantity_reserved: r.quantity_reserved ?? 0 });
+          expMap.set(r.device_id, r);
         }
       }
 
-      // Resolve final expedicao item ids
-      const expedicaoIds: string[] = [];
-      const expQtyByPedidoItem: Record<string, { expId: string; qty: number; reserved: number }> = {};
+      // Build expId map (item.id → real expedicao stock_item_id)
+      const newExpIdByItem: Record<string, string> = {};
+      const expIds: string[] = [];
       for (const item of pedido.itens) {
-        const si = siMap.get(item.stock_item_id) as { device_id: string; quantity: number; quantity_reserved: number; fase: string } | undefined;
-        if (!si) { expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: 0, reserved: 0 }; continue; }
-        if (si.fase === "expedicao") {
-          expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: si.quantity, reserved: si.quantity_reserved ?? 0 };
-          expedicaoIds.push(item.stock_item_id);
-        } else {
+        const si = siMap.get(item.stock_item_id) as { device_id: string; fase: string } | undefined;
+        let expId = item.stock_item_id;
+        if (si && si.fase !== "expedicao") {
           const exp = expMap.get(si.device_id);
-          if (exp) {
-            expQtyByPedidoItem[item.id] = { expId: exp.id, qty: exp.quantity, reserved: exp.quantity_reserved };
-            expedicaoIds.push(exp.id);
-          } else {
-            expQtyByPedidoItem[item.id] = { expId: item.stock_item_id, qty: 0, reserved: 0 };
-          }
+          if (exp) expId = exp.id;
         }
+        newExpIdByItem[item.id] = expId;
+        expIds.push(expId);
       }
+      setExpIdByItem(newExpIdByItem);
 
-      // PERF-01: Single batch query for all lotes
-      // Passa pedido.id para excluir as próprias reservas do pedido — o separador
-      // vê o saldo disponível para outros pedidos + o que já reservou para este.
-      const lotesMap = await fetchLotesDisponivelBatch([...new Set(expedicaoIds)], pedido.id);
+      // 2. Load available lotes for each expId (excludes this pedido's own reservations)
+      const lotesMap = await fetchLotesDisponivelBatch([...new Set(expIds)], pedido.id);
 
-      const result: Record<string, StockItemExpedicao> = {};
-      const inicialSel: LoteSelecao = {};
-
+      const newLotesDisp: Record<string, LoteDisponivel[]> = {};
       for (const item of pedido.itens) {
-        const { expId, qty: expQty, reserved: expReserved } = expQtyByPedidoItem[item.id] ?? { expId: item.stock_item_id, qty: 0, reserved: 0 };
+        const expId = newExpIdByItem[item.id];
         const saldos = lotesMap.get(expId) ?? {};
-        const expAvailable = Math.max(0, expQty - expReserved);
-
-        let lotesList: LoteDisponivel[] = Object.entries(saldos)
+        const list: LoteDisponivel[] = Object.entries(saldos)
           .map(([lote, qty]) => ({ lote, quantity: Math.max(0, qty), stock_item_id: expId }))
           .filter(l => l.quantity > 0);
+        newLotesDisp[item.id] = list;
+      }
+      setLotesDisp(newLotesDisp);
 
-        if (lotesList.length === 0 && expQty > 0) {
-          lotesList = [{ lote: "Sem lote", quantity: expAvailable, stock_item_id: expId }];
+      // 3. Initialize selection:
+      //    - separando: restore from lotes_separados snapshot (per expId)
+      //    - pendente:  auto-distribute FIFO by item.quantidade
+      const newSel: LoteSelecao = {};
+
+      if (isSeparando && (pedido.lotes_separados ?? []).length > 0) {
+        // Build a map: expId → [{ lote, quantidade }] from snapshot
+        // Each entry in lotes_separados is already deduplicated (one per expId+lote)
+        const snapByExpId = new Map<string, { lote: string; quantidade: number }[]>();
+        for (const ls of pedido.lotes_separados!) {
+          if (!snapByExpId.has(ls.stock_item_id)) snapByExpId.set(ls.stock_item_id, []);
+          const arr = snapByExpId.get(ls.stock_item_id)!;
+          const ex = arr.find(x => x.lote === ls.lote);
+          if (ex) ex.quantidade += ls.quantidade;
+          else arr.push({ lote: ls.lote, quantidade: ls.quantidade });
         }
-
-        result[item.id] = { stock_item_id: expId, quantity: expQty, quantity_reserved: expReserved, lotes: lotesList, loading: false };
-
-        // Para pedidos já em separação: restaura do snapshot salvo em lotes_separados.
-        // Para pedidos pendentes: distribui FIFO pela quantidade do pedido.
-        // DEDUP-FIX: se outro item.id já inicializou com este expId, não duplica —
-        // divide as quantidades do snapshot pro-rata pela quantidade de cada item.
-        const savedLotes = (pedido.lotes_separados ?? []).filter(ls => ls.stock_item_id === expId);
-        const alreadyInitialized = Object.values(inicialSel).length > 0 &&
-          Object.keys(inicialSel).some(prevItemId => {
-            const prevExpId = expQtyByPedidoItem[prevItemId]?.expId;
-            return prevExpId === expId;
-          });
-
-        if (savedLotes.length > 0 && !alreadyInitialized) {
-          // Primeiro item com este expId: carrega tudo do snapshot
+        // For each item, load its share from the snapshot
+        // If multiple items share the same expId, split proportionally by item.quantidade
+        const expIdItemMap = new Map<string, PedidoItem[]>();
+        for (const item of pedido.itens) {
+          const expId = newExpIdByItem[item.id];
+          if (!expIdItemMap.has(expId)) expIdItemMap.set(expId, []);
+          expIdItemMap.get(expId)!.push(item);
+        }
+        for (const item of pedido.itens) {
+          const expId = newExpIdByItem[item.id];
+          const snapEntries = snapByExpId.get(expId) ?? [];
+          const siblings = expIdItemMap.get(expId) ?? [item];
+          const totalSiblingQty = siblings.reduce((s, i) => s + i.quantidade, 0);
+          const ratio = totalSiblingQty > 0 ? item.quantidade / totalSiblingQty : 1;
           const dist: Record<string, number> = {};
-          for (const ls of savedLotes) dist[ls.lote] = (dist[ls.lote] ?? 0) + ls.quantidade;
-          inicialSel[item.id] = dist;
-        } else if (savedLotes.length > 0 && alreadyInitialized) {
-          // Segundo item com mesmo expId: usa qty do item como proporção do snapshot total
-          const snapTotal = savedLotes.reduce((s, ls) => s + ls.quantidade, 0);
-          const ratio = snapTotal > 0 ? item.quantidade / snapTotal : 1;
-          const dist: Record<string, number> = {};
-          for (const ls of savedLotes) dist[ls.lote] = Math.round(ls.quantidade * ratio);
-          inicialSel[item.id] = dist;
-        } else {
-          // Pedido pendente: distribui FIFO pelo disponível
+          for (const s of snapEntries) {
+            const q = Math.round(s.quantidade * ratio);
+            if (q > 0) dist[s.lote] = q;
+          }
+          newSel[item.id] = dist;
+        }
+      } else {
+        // Pendente: FIFO distribution
+        for (const item of pedido.itens) {
+          const lotes = newLotesDisp[item.id] ?? [];
           const dist: Record<string, number> = {};
           let restante = item.quantidade;
-          for (const l of lotesList) {
+          for (const l of lotes) {
             if (restante <= 0) break;
             const usar = Math.min(l.quantity, restante);
             dist[l.lote] = usar;
             restante -= usar;
           }
-          inicialSel[item.id] = dist;
+          newSel[item.id] = dist;
         }
       }
-
-      setExpedicaoData(result);
-      setLotesSel(inicialSel);
+      setSel(newSel);
       setLoadingLotes(false);
     }
 
     load();
   }, [expanded, pedido]);
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function totalSel(itemId: string) {
+    return Object.values(sel[itemId] ?? {}).reduce((s, q) => s + q, 0);
+  }
+
   function setQtyLote(itemId: string, lote: string, qty: number, maxQty: number) {
-    setLotesSel(prev => {
-      const atual = { ...(prev[itemId] ?? {}) };
-      if (qty <= 0) { delete atual[lote]; }
-      else { atual[lote] = Math.min(qty, maxQty); }
-      return { ...prev, [itemId]: atual };
+    setSel(prev => {
+      const curr = { ...(prev[itemId] ?? {}) };
+      if (qty <= 0) delete curr[lote];
+      else curr[lote] = Math.min(qty, maxQty);
+      return { ...prev, [itemId]: curr };
     });
   }
 
   function toggleLote(itemId: string, lote: string, maxQty: number) {
-    setLotesSel(prev => {
-      const atual = { ...(prev[itemId] ?? {}) };
-      if (atual[lote]) { delete atual[lote]; }
-      else { atual[lote] = Math.min(1, maxQty); }
-      return { ...prev, [itemId]: atual };
+    setSel(prev => {
+      const curr = { ...(prev[itemId] ?? {}) };
+      if (curr[lote]) delete curr[lote];
+      else curr[lote] = Math.min(maxQty, (pedido.itens.find(i => i.id === itemId)?.quantidade ?? 1));
+      return { ...prev, [itemId]: curr };
     });
   }
 
-  function totalSel(itemId: string) {
-    return Object.values(lotesSel[itemId] ?? {}).reduce((s, q) => s + q, 0);
+  // Build deduplicated snapshot: one entry per (expId, lote)
+  function buildSnapshot(): { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }[] {
+    const map = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
+    for (const item of pedido.itens) {
+      const expId = expIdByItem[item.id] ?? item.stock_item_id;
+      for (const [lote, qty] of Object.entries(sel[item.id] ?? {})) {
+        if (qty <= 0) continue;
+        const key = `${expId}||${lote}`;
+        const ex = map.get(key);
+        if (ex) ex.quantidade += qty;
+        else map.set(key, { pedido_item_id: item.ids[0], stock_item_id: expId, lote, quantidade: qty, device_model: item.device_model });
+      }
+    }
+    return [...map.values()];
   }
 
-  const canConfirmar = isPendente && pedido.itens.every(item => {
-    const exp = expedicaoData[item.id];
-    if (!exp || exp.lotes.length === 0) return true;
+  const canConfirmar = isPendente && !loadingLotes && pedido.itens.every(item => {
+    const lotes = lotesDisp[item.id] ?? [];
+    if (lotes.length === 0) return true;
     return totalSel(item.id) === item.quantidade;
   });
 
-  const canSalvarSep = isSeparando && !loadingLotes && pedido.itens.every(item => {
-    const exp = expedicaoData[item.id];
-    if (!exp || exp.lotes.length === 0) return true;
-    return totalSel(item.id) === item.quantidade;
-  });
+  // ── Print ──────────────────────────────────────────────────────────────────
+  async function handleImprimir() {
+    const esc = (s: string | null | undefined) =>
+      (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+    const LOTE_PH = new Set(["a-definir","a definir","sem lote",""]);
+    const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
 
+    const hasSel = Object.keys(sel).length > 0;
+    const hasSep = (pedido.lotes_separados ?? []).length > 0;
+
+    if (hasSel) {
+      // Use current screen state — most accurate
+      // Aggregate by (device_model, lote) since multiple items can share same model
+      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
+      for (const item of pedido.itens) {
+        for (const [lote, qty] of Object.entries(sel[item.id] ?? {})) {
+          if (qty <= 0) continue;
+          const key = `${item.device_model}||${lote}`;
+          const ex = rowMap.get(key);
+          if (ex) ex.quantidade += qty;
+          else rowMap.set(key, { model: item.device_model, reference: item.device_reference, lote, quantidade: qty });
+        }
+      }
+      for (const row of rowMap.values()) printRows.push(row);
+    } else if (hasSep) {
+      // Fallback to snapshot (card not expanded yet)
+      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
+      for (const ls of pedido.lotes_separados!) {
+        const item = pedido.itens.find(i => (expIdByItem[i.id] ?? i.stock_item_id) === ls.stock_item_id)
+          ?? pedido.itens.find(i => i.device_model === ls.device_model);
+        const key = `${ls.device_model}||${ls.lote}`;
+        const ex = rowMap.get(key);
+        if (ex) ex.quantidade += ls.quantidade;
+        else rowMap.set(key, { model: ls.device_model ?? item?.device_model, reference: item?.device_reference, lote: ls.lote, quantidade: ls.quantidade });
+      }
+      for (const row of rowMap.values()) printRows.push(row);
+    } else {
+      // Pending order — find real lotes from stock movements
+      const stockItemIds = [...new Set(pedido.itens_raw.map(r => r.stock_item_id))];
+      const { data: movs } = await supabase
+        .from("stock_movements")
+        .select("stock_item_id, lote, type, quantity")
+        .in("stock_item_id", stockItemIds)
+        .not("lote", "is", null);
+
+      const saldoMap = new Map<string, Map<string, number>>();
+      for (const m of (movs ?? []) as { stock_item_id: string; lote: string; type: string; quantity: number }[]) {
+        if (!m.lote || LOTE_PH.has(m.lote.trim().toLowerCase())) continue;
+        const k = m.lote.toUpperCase();
+        if (!saldoMap.has(m.stock_item_id)) saldoMap.set(m.stock_item_id, new Map());
+        const lm = saldoMap.get(m.stock_item_id)!;
+        lm.set(k, (lm.get(k) ?? 0) + (m.type === "entrada" ? m.quantity : -m.quantity));
+      }
+
+      for (const item of pedido.itens) {
+        const lm = saldoMap.get(item.stock_item_id);
+        const lotesComSaldo = lm ? [...lm.entries()].filter(([,s]) => s > 0).map(([l]) => l) : [];
+        if (lotesComSaldo.length > 0) {
+          for (const lote of lotesComSaldo) {
+            printRows.push({ model: item.device_model, reference: item.device_reference, lote, quantidade: item.quantidade });
+          }
+        } else {
+          printRows.push({ model: item.device_model, reference: item.device_reference, lote: "", quantidade: item.quantidade });
+        }
+      }
+    }
+
+    const rows = printRows.map((row, i) => {
+      const loteCell = row.lote && !LOTE_PH.has(row.lote.toLowerCase())
+        ? `<span style="display:inline-block;background:#f3f0ff;color:#5b21b6;font-family:monospace;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px">${esc(row.lote)}</span>`
+        : `<span style="color:#aaa;font-size:11px">—</span>`;
+      return `<tr><td>${i+1}</td><td>${esc(row.model)}</td><td>${esc(row.reference)}</td><td style="text-align:center">${loteCell}</td><td style="text-align:center;font-weight:bold">${row.quantidade}</td></tr>`;
+    }).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedido</title>
+    <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin-bottom:4px}p.sub{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padding:8px 10px;background:#f3f0ff;color:#5b21b6;border-bottom:2px solid #ddd6fe}td{padding:7px 10px;border-bottom:1px solid #eee}.footer{margin-top:20px;font-size:11px;color:#999}@media print{button{display:none}}</style></head><body>
+    <h1>📦 Pedido</h1>
+    <p class="sub">Cliente: <strong>${esc(pedido.cliente_nome)}</strong> &nbsp;·&nbsp; Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong> &nbsp;·&nbsp; Gerado em: ${now}</p>
+    ${pedido.observacoes ? `<p style="font-size:12px;color:#555;margin-bottom:16px">Obs: ${esc(pedido.observacoes)}</p>` : ""}
+    <table><thead><tr><th>#</th><th>Peça</th><th>Referência</th><th style="text-align:center">Lote</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="footer">Total: ${printRows.reduce((s,r)=>s+r.quantidade,0)} peças · ${[...new Set(printRows.map(r=>r.model))].length} tipo(s)</p>
+    </body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(() => { w.focus(); w.print(); }, 250);
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className={cn(
       "rounded-2xl border overflow-hidden transition-all",
-      isPendente    ? "border-amber-500/25 bg-amber-500/3" :
-      isSeparando   ? "border-blue-500/25 bg-blue-500/3" :
+      isPendente   ? "border-amber-500/25 bg-amber-500/3" :
+      isSeparando  ? "border-blue-500/25 bg-blue-500/3" :
       pedido.status === "pronto" ? "border-emerald-500/25 bg-emerald-500/3" :
       "border-border/30 bg-card"
     )}>
-      {/* Header — sempre visível */}
-      <button
-        type="button"
-        onClick={() => setExpanded(v => !v)}
-        className="w-full text-left px-4 py-3 flex items-start gap-3"
-      >
-        <div className={cn(
-          "h-9 w-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5",
-          isPendente ? "bg-amber-500/10" : isSeparando ? "bg-blue-500/10" : "bg-muted/30"
-        )}>
-          <ShoppingBag className={cn(
-            "h-4 w-4",
-            isPendente ? "text-amber-500" : isSeparando ? "text-blue-500" : "text-muted-foreground"
-          )} />
+      {/* Header */}
+      <button type="button" onClick={() => setExpanded(v => !v)}
+        className="w-full text-left px-4 py-3 flex items-start gap-3">
+        <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5",
+          isPendente ? "bg-amber-500/10" : isSeparando ? "bg-blue-500/10" : "bg-muted/30")}>
+          <ShoppingBag className={cn("h-4 w-4",
+            isPendente ? "text-amber-500" : isSeparando ? "text-blue-500" : "text-muted-foreground")} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -486,122 +447,57 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0 mt-2" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-2" />}
       </button>
 
-      {/* Expandido */}
+      {/* Expanded body */}
       {expanded && (
         <div className="px-4 pb-4 space-y-3 border-t border-border/20 pt-3">
+          {loadingLotes && (
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+            </div>
+          )}
 
-          {/* Lista de peças do pedido */}
-          <div className="space-y-2">
-            {loadingLotes && (
-              <div className="flex items-center justify-center py-4">
-                <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
-              </div>
-            )}
+          {!loadingLotes && (
+            <div className="space-y-2">
+              {pedido.itens.map(item => {
+                const lotes = lotesDisp[item.id] ?? [];
+                const selTotal = totalSel(item.id);
+                const itemOk = selTotal === item.quantidade;
+                const showLotePicker = isPendente || isSeparando;
 
-            {!loadingLotes && pedido.itens.map(item => {
-              const exp = expedicaoData[item.id];
-              const totalNaExpedicao = exp?.quantity ?? 0;
-              const lotes = exp?.lotes ?? [];
-              const semEstoque = lotes.length === 0;
-              const selTotal = totalSel(item.id);
-              const itemOk = selTotal === item.quantidade;
-
-              return (
-                <div
-                  key={item.id}
-                  className={cn(
+                return (
+                  <div key={item.id} className={cn(
                     "rounded-xl border p-3 space-y-2.5 transition-colors",
-                    semEstoque && isPendente
+                    lotes.length === 0 && showLotePicker
                       ? "border-destructive/30 bg-destructive/5"
-                      : itemOk && isPendente
-                        ? "border-emerald-500/25 bg-emerald-500/4"
+                      : itemOk && showLotePicker
+                        ? "border-emerald-500/25 bg-emerald-500/5"
                         : "border-border/30 bg-background/50"
-                  )}
-                >
-                  {/* Cabeçalho da peça */}
-                  <div className="flex items-start gap-2">
-                    <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-semibold truncate">{item.device_model}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
-                    </div>
-
-                    {/* Qtd pedida / total na expedição */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      {/* Pedido */}
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-muted-foreground/60 leading-none">pedido</span>
-                        <span className="text-[13px] font-bold text-foreground">{item.quantidade} un.</span>
+                  )}>
+                    {/* Item header */}
+                    <div className="flex items-start gap-2">
+                      <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-semibold truncate">{item.device_model}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
                       </div>
-                      {/* Separador */}
-                      <ArrowRight className="h-3 w-3 text-muted-foreground/40" />
-                      {/* Na expedição */}
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-muted-foreground/60 leading-none">expedição</span>
-                        <span className={cn(
-                          "text-[13px] font-bold",
-                          totalNaExpedicao === 0 ? "text-destructive" :
-                          totalNaExpedicao < item.quantidade ? "text-amber-500" :
-                          "text-emerald-500"
-                        )}>{totalNaExpedicao} un.</span>
-                        {(exp?.quantity_reserved ?? 0) > 0 && (
-                          <span className="text-[10px] text-amber-500 leading-none">
-                            {exp!.quantity_reserved} reserv.
-                          </span>
+                      <div className="flex items-center gap-2 shrink-0 text-right">
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] text-muted-foreground/60 leading-none">pedido</span>
+                          <span className="text-[13px] font-bold">{item.quantidade} un.</span>
+                        </div>
+                        {isPendente && (
+                          <button type="button" title="Editar quantidade"
+                            onClick={e => { e.stopPropagation(); onEditarItem(pedido, item); }}
+                            className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
                         )}
                       </div>
-
-                      {/* Editar qty (pendente) */}
-                      {isPendente && (
-                        <button
-                          type="button"
-                          title="Editar quantidade"
-                          onClick={e => { e.stopPropagation(); onEditarItem(pedido, item); }}
-                          className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors ml-1"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                      )}
                     </div>
-                  </div>
 
-                  {/* Lotes separados — exibe no card quando pronto */}
-                  {pedido.status === "pronto" && (() => {
-                    const lotesSepMap2: Record<string, { lote: string; quantidade: number }[]> = {};
-                    for (const ls of (pedido.lotes_separados ?? [])) {
-                      if (!lotesSepMap2[ls.stock_item_id]) lotesSepMap2[ls.stock_item_id] = [];
-                      const ex = lotesSepMap2[ls.stock_item_id].find(x => x.lote === ls.lote);
-                      if (ex) ex.quantidade += ls.quantidade; else lotesSepMap2[ls.stock_item_id].push({ lote: ls.lote, quantidade: ls.quantidade });
-                    }
-                    const LOTE_PH = new Set(["a-definir", "a definir", "sem lote", ""]);
-                    // Usa lotes_separados se disponível, senão itens_raw com lote real
-                    let lotesParaExibir: { lote: string; quantidade: number }[] = lotesSepMap2[item.stock_item_id] ?? [];
-                    if (lotesParaExibir.length === 0) {
-                      const rawsDoItem = pedido.itens_raw.filter(r => r.stock_item_id === item.stock_item_id && r.lote && !LOTE_PH.has(r.lote.trim().toLowerCase()));
-                      if (rawsDoItem.length > 0) {
-                        const agg: Record<string, number> = {};
-                        for (const r of rawsDoItem) agg[r.lote] = (agg[r.lote] ?? 0) + r.quantidade;
-                        lotesParaExibir = Object.entries(agg).map(([lote, quantidade]) => ({ lote, quantidade }));
-                      }
-                    }
-                    if (lotesParaExibir.length === 0) return null;
-                    return (
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        {lotesParaExibir.map(l => (
-                          <div key={l.lote} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
-                            <Tag className="h-2.5 w-2.5 text-emerald-500/70 shrink-0" />
-                            <span className="text-[11px] font-mono font-bold text-emerald-600 tracking-wider">{l.lote}</span>
-                            <span className="text-[10px] text-emerald-500/70">{l.quantidade} un.</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Seleção de lotes — só mostra em pedidos pendentes */}
-                  {isPendente && (
-                    <>
-                      {semEstoque ? (
+                    {/* Lote picker (pendente or separando) */}
+                    {showLotePicker && (
+                      lotes.length === 0 ? (
                         <div className="flex items-center gap-1.5 text-[11px] text-destructive">
                           <AlertTriangle className="h-3 w-3" />
                           Sem estoque disponível na expedição
@@ -609,33 +505,25 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                       ) : (
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-1.5">
-                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Lotes disponíveis</p>
-                            <span className={cn(
-                              "ml-auto text-[10px] font-bold",
-                              itemOk ? "text-emerald-500" : selTotal > 0 ? "text-amber-500" : "text-muted-foreground"
-                            )}>
+                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
+                              Lotes — escolha o que será enviado
+                            </p>
+                            <span className={cn("ml-auto text-[10px] font-bold",
+                              itemOk ? "text-emerald-500" : selTotal > 0 ? "text-amber-500" : "text-muted-foreground")}>
                               {selTotal}/{item.quantidade} selecionados
                             </span>
                           </div>
                           {lotes.map(l => {
-                            const isSel = !!(lotesSel[item.id]?.[l.lote]);
-                            const qtySel = lotesSel[item.id]?.[l.lote] ?? 0;
+                            const isSel = !!(sel[item.id]?.[l.lote]);
+                            const qtySel = sel[item.id]?.[l.lote] ?? 0;
                             return (
-                              <div
-                                key={l.lote}
-                                className={cn(
-                                  "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
-                                  isSel ? "bg-blue-500/8 border-blue-500/30" : "bg-muted/20 border-border/20"
-                                )}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => toggleLote(item.id, l.lote, l.quantity)}
-                                  className={cn(
-                                    "h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
-                                    isSel ? "bg-blue-500 border-blue-500" : "border-muted-foreground/40"
-                                  )}
-                                >
+                              <div key={l.lote} className={cn(
+                                "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
+                                isSel ? "bg-blue-500/8 border-blue-500/30" : "bg-muted/20 border-border/20"
+                              )}>
+                                <button type="button" onClick={() => toggleLote(item.id, l.lote, l.quantity)}
+                                  className={cn("h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
+                                    isSel ? "bg-blue-500 border-blue-500" : "border-muted-foreground/40")}>
                                   {isSel && <CheckCircle2 className="h-3 w-3 text-white" />}
                                 </button>
                                 <div className="flex-1 min-w-0">
@@ -644,26 +532,17 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                                 </div>
                                 {isSel && (
                                   <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                      type="button"
+                                    <button type="button"
                                       onClick={() => setQtyLote(item.id, l.lote, qtySel - 1, l.quantity)}
-                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground"
-                                    >
+                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground">
                                       <Minus className="h-3 w-3" />
                                     </button>
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      max={l.quantity}
-                                      value={qtySel}
+                                    <input type="number" min={1} max={l.quantity} value={qtySel}
                                       onChange={e => setQtyLote(item.id, l.lote, parseInt(e.target.value) || 0, l.quantity)}
-                                      className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    />
-                                    <button
-                                      type="button"
+                                      className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                    <button type="button"
                                       onClick={() => setQtyLote(item.id, l.lote, qtySel + 1, l.quantity)}
-                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground"
-                                    >
+                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground">
                                       <Plus className="h-3 w-3" />
                                     </button>
                                   </div>
@@ -680,164 +559,87 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                             </p>
                           )}
                         </div>
-                      )}
-                    </>
-                  )}
+                      )
+                    )}
 
-                  {/* Status separando: mesma UI de seleção de lotes, editável */}
-                  {isSeparando && (
-                    <>
-                      {lotes.length === 0 ? (
-                        <div className="flex items-center gap-1.5 text-[11px] text-destructive">
-                          <AlertTriangle className="h-3 w-3" />
-                          Sem estoque disponível na expedição
+                    {/* Pronto: show chosen lotes */}
+                    {pedido.status === "pronto" && (() => {
+                      const entries = (pedido.lotes_separados ?? [])
+                        .filter(ls => ls.stock_item_id === (expIdByItem[item.id] ?? item.stock_item_id)
+                          || ls.device_model === item.device_model);
+                      if (entries.length === 0) return null;
+                      const agg: Record<string, number> = {};
+                      for (const ls of entries) agg[ls.lote] = (agg[ls.lote] ?? 0) + ls.quantidade;
+                      return (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {Object.entries(agg).map(([lote, qty]) => (
+                            <div key={lote} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
+                              <Tag className="h-2.5 w-2.5 text-emerald-500/70 shrink-0" />
+                              <span className="text-[11px] font-mono font-bold text-emerald-600 tracking-wider">{lote}</span>
+                              <span className="text-[10px] text-emerald-500/70">{qty} un.</span>
+                            </div>
+                          ))}
                         </div>
-                      ) : (
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Lotes — escolha o que será enviado</p>
-                            <span className={cn(
-                              "ml-auto text-[10px] font-bold",
-                              selTotal === item.quantidade ? "text-blue-500" : selTotal > 0 ? "text-amber-500" : "text-muted-foreground"
-                            )}>
-                              {selTotal}/{item.quantidade} selecionados
-                            </span>
-                          </div>
-                          {lotes.map(l => {
-                            const isSel = !!(lotesSel[item.id]?.[l.lote]);
-                            const qtySel = lotesSel[item.id]?.[l.lote] ?? 0;
-                            return (
-                              <div
-                                key={l.lote}
-                                className={cn(
-                                  "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
-                                  isSel ? "bg-blue-500/8 border-blue-500/30" : "bg-muted/20 border-border/20"
-                                )}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => toggleLote(item.id, l.lote, l.quantity)}
-                                  className={cn(
-                                    "h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
-                                    isSel ? "bg-blue-500 border-blue-500" : "border-muted-foreground/40"
-                                  )}
-                                >
-                                  {isSel && <CheckCircle2 className="h-3 w-3 text-white" />}
-                                </button>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] font-mono font-semibold">{l.lote}</p>
-                                  <p className="text-[10px] text-muted-foreground">{l.quantity} disponíveis</p>
-                                </div>
-                                {isSel && (
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                      type="button"
-                                      onClick={() => setQtyLote(item.id, l.lote, qtySel - 1, l.quantity)}
-                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground"
-                                    >
-                                      <Minus className="h-3 w-3" />
-                                    </button>
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      max={l.quantity}
-                                      value={qtySel}
-                                      onChange={e => setQtyLote(item.id, l.lote, parseInt(e.target.value) || 0, l.quantity)}
-                                      className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => setQtyLote(item.id, l.lote, qtySel + 1, l.quantity)}
-                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground"
-                                    >
-                                      <Plus className="h-3 w-3" />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                          {selTotal !== item.quantidade && selTotal > 0 && (
-                            <p className="text-[11px] text-amber-600 flex items-center gap-1">
-                              <AlertTriangle className="h-3 w-3" />
-                              {selTotal < item.quantidade
-                                ? `Faltam ${item.quantidade - selTotal} un.`
-                                : `Excesso de ${selTotal - item.quantidade} un.`}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {pedido.observacoes && (
             <p className="text-[11px] text-muted-foreground italic px-1">"{pedido.observacoes}"</p>
           )}
 
-          {/* Ações */}
+          {/* Action buttons */}
           <div className="flex gap-2 pt-1">
-            <button
-              type="button"
-              onClick={handleImprimir}
+            <button type="button" onClick={handleImprimir}
               className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground flex items-center justify-center transition-colors shrink-0"
-              title="Imprimir pedido"
-            >
+              title="Imprimir pedido">
               <Printer className="h-3.5 w-3.5" />
             </button>
+
             {isPendente && (
-              <button
-                type="button"
-                onClick={() => onIniciarSeparacao(pedido, lotesSel, Object.fromEntries(
-              Object.entries(expQtyByPedidoItem).map(([itemId, v]) => [itemId, v.expId])
-            ))}
+              <button type="button"
+                onClick={() => onIniciarSeparacao(pedido, sel, expIdByItem)}
                 disabled={!canConfirmar || loadingLotes}
-                className="flex-1 h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
-              >
+                className="flex-1 h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none">
                 <PackageCheck className="h-3.5 w-3.5" />
                 Iniciar Separação
               </button>
             )}
+
             {isSeparando && (
-              <button
-                type="button"
-                onClick={() => onSalvarSeparacao(pedido, lotesSel, Object.fromEntries(
-                  Object.entries(expQtyByPedidoItem).map(([itemId, v]) => [itemId, v.expId])
-                ))}
+              <button type="button"
+                onClick={() => onSalvarSeparacao(pedido, sel, expIdByItem)}
                 disabled={loadingLotes}
                 className="h-9 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
-                title="Salvar distribuição de lotes"
-              >
+                title="Salvar distribuição de lotes">
                 <RefreshCw className="h-3.5 w-3.5" />
                 Salvar Lotes
               </button>
             )}
+
             {isSeparando && (
-              <button
-                type="button"
-                onClick={() => onMarcarPronto(pedido)}
-                className="flex-1 h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5"
-              >
+              <button type="button" onClick={() => onMarcarPronto(pedido)}
+                className="flex-1 h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Marcar como Pronto
               </button>
             )}
+
             {pedido.status === "pronto" && (
               <div className="flex-1 h-9 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-emerald-600 text-[12px] font-medium flex items-center justify-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Aguardando Nota Fiscal
               </div>
             )}
+
             {(isPendente || isSeparando) && isAdmin && (
-              <button
-                type="button"
-                onClick={() => onCancelar(pedido)}
+              <button type="button" onClick={() => onCancelar(pedido)}
                 className="h-9 w-9 rounded-xl bg-destructive/5 hover:bg-destructive/15 text-destructive flex items-center justify-center transition-colors"
-                title="Cancelar pedido"
-              >
+                title="Cancelar pedido">
                 <Ban className="h-3.5 w-3.5" />
               </button>
             )}
@@ -847,6 +649,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     </div>
   );
 }
+
 
 // ─── Modal de Separação de Lotes ──────────────────────────────────────────────
 
@@ -993,21 +796,21 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
     submittingRef.current = true;
     setSaving(true);
 
-    // Snapshot com todos os lotes e quantidades escolhidas
-    const snapshot = pedido.itens.flatMap(item => {
-      const sel = lotesSelecionados[item.id] ?? {};
-      // EXPID-FIX: usa stock_item_id do item de expedição real (pode diferir do pedido_item
-      // quando o item veio de intermediária e foi transferido para expedição com novo id).
-      // lotesDisponiveis[item.id][0].stock_item_id é sempre o expId correto.
+    // Snapshot: one entry per (expId, lote) — deduped to avoid doubled quantities
+    const snapMap = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
+    for (const item of pedido.itens) {
+      const itemSel = lotesSelecionados[item.id] ?? {};
+      // expId = real expedição stock_item_id (first available lote carries the correct id)
       const expStockItemId = (lotesDisponiveis[item.id]?.[0]?.stock_item_id) ?? item.stock_item_id;
-      return Object.entries(sel).map(([lote, quantidade]) => ({
-        pedido_item_id: item.ids[0],
-        stock_item_id: expStockItemId,
-        lote,
-        quantidade,
-        device_model: item.device_model,
-      }));
-    });
+      for (const [lote, quantidade] of Object.entries(itemSel)) {
+        if (quantidade <= 0) continue;
+        const key = `${expStockItemId}||${lote}`;
+        const ex = snapMap.get(key);
+        if (ex) ex.quantidade += quantidade;
+        else snapMap.set(key, { pedido_item_id: item.ids[0], stock_item_id: expStockItemId, lote, quantidade, device_model: item.device_model });
+      }
+    }
+    const snapshot = [...snapMap.values()];
 
     const { error } = await supabase
       .from("pedidos_comerciais")
