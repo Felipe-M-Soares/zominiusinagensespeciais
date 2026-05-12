@@ -271,18 +271,22 @@ export function AdminDevices() {
       const BATCH = 500;
       let inserted = 0;
       let skipped  = 0;
+      // Coleta os IDs dos devices inseridos para criar stock_items depois
+      const insertedDeviceIds: string[] = [];
 
       for (let i = 0; i < deduped.length; i += BATCH) {
         const batch = deduped.slice(i, i + BATCH);
-        const { error } = await supabase
+        const { data: upserted, error } = await supabase
           .from("devices")
-          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false });
+          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
+          .select("id");
 
         if (error) {
           logger.error(`Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
           skipped += batch.length;
         } else {
           inserted += batch.length;
+          if (upserted) insertedDeviceIds.push(...upserted.map((d: { id: string }) => d.id));
         }
       }
 
@@ -291,7 +295,51 @@ export function AdminDevices() {
         return;
       }
 
-      toast.success(`Importação concluída: ${inserted} dispositivos${skipped > 0 ? ` (${skipped} com erro)` : ""}`);
+      // 5. Cria stock_item na fase "intermediaria" para cada device importado que ainda não tem.
+      //    Busca os que já existem e insere apenas os novos — evita conflito com o
+      //    partial unique index (stock_items_device_intermediaria_unique).
+      let stockCreated = 0;
+      if (insertedDeviceIds.length > 0) {
+        for (let i = 0; i < insertedDeviceIds.length; i += BATCH) {
+          const idBatch = insertedDeviceIds.slice(i, i + BATCH);
+
+          // Descobre quais já têm stock_item intermediaria
+          const { data: existing } = await supabase
+            .from("stock_items")
+            .select("device_id")
+            .in("device_id", idBatch)
+            .eq("fase", "intermediaria");
+
+          const existingIds = new Set((existing ?? []).map((r: { device_id: string }) => r.device_id));
+          const toInsert = idBatch
+            .filter(id => !existingIds.has(id))
+            .map(device_id => ({
+              device_id,
+              quantity: 0,
+              quantity_reserved: 0,
+              min_quantity: 0,
+              fase: "intermediaria" as const,
+            }));
+
+          if (toInsert.length > 0) {
+            const { data: stockInserted, error: stockErr } = await supabase
+              .from("stock_items")
+              .insert(toInsert)
+              .select("id");
+
+            if (stockErr) {
+              logger.warn(`Stock insert batch warning:`, stockErr.message);
+            } else {
+              stockCreated += stockInserted?.length ?? 0;
+            }
+          }
+        }
+      }
+
+      const stockMsg = stockCreated > 0
+        ? ` · ${stockCreated} adicionados ao estoque intermediário`
+        : "";
+      toast.success(`Importação concluída: ${inserted} dispositivos${skipped > 0 ? ` (${skipped} com erro)` : ""}${stockMsg}`);
       setPage(0);
       fetchDevices(debouncedSearch, 0);
 
