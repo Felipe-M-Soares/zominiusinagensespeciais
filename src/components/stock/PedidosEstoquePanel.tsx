@@ -331,7 +331,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
     if (hasSel) {
       // Use current screen state — most accurate
-      // Aggregate by (device_model, lote) since multiple items can share same model
       const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
       for (const item of pedido.itens) {
         for (const [lote, qty] of Object.entries(sel[item.id] ?? {})) {
@@ -344,7 +343,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       }
       for (const row of rowMap.values()) printRows.push(row);
     } else if (hasSep) {
-      // Fallback to snapshot (card not expanded yet)
       const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
       for (const ls of pedido.lotes_separados!) {
         const item = pedido.itens.find(i => (expIdByItem[i.id] ?? i.stock_item_id) === ls.stock_item_id)
@@ -356,7 +354,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       }
       for (const row of rowMap.values()) printRows.push(row);
     } else {
-      // Pending order — find real lotes from stock movements
       const stockItemIds = [...new Set(pedido.itens_raw.map(r => r.stock_item_id))];
       const { data: movs } = await supabase
         .from("stock_movements")
@@ -386,20 +383,110 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       }
     }
 
-    const rows = printRows.map((row, i) => {
-      const loteCell = row.lote && !LOTE_PH.has(row.lote.toLowerCase())
-        ? `<span style="display:inline-block;background:#f3f0ff;color:#5b21b6;font-family:monospace;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px">${esc(row.lote)}</span>`
-        : `<span style="color:#aaa;font-size:11px">—</span>`;
-      return `<tr><td>${i+1}</td><td>${esc(row.model)}</td><td>${esc(row.reference)}</td><td style="text-align:center">${loteCell}</td><td style="text-align:center;font-weight:bold">${row.quantidade}</td></tr>`;
-    }).join("");
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedido</title>
-    <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin-bottom:4px}p.sub{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padding:8px 10px;background:#f3f0ff;color:#5b21b6;border-bottom:2px solid #ddd6fe}td{padding:7px 10px;border-bottom:1px solid #eee}.footer{margin-top:20px;font-size:11px;color:#999}@media print{button{display:none}}</style></head><body>
-    <h1>📦 Pedido</h1>
-    <p class="sub">Cliente: <strong>${esc(pedido.cliente_nome)}</strong> &nbsp;·&nbsp; Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong> &nbsp;·&nbsp; Gerado em: ${now}</p>
-    ${pedido.observacoes ? `<p style="font-size:12px;color:#555;margin-bottom:16px">Obs: ${esc(pedido.observacoes)}</p>` : ""}
-    <table><thead><tr><th>#</th><th>Peça</th><th>Referência</th><th style="text-align:center">Lote</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="footer">Total: ${printRows.reduce((s,r)=>s+r.quantidade,0)} peças · ${[...new Set(printRows.map(r=>r.model))].length} tipo(s)</p>
-    </body></html>`;
+    // ── Agrupa por tipo de peça (model + reference) para separadores na página ──
+    const grouped = new Map<string, typeof printRows>();
+    for (const row of printRows) {
+      const key = `${row.model}|||${row.reference}`;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(row);
+    }
+
+    let globalIdx = 0;
+    let tableBody = "";
+    for (const [, rows] of grouped) {
+      const first = rows[0];
+      const tipoTotal = rows.reduce((s, r) => s + r.quantidade, 0);
+      // Separador de tipo
+      tableBody += `<tr class="tipo-separator">
+        <td colspan="5">
+          <div class="tipo-header">
+            <span class="tipo-name">${esc(first.model)}</span>
+            <span class="tipo-ref">${esc(first.reference)}</span>
+            <span class="tipo-total">${tipoTotal} un.</span>
+          </div>
+        </td>
+      </tr>`;
+      for (const row of rows) {
+        globalIdx++;
+        const loteCell = row.lote && !LOTE_PH.has(row.lote.toLowerCase())
+          ? `<span class="lote-badge">${esc(row.lote)}</span>`
+          : `<span class="lote-empty">—</span>`;
+        tableBody += `<tr>
+          <td class="col-num">${globalIdx}</td>
+          <td class="col-model"><span class="model-muted">${esc(row.model)}</span></td>
+          <td class="col-ref"><span class="ref-mono">${esc(row.reference)}</span></td>
+          <td class="col-lote">${loteCell}</td>
+          <td class="col-qty">${row.quantidade}</td>
+        </tr>`;
+      }
+    }
+
+    const totalPecas = printRows.reduce((s, r) => s + r.quantidade, 0);
+    const totalTipos = grouped.size;
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Pedido — ${esc(pedido.cliente_nome)}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; padding: 24px 28px; color: #111; font-size: 13px; }
+    .header { margin-bottom: 18px; border-bottom: 2px solid #ddd6fe; padding-bottom: 14px; }
+    h1 { font-size: 20px; font-weight: 800; color: #3b0764; margin-bottom: 6px; }
+    .meta { font-size: 12px; color: #555; display: flex; flex-wrap: wrap; gap: 12px; }
+    .meta strong { color: #333; }
+    .obs { font-size: 12px; color: #666; background: #f9f5ff; border-left: 3px solid #a78bfa; padding: 8px 12px; margin-bottom: 14px; border-radius: 0 6px 6px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 8px 10px; background: #f3f0ff; color: #5b21b6; border-bottom: 2px solid #ddd6fe; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+    td { padding: 6px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    .tipo-separator td { padding: 0; border-bottom: none; }
+    .tipo-header { display: flex; align-items: center; gap: 10px; background: #ede9fe; border-top: 2px solid #a78bfa; border-bottom: 1px solid #c4b5fd; padding: 7px 10px; margin-top: 8px; }
+    .tipo-name { font-weight: 700; font-size: 12px; color: #4c1d95; flex: 1; }
+    .tipo-ref { font-family: monospace; font-size: 10px; color: #6d28d9; background: #ddd6fe; padding: 2px 6px; border-radius: 4px; }
+    .tipo-total { font-weight: 700; font-size: 12px; color: #5b21b6; margin-left: auto; background: #c4b5fd; padding: 2px 8px; border-radius: 10px; }
+    .col-num { width: 32px; color: #aaa; font-size: 11px; }
+    .col-model { color: #888; font-size: 11px; }
+    .col-ref { font-family: monospace; font-size: 11px; }
+    .col-lote { text-align: center; }
+    .col-qty { text-align: center; font-weight: 700; font-size: 14px; }
+    .model-muted { color: #999; font-size: 11px; }
+    .ref-mono { color: #555; }
+    .lote-badge { display: inline-block; background: #f3f0ff; color: #5b21b6; font-family: monospace; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; border: 1px solid #ddd6fe; }
+    .lote-empty { color: #bbb; font-size: 11px; }
+    .footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #eee; display: flex; justify-content: space-between; font-size: 11px; color: #999; }
+    .footer strong { color: #5b21b6; }
+    @media print { button { display: none } body { padding: 16px } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📦 Pedido de Separação</h1>
+    <div class="meta">
+      <span>Cliente: <strong>${esc(pedido.cliente_nome)}</strong></span>
+      <span>Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong></span>
+      <span>Gerado em: <strong>${now}</strong></span>
+    </div>
+  </div>
+  ${pedido.observacoes ? `<div class="obs">Obs: ${esc(pedido.observacoes)}</div>` : ""}
+  <table>
+    <thead>
+      <tr>
+        <th class="col-num">#</th>
+        <th class="col-model">Peça</th>
+        <th class="col-ref">Referência</th>
+        <th class="col-lote" style="text-align:center">Lote</th>
+        <th class="col-qty" style="text-align:center">Qtd.</th>
+      </tr>
+    </thead>
+    <tbody>${tableBody}</tbody>
+  </table>
+  <div class="footer">
+    <span>Total: <strong>${totalPecas} peças</strong> em <strong>${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}</strong></span>
+    <span>Concept Usinas Especiais</span>
+  </div>
+</body>
+</html>`;
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();

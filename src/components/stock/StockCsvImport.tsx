@@ -324,12 +324,23 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
         if (toInsert.length > 0) {
           const { error: insErr } = await supabase.from("stock_items").insert(toInsert);
           if (insErr) {
-            // Marca as linhas inseridas como erro
-            const insertedModels = new Set(toInsert.map(i => i.device_id));
-            for (const r of res) {
-              if (r.status === "ok" && insertedModels.has(r.reference)) {
-                r.status = "error";
-                r.message = insErr.message;
+            // Marca as linhas inseridas como erro — compara por device_id, não por referência
+            const insertedDeviceIds = new Set(toInsert.map(i => i.device_id));
+            for (const row of batch) {
+              const lookupKey = row.udi_di
+                ? `udi:${row.udi_di}`
+                : `ref:${(row.reference ?? "").toLowerCase()}`;
+              const device = deviceMap.get(lookupKey);
+              if (device && insertedDeviceIds.has(device.id)) {
+                const result = res.find(
+                  r => r.status === "ok" &&
+                  (r.reference === (device.reference ?? row.reference) ||
+                   r.model === (device.model ?? row.model))
+                );
+                if (result) {
+                  result.status = "error";
+                  result.message = insErr.message;
+                }
               }
             }
           }

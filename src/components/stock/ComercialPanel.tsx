@@ -627,19 +627,31 @@ interface PedidoCardProps {
 function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onConfirmar }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const statusColor = {
-    pendente: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25",
-    faturado: "text-success bg-success/8 border-success/25",
-    cancelado: "text-muted-foreground bg-muted/20 border-border/40",
-  }[pedido.status];
-
-  const statusIcon = {
-    pendente: <Clock className="h-2.5 w-2.5" />,
-    faturado: <CheckCircle2 className="h-2.5 w-2.5" />,
-    cancelado: <Ban className="h-2.5 w-2.5" />,
-  }[pedido.status];
-
-  const statusLabel = { pendente: "Pendente", faturado: "Faturado", cancelado: "Cancelado" }[pedido.status];
+  const statusConfig = {
+    pendente: {
+      color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25",
+      bar: "via-amber-500 opacity-70",
+      icon: <Clock className="h-3 w-3" />,
+      label: "Pendente",
+    },
+    faturado: {
+      color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25",
+      bar: "via-emerald-500 opacity-60",
+      icon: <CheckCircle2 className="h-3 w-3" />,
+      label: "Faturado",
+    },
+    cancelado: {
+      color: "text-muted-foreground bg-muted/20 border-border/40",
+      bar: "via-muted-foreground/40 opacity-30",
+      icon: <Ban className="h-3 w-3" />,
+      label: "Cancelado",
+    },
+  }[pedido.status] ?? {
+    color: "text-muted-foreground bg-muted/20 border-border/40",
+    bar: "via-muted-foreground/40 opacity-30",
+    icon: null,
+    label: pedido.status,
+  };
 
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const data = new Date(pedido.created_at).toLocaleDateString("pt-BR");
@@ -647,83 +659,95 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
 
   return (
     <div
-      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
+      className={cn(
+        "group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5",
+        pedido.status === "cancelado" && "opacity-60"
+      )}
       style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}
     >
+      {/* Status bar top */}
       <div className={cn(
         "h-0.5 bg-gradient-to-r from-transparent to-transparent transition-opacity group-hover:opacity-100",
-        pedido.status === "pendente" ? "via-amber-500 opacity-70" :
-        pedido.status === "faturado" ? "via-success opacity-60" : "via-muted-foreground/40 opacity-30"
+        statusConfig.bar
       )} />
 
       <div className="p-4 space-y-3">
-        {/* Cabeçalho */}
+        {/* Cabeçalho: cliente + status */}
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 mb-0.5">
-              <User className="h-3 w-3 text-violet-500 shrink-0" />
-              <h3 className="text-[13px] font-semibold truncate">{pedido.cliente_nome}</h3>
+              <User className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+              <h3 className="text-[14px] font-bold truncate leading-tight">{pedido.cliente_nome}</h3>
             </div>
-            <p className="text-[11px] text-muted-foreground/70">{pedido.vendedora_nome}</p>
+            {pedido.vendedora_nome && (
+              <p className="text-[11px] text-muted-foreground/60 pl-5">{pedido.vendedora_nome}</p>
+            )}
           </div>
-          <Badge variant="outline" className={cn("shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-lg flex items-center gap-1", statusColor)}>
-            {statusIcon} {statusLabel}
+          <Badge variant="outline" className={cn("shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg flex items-center gap-1", statusConfig.color)}>
+            {statusConfig.icon} {statusConfig.label}
           </Badge>
         </div>
 
-        {/* Resumo */}
-        <div className="flex items-center justify-between rounded-xl px-3 py-2 border bg-muted/20 border-border/30">
-          <div className="flex items-center gap-1.5">
-            <ShoppingBag className="h-3.5 w-3.5 text-violet-500" />
-            <span className="text-[11px] font-medium text-muted-foreground">{pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça</span>
+        {/* Resumo de peças — destaque visual */}
+        <div className="rounded-xl bg-violet-500/5 border border-violet-500/15 px-3 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+              <Package className="h-3.5 w-3.5 text-violet-500" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground/60 leading-none">tipos de peça</p>
+              <p className="text-[12px] font-semibold text-foreground">{pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[15px] font-bold tabular-nums text-foreground">{totalItens}</span>
-            <span className="text-[10px] text-muted-foreground">un.</span>
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground/60 leading-none">total</p>
+            <p className="text-[20px] font-bold tabular-nums text-violet-600 dark:text-violet-400 leading-tight">{totalItens}<span className="text-[11px] font-normal text-muted-foreground ml-1">un.</span></p>
           </div>
         </div>
 
-        {/* Data */}
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60">
+        {/* Data/hora */}
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50">
           <Clock className="h-3 w-3" />
           <span>{data} às {hora}</span>
         </div>
 
         {/* Itens expandidos */}
         {expanded && (
-          <div className="space-y-1.5 pt-1 border-t border-border/20">
+          <div className="space-y-1.5 pt-2 border-t border-border/20 animate-in fade-in slide-in-from-top-1 duration-150">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-0.5">Peças do pedido</p>
             {pedido.itens.map(it => (
-              <div key={it.id} className="flex items-center gap-2 rounded-lg bg-muted/20 px-3 py-1.5">
-                <Package className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+              <div key={it.id} className="flex items-center gap-2 rounded-xl bg-muted/20 border border-border/20 px-3 py-2">
+                <div className="h-6 w-6 rounded-lg bg-muted/40 flex items-center justify-center shrink-0">
+                  <Package className="h-3 w-3 text-muted-foreground/60" />
+                </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-medium truncate">{it.device_model}</p>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    <Tag className="h-2.5 w-2.5" />
-                    <span className="font-mono">{it.lote}</span>
-                    <span>·</span>
-                    <span>{it.quantidade} un.</span>
-                  </div>
+                  <p className="text-[12px] font-semibold truncate leading-tight">{it.device_model}</p>
+                  <p className="text-[10px] text-muted-foreground/60 font-mono">{it.device_reference}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-[14px] font-bold tabular-nums">{it.quantidade}</span>
+                  <span className="text-[10px] text-muted-foreground ml-0.5">un.</span>
                 </div>
               </div>
             ))}
             {pedido.observacoes && (
-              <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground/70 px-1 pt-1">
-                <FileText className="h-3 w-3 mt-0.5 shrink-0" />
-                <span>{pedido.observacoes}</span>
+              <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground/70 bg-muted/10 border border-border/20 rounded-xl px-3 py-2 mt-1">
+                <FileText className="h-3 w-3 mt-0.5 shrink-0 text-violet-500/60" />
+                <span className="italic">{pedido.observacoes}</span>
               </div>
             )}
           </div>
         )}
 
-        {/* Botões */}
+        {/* Botões de ação */}
         <div className="space-y-1.5 pt-1 border-t border-border/20">
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-center gap-1.5 h-7 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl bg-muted/20 hover:bg-muted/40 text-muted-foreground text-[11px] font-medium transition-colors"
           >
-            {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {expanded ? "Ocultar peças" : "Ver peças"}
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {expanded ? "Ocultar peças" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
           </button>
 
           {pedido.status === "pendente" && isAdmin && (
@@ -732,15 +756,15 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
                 type="button"
                 onClick={() => { if (isConfirmado) return; onConfirmar(pedido.id); onFaturar(pedido); }}
                 disabled={isConfirmado}
-                className="flex-1 h-8 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+                className="flex-1 h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none border border-emerald-500/20"
               >
                 {isConfirmado ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Receipt className="h-3.5 w-3.5" />}
-                {isConfirmado ? "Confirmado" : "Faturar"}
+                {isConfirmado ? "Confirmado" : "Faturar pedido"}
               </button>
               <button
                 type="button"
                 onClick={() => onCancelar(pedido)}
-                className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                className="h-9 w-9 flex items-center justify-center rounded-xl bg-muted/20 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors border border-border/20"
                 title="Cancelar pedido"
               >
                 <Ban className="h-3.5 w-3.5" />
@@ -1295,11 +1319,19 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
     setLoadingPedidos(true);
     try {
-      const { data: pedidosData } = await supabase
+      // Isolamento: vendedoras vêem apenas seus pedidos; admins vêem todos
+      // A RLS do banco já filtra, mas filtramos também no cliente para garantir consistência
+      let query = supabase
         .from("pedidos_comerciais")
         .select("*, clientes(nome)")
         .order("created_at", { ascending: false })
         .abortSignal(ctrl.signal);
+
+      if (!isAdmin && user?.id) {
+        query = query.eq("vendedora_id", user.id);
+      }
+
+      const { data: pedidosData } = await query;
 
       if (ctrl.signal.aborted) return;
       if (!pedidosData) { setPedidos([]); return; }
@@ -1352,12 +1384,17 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     } finally {
       setLoadingPedidos(false);
     }
-  }, []);
+  }, [isAdmin, user?.id]);
 
   const loadClientes = useCallback(async () => {
     setLoadingClientes(true);
     try {
-      const { data, error } = await supabase.from("clientes").select("*").order("nome");
+      // Isolamento: vendedoras vêem apenas clientes que elas criaram; admins vêem todos
+      let query = supabase.from("clientes").select("*").order("nome");
+      if (!isAdmin && user?.id) {
+        query = query.eq("created_by", user.id);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       setClientes((data as Cliente[]) ?? []);
     } catch (_e) {
@@ -1366,7 +1403,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     } finally {
       setLoadingClientes(false);
     }
-  }, []);
+  }, [isAdmin, user?.id]);
 
   useEffect(() => { loadPedidos(); loadClientes(); }, [loadPedidos, loadClientes]);
 
