@@ -792,22 +792,25 @@ export async function fetchLotesSummaryBatch(
 
   if (!data || data.length === 0) return new Map();
 
-  const INTERNAL_REASONS = [
-    "Transferência para Expedição",
-    "Recebido de Intermediário",
-    "Retrabalho concluído — recebido do Retrabalho",
-    "Retrabalho concluído — enviado para Expedição",
-    "Enviado para Retrabalho",
+  // Movimentos que são apenas "ruído" contábil entre fases — nunca representam
+  // estoque real em nenhum dos dois lados, portanto devem ser ignorados no cômputo.
+  // ATENÇÃO: "Transferência para Expedição" e "Enviado para Retrabalho" são saídas
+  // REAIS da intermediária/expedição e NÃO devem ser ignoradas — caso contrário o
+  // saldo da intermediária fica positivo mesmo com estoque zerado (bug dos "2 lotes").
+  // Só ignoramos entradas-espelho que duplicariam o saldo no destino.
+  const IGNORE_REASONS = new Set([
+    "Recebido de Intermediário",                         // entrada na expedição — já contada como saída na intermediária
+    "Retrabalho concluído — recebido do Retrabalho",     // entrada na expedição — já contada como saída no retrabalho
     "Rollback — falha ao criar item de retrabalho",
     "Rollback — falha ao criar item de expedição",
     "Rollback — falha ao registrar entrada na expedição",
-  ];
+  ]);
 
-  // Agrupa por (stock_item_id, lote) e calcula saldo — ignora movimentos internos entre fases
+  // Agrupa por (stock_item_id, lote) e calcula saldo real
   type Row = { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null };
   const saldos = new Map<string, number>(); // chave: "itemId|lote"
   for (const row of data as Row[]) {
-    if (row.reason && INTERNAL_REASONS.includes(row.reason)) continue;
+    if (row.reason && IGNORE_REASONS.has(row.reason)) continue;
     const key = `${row.stock_item_id}|${row.lote.toUpperCase()}`;
     const current = saldos.get(key) ?? 0;
     saldos.set(key, row.type === "entrada" ? current + row.quantity : current - row.quantity);
