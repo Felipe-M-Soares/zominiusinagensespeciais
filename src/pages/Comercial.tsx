@@ -66,7 +66,7 @@ import {
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { Logo } from "@/components/Logo";
 
-import { formatLote, loteValido } from "@/lib/lote";
+import { formatLote, loteValido, displayLote } from "@/lib/lote";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -386,7 +386,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         clienteId,
         itens: itens.map(i => ({
           stock_item_id: i.stock_item_id,
-          lote: i.lote || "a-definir",
+          lote: i.lote || null,
           quantidade: i.quantidade,
           device_model: i.device_model,
         })),
@@ -666,9 +666,13 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] font-medium truncate">{it.device_model}</p>
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    <Tag className="h-2.5 w-2.5" />
-                    <span className="font-mono">{it.lote}</span>
-                    <span>·</span>
+                    {displayLote(it.lote) ? (
+                      <>
+                        <Tag className="h-2.5 w-2.5" />
+                        <span className="font-mono">{displayLote(it.lote)}</span>
+                        <span>·</span>
+                      </>
+                    ) : null}
                     <span>{it.quantidade} un.</span>
                   </div>
                 </div>
@@ -805,7 +809,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
     const { error } = await supabase.from("pedido_itens").insert({
       pedido_id: pedido.id,
       stock_item_id: selectedPeca.id,
-      lote: "a-definir",
+      lote: null,
       quantidade: qtd,
       quantidade_reservada: qtd,
     });

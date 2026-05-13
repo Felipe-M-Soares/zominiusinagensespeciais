@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { displayLote } from "@/lib/lote";
 import {
   ShoppingBag,
   UserPlus,
@@ -1097,7 +1098,7 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="text-[12px] font-semibold leading-snug line-clamp-1">{mv.device_model}</p>
                   <p className="text-[10px] text-muted-foreground font-mono">{mv.device_reference}</p>
-                  {mv.lote && <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-violet-500/80"><Tag className="h-2.5 w-2.5" />Lote {mv.lote}</p>}
+                  {displayLote(mv.lote) && <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-violet-500/80"><Tag className="h-2.5 w-2.5" />Lote {displayLote(mv.lote)}</p>}
                   {mv.reason && <p className="text-[11px] text-muted-foreground line-clamp-1">{mv.reason}</p>}
                   {mv.user_display_name && <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60"><User className="h-2.5 w-2.5" />{mv.user_display_name}</p>}
                 </div>

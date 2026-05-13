@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { displayLote } from "@/lib/lote";
 import { useStockMovements } from "@/hooks/useStock";
 import { cancelMovement } from "@/hooks/useStock";
 import type { StockItem, StockMovement } from "@/hooks/useStock";

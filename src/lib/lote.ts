@@ -18,3 +18,17 @@ export function loteStatus(lote: string): "empty" | "valid" | "invalid" {
   if (!lote) return "empty";
   return LOTE_REGEX.test(lote) ? "valid" : "invalid";
 }
+
+/** Conjunto de valores placeholder que não devem ser exibidos na UI. */
+export const LOTE_INDEFINIDO = new Set(["a-definir", "a definir", "sem lote"]);
+
+/**
+ * Retorna o lote formatado para exibição, ou null se for placeholder.
+ * Use em todo render: {displayLote(l.lote) ?? <fallback>}
+ */
+export function displayLote(lote: string | null | undefined): string | null {
+  if (!lote) return null;
+  const trimmed = lote.trim();
+  if (LOTE_INDEFINIDO.has(trimmed.toLowerCase())) return null;
+  return trimmed;
+}

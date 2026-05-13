@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { displayLote } from "@/lib/lote";
 import {
   PackagePlus,
   Tag,
@@ -96,12 +97,14 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
         </div>
 
         {/* Lote */}
-        <div className="flex items-center gap-1.5 text-[11px]">
-          <Tag className={cn("h-3 w-3", isAtivo ? "text-cyan-500" : "text-muted-foreground/50")} />
-          <span className={cn("font-mono font-semibold tracking-widest", isAtivo ? "text-cyan-600 dark:text-cyan-400" : "text-muted-foreground")}>
-            {item.lote}
-          </span>
-        </div>
+        {displayLote(item.lote) && (
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <Tag className={cn("h-3 w-3", isAtivo ? "text-cyan-500" : "text-muted-foreground/50")} />
+            <span className={cn("font-mono font-semibold tracking-widest", isAtivo ? "text-cyan-600 dark:text-cyan-400" : "text-muted-foreground")}>
+              {displayLote(item.lote)}
+            </span>
+          </div>
+        )}
 
         {/* Quantidade */}
         <div className={cn(
@@ -198,7 +201,7 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
       toast.error("Erro ao confirmar retirada. Tente novamente.");
     } else {
       toast.success("Retirada confirmada!", {
-        description: `${item.quantity} un. · Lote ${item.lote}`,
+        description: `${item.quantity} un.${displayLote(item.lote) ? ` · Lote ${displayLote(item.lote)}` : ""}`,
       });
       onSuccess();
       onClose();
@@ -220,7 +223,7 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
               {item.descricao}
             </p>
             <p className="text-[11px] font-mono text-cyan-600 dark:text-cyan-400 mt-0.5">
-              Lote {item.lote} · {item.quantity} un.
+              {displayLote(item.lote) ? `Lote ${displayLote(item.lote)} · ` : ""}{item.quantity} un.
             </p>
           </div>
         </div>
@@ -472,7 +475,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
             </AlertDialogTitle>
             <AlertDialogDescription>
               <span className="block">
-                Excluir o registro do lote <strong className="font-mono">{deleteItem?.lote}</strong> — {deleteItem?.descricao}?
+                Excluir o registro{displayLote(deleteItem?.lote) ? <> do lote <strong className="font-mono">{displayLote(deleteItem?.lote)}</strong></> : ""} — {deleteItem?.descricao}?
               </span>
               <span className="block mt-1 text-xs text-muted-foreground">Esta ação é irreversível.</span>
             </AlertDialogDescription>

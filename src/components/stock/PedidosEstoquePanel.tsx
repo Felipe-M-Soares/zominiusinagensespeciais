@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, memo } from "react";
+import { displayLote } from "@/lib/lote";
 import {
   Package,
   Tag,
@@ -659,7 +660,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                       for (const ls of entries) agg[ls.lote] = (agg[ls.lote] ?? 0) + ls.quantidade;
                       return (
                         <div className="flex flex-wrap gap-1.5 pt-0.5">
-                          {Object.entries(agg).map(([lote, qty]) => (
+                          {Object.entries(agg).filter(([lote]) => displayLote(lote)).map(([lote, qty]) => (
                             <div key={lote} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
                               <Tag className="h-2.5 w-2.5 text-emerald-500/70 shrink-0" />
                               <span className="text-[11px] font-mono font-bold text-emerald-600 tracking-wider">{lote}</span>

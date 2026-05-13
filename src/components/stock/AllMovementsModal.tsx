@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { displayLote } from "@/lib/lote";
 import {
   Dialog,
   DialogContent,
@@ -138,9 +139,9 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
                   <p className="text-[10px] text-muted-foreground font-mono">{mv.device_reference}</p>
 
                   {/* Lote */}
-                  {mv.lote && (
+                  {displayLote(mv.lote) && (
                     <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-primary/80">
-                      <Tag className="h-2.5 w-2.5" />Lote {mv.lote}
+                      <Tag className="h-2.5 w-2.5" />Lote {displayLote(mv.lote)}
                     </p>
                   )}
 
