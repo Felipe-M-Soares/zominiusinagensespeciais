@@ -84,7 +84,7 @@ interface Cliente {
 
 interface PedidoItem {
   stock_item_id: string;
-  lote: string;
+  lote: string | null;
   quantidade: number;
   device_model: string;
   device_reference: string;
@@ -102,7 +102,7 @@ interface PedidoCompleto {
   itens: Array<{
     id: string;
     stock_item_id: string;
-    lote: string;
+    lote: string | null;
     quantidade: number;
     quantidade_reservada: number;
     device_model?: string;

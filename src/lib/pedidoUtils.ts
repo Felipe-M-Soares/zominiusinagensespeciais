@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export interface PedidoItemInput {
   stock_item_id: string;
-  lote: string;
+  lote: string | null;
   quantidade: number;
   device_model?: string;
 }
@@ -61,7 +61,7 @@ export async function criarPedidoComReserva(
   const itensInsert = itens.map((i) => ({
     pedido_id: pedidoId,
     stock_item_id: i.stock_item_id,
-    lote: i.lote,
+    lote: i.lote ?? null,
     quantidade: i.quantidade,
     quantidade_reservada: i.quantidade,
   }));
