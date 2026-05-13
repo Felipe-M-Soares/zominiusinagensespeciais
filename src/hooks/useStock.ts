@@ -851,36 +851,65 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
   const pedidoItensReservados: { lote: string | null; quantidade: number }[] = [];
 
   if (pedidoIdsAtivos.length > 0) {
-    // BUGFIX: a versão anterior buscava pedido_itens por "allStockItemIds" (intermediária + expedição),
-    // o que causava reservas de pedidos ligados à intermediária serem deduzidas do saldo de expedição,
-    // fazendo os saldos por lote nunca refletirem as deduções corretas (lote exibia total bruto em vez do saldo real).
-    // Agora buscamos pedido_itens SOMENTE pelo stockItemId da expedição.
+    // Busca o device_id deste stock_item para localizar pedidos que possam ter sido
+    // criados com o stock_item_id da intermediária em vez da expedição.
+    // Sem isso, pedidos antigos (criados antes da padronização) não são encontrados
+    // e os saldos por lote ficam incorretos (não descontam reservas).
+    const { data: siData } = await supabase
+      .from("stock_items")
+      .select("device_id")
+      .eq("id", stockItemId)
+      .maybeSingle();
+    const deviceId = (siData as { device_id: string } | null)?.device_id;
 
-    // Busca pedido_itens SOMENTE do stockItemId correto (expedição)
-    const { data: piDataExp } = await supabase
+    // Todos os stock_item_ids do mesmo device (cobre tanto expedição quanto intermediária)
+    let allStockItemIds = [stockItemId];
+    if (deviceId) {
+      const { data: siblings } = await supabase
+        .from("stock_items")
+        .select("id")
+        .eq("device_id", deviceId);
+      allStockItemIds = [...new Set([stockItemId, ...(siblings ?? []).map((s: { id: string }) => s.id)])];
+    }
+
+    // Busca pedido_itens por todos os stock_item_ids do device
+    const { data: piDataAll } = await supabase
       .from("pedido_itens")
-      .select("pedido_id, lote, quantidade")
-      .eq("stock_item_id", stockItemId)
+      .select("pedido_id, stock_item_id, lote, quantidade")
+      .in("stock_item_id", allStockItemIds)
       .in("pedido_id", pedidoIdsAtivos);
 
+    // Agrupa por pedido — mas normaliza: cada pedido conta UMA VEZ por device
+    // (evita dupla contagem se o mesmo pedido tiver itens na intermediária e na expedição)
     const piByPedido = new Map<string, { lote: string | null; quantidade: number }[]>();
-    for (const pi of (piDataExp ?? []) as { pedido_id: string; lote: string | null; quantidade: number }[]) {
+    const pedidoContado = new Set<string>(); // garante que cada pedido contribui 1x
+    for (const pi of (piDataAll ?? []) as { pedido_id: string; stock_item_id: string; lote: string | null; quantidade: number }[]) {
+      // Prioriza o item que aponta direto para este stockItemId (expedição)
       const arr = piByPedido.get(pi.pedido_id) ?? [];
-      arr.push({ lote: pi.lote, quantidade: pi.quantidade });
+      arr.push({ lote: pi.lote, quantidade: pi.quantidade, _sid: pi.stock_item_id } as { lote: string | null; quantidade: number; _sid: string });
       piByPedido.set(pi.pedido_id, arr);
     }
 
     for (const pedido of (pedidosAtivos ?? []) as { id: string; lotes_separados: { stock_item_id: string; lote: string; quantidade: number }[] | null }[]) {
-      const sep = (pedido.lotes_separados ?? []).filter(s => s.stock_item_id === stockItemId);
+      if (pedidoContado.has(pedido.id)) continue;
+
+      const sep = (pedido.lotes_separados ?? []).filter(s => allStockItemIds.includes(s.stock_item_id));
       if (sep.length > 0) {
         // Usa lotes_separados — distribuição real por lote (após separação iniciada)
         for (const s of sep) {
           pedidoItensReservados.push({ lote: s.lote, quantidade: s.quantidade });
         }
+        pedidoContado.add(pedido.id);
       } else {
-        // Pedido pendente: usa pedido_itens do próprio item de expedição
-        for (const pi of (piByPedido.get(pedido.id) ?? [])) {
-          pedidoItensReservados.push(pi);
+        const items = piByPedido.get(pedido.id) ?? [];
+        if (items.length > 0) {
+          // Prefere itens que apontam diretamente para o stockItemId da expedição
+          const diretos = items.filter((i: { lote: string | null; quantidade: number; _sid?: string }) => (i as { _sid?: string })._sid === stockItemId);
+          const usar = diretos.length > 0 ? diretos : items.slice(0, 1);
+          for (const pi of usar) {
+            pedidoItensReservados.push({ lote: pi.lote, quantidade: pi.quantidade });
+          }
+          pedidoContado.add(pedido.id);
         }
       }
     }
