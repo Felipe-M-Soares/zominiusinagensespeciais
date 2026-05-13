@@ -848,38 +848,20 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
   const pedidoItensReservados: { lote: string | null; quantidade: number }[] = [];
 
   if (pedidoIdsAtivos.length > 0) {
-    // Para pedidos com lotes_separados: já filtrado por expId (stock_item_id da expedição).
-    // Para pedidos pendentes (sem lotes_separados): pedido_itens.stock_item_id pode ser
-    // da intermediária — precisamos resolver via device_id para encontrar o expId correto.
+    // BUGFIX: a versão anterior buscava pedido_itens por "allStockItemIds" (intermediária + expedição),
+    // o que causava reservas de pedidos ligados à intermediária serem deduzidas do saldo de expedição,
+    // fazendo os saldos por lote nunca refletirem as deduções corretas (lote exibia total bruto em vez do saldo real).
+    // Agora buscamos pedido_itens SOMENTE pelo stockItemId da expedição.
 
-    // 1. Descobre o device_id do item de expedição atual
-    const { data: expItem } = await supabase
-      .from("stock_items")
-      .select("device_id")
-      .eq("id", stockItemId)
-      .maybeSingle();
-    const deviceId = (expItem as { device_id: string } | null)?.device_id;
-
-    // 2. Busca todos os stock_item_ids que pertencem ao mesmo device (intermediária + expedição)
-    let allStockItemIds = [stockItemId];
-    if (deviceId) {
-      const { data: siblings } = await supabase
-        .from("stock_items")
-        .select("id")
-        .eq("device_id", deviceId);
-      allStockItemIds = (siblings ?? []).map((s: { id: string }) => s.id);
-      if (!allStockItemIds.includes(stockItemId)) allStockItemIds.push(stockItemId);
-    }
-
-    // 3. Busca pedido_itens por todos os stock_item_ids do mesmo device
-    const { data: piDataAll } = await supabase
+    // Busca pedido_itens SOMENTE do stockItemId correto (expedição)
+    const { data: piDataExp } = await supabase
       .from("pedido_itens")
       .select("pedido_id, lote, quantidade")
-      .in("stock_item_id", allStockItemIds)
+      .eq("stock_item_id", stockItemId)
       .in("pedido_id", pedidoIdsAtivos);
 
     const piByPedido = new Map<string, { lote: string | null; quantidade: number }[]>();
-    for (const pi of (piDataAll ?? []) as { pedido_id: string; lote: string | null; quantidade: number }[]) {
+    for (const pi of (piDataExp ?? []) as { pedido_id: string; lote: string | null; quantidade: number }[]) {
       const arr = piByPedido.get(pi.pedido_id) ?? [];
       arr.push({ lote: pi.lote, quantidade: pi.quantidade });
       piByPedido.set(pi.pedido_id, arr);
@@ -893,7 +875,7 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
           pedidoItensReservados.push({ lote: s.lote, quantidade: s.quantidade });
         }
       } else {
-        // Pedido pendente: usa pedido_itens (encontrado via todos os stock_item_ids do device)
+        // Pedido pendente: usa pedido_itens do próprio item de expedição
         for (const pi of (piByPedido.get(pedido.id) ?? [])) {
           pedidoItensReservados.push(pi);
         }
