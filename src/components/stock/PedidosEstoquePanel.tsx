@@ -485,7 +485,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   </table>
   <div class="footer">
     <span>Total: <strong>${totalPecas} peças</strong> em <strong>${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}</strong></span>
-    <span>Concept Usinas Especiais</span>
+    <span>Concept Usinagens Especiais</span>
   </div>
 </body>
 </html>`;
