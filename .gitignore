@@ -45,3 +45,4 @@ supabase/.temp/
 
 # Backup files — never commit
 *.bak
+AUDIT_REPORT.md
