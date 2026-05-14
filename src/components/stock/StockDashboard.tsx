@@ -1,7 +1,7 @@
 import { Package, TrendingDown, Wrench, ArrowDownCircle, ArrowUpCircle, Truck, Activity, PackageCheck, X } from "lucide-react";
 import type { StockItem, AllMovement } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchAllMovements } from "@/hooks/useStock";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -127,18 +127,18 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
   const [lotesBaixo, setLotesBaixo] = useState<LoteBaixo[]>([]);
   const [modalBaixoOpen, setModalBaixoOpen] = useState(false);
   const [giroData, setGiroData] = useState<{ name: string; giro: number; color: string }[]>([]);
-  const alertedRef = useState(false);
+  const alertedRef = useRef(false);
 
   // Realtime: notifica quando estoque baixo aparece pela primeira vez nesta sessão
   useEffect(() => {
-    if (lotesBaixo.length > 0 && !alertedRef[0]) {
-      alertedRef[0] = true; // eslint-disable-line react/no-direct-mutation-state
+    if (lotesBaixo.length > 0 && !alertedRef.current) {
+      alertedRef.current = true;
       toast.warning(
         `${lotesBaixo.length} ${lotesBaixo.length === 1 ? "produto" : "produtos"} com estoque baixo na expedição.`,
         { duration: 6000, action: { label: "Ver", onClick: () => onEstoqueBaixo?.() } }
       );
     }
-  }, [lotesBaixo, onEstoqueBaixo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lotesBaixo, onEstoqueBaixo]);
 
   useEffect(() => {
     let cancelled = false;
