@@ -85,6 +85,40 @@ export function LotesPanel({ item, open, onClose }: Props) {
     return () => { cancelled = true; };
   }, [open, item, isExpedicao]);
 
+  // ── Reconcilia saldos dos lotes com o reserved autoritativo de refreshLive ──
+  // fetchLotesSummary pode falhar em descontar reservas corretamente em casos
+  // com múltiplos stock_item_ids por device. refreshLive usa uma query direta
+  // e simples que sempre retorna o reserved correto.
+  // Quando há discrepância, redistribui FIFO para garantir que os cards
+  // mostrem a quantidade exata disponível em cada lote.
+  const lotesReconciliados: LoteSummary[] = (() => {
+    if (!isExpedicao || liveReserved === null || lotes.length === 0) return lotes;
+
+    const qty      = liveQty !== null ? liveQty : item?.quantity ?? 0;
+    const reserved = liveReserved;
+    const available = Math.max(0, qty - reserved);
+
+    // Soma dos saldos calculados pela função
+    const somaLotes = lotes.reduce((s, l) => s + l.saldo, 0);
+
+    // Se já batem, não precisa ajustar
+    if (somaLotes === available) return lotes;
+
+    // Redistribui FIFO — ordena do mais antigo (last_movement mais cedo) para mais novo
+    // e aplica o total disponível real distribuindo do primeiro ao último
+    const ordenados = [...lotes].sort((a, b) => a.last_movement.localeCompare(b.last_movement));
+    let restante = available;
+    const ajustados = ordenados.map(l => {
+      // Cada lote recebe no máximo seu saldo bruto (total_entrada - total_saida)
+      const bruto = l.total_entrada - l.total_saida;
+      const atribuir = Math.min(bruto, Math.max(0, restante));
+      restante = Math.max(0, restante - atribuir);
+      return { ...l, saldo: atribuir };
+    });
+
+    return ajustados.filter(l => l.saldo > 0);
+  })();
+
   if (!item) return null;
 
   // ── Expedição: mostra nome, lotes com saldo e quantidade total ───────────
@@ -96,7 +130,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
     const available = Math.max(0, qty - reserved);
     const isEmpty = available === 0;
     const isLow = available > 0 && available <= item.min_quantity;
-    const activeLotesExp = lotes.filter((l) => l.saldo > 0);
+    const activeLotesExp = lotesReconciliados;
 
     return (
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
