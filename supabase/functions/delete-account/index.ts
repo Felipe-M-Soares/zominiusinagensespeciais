@@ -1,18 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-// FIX: CORS dinâmico — ALLOWED_ORIGIN pode ser "*" (dev) ou domínio exato (prod).
-// O CORS estático com domínio hardcoded bloqueia requests quando o domínio de produção
-// não bate exatamente (ex: www. vs sem www, ou domínios custom no Vercel).
-function getCorsHeaders(req: Request): Record<string, string> {
-  const allowed = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
-  const origin = req.headers.get("origin") ?? "";
-  const responseOrigin = allowed === "*" ? "*" : (origin === allowed ? origin : allowed);
-  return {
-    "Access-Control-Allow-Origin": responseOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
-}
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 // CODE-006: Validate env vars at startup
 function getRequiredEnv(key: string): string {

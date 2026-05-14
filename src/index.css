@@ -173,3 +173,77 @@ input[type="password"]::-webkit-contacts-auto-fill-button,
 input[type="password"]::-webkit-credentials-auto-fill-button {
   display: none !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MODO DE IMPRESSÃO — Pedidos, NF-e, Ordens de Produção
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media print {
+  /* Oculta elementos de navegação e UI */
+  header,
+  nav,
+  [data-no-print],
+  .no-print,
+  button:not([data-print-show]),
+  .toast-container {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+    line-height: 1.4;
+  }
+
+  /* Remove backgrounds coloridos */
+  .bg-background,
+  .bg-card,
+  [class*="bg-primary"],
+  [class*="bg-muted"],
+  [class*="bg-secondary"] {
+    background: white !important;
+  }
+
+  /* Garante que borders apareçam na impressão */
+  .border,
+  [class*="border-"] {
+    border-color: #ccc !important;
+  }
+
+  /* Textos ficam pretos na impressão */
+  [class*="text-primary"],
+  [class*="text-muted"],
+  [class*="text-foreground"] {
+    color: black !important;
+  }
+
+  /* Quebra de página automática para OP e pedidos */
+  .print-page-break {
+    page-break-after: always;
+  }
+
+  /* Área de impressão ocupa folha inteira */
+  .print-container {
+    max-width: 100% !important;
+    padding: 1cm !important;
+    margin: 0 !important;
+  }
+
+  /* Tabelas na impressão */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th, td {
+    border: 1px solid #ccc;
+    padding: 4pt 8pt;
+    text-align: left;
+  }
+
+  th {
+    background: #f5f5f5 !important;
+    font-weight: bold;
+  }
+}

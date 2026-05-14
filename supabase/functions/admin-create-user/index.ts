@@ -1,15 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-function getCorsHeaders(req: Request): Record<string, string> {
-  const allowed = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
-  const origin = req.headers.get("origin") ?? "";
-  const responseOrigin = allowed === "*" ? "*" : (origin === allowed ? origin : allowed);
-  return {
-    "Access-Control-Allow-Origin": responseOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
-}
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 function getRequiredEnv(key: string): string {
   const value = Deno.env.get(key);

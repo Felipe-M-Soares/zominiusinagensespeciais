@@ -21,6 +21,7 @@ const Manuals    = lazy(() => import("./pages/Manuals"));
 const Estoque    = lazy(() => import("./pages/Estoque"));
 const Comercial  = lazy(() => import("./pages/Comercial"));
 const Financeiro = lazy(() => import("./pages/Financeiro"));
+const MRP        = lazy(() => import("./pages/MRP"));
 
 // FIX: QueryClient sem config usa retry=3 por padrão — em erros de rede isso causa
 // 3 tentativas com backoff exponencial antes de mostrar erro ao usuário (~30s de espera).
@@ -136,6 +137,7 @@ const App = () => (
             <Route path="/estoque" element={<ProtectedRoute><Estoque /></ProtectedRoute>} />
             <Route path="/comercial" element={<VendedoraRoute><Comercial /></VendedoraRoute>} />
             <Route path="/financeiro" element={<FinanceiroRoute><Financeiro /></FinanceiroRoute>} />
+            <Route path="/mrp" element={<ProtectedRoute><MRP /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>

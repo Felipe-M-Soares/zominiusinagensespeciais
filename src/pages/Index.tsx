@@ -8,7 +8,7 @@ import { DeviceDetail } from "@/components/DeviceDetail";
 import type { Device } from "@/types/device";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LogOut, Settings, BookOpen, ChevronDown, Loader2, Boxes, ShoppingBag, Receipt, Menu, X as XIcon, Search, SlidersHorizontal, ScanBarcode } from "lucide-react";
+import { LogOut, Settings, BookOpen, ChevronDown, Loader2, Boxes, ShoppingBag, Receipt, Menu, X as XIcon, Search, SlidersHorizontal, ScanBarcode, Factory } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { CatalogButton } from "@/components/CatalogButton";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
@@ -201,6 +201,16 @@ const Index = () => {
             >
               <Receipt className="h-4 w-4 sm:mr-1" />
               <span className="hidden sm:inline">Financeiro</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/mrp")}
+              className="h-8 px-2 sm:px-3 text-xs"
+              title="MRP — Planejamento de Produção"
+            >
+              <Factory className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">MRP</span>
             </Button>
             <CatalogButton />
             <Button

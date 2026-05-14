@@ -5,9 +5,13 @@ import { useEffect, useState } from "react";
 import { fetchAllMovements } from "@/hooks/useStock";
 import { supabase } from "@/integrations/supabase/client";
 
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { toast } from "sonner";
+
 interface Props {
   items: StockItem[];
   loading: boolean;
+  onEstoqueBaixo?: () => void;
 }
 
 interface KpiCardProps {
@@ -111,7 +115,7 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
   );
 }
 
-export function StockDashboard({ items, loading }: Props) {
+export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [movLoading, setMovLoading] = useState(true);
   const [pedidosSeparando, setPedidosSeparando] = useState(0);
@@ -122,6 +126,19 @@ export function StockDashboard({ items, loading }: Props) {
   const [lotesRetrabalho, setLotesRetrabalho] = useState(0);
   const [lotesBaixo, setLotesBaixo] = useState<LoteBaixo[]>([]);
   const [modalBaixoOpen, setModalBaixoOpen] = useState(false);
+  const [giroData, setGiroData] = useState<{ name: string; giro: number; color: string }[]>([]);
+  const alertedRef = useState(false);
+
+  // Realtime: notifica quando estoque baixo aparece pela primeira vez nesta sessão
+  useEffect(() => {
+    if (lotesBaixo.length > 0 && !alertedRef[0]) {
+      alertedRef[0] = true; // eslint-disable-line react/no-direct-mutation-state
+      toast.warning(
+        `${lotesBaixo.length} ${lotesBaixo.length === 1 ? "produto" : "produtos"} com estoque baixo na expedição.`,
+        { duration: 6000, action: { label: "Ver", onClick: () => onEstoqueBaixo?.() } }
+      );
+    }
+  }, [lotesBaixo, onEstoqueBaixo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -257,6 +274,29 @@ export function StockDashboard({ items, loading }: Props) {
       setLotesExpedicao(lotesExpCount);
       setLotesRetrabalho(lotesRetrabCount);
       setLotesBaixo(baixoLotes);
+
+      // 6. Giro de estoque — top 8 devices na expedição por quantidade
+      const COLORS = ["hsl(197 100% 47%)", "hsl(152 60% 40%)", "hsl(38 92% 50%)",
+        "hsl(280 60% 55%)", "hsl(15 80% 55%)", "hsl(200 70% 50%)", "hsl(340 70% 55%)", "hsl(80 60% 45%)"];
+      if (baixoDeviceIds.length > 0 || expByDevice.size > 0) {
+        const { data: devData2 } = await supabase
+          .from("devices").select("id, model")
+          .in("id", Array.from(expByDevice.keys()).slice(0, 20));
+        if (devData2) {
+          const modelMap2 = new Map((devData2 as { id: string; model: string }[]).map(d => [d.id, d.model]));
+          const sorted = Array.from(expByDevice.entries())
+            .sort((a, b) => b[1] - a[1]).slice(0, 8);
+          const totalQty = sorted.reduce((s, [, q]) => s + q, 0);
+          const giro = sorted.map(([id, qty], i) => ({
+            name: (modelMap2.get(id) ?? id).length > 14
+              ? (modelMap2.get(id) ?? id).slice(0, 13) + "…"
+              : (modelMap2.get(id) ?? id),
+            giro: totalQty > 0 ? Math.round((qty / totalQty) * 100) : 0,
+            color: COLORS[i % COLORS.length],
+          }));
+          setGiroData(giro);
+        }
+      }
     }
 
     loadTotals();
@@ -264,10 +304,14 @@ export function StockDashboard({ items, loading }: Props) {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-2xl border bg-muted/20 p-4 h-24 animate-pulse" />
-        ))}
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="rounded-2xl border bg-muted/20 p-4 h-24 animate-pulse" />
+          ))}
+        </div>
+        <div className="rounded-2xl border bg-muted/20 h-48 animate-pulse" />
+        <div className="rounded-2xl border bg-muted/20 h-36 animate-pulse" />
       </div>
     );
   }
@@ -326,6 +370,43 @@ export function StockDashboard({ items, loading }: Props) {
         onClose={() => setModalBaixoOpen(false)}
         lotes={lotesBaixo}
       />
+
+      {/* Giro de Estoque — Distribuição por Produto (Expedição) */}
+      {giroData.length > 0 && (
+        <div className="rounded-2xl border border-border/40 overflow-hidden">
+          <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-semibold">Distribuição de Estoque por Produto</p>
+            </div>
+            <span className="text-[11px] text-muted-foreground/60">Top {giroData.length} produtos · Expedição</span>
+          </div>
+          <div className="p-4">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={giroData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+                barCategoryGap="25%">
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))"
+                  interval={0} angle={-25} textAnchor="end" height={44} />
+                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))"
+                  tickFormatter={v => `${v}%`} />
+                <Tooltip
+                  contentStyle={{
+                    background: "hsl(var(--card))", border: "1px solid hsl(var(--border))",
+                    borderRadius: 12, fontSize: 12,
+                  }}
+                  formatter={(v: number) => [`${v}% do estoque`, "Participação"]}
+                />
+                <Bar dataKey="giro" radius={[6, 6, 0, 0]}>
+                  {giroData.map((entry, i) => (
+                    <Cell key={i} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* Últimas Movimentações */}
       <div className="rounded-2xl border border-border/40 overflow-hidden">

@@ -41,6 +41,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
+import { PrintButton } from "@/components/PrintButton";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -1509,12 +1510,25 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
         </button>
+        <PrintButton label="Imprimir" variant="outline" size="sm" className="h-9 shrink-0 no-print" />
       </div>
 
       {/* Lista */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="rounded-2xl border p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-muted/40 animate-pulse" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-muted/40 rounded animate-pulse w-48" />
+                  <div className="h-3 bg-muted/30 rounded animate-pulse w-32" />
+                </div>
+              </div>
+              <div className="h-3 bg-muted/30 rounded animate-pulse w-full" />
+              <div className="h-3 bg-muted/20 rounded animate-pulse w-3/4" />
+            </div>
+          ))}
         </div>
       ) : filtrados.length === 0 ? (
         <div className="text-center py-16 space-y-2">

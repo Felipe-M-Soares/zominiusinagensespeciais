@@ -1,15 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-function getCorsHeaders(req: Request): Record<string, string> {
-  const allowed = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
-  const origin = req.headers.get("origin") ?? "";
-  const responseOrigin = allowed === "*" ? "*" : (origin === allowed ? origin : allowed);
-  return {
-    "Access-Control-Allow-Origin": responseOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
-}
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_RECORDS = 10_000;

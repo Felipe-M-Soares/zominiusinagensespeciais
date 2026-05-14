@@ -57,6 +57,7 @@ import { validarEmail, validarDocumento } from "@/lib/validators";
 import type { StockItem } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
+import { criarPedidoComReserva } from "@/lib/pedidoUtils";
 import ExcelJS from "exceljs";
 
 // ─── Lote helpers (formato DDMMYYS-NN ou DDMMYYS-NN/A) ───────────────────────
@@ -348,42 +349,27 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (itens.length === 0) { toast.error("Adicione ao menos uma peça"); return; }
     setSaving(true);
     try {
-      // Pegar nome do usuário para registrar
+      // COD-01 FIX: Usa criarPedidoComReserva de pedidoUtils — elimina duplicação e
+      // garante a mesma lógica atômica de reserva de estoque usada em Comercial.tsx.
       const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
       const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
 
-      const { data: pedido, error: pedidoErr } = await supabase
-        .from("pedidos_comerciais")
-        .insert({ cliente_id: clienteId, vendedora_id: user?.id, vendedora_nome: vendedoraNome, observacoes: obs || null })
-        .select()
-        .single();
+      const result = await criarPedidoComReserva({
+        clienteId,
+        itens: itens.map(i => ({
+          stock_item_id: i.stock_item_id,
+          lote: null, // lote será definido pelo estoque na separação (mais antigo primeiro)
+          quantidade: i.quantidade,
+          device_model: i.device_model,
+        })),
+        vendedoraId: user?.id,
+        vendedoraNome,
+        observacoes: obs || null,
+      });
 
-      if (pedidoErr) throw pedidoErr;
-
-      const pedidoId = (pedido as { id: string }).id;
-
-      const itensInsert = itens.map(i => ({
-        pedido_id: pedidoId,
-        stock_item_id: i.stock_item_id,
-        lote: null, // lote será definido pelo estoque na separação (mais antigo primeiro)
-        quantidade: i.quantidade,
-        quantidade_reservada: i.quantidade,
-      }));
-
-      const { error: itensErr } = await supabase.from("pedido_itens").insert(itensInsert);
-      if (itensErr) throw itensErr;
-
-      // SEG-01: Use atomic RPC to reserve stock — prevents race condition / overselling
-      for (const item of itens) {
-        const { data: reserveResult, error: reserveErr } = await supabase.rpc("reserve_stock", {
-          p_item_id: item.stock_item_id,
-          p_qty: item.quantidade,
-        });
-        // reserve_stock returns jsonb { ok, error? } — check network error AND business logic failure
-        const result = reserveResult as { ok?: boolean; error?: string } | null;
-        if (reserveErr || result?.ok === false) {
-          throw new Error(result?.error ?? ("Estoque insuficiente para " + item.device_model));
-        }
+      if (!result.ok) {
+        toast.error(result.error ?? "Erro ao criar pedido.");
+        return;
       }
 
       toast.success("Pedido criado! Peças reservadas na expedição.");

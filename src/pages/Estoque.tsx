@@ -59,14 +59,19 @@ import { StockListModal } from "@/components/stock/StockListModal";
 import { LotesPanel } from "@/components/stock/LotesPanel";
 import { StockCsvImport } from "@/components/stock/StockCsvImport";
 import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
-import { BackupPanel } from "@/components/stock/BackupPanel";
 import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicaoModal";
 import { RetrabalhoModal } from "@/components/stock/RetrabalhoModal";
 import { ConcluirRetrabalhoModal } from "@/components/stock/ConcluirRetrabalhoModal";
 import { StockDashboard } from "@/components/stock/StockDashboard";
 import { StockNav } from "@/components/stock/StockNav";
 import { RecebimentoPanel } from "@/components/stock/RecebimentoPanel";
-import { PedidosEstoquePanel } from "@/components/stock/PedidosEstoquePanel";
+// PERF-01: BackupPanel, ComercialPanel e PedidosEstoquePanel são os maiores componentes
+// do bundle (~400KB juntos). Lazy load evita carregá-los no render inicial da página.
+import { lazy, Suspense } from "react";
+import { LoadingScreen } from "@/components/LoadingScreen";
+const BackupPanel         = lazy(() => import("@/components/stock/BackupPanel").then(m => ({ default: m.BackupPanel })));
+const ComercialPanelLazy = lazy(() => import("@/components/stock/ComercialPanel").then(m => ({ default: m.ComercialPanel })));
+const PedidosEstoquePanel = lazy(() => import("@/components/stock/PedidosEstoquePanel").then(m => ({ default: m.PedidosEstoquePanel })));
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
@@ -724,7 +729,32 @@ export default function Estoque() {
 
   // ── useEffect ─────────────────────────────────────────────────────────────
 
-  // Alerta de estoque — removido do banner, disponível apenas no dashboard
+  // Realtime: notifica quando um item da expedição é atualizado para quantidade baixa
+  useEffect(() => {
+    const channel = supabase
+      .channel("estoque-low-stock-watch")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "stock_items" },
+        (payload) => {
+          const updated = payload.new as { quantity?: number; fase?: string; device_id?: string };
+          if (
+            updated.fase === "expedicao" &&
+            typeof updated.quantity === "number" &&
+            updated.quantity > 0 &&
+            updated.quantity < 100
+          ) {
+            toast.warning(
+              `Estoque baixo detectado na expedição (${updated.quantity} un.)`,
+              { duration: 5000, action: { label: "Ver", onClick: () => setBaixoOpen(true) } }
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   // Autocomplete: busca sugestões de modelo
   useEffect(() => {
@@ -1014,7 +1044,9 @@ export default function Estoque() {
 
         {/* Pedidos View */}
         {activeView === "pedidos" && (
-          <PedidosEstoquePanel isAdmin={isAdmin} />
+          <Suspense fallback={<LoadingScreen />}>
+            <PedidosEstoquePanel isAdmin={isAdmin} />
+          </Suspense>
         )}
 
         {/* Busca + Filtros — apenas nas abas de lista */}
@@ -1393,10 +1425,12 @@ export default function Estoque() {
         fase={activeView === "expedicao" || activeView === "intermediaria" || activeView === "retrabalho" ? activeView : undefined}
       />
 
-      <BackupPanel
-        open={backupOpen}
-        onClose={() => setBackupOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <BackupPanel
+          open={backupOpen}
+          onClose={() => setBackupOpen(false)}
+        />
+      </Suspense>
 
       <LotesPanel
         item={lotesItem}
