@@ -463,7 +463,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 </head>
 <body>
   <div class="header">
-    <h1>📦 Pedido</h1>
+    <h1>📦 Pedido de Separação</h1>
     <div class="meta">
       <span>Cliente: <strong>${esc(pedido.cliente_nome)}</strong></span>
       <span>Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong></span>
@@ -696,6 +696,17 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                 className="flex-1 h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none">
                 <PackageCheck className="h-3.5 w-3.5" />
                 Iniciar Separação
+              </button>
+            )}
+
+            {isSeparando && (
+              <button type="button"
+                onClick={() => onSalvarSeparacao(pedido, sel, expIdByItem)}
+                disabled={loadingLotes}
+                className="h-9 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
+                title="Salvar distribuição de lotes">
+                <RefreshCw className="h-3.5 w-3.5" />
+                Salvar Lotes
               </button>
             )}
 
