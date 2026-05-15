@@ -924,17 +924,10 @@ export default function Estoque() {
   return (
     <>
     <div className="min-h-screen bg-transparent">
-      {/* Header */}
+      {/* Header simplificado — navegação via AppShell sidebar */}
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate("/")}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
             <div className="flex items-center gap-2">
               <Boxes className="h-4 w-4 text-primary" />
               <h1 className="text-sm font-semibold">Estoque</h1>
@@ -942,18 +935,6 @@ export default function Estoque() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Toggle tema */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
-              title={isDark ? "Modo claro" : "Modo escuro"}
-            >
-              {isDark
-                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-                : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              }
-            </button>
             {isAdmin && (
               <>
                 <div className="hidden sm:flex items-center gap-1.5">
