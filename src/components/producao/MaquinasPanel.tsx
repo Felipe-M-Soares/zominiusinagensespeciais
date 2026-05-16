@@ -1,311 +1,231 @@
 /**
  * MaquinasPanel — Cadastro e Gestão de Máquinas
- * Status operacional, disponibilidade, histórico de manutenção, setores
+ * ✓ Dados reais via Supabase (tabela maquinas_producao)
+ * ✓ Fallback offline com IndexedDB
  */
 
-import { useState } from "react";
-import { Plus, X, Search, Settings2, Wrench, CheckCircle2, AlertTriangle, XCircle, Filter } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, X, Search, Settings2, Wrench, CheckCircle2, AlertTriangle, XCircle, Filter, RefreshCw, Edit2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
 
-// ── Tipos ──────────────────────────────────────────────────────────────────────
-
-type StatusMaquina = "operando" | "parada" | "manutencao" | "setup";
-type SetorMaquina = "usinagem" | "montagem" | "acabamento" | "estamparia" | "soldagem";
+type StatusMaquina = "operando"|"parada"|"manutencao"|"setup";
+type SetorMaquina = "usinagem"|"montagem"|"acabamento"|"estamparia"|"soldagem";
 
 interface Maquina {
-  id: string;
-  codigo: string;
-  nome: string;
-  setor: SetorMaquina;
-  status: StatusMaquina;
-  disponibilidade: number; // %
-  ultimaManutencao: string;
-  proximaManutencao: string;
-  horimetro: number;
-  fabricante?: string;
-  modelo?: string;
+  id: string; codigo: string; nome: string;
+  setor: SetorMaquina; status: StatusMaquina;
+  disponibilidade: number;
+  ultima_manutencao?: string; proxima_manutencao?: string;
+  horimetro?: number; fabricante?: string; modelo?: string;
+  created_at?: string; updated_at?: string;
 }
 
-const STATUS_CFG: Record<StatusMaquina, { label: string; color: string; bg: string; Icon: React.ElementType }> = {
-  operando:    { label: "Operando",    color: "text-green-500",      bg: "bg-green-500/10",      Icon: CheckCircle2 },
-  parada:      { label: "Parada",      color: "text-red-500",        bg: "bg-red-500/10",        Icon: XCircle },
-  manutencao:  { label: "Manutenção",  color: "text-amber-500",      bg: "bg-amber-500/10",      Icon: Wrench },
-  setup:       { label: "Setup",       color: "text-blue-500",       bg: "bg-blue-500/10",       Icon: Settings2 },
+const STATUS_CFG: Record<StatusMaquina,{label:string;color:string;bg:string;Icon:React.ElementType}> = {
+  operando:   {label:"Operando",   color:"text-green-500", bg:"bg-green-500/10",  Icon:CheckCircle2},
+  parada:     {label:"Parada",     color:"text-red-500",   bg:"bg-red-500/10",    Icon:XCircle},
+  manutencao: {label:"Manutenção", color:"text-amber-500", bg:"bg-amber-500/10",  Icon:Wrench},
+  setup:      {label:"Setup",      color:"text-blue-500",  bg:"bg-blue-500/10",   Icon:Settings2},
 };
+const SETORES: SetorMaquina[] = ["usinagem","montagem","acabamento","estamparia","soldagem"];
+const SETOR_LABEL: Record<SetorMaquina,string> = {usinagem:"Usinagem",montagem:"Montagem",acabamento:"Acabamento",estamparia:"Estamparia",soldagem:"Soldagem"};
 
-const SETORES: SetorMaquina[] = ["usinagem", "montagem", "acabamento", "estamparia", "soldagem"];
-const SETOR_LABEL: Record<SetorMaquina, string> = {
-  usinagem: "Usinagem", montagem: "Montagem", acabamento: "Acabamento",
-  estamparia: "Estamparia", soldagem: "Soldagem",
-};
-
-const MOCK_MAQUINAS: Maquina[] = [
-  { id: "1", codigo: "CNC-01", nome: "Centro de Usinagem CNC", setor: "usinagem",
-    status: "operando", disponibilidade: 91, ultimaManutencao: "2025-01-05",
-    proximaManutencao: "2025-04-05", horimetro: 12450, fabricante: "Romi", modelo: "D800" },
-  { id: "2", codigo: "CNC-02", nome: "Centro de Usinagem CNC 2", setor: "usinagem",
-    status: "operando", disponibilidade: 85, ultimaManutencao: "2024-12-20",
-    proximaManutencao: "2025-03-20", horimetro: 9870, fabricante: "Romi", modelo: "D600" },
-  { id: "3", codigo: "TORNO-01", nome: "Torno CNC Paralelo", setor: "usinagem",
-    status: "manutencao", disponibilidade: 62, ultimaManutencao: "2025-01-10",
-    proximaManutencao: "2025-01-17", horimetro: 18200, fabricante: "Romi", modelo: "C420" },
-  { id: "4", codigo: "TORNO-02", nome: "Torno CNC Universal", setor: "usinagem",
-    status: "parada", disponibilidade: 40, ultimaManutencao: "2024-11-15",
-    proximaManutencao: "2025-02-15", horimetro: 22100 },
-  { id: "5", codigo: "FRESA-01", nome: "Fresadora Vertical", setor: "usinagem",
-    status: "operando", disponibilidade: 78, ultimaManutencao: "2025-01-08",
-    proximaManutencao: "2025-04-08", horimetro: 7650, fabricante: "Induma" },
-  { id: "6", codigo: "SOLD-01", nome: "Robô de Soldagem MIG", setor: "soldagem",
-    status: "setup", disponibilidade: 88, ultimaManutencao: "2025-01-12",
-    proximaManutencao: "2025-07-12", horimetro: 3200, fabricante: "Lincoln Electric" },
-];
-
-// ── Modal Nova Máquina ─────────────────────────────────────────────────────────
-
-function NovaMaquinaModal({ open, onClose, onSaved }: {
-  open: boolean; onClose: () => void; onSaved: (m: Maquina) => void;
+function MaquinaModal({ open, maquina, onClose, onSaved }: {
+  open:boolean; maquina?:Maquina; onClose:()=>void; onSaved:(m:Maquina)=>void;
 }) {
-  const [form, setForm] = useState({
-    codigo: "", nome: "", setor: "usinagem" as SetorMaquina,
-    fabricante: "", modelo: "",
-  });
+  const [form, setForm] = useState({ codigo:"", nome:"", setor:"usinagem" as SetorMaquina, fabricante:"", modelo:"", horimetro:"", ultima_manutencao:"", proxima_manutencao:"" });
+  const [saving, setSaving] = useState(false);
+  const { saveWithFallback } = useOfflineSync();
+  const isEdit = !!maquina;
+
+  useEffect(() => {
+    if (open) setForm({
+      codigo: maquina?.codigo||"", nome: maquina?.nome||"",
+      setor: maquina?.setor||"usinagem", fabricante: maquina?.fabricante||"",
+      modelo: maquina?.modelo||"", horimetro: String(maquina?.horimetro||""),
+      ultima_manutencao: maquina?.ultima_manutencao||"", proxima_manutencao: maquina?.proxima_manutencao||"",
+    });
+  }, [open, maquina]);
 
   if (!open) return null;
 
-  function save() {
+  async function save() {
     if (!form.codigo || !form.nome) { toast.error("Código e nome são obrigatórios"); return; }
-    const nova: Maquina = {
-      id: Date.now().toString(), codigo: form.codigo, nome: form.nome,
-      setor: form.setor, status: "parada", disponibilidade: 0,
-      ultimaManutencao: new Date().toISOString().split("T")[0],
-      proximaManutencao: "", horimetro: 0,
-      fabricante: form.fabricante || undefined, modelo: form.modelo || undefined,
+    setSaving(true);
+    const id = maquina?.id || crypto.randomUUID();
+    const data: Maquina = {
+      id, codigo: form.codigo.toUpperCase(), nome: form.nome,
+      setor: form.setor, status: maquina?.status||"operando",
+      disponibilidade: maquina?.disponibilidade||100,
+      fabricante: form.fabricante||undefined, modelo: form.modelo||undefined,
+      horimetro: form.horimetro ? Number(form.horimetro) : undefined,
+      ultima_manutencao: form.ultima_manutencao||undefined,
+      proxima_manutencao: form.proxima_manutencao||undefined,
     };
-    onSaved(nova);
-    toast.success("Máquina cadastrada!");
-    onClose();
+    const { data:saved, error, savedOffline } = await saveWithFallback(
+      "maquinas_producao", "maquinas", isEdit ? "UPDATE" : "INSERT", data
+    );
+    setSaving(false);
+    if (error) { toast.error("Erro ao salvar"); return; }
+    toast.success(savedOffline ? "Salvo offline" : isEdit ? "Máquina atualizada!" : "Máquina cadastrada!");
+    onSaved(saved||data); onClose();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-background border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
-          <p className="text-sm font-semibold">Nova Máquina</p>
-          <button onClick={onClose} className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-muted/40">
-            <X className="h-4 w-4 text-muted-foreground" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">{isEdit?"Editar Máquina":"Nova Máquina"}</h3>
+          <button onClick={onClose}><X className="h-4 w-4"/></button>
         </div>
-        <div className="px-5 py-4 space-y-3">
+        <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Código *</label>
-              <Input placeholder="CNC-03" value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))} className="rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Setor</label>
-              <select value={form.setor} onChange={e => setForm(f => ({ ...f, setor: e.target.value as SetorMaquina }))}
-                className="w-full h-10 rounded-xl border border-input bg-card px-3 text-sm">
-                {SETORES.map(s => <option key={s} value={s}>{SETOR_LABEL[s]}</option>)}
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Código *</label><Input value={form.codigo} onChange={e=>setForm(p=>({...p,codigo:e.target.value}))} placeholder="CNC-01"/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Setor</label>
+              <select value={form.setor} onChange={e=>setForm(p=>({...p,setor:e.target.value as SetorMaquina}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
+                {SETORES.map(s=><option key={s} value={s}>{SETOR_LABEL[s]}</option>)}
               </select>
             </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Nome / Descrição *</label>
-            <Input placeholder="Ex: Centro de Usinagem Vertical" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} className="rounded-xl" />
-          </div>
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Nome *</label><Input value={form.nome} onChange={e=>setForm(p=>({...p,nome:e.target.value}))} placeholder="Nome da máquina"/></div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Fabricante</label>
-              <Input placeholder="Ex: Romi" value={form.fabricante} onChange={e => setForm(f => ({ ...f, fabricante: e.target.value }))} className="rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Modelo</label>
-              <Input placeholder="Ex: D800" value={form.modelo} onChange={e => setForm(f => ({ ...f, modelo: e.target.value }))} className="rounded-xl" />
-            </div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Fabricante</label><Input value={form.fabricante} onChange={e=>setForm(p=>({...p,fabricante:e.target.value}))} placeholder="Ex: Romi"/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Modelo</label><Input value={form.modelo} onChange={e=>setForm(p=>({...p,modelo:e.target.value}))} placeholder="Ex: D800"/></div>
+          </div>
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Horímetro (h)</label><Input type="number" value={form.horimetro} onChange={e=>setForm(p=>({...p,horimetro:e.target.value}))} placeholder="0"/></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Última manutenção</label><Input type="date" value={form.ultima_manutencao} onChange={e=>setForm(p=>({...p,ultima_manutencao:e.target.value}))}/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Próxima manutenção</label><Input type="date" value={form.proxima_manutencao} onChange={e=>setForm(p=>({...p,proxima_manutencao:e.target.value}))}/></div>
           </div>
         </div>
-        <div className="px-5 py-4 border-t border-border/40 flex gap-3">
-          <Button variant="outline" className="flex-1 rounded-xl" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1 rounded-xl" onClick={save}>Cadastrar</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Card Máquina ──────────────────────────────────────────────────────────────
-
-function MaquinaCard({ maquina, isAdmin, onChangeStatus }: {
-  maquina: Maquina; isAdmin: boolean; onChangeStatus: (id: string, s: StatusMaquina) => void;
-}) {
-  const sc = STATUS_CFG[maquina.status];
-  const [showHistory, setShowHistory] = useState(false);
-
-  return (
-    <div className="rounded-2xl border bg-card/60 p-4 space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-sm text-primary">{maquina.codigo}</span>
-            <span className="text-[10px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-full">
-              {SETOR_LABEL[maquina.setor]}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">{maquina.nome}</p>
-        </div>
-        <div className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-medium", sc.color, sc.bg)}>
-          <sc.Icon className="h-3 w-3" />
-          {sc.label}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-        <div>
-          <p className="text-[9px] uppercase tracking-wide text-muted-foreground">Disponibilidade</p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <div className="flex-1 h-1.5 rounded-full bg-muted/40 overflow-hidden">
-              <div
-                className={cn("h-full rounded-full",
-                  maquina.disponibilidade >= 80 ? "bg-green-500" : maquina.disponibilidade >= 60 ? "bg-amber-500" : "bg-red-500"
-                )}
-                style={{ width: `${maquina.disponibilidade}%` }}
-              />
-            </div>
-            <span className="text-xs font-bold tabular-nums">{maquina.disponibilidade}%</span>
-          </div>
-        </div>
-        <div>
-          <p className="text-[9px] uppercase tracking-wide text-muted-foreground">Horímetro</p>
-          <p className="text-xs font-medium mt-0.5">{maquina.horimetro.toLocaleString("pt-BR")}h</p>
-        </div>
-        <div>
-          <p className="text-[9px] uppercase tracking-wide text-muted-foreground">Última Manutenção</p>
-          <p className="text-xs font-medium mt-0.5">{maquina.ultimaManutencao}</p>
-        </div>
-        <div>
-          <p className="text-[9px] uppercase tracking-wide text-muted-foreground">Próxima Manutenção</p>
-          <p className={cn("text-xs font-medium mt-0.5", !maquina.proximaManutencao && "text-muted-foreground/50")}>
-            {maquina.proximaManutencao || "Não agendada"}
-          </p>
-        </div>
-        {maquina.fabricante && (
-          <div className="col-span-2">
-            <p className="text-[9px] uppercase tracking-wide text-muted-foreground">Fabricante / Modelo</p>
-            <p className="text-xs font-medium mt-0.5">{maquina.fabricante}{maquina.modelo ? ` · ${maquina.modelo}` : ""}</p>
-          </div>
-        )}
-      </div>
-
-      {isAdmin && (
         <div className="flex gap-2 pt-1">
-          {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s => (
-            <button
-              key={s}
-              onClick={() => onChangeStatus(maquina.id, s)}
-              disabled={maquina.status === s}
-              className={cn(
-                "flex-1 h-7 rounded-lg text-[10px] font-medium transition-all",
-                maquina.status === s
-                  ? cn(STATUS_CFG[s].color, STATUS_CFG[s].bg, "opacity-100")
-                  : "bg-muted/30 text-muted-foreground hover:bg-muted/60"
-              )}
-            >
-              {STATUS_CFG[s].label}
-            </button>
-          ))}
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Salvar"}</Button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
-
-// ── Main ──────────────────────────────────────────────────────────────────────
 
 export function MaquinasPanel({ isAdmin }: { isAdmin: boolean }) {
-  const [maquinas, setMaquinas] = useState<Maquina[]>(MOCK_MAQUINAS);
+  const [maquinas, setMaquinas] = useState<Maquina[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filtroSetor, setFiltroSetor] = useState<string>("todos");
-  const [filtroStatus, setFiltroStatus] = useState<string>("todos");
+  const [filtroStatus, setFiltroStatus] = useState<"todos"|StatusMaquina>("todos");
   const [modalOpen, setModalOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Maquina|undefined>();
+  const { saveWithFallback, loadWithFallback } = useOfflineSync();
 
-  const filtered = maquinas.filter(m => {
-    const q = search.toLowerCase();
-    const matchSearch = m.codigo.toLowerCase().includes(q) || m.nome.toLowerCase().includes(q);
-    const matchSetor = filtroSetor === "todos" || m.setor === filtroSetor;
-    const matchStatus = filtroStatus === "todos" || m.status === filtroStatus;
-    return matchSearch && matchSetor && matchStatus;
-  });
+  const load = useCallback(async () => {
+    setLoading(true);
+    const data = await loadWithFallback<Maquina>("maquinas_producao", "maquinas");
+    setMaquinas(data.sort((a,b)=>a.codigo.localeCompare(b.codigo)));
+    setLoading(false);
+  }, [loadWithFallback]);
 
-  function changeStatus(id: string, status: StatusMaquina) {
-    setMaquinas(prev => prev.map(m => m.id === id ? { ...m, status } : m));
-    toast.success(`Status atualizado: ${STATUS_CFG[status].label}`);
+  useEffect(() => { load(); }, [load]);
+
+  async function handleStatusChange(id:string, status:StatusMaquina) {
+    const maq = maquinas.find(m=>m.id===id);
+    if (!maq) return;
+    const updated = {...maq, status};
+    const { error, savedOffline } = await saveWithFallback("maquinas_producao","maquinas","UPDATE",updated);
+    if (error) { toast.error("Erro ao atualizar status"); return; }
+    toast.success(savedOffline?"Salvo offline":"Status atualizado!");
+    setMaquinas(prev=>prev.map(m=>m.id===id?updated:m));
   }
 
-  const counts = {
-    operando: maquinas.filter(m => m.status === "operando").length,
-    parada: maquinas.filter(m => m.status === "parada").length,
-    manutencao: maquinas.filter(m => m.status === "manutencao").length,
-  };
+  async function handleDelete(id:string) {
+    if (!confirm("Remover esta máquina?")) return;
+    const { error } = await saveWithFallback("maquinas_producao","maquinas","DELETE",{id} as Maquina);
+    if (error) { toast.error("Erro ao remover"); return; }
+    setMaquinas(prev=>prev.filter(m=>m.id!==id));
+    toast.success("Máquina removida");
+  }
+
+  const filtered = maquinas.filter(m => {
+    const matchSearch = !search || [m.codigo,m.nome,m.fabricante||""].some(v=>v.toLowerCase().includes(search.toLowerCase()));
+    const matchStatus = filtroStatus==="todos" || m.status===filtroStatus;
+    return matchSearch && matchStatus;
+  });
+
+  const counts = { operando:0, parada:0, manutencao:0, setup:0 };
+  maquinas.forEach(m => counts[m.status]++);
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* Resumo */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "Operando", value: counts.operando, color: "text-green-500", bg: "bg-green-500/10", border: "border-green-500/20" },
-          { label: "Em Manutenção", value: counts.manutencao, color: "text-amber-500", bg: "bg-amber-500/10", border: "border-amber-500/20" },
-          { label: "Paradas", value: counts.parada, color: "text-red-500", bg: "bg-red-500/10", border: "border-red-500/20" },
-        ].map(item => (
-          <div key={item.label} className={cn("rounded-2xl border p-3 text-center", item.bg, item.border)}>
-            <p className={cn("text-2xl font-bold tabular-nums", item.color)}>{item.value}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{item.label}</p>
+      <div className="grid grid-cols-4 gap-2">
+        {(Object.entries(STATUS_CFG) as [StatusMaquina,typeof STATUS_CFG[StatusMaquina]][]).map(([k,cfg])=>(
+          <div key={k} className={cn("rounded-xl border p-3 text-center", cfg.bg)}>
+            <p className={cn("text-lg font-bold", cfg.color)}>{counts[k]}</p>
+            <p className="text-[10px] text-muted-foreground">{cfg.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-32">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Buscar máquina..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 rounded-xl text-sm h-9" />
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"/>
+          <Input className="pl-8 h-9 text-sm" placeholder="Buscar..." value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
-        <select value={filtroSetor} onChange={e => setFiltroSetor(e.target.value)}
-          className="h-9 rounded-xl border border-input bg-card px-3 text-sm">
-          <option value="todos">Todos os setores</option>
-          {SETORES.map(s => <option key={s} value={s}>{SETOR_LABEL[s]}</option>)}
+        <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value as typeof filtroStatus)}
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm">
+          <option value="todos">Todos</option>
+          {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
         </select>
-        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}
-          className="h-9 rounded-xl border border-input bg-card px-3 text-sm">
-          <option value="todos">Todos os status</option>
-          {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s => (
-            <option key={s} value={s}>{STATUS_CFG[s].label}</option>
-          ))}
-        </select>
-        {isAdmin && (
-          <Button size="sm" className="h-9 rounded-xl shrink-0" onClick={() => setModalOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Nova
-          </Button>
-        )}
+        {isAdmin && <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Nova</Button>}
+        <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
       </div>
 
-      {/* Grid */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {filtered.map(m => (
-          <MaquinaCard key={m.id} maquina={m} isAdmin={isAdmin} onChangeStatus={changeStatus} />
-        ))}
-        {filtered.length === 0 && (
-          <div className="col-span-2 py-12 text-center">
-            <Settings2 className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">Nenhuma máquina encontrada</p>
-          </div>
-        )}
-      </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+          <Settings2 className="h-8 w-8 opacity-30"/><p>{maquinas.length===0?"Nenhuma máquina cadastrada":"Nenhum resultado encontrado"}</p>
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {filtered.map(m => {
+            const cfg = STATUS_CFG[m.status];
+            return (
+              <div key={m.id} className={cn("rounded-2xl border p-4 space-y-3 transition-all", cfg.bg, "border-border/40")}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm">{m.codigo}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{m.nome}</p>
+                    {m.fabricante && <p className="text-[10px] text-muted-foreground">{m.fabricante}{m.modelo?` · ${m.modelo}`:""}</p>}
+                  </div>
+                  <Badge variant="outline" className={cn("text-[10px] shrink-0 gap-1", cfg.color)}>
+                    <cfg.Icon className="h-2.5 w-2.5"/>{cfg.label}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>Disponib.: <b className="text-foreground">{m.disponibilidade}%</b></span>
+                  {m.horimetro !== undefined && <span>Horímetro: <b className="text-foreground">{m.horimetro}h</b></span>}
+                  <span>{SETOR_LABEL[m.setor]}</span>
+                </div>
+                {isAdmin && (
+                  <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                    <select value={m.status} onChange={e=>handleStatusChange(m.id,e.target.value as StatusMaquina)}
+                      className="flex-1 h-7 rounded-lg border border-input bg-background px-2 text-[11px]">
+                      {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
+                    </select>
+                    <button onClick={()=>{setEditTarget(m);setModalOpen(true);}} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
+                    <button onClick={()=>handleDelete(m.id)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      <NovaMaquinaModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={m => setMaquinas(p => [m, ...p])} />
+      <MaquinaModal open={modalOpen} maquina={editTarget} onClose={()=>setModalOpen(false)}
+        onSaved={m=>{setMaquinas(prev=>editTarget?prev.map(x=>x.id===m.id?m:x):[m,...prev]);}}/>
     </div>
   );
 }

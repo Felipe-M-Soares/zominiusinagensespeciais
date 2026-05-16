@@ -1,337 +1,280 @@
 /**
  * QualidadeProducaoPanel — Controle de Refugo e Qualidade
- * Registro de defeitos, motivos, upload de fotos, controle dimensional, relatórios, índice de perdas
+ * ✓ Dados reais via Supabase (tabela refugos_producao)
+ * ✓ Fallback offline com IndexedDB
  */
 
-import { useState, useRef } from "react";
-import { Plus, X, Search, ShieldAlert, Camera, Upload, ChevronRight, Image } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, X, Search, ShieldAlert, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
-// ── Tipos ──────────────────────────────────────────────────────────────────────
-
-type TipoDefeito = "dimensional" | "superficial" | "material" | "montagem" | "outro";
-type DestinacaoRefugo = "retrabalho" | "sucata" | "devolucao";
+type TipoDefeito = "dimensional"|"superficial"|"material"|"montagem"|"outro";
+type Destinacao = "retrabalho"|"sucata"|"devolucao";
 
 interface Refugo {
-  id: string;
-  produto: string;
-  lote: string;
-  maquina: string;
-  operador: string;
-  tipoDefeito: TipoDefeito;
-  motivo: string;
-  quantidade: number;
-  destinacao: DestinacaoRefugo;
-  dataHora: Date;
-  fotos: string[]; // URLs simulados
-  medicoes?: { campo: string; nominal: number; medido: number; tolerancia: number }[];
-  observacoes?: string;
+  id: string; produto: string; lote: string; maquina: string;
+  operador: string; tipo_defeito: TipoDefeito; motivo: string;
+  quantidade: number; destinacao: Destinacao;
+  medicoes: {campo:string;nominal:number;medido:number;tolerancia:number}[];
+  observacoes?: string; user_id?: string; created_at?: string;
 }
 
-const DEFEITO_LABEL: Record<TipoDefeito, string> = {
-  dimensional: "Dimensional", superficial: "Superficial / Acabamento",
-  material: "Problema de Material", montagem: "Erro de Montagem", outro: "Outro",
+const DEFEITO_LABEL: Record<TipoDefeito,string> = {
+  dimensional:"Dimensional", superficial:"Superficial / Acabamento",
+  material:"Problema de Material", montagem:"Erro de Montagem", outro:"Outro",
 };
-
-const DESTINACAO_LABEL: Record<DestinacaoRefugo, string> = {
-  retrabalho: "Retrabalho", sucata: "Sucata", devolucao: "Devolução ao Fornec.",
+const DESTINACAO_LABEL: Record<Destinacao,string> = {
+  retrabalho:"Retrabalho", sucata:"Sucata", devolucao:"Devolução ao Fornec.",
 };
-
+const DESTINACAO_COLOR: Record<Destinacao,string> = {
+  retrabalho:"text-amber-600 bg-amber-500/10", sucata:"text-red-600 bg-red-500/10", devolucao:"text-blue-600 bg-blue-500/10",
+};
 const MOTIVOS_DEFEITO = [
-  "Fora de tolerância", "Arranhão / Risco", "Quebra de ferramenta",
-  "Material com defeito", "Setup incorreto", "Desgaste de ferramenta",
-  "Erro de medição", "Vibração / Trepidação", "Contaminação",
+  "Fora de tolerância","Arranhão / Risco","Quebra de ferramenta",
+  "Material com defeito","Setup incorreto","Desgaste de ferramenta",
+  "Erro de medição","Vibração / Trepidação","Contaminação",
 ];
+const CORES = ["#3b82f6","#ef4444","#f59e0b","#8b5cf6","#06b6d4"];
 
-const MOCK_REFUGOS: Refugo[] = [
-  { id: "1", produto: "PÇ-001 Eixo", lote: "LOT-2025-001", maquina: "CNC-01", operador: "João Silva",
-    tipoDefeito: "dimensional", motivo: "Fora de tolerância", quantidade: 3, destinacao: "retrabalho",
-    dataHora: new Date(Date.now() - 60 * 60000), fotos: [],
-    medicoes: [{ campo: "Diâmetro", nominal: 25.00, medido: 25.08, tolerancia: 0.05 }] },
-  { id: "2", produto: "PÇ-002 Flange", lote: "LOT-2025-002", maquina: "TORNO-01", operador: "Maria Santos",
-    tipoDefeito: "superficial", motivo: "Arranhão / Risco", quantidade: 2, destinacao: "sucata",
-    dataHora: new Date(Date.now() - 3 * 60 * 60000), fotos: [] },
-  { id: "3", produto: "PÇ-003 Tampa", lote: "LOT-2025-003", maquina: "CNC-02", operador: "Carlos Lima",
-    tipoDefeito: "material", motivo: "Material com defeito", quantidade: 10, destinacao: "devolucao",
-    dataHora: new Date(Date.now() - 5 * 60 * 60000), fotos: [] },
-];
-
-// ── Modal Novo Refugo ─────────────────────────────────────────────────────────
-
-function NovoRefugoModal({ open, onClose, onSaved }: {
-  open: boolean; onClose: () => void; onSaved: (r: Refugo) => void;
+function NovoRefugoModal({open,onClose,onSaved,maquinas,produtos}:{
+  open:boolean;onClose:()=>void;onSaved:(r:Refugo)=>void;maquinas:string[];produtos:string[];
 }) {
-  const [form, setForm] = useState({
-    produto: "", lote: "", maquina: "", operador: "",
-    tipoDefeito: "dimensional" as TipoDefeito, motivo: "",
-    quantidade: "", destinacao: "retrabalho" as DestinacaoRefugo, observacoes: "",
+  const {saveWithFallback}=useOfflineSync();
+  const {user}=useAuth();
+  const [form,setForm]=useState({
+    produto:"",lote:"",maquina:"",operador:"",
+    tipo_defeito:"dimensional" as TipoDefeito,motivo:"",
+    quantidade:"",destinacao:"retrabalho" as Destinacao,observacoes:"",
   });
-  const [medicoes, setMedicoes] = useState<{ campo: string; nominal: string; medido: string; tolerancia: string }[]>([]);
+  const [medicoes,setMedicoes]=useState<{campo:string;nominal:string;medido:string;tolerancia:string}[]>([]);
+  const [saving,setSaving]=useState(false);
 
-  if (!open) return null;
-
-  function addMedicao() {
-    setMedicoes(prev => [...prev, { campo: "", nominal: "", medido: "", tolerancia: "" }]);
-  }
-
-  function save() {
-    if (!form.produto || !form.maquina || !form.operador || !form.quantidade || !form.motivo) {
-      toast.error("Preencha todos os campos obrigatórios");
-      return;
+  useEffect(()=>{
+    if(open){
+      setForm({produto:"",lote:"",maquina:"",operador:"",tipo_defeito:"dimensional",motivo:"",quantidade:"",destinacao:"retrabalho",observacoes:""});
+      setMedicoes([]);
     }
-    const r: Refugo = {
-      id: Date.now().toString(),
-      produto: form.produto, lote: form.lote, maquina: form.maquina, operador: form.operador,
-      tipoDefeito: form.tipoDefeito, motivo: form.motivo,
-      quantidade: Number(form.quantidade), destinacao: form.destinacao,
-      dataHora: new Date(), fotos: [],
-      medicoes: medicoes.filter(m => m.campo).map(m => ({
-        campo: m.campo, nominal: Number(m.nominal), medido: Number(m.medido), tolerancia: Number(m.tolerancia),
+  },[open]);
+
+  if(!open) return null;
+
+  async function save() {
+    if(!form.produto||!form.maquina||!form.operador||!form.motivo||!form.quantidade){
+      toast.error("Preencha os campos obrigatórios");return;
+    }
+    setSaving(true);
+    const id=crypto.randomUUID();
+    const data:Refugo={
+      id,produto:form.produto,lote:form.lote||`LOT-${Date.now()}`,
+      maquina:form.maquina,operador:form.operador,tipo_defeito:form.tipo_defeito,
+      motivo:form.motivo,quantidade:Number(form.quantidade),destinacao:form.destinacao,
+      medicoes:medicoes.filter(m=>m.campo&&m.nominal&&m.medido).map(m=>({
+        campo:m.campo,nominal:Number(m.nominal),medido:Number(m.medido),tolerancia:Number(m.tolerancia)||0,
       })),
-      observacoes: form.observacoes || undefined,
+      observacoes:form.observacoes||undefined,user_id:user?.id,created_at:new Date().toISOString(),
     };
-    onSaved(r);
-    toast.success("Refugo registrado!");
-    onClose();
+    const {data:saved,error,savedOffline}=await saveWithFallback("refugos_producao","refugos","INSERT",data);
+    setSaving(false);
+    if(error){toast.error("Erro ao registrar refugo");return;}
+    toast.success(savedOffline?"Salvo offline":"Refugo registrado!");
+    onSaved(saved||data);onClose();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-background border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-orange-500" />
-            <p className="text-sm font-semibold">Registrar Refugo</p>
-          </div>
-          <button onClick={onClose} className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-muted/40">
-            <X className="h-4 w-4 text-muted-foreground" />
-          </button>
-        </div>
-
-        <div className="px-5 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Produto *</label>
-              <Input placeholder="PÇ-001" value={form.produto} onChange={e => setForm(f => ({ ...f, produto: e.target.value }))} className="rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Lote</label>
-              <Input placeholder="LOT-001" value={form.lote} onChange={e => setForm(f => ({ ...f, lote: e.target.value }))} className="rounded-xl" />
-            </div>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Registrar Refugo</h3><button onClick={onClose}><X className="h-4 w-4"/></button></div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Produto *</label>
+            {produtos.length>0
+              ? <select value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{produtos.map(p=><option key={p} value={p}>{p}</option>)}</select>
+              : <Input value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} placeholder="Produto"/>}
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Lote</label><Input value={form.lote} onChange={e=>setForm(p=>({...p,lote:e.target.value}))} placeholder="Opcional"/></div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Máquina *</label>
-              <Input placeholder="CNC-01" value={form.maquina} onChange={e => setForm(f => ({ ...f, maquina: e.target.value }))} className="rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Operador *</label>
-              <Input placeholder="Nome" value={form.operador} onChange={e => setForm(f => ({ ...f, operador: e.target.value }))} className="rounded-xl" />
+              {maquinas.length>0
+                ? <select value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{maquinas.map(m=><option key={m} value={m}>{m}</option>)}</select>
+                : <Input value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} placeholder="Máquina"/>}
             </div>
           </div>
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Operador *</label><Input value={form.operador} onChange={e=>setForm(p=>({...p,operador:e.target.value}))} placeholder="Nome do operador"/></div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Tipo de Defeito</label>
-              <select value={form.tipoDefeito} onChange={e => setForm(f => ({ ...f, tipoDefeito: e.target.value as TipoDefeito }))}
-                className="w-full h-10 rounded-xl border border-input bg-card px-3 text-sm">
-                {(Object.keys(DEFEITO_LABEL) as TipoDefeito[]).map(k => (
-                  <option key={k} value={k}>{DEFEITO_LABEL[k]}</option>
-                ))}
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Tipo de defeito</label>
+              <select value={form.tipo_defeito} onChange={e=>setForm(p=>({...p,tipo_defeito:e.target.value as TipoDefeito}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
+                {(Object.entries(DEFEITO_LABEL)).map(([k,v])=><option key={k} value={k}>{v}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade *</label>
-              <Input type="number" min={1} placeholder="0" value={form.quantidade} onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))} className="rounded-xl" />
-            </div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade *</label><Input type="number" min="1" value={form.quantidade} onChange={e=>setForm(p=>({...p,quantidade:e.target.value}))}/></div>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Motivo *</label>
-            <select value={form.motivo} onChange={e => setForm(f => ({ ...f, motivo: e.target.value }))}
-              className="w-full h-10 rounded-xl border border-input bg-card px-3 text-sm">
-              <option value="">Selecione o motivo</option>
-              {MOTIVOS_DEFEITO.map(m => <option key={m} value={m}>{m}</option>)}
+            <select value={form.motivo} onChange={e=>setForm(p=>({...p,motivo:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
+              <option value="">Selecione...</option>{MOTIVOS_DEFEITO.map(m=><option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Destinação</label>
-            <select value={form.destinacao} onChange={e => setForm(f => ({ ...f, destinacao: e.target.value as DestinacaoRefugo }))}
-              className="w-full h-10 rounded-xl border border-input bg-card px-3 text-sm">
-              {(Object.keys(DESTINACAO_LABEL) as DestinacaoRefugo[]).map(k => (
-                <option key={k} value={k}>{DESTINACAO_LABEL[k]}</option>
+            <div className="flex gap-2">
+              {(["retrabalho","sucata","devolucao"] as Destinacao[]).map(d=>(
+                <button key={d} onClick={()=>setForm(p=>({...p,destinacao:d}))}
+                  className={cn("flex-1 h-9 rounded-lg border text-xs font-medium transition-colors",
+                    form.destinacao===d?"border-primary bg-primary/10 text-primary":"border-input hover:bg-muted/30")}>
+                  {DESTINACAO_LABEL[d]}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
-
-          {/* Medições dimensionais */}
+          {/* Medições */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-muted-foreground">Medições Dimensionais</p>
-              <button onClick={addMedicao} className="text-[11px] text-primary hover:underline">+ Adicionar</button>
+              <label className="text-xs font-medium text-muted-foreground">Medições dimensionais</label>
+              <button onClick={()=>setMedicoes(p=>[...p,{campo:"",nominal:"",medido:"",tolerancia:""}])} className="text-[11px] text-primary hover:underline">+ Adicionar</button>
             </div>
-            {medicoes.map((m, i) => (
-              <div key={i} className="grid grid-cols-4 gap-2 mb-2">
-                {[
-                  { key: "campo", ph: "Campo" },
-                  { key: "nominal", ph: "Nominal" },
-                  { key: "medido", ph: "Medido" },
-                  { key: "tolerancia", ph: "Tol." },
-                ].map(f => (
-                  <Input key={f.key} placeholder={f.ph} value={(m as Record<string, string>)[f.key]}
-                    onChange={e => setMedicoes(prev => prev.map((x, j) => j === i ? { ...x, [f.key]: e.target.value } : x))}
-                    className="rounded-xl text-xs h-8"
-                  />
-                ))}
+            {medicoes.map((m,i)=>(
+              <div key={i} className="grid grid-cols-4 gap-1 mb-2">
+                <Input placeholder="Campo" value={m.campo} onChange={e=>{const n=[...medicoes];n[i]={...n[i],campo:e.target.value};setMedicoes(n);}} className="text-[11px] h-8"/>
+                <Input placeholder="Nominal" type="number" value={m.nominal} onChange={e=>{const n=[...medicoes];n[i]={...n[i],nominal:e.target.value};setMedicoes(n);}} className="text-[11px] h-8"/>
+                <Input placeholder="Medido" type="number" value={m.medido} onChange={e=>{const n=[...medicoes];n[i]={...n[i],medido:e.target.value};setMedicoes(n);}} className="text-[11px] h-8"/>
+                <button onClick={()=>setMedicoes(p=>p.filter((_,j)=>j!==i))} className="h-8 text-destructive hover:bg-destructive/10 rounded-lg"><X className="h-3 w-3 mx-auto"/></button>
               </div>
             ))}
           </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Observações</label>
-            <Input placeholder="Observações adicionais..." value={form.observacoes} onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))} className="rounded-xl" />
-          </div>
-
-          {/* Foto placeholder */}
-          <div className="rounded-xl border-2 border-dashed border-border/60 p-4 text-center">
-            <Camera className="h-6 w-6 text-muted-foreground/40 mx-auto mb-1" />
-            <p className="text-[11px] text-muted-foreground">Toque para adicionar foto (em breve)</p>
-          </div>
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Observações</label><Input value={form.observacoes} onChange={e=>setForm(p=>({...p,observacoes:e.target.value}))} placeholder="Opcional"/></div>
         </div>
-
-        <div className="px-5 py-4 border-t border-border/40 flex gap-3">
-          <Button variant="outline" className="flex-1 rounded-xl" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1 rounded-xl bg-orange-500 hover:bg-orange-600" onClick={save}>Registrar</Button>
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Registrar"}</Button>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-
 export function QualidadeProducaoPanel() {
-  const [refugos, setRefugos] = useState<Refugo[]>(MOCK_REFUGOS);
-  const [search, setSearch] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
+  const [refugos,setRefugos]=useState<Refugo[]>([]);
+  const [maquinas,setMaquinas]=useState<string[]>([]);
+  const [produtos,setProdutos]=useState<string[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [modalOpen,setModalOpen]=useState(false);
+  const [search,setSearch]=useState("");
+  const {loadWithFallback,saveWithFallback}=useOfflineSync();
 
-  const filtered = refugos.filter(r => {
-    const q = search.toLowerCase();
-    return r.produto.toLowerCase().includes(q) || r.maquina.toLowerCase().includes(q) || r.motivo.toLowerCase().includes(q);
-  });
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const data=await loadWithFallback<Refugo>("refugos_producao","refugos");
+    setRefugos(data.sort((a,b)=>(b.created_at||"").localeCompare(a.created_at||"")));
+    if(navigator.onLine){
+      const [{data:maq},{data:prod}]=await Promise.all([
+        supabase.from("maquinas_producao").select("codigo").order("codigo"),
+        supabase.from("produtos_producao").select("codigo,descricao").eq("ativo",true).order("codigo"),
+      ]);
+      if(maq) setMaquinas(maq.map((m:{codigo:string})=>m.codigo));
+      if(prod) setProdutos(prod.map((p:{codigo:string;descricao:string})=>`${p.codigo} ${p.descricao}`));
+    }
+    setLoading(false);
+  },[loadWithFallback]);
 
-  const totalRefugo = refugos.reduce((s, r) => s + r.quantidade, 0);
-  const totalPecas = 3000; // mockado
-  const indice = ((totalRefugo / totalPecas) * 100).toFixed(2);
+  useEffect(()=>{load();},[load]);
 
-  // Dados por tipo de defeito
-  const porTipo = (Object.keys(DEFEITO_LABEL) as TipoDefeito[]).map(k => ({
-    name: DEFEITO_LABEL[k].split(" ")[0],
-    value: refugos.filter(r => r.tipoDefeito === k).reduce((s, r) => s + r.quantidade, 0),
-    color: { dimensional: "#3b82f6", superficial: "#f59e0b", material: "#ef4444", montagem: "#8b5cf6", outro: "#6b7280" }[k],
-  })).filter(d => d.value > 0);
+  async function handleDelete(id:string){
+    if(!confirm("Remover este registro?")) return;
+    await saveWithFallback("refugos_producao","refugos","DELETE",{id} as Refugo);
+    setRefugos(prev=>prev.filter(r=>r.id!==id));
+    toast.success("Registro removido");
+  }
+
+  const filtered=refugos.filter(r=>!search||[r.produto,r.lote,r.maquina,r.operador,r.motivo].some(v=>v.toLowerCase().includes(search.toLowerCase())));
+  const totalPerdas=refugos.reduce((s,r)=>s+r.quantidade,0);
+
+  // Gráfico por tipo de defeito
+  const defeitoCount:Record<string,number>={};
+  refugos.forEach(r=>{defeitoCount[DEFEITO_LABEL[r.tipo_defeito]]=(defeitoCount[DEFEITO_LABEL[r.tipo_defeito]]||0)+r.quantidade;});
+  const chartData=Object.entries(defeitoCount).map(([name,value])=>({name,value})).sort((a,b)=>b.value-a.value);
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* KPIs */}
       <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "Total Refugo", value: `${totalRefugo}pç`, color: "text-red-500", bg: "bg-red-500/10", border: "border-red-500/20" },
-          { label: "Índice de Refugo", value: `${indice}%`, color: Number(indice) < 1 ? "text-green-500" : "text-amber-500", bg: "bg-amber-500/10", border: "border-amber-500/20" },
-          { label: "Ocorrências Hoje", value: refugos.length, color: "text-primary", bg: "bg-primary/10", border: "border-primary/20" },
-        ].map(item => (
-          <div key={item.label} className={cn("rounded-2xl border p-3 text-center", item.bg, item.border)}>
-            <p className={cn("text-xl font-bold tabular-nums", item.color)}>{item.value}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{item.label}</p>
-          </div>
-        ))}
+        <div className="rounded-2xl border bg-red-500/5 border-red-500/20 p-4 text-center"><p className="text-2xl font-bold text-red-600">{totalPerdas}</p><p className="text-[11px] text-muted-foreground">Peças refugadas</p></div>
+        <div className="rounded-2xl border bg-amber-500/5 border-amber-500/20 p-4 text-center"><p className="text-2xl font-bold text-amber-600">{refugos.filter(r=>r.destinacao==="retrabalho").reduce((s,r)=>s+r.quantidade,0)}</p><p className="text-[11px] text-muted-foreground">Retrabalho</p></div>
+        <div className="rounded-2xl border bg-card/60 p-4 text-center"><p className="text-2xl font-bold">{refugos.filter(r=>r.destinacao==="sucata").reduce((s,r)=>s+r.quantidade,0)}</p><p className="text-[11px] text-muted-foreground">Sucata</p></div>
       </div>
 
-      {/* Gráfico */}
-      {porTipo.length > 0 && (
+      {chartData.length>0 && (
         <div className="rounded-2xl border bg-card/60 p-4">
-          <h3 className="text-sm font-semibold mb-3">Refugo por Tipo de Defeito</h3>
-          <div className="h-36">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={porTipo} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.5} />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]} name="Peças">
-                  {porTipo.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <p className="text-sm font-medium mb-3">Peças refugadas por tipo de defeito</p>
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart data={chartData} margin={{top:0,right:0,left:-20,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
+              <XAxis dataKey="name" tick={{fontSize:9}}/>
+              <YAxis tick={{fontSize:10}}/>
+              <Tooltip/>
+              <Bar dataKey="value" radius={[4,4,0,0]}>
+                {chartData.map((_,i)=><Cell key={i} fill={CORES[i%CORES.length]}/>)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )}
 
-      {/* Filtros e novo */}
       <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Buscar produto, máquina ou motivo..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 rounded-xl text-sm h-9" />
+        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"/><Input className="pl-8 h-9 text-sm" placeholder="Buscar refugo..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+        <Button size="sm" className="gap-1 h-9" onClick={()=>setModalOpen(true)}><Plus className="h-4 w-4"/>Registrar</Button>
+        <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
+      ) : filtered.length===0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+          <ShieldAlert className="h-8 w-8 opacity-30"/><p>{refugos.length===0?"Nenhum refugo registrado":"Nenhum resultado"}</p>
         </div>
-        <Button size="sm" className="h-9 rounded-xl bg-orange-500 hover:bg-orange-600 shrink-0" onClick={() => setModalOpen(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Registrar
-        </Button>
-      </div>
-
-      {/* Lista */}
-      <div className="space-y-3">
-        {filtered.map(r => (
-          <div key={r.id} className="rounded-2xl border bg-card/60 p-4 space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="font-semibold text-sm">{r.produto}</p>
-                <p className="text-[11px] text-muted-foreground">Lote: {r.lote || "–"} · {r.maquina} · {r.operador}</p>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(r=>(
+            <div key={r.id} className="rounded-2xl border bg-card/60 p-4 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm truncate">{r.produto}</p>
+                  <p className="text-[11px] text-muted-foreground">{r.maquina} · {r.operador}</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-medium",DESTINACAO_COLOR[r.destinacao])}>{DESTINACAO_LABEL[r.destinacao]}</span>
+                  <button onClick={()=>handleDelete(r.id)} className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3 w-3"/></button>
+                </div>
               </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="text-red-500 font-bold text-lg tabular-nums">{r.quantidade}pç</span>
-                <span className="text-[10px] text-muted-foreground">{r.dataHora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">{DEFEITO_LABEL[r.tipo_defeito]} · {r.motivo}</span>
+                <span className="font-semibold text-red-600">{r.quantidade} pç</span>
               </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-500 font-medium">
-                {DEFEITO_LABEL[r.tipoDefeito]}
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted/40 text-muted-foreground">
-                {r.motivo}
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500">
-                {DESTINACAO_LABEL[r.destinacao]}
-              </span>
-            </div>
-            {r.medicoes && r.medicoes.length > 0 && (
-              <div className="rounded-xl bg-muted/20 p-3 space-y-1.5">
-                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Medições</p>
-                {r.medicoes.map((m, i) => {
-                  const fora = Math.abs(m.medido - m.nominal) > m.tolerancia;
-                  return (
-                    <div key={i} className="flex items-center justify-between text-[11px]">
-                      <span className="font-medium">{m.campo}</span>
-                      <span className={cn("tabular-nums font-mono", fora ? "text-red-500" : "text-green-500")}>
-                        {m.medido.toFixed(2)} <span className="text-muted-foreground">(±{m.tolerancia})</span>
-                      </span>
+              {r.medicoes&&r.medicoes.length>0 && (
+                <div className="bg-muted/30 rounded-lg p-2 space-y-1">
+                  {r.medicoes.map((m,i)=>(
+                    <div key={i} className="flex items-center justify-between text-[10px]">
+                      <span className="text-muted-foreground">{m.campo}</span>
+                      <span>Nom: {m.nominal} · Med: <b className={Math.abs(m.medido-m.nominal)>m.tolerancia?"text-red-500":"text-green-500"}>{m.medido}</b> · Tol: ±{m.tolerancia}</span>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
-        {filtered.length === 0 && (
-          <div className="py-12 text-center">
-            <ShieldAlert className="h-8 w-8 text-green-500/40 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">Nenhum refugo registrado</p>
-          </div>
-        )}
-      </div>
+                  ))}
+                </div>
+              )}
+              {r.observacoes && <p className="text-[11px] text-muted-foreground italic">{r.observacoes}</p>}
+              <p className="text-[10px] text-muted-foreground">{r.created_at?new Date(r.created_at).toLocaleString("pt-BR"):""}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
-      <NovoRefugoModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={r => setRefugos(p => [r, ...p])} />
+      <NovoRefugoModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={r=>setRefugos(prev=>[r,...prev])} maquinas={maquinas} produtos={produtos}/>
     </div>
   );
 }

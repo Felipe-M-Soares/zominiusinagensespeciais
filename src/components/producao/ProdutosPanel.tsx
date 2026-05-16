@@ -1,297 +1,205 @@
 /**
  * ProdutosPanel — Cadastro de Produtos
- * Código, descrição, tempo de ciclo, pç/hora, material, lead time, controle dimensional
+ * ✓ Dados reais via Supabase (tabela produtos_producao)
+ * ✓ Fallback offline com IndexedDB
  */
 
-import { useState } from "react";
-import { Plus, X, Search, Package, Edit2, Trash2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, X, Search, Package, Edit2, Trash2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
 
-// ── Tipos ──────────────────────────────────────────────────────────────────────
-
-type TipoMaterial = "aco_inox" | "aco_carbono" | "aluminio" | "latao" | "polimero" | "outro";
+type TipoMaterial = "aco_inox"|"aco_carbono"|"aluminio"|"latao"|"polimero"|"outro";
 
 interface Produto {
-  id: string;
-  codigo: string;
-  descricao: string;
-  tempoCiclo: number; // segundos por peça
-  pecasPorHora: number;
-  tipoMaterial: TipoMaterial;
-  leadTime: number; // dias
-  dimensoes: { comprimento?: number; largura?: number; altura?: number; diametro?: number };
-  peso?: number; // gramas
-  ativo: boolean;
+  id: string; codigo: string; descricao: string;
+  tempo_ciclo_seg: number; pecas_por_hora: number;
+  tipo_material: TipoMaterial; lead_time_dias: number;
+  dim_comprimento?: number; dim_largura?: number;
+  dim_altura?: number; dim_diametro?: number;
+  peso_gramas?: number; ativo: boolean;
+  created_at?: string; updated_at?: string;
 }
 
-const MATERIAL_LABEL: Record<TipoMaterial, string> = {
-  aco_inox: "Aço Inox", aco_carbono: "Aço Carbono", aluminio: "Alumínio",
-  latao: "Latão", polimero: "Polímero", outro: "Outro",
+const MATERIAL_LABEL: Record<TipoMaterial,string> = {
+  aco_inox:"Aço Inox", aco_carbono:"Aço Carbono", aluminio:"Alumínio",
+  latao:"Latão", polimero:"Polímero", outro:"Outro",
 };
 
-const MOCK_PRODUTOS: Produto[] = [
-  { id: "1", codigo: "PÇ-001", descricao: "Eixo Principal 25mm", tempoCiclo: 180, pecasPorHora: 20,
-    tipoMaterial: "aco_inox", leadTime: 3, dimensoes: { diametro: 25, comprimento: 200 }, peso: 850, ativo: true },
-  { id: "2", codigo: "PÇ-002", descricao: "Flange de Fixação", tempoCiclo: 240, pecasPorHora: 15,
-    tipoMaterial: "aco_carbono", leadTime: 5, dimensoes: { comprimento: 120, largura: 120, altura: 25 }, peso: 1200, ativo: true },
-  { id: "3", codigo: "PÇ-003", descricao: "Tampa Vedante", tempoCiclo: 90, pecasPorHora: 40,
-    tipoMaterial: "aluminio", leadTime: 2, dimensoes: { diametro: 80, altura: 15 }, peso: 120, ativo: true },
-  { id: "4", codigo: "PÇ-004", descricao: "Bucha de Bronze", tempoCiclo: 120, pecasPorHora: 30,
-    tipoMaterial: "latao", leadTime: 4, dimensoes: { diametro: 40, comprimento: 60 }, peso: 380, ativo: false },
-];
-
-// ── Modal Produto ─────────────────────────────────────────────────────────────
-
 function ProdutoModal({ open, produto, onClose, onSaved }: {
-  open: boolean; produto?: Produto; onClose: () => void; onSaved: (p: Produto) => void;
+  open:boolean; produto?:Produto; onClose:()=>void; onSaved:(p:Produto)=>void;
 }) {
+  const { saveWithFallback } = useOfflineSync();
+  const isEdit = !!produto;
   const [form, setForm] = useState({
-    codigo: produto?.codigo || "",
-    descricao: produto?.descricao || "",
-    tempoCiclo: String(produto?.tempoCiclo || ""),
-    pecasPorHora: String(produto?.pecasPorHora || ""),
-    tipoMaterial: produto?.tipoMaterial || "aco_carbono" as TipoMaterial,
-    leadTime: String(produto?.leadTime || ""),
-    comprimento: String(produto?.dimensoes?.comprimento || ""),
-    largura: String(produto?.dimensoes?.largura || ""),
-    altura: String(produto?.dimensoes?.altura || ""),
-    diametro: String(produto?.dimensoes?.diametro || ""),
-    peso: String(produto?.peso || ""),
+    codigo:"", descricao:"", tempo_ciclo_seg:"", pecas_por_hora:"",
+    tipo_material:"aco_carbono" as TipoMaterial, lead_time_dias:"",
+    dim_comprimento:"", dim_largura:"", dim_altura:"", dim_diametro:"", peso_gramas:"",
   });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) setForm({
+      codigo:produto?.codigo||"", descricao:produto?.descricao||"",
+      tempo_ciclo_seg:String(produto?.tempo_ciclo_seg||""), pecas_por_hora:String(produto?.pecas_por_hora||""),
+      tipo_material:produto?.tipo_material||"aco_carbono", lead_time_dias:String(produto?.lead_time_dias||""),
+      dim_comprimento:String(produto?.dim_comprimento||""), dim_largura:String(produto?.dim_largura||""),
+      dim_altura:String(produto?.dim_altura||""), dim_diametro:String(produto?.dim_diametro||""),
+      peso_gramas:String(produto?.peso_gramas||""),
+    });
+  }, [open, produto]);
 
   if (!open) return null;
 
-  function save() {
-    if (!form.codigo || !form.descricao || !form.tempoCiclo) {
-      toast.error("Código, descrição e tempo de ciclo são obrigatórios");
-      return;
-    }
-    const p: Produto = {
-      id: produto?.id || Date.now().toString(),
-      codigo: form.codigo, descricao: form.descricao,
-      tempoCiclo: Number(form.tempoCiclo),
-      pecasPorHora: Number(form.pecasPorHora) || Math.round(3600 / Number(form.tempoCiclo)),
-      tipoMaterial: form.tipoMaterial,
-      leadTime: Number(form.leadTime) || 0,
-      dimensoes: {
-        comprimento: form.comprimento ? Number(form.comprimento) : undefined,
-        largura: form.largura ? Number(form.largura) : undefined,
-        altura: form.altura ? Number(form.altura) : undefined,
-        diametro: form.diametro ? Number(form.diametro) : undefined,
-      },
-      peso: form.peso ? Number(form.peso) : undefined,
+  async function save() {
+    if (!form.codigo || !form.descricao || !form.tempo_ciclo_seg) { toast.error("Código, descrição e tempo de ciclo são obrigatórios"); return; }
+    setSaving(true);
+    const id = produto?.id || crypto.randomUUID();
+    const tempoCiclo = Number(form.tempo_ciclo_seg);
+    const data: Produto = {
+      id, codigo: form.codigo.toUpperCase(), descricao: form.descricao,
+      tempo_ciclo_seg: tempoCiclo,
+      pecas_por_hora: Number(form.pecas_por_hora) || Math.round(3600/tempoCiclo),
+      tipo_material: form.tipo_material,
+      lead_time_dias: Number(form.lead_time_dias)||0,
+      dim_comprimento: form.dim_comprimento ? Number(form.dim_comprimento):undefined,
+      dim_largura: form.dim_largura ? Number(form.dim_largura):undefined,
+      dim_altura: form.dim_altura ? Number(form.dim_altura):undefined,
+      dim_diametro: form.dim_diametro ? Number(form.dim_diametro):undefined,
+      peso_gramas: form.peso_gramas ? Number(form.peso_gramas):undefined,
       ativo: produto?.ativo ?? true,
     };
-    onSaved(p);
-    toast.success(produto ? "Produto atualizado!" : "Produto cadastrado!");
-    onClose();
+    const { data:saved, error, savedOffline } = await saveWithFallback("produtos_producao","produtos_producao", isEdit?"UPDATE":"INSERT",data);
+    setSaving(false);
+    if (error) { toast.error("Erro ao salvar"); return; }
+    toast.success(savedOffline?"Salvo offline": isEdit?"Produto atualizado!":"Produto cadastrado!");
+    onSaved(saved||data); onClose();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-background border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
-          <p className="text-sm font-semibold">{produto ? "Editar Produto" : "Novo Produto"}</p>
-          <button onClick={onClose} className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-muted/40">
-            <X className="h-4 w-4 text-muted-foreground" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">{isEdit?"Editar Produto":"Novo Produto"}</h3>
+          <button onClick={onClose}><X className="h-4 w-4"/></button>
         </div>
-        <div className="px-5 py-4 space-y-3 max-h-[65vh] overflow-y-auto">
+        <div className="space-y-3">
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Código *</label><Input value={form.codigo} onChange={e=>setForm(p=>({...p,codigo:e.target.value}))} placeholder="PÇ-001"/></div>
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Descrição *</label><Input value={form.descricao} onChange={e=>setForm(p=>({...p,descricao:e.target.value}))} placeholder="Eixo Principal 25mm"/></div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Material</label>
+            <select value={form.tipo_material} onChange={e=>setForm(p=>({...p,tipo_material:e.target.value as TipoMaterial}))}
+              className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
+              {(Object.entries(MATERIAL_LABEL)).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Código *</label>
-              <Input placeholder="PÇ-005" value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))} className="rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Material</label>
-              <select value={form.tipoMaterial} onChange={e => setForm(f => ({ ...f, tipoMaterial: e.target.value as TipoMaterial }))}
-                className="w-full h-10 rounded-xl border border-input bg-card px-3 text-sm">
-                {(Object.keys(MATERIAL_LABEL) as TipoMaterial[]).map(m => (
-                  <option key={m} value={m}>{MATERIAL_LABEL[m]}</option>
-                ))}
-              </select>
-            </div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Tempo ciclo (s) *</label><Input type="number" value={form.tempo_ciclo_seg} onChange={e=>setForm(p=>({...p,tempo_ciclo_seg:e.target.value}))} placeholder="180"/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Peças/hora</label><Input type="number" value={form.pecas_por_hora} onChange={e=>setForm(p=>({...p,pecas_por_hora:e.target.value}))} placeholder="Auto"/></div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Descrição *</label>
-            <Input placeholder="Descrição do produto" value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} className="rounded-xl" />
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Lead time (dias)</label><Input type="number" value={form.lead_time_dias} onChange={e=>setForm(p=>({...p,lead_time_dias:e.target.value}))} placeholder="0"/></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Diâmetro (mm)</label><Input type="number" value={form.dim_diametro} onChange={e=>setForm(p=>({...p,dim_diametro:e.target.value}))}/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Comprimento (mm)</label><Input type="number" value={form.dim_comprimento} onChange={e=>setForm(p=>({...p,dim_comprimento:e.target.value}))}/></div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Ciclo (seg) *</label>
-              <Input type="number" min={1} placeholder="120" value={form.tempoCiclo} onChange={e => setForm(f => ({ ...f, tempoCiclo: e.target.value }))} className="rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Pç/Hora</label>
-              <Input type="number" min={1} placeholder="Auto" value={form.pecasPorHora} onChange={e => setForm(f => ({ ...f, pecasPorHora: e.target.value }))} className="rounded-xl" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Lead Time (d)</label>
-              <Input type="number" min={0} placeholder="3" value={form.leadTime} onChange={e => setForm(f => ({ ...f, leadTime: e.target.value }))} className="rounded-xl" />
-            </div>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-2">Controle Dimensional (mm)</p>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { key: "comprimento", label: "Comprimento" },
-                { key: "largura", label: "Largura" },
-                { key: "altura", label: "Altura / Esp." },
-                { key: "diametro", label: "Diâmetro" },
-              ].map(f => (
-                <div key={f.key}>
-                  <label className="text-[10px] text-muted-foreground mb-1 block">{f.label}</label>
-                  <Input type="number" min={0} step={0.01} placeholder="–"
-                    value={(form as Record<string, string>)[f.key]}
-                    onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                    className="rounded-xl"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Peso (g)</label>
-            <Input type="number" min={0} placeholder="0" value={form.peso} onChange={e => setForm(f => ({ ...f, peso: e.target.value }))} className="rounded-xl" />
-          </div>
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Peso (g)</label><Input type="number" value={form.peso_gramas} onChange={e=>setForm(p=>({...p,peso_gramas:e.target.value}))}/></div>
         </div>
-        <div className="px-5 py-4 border-t border-border/40 flex gap-3">
-          <Button variant="outline" className="flex-1 rounded-xl" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1 rounded-xl" onClick={save}>{produto ? "Salvar" : "Cadastrar"}</Button>
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Salvar"}</Button>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-
 export function ProdutosPanel({ isAdmin }: { isAdmin: boolean }) {
-  const [produtos, setProdutos] = useState<Produto[]>(MOCK_PRODUTOS);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filtroMaterial, setFiltroMaterial] = useState<string>("todos");
   const [modalOpen, setModalOpen] = useState(false);
-  const [editando, setEditando] = useState<Produto | undefined>();
+  const [editTarget, setEditTarget] = useState<Produto|undefined>();
+  const { saveWithFallback, loadWithFallback } = useOfflineSync();
 
-  const filtered = produtos.filter(p => {
-    const q = search.toLowerCase();
-    const matchSearch = p.codigo.toLowerCase().includes(q) || p.descricao.toLowerCase().includes(q);
-    const matchMaterial = filtroMaterial === "todos" || p.tipoMaterial === filtroMaterial;
-    return matchSearch && matchMaterial;
-  });
+  const load = useCallback(async () => {
+    setLoading(true);
+    const data = await loadWithFallback<Produto>("produtos_producao","produtos_producao");
+    setProdutos(data.sort((a,b)=>a.codigo.localeCompare(b.codigo)));
+    setLoading(false);
+  },[loadWithFallback]);
 
-  function save(p: Produto) {
-    setProdutos(prev => {
-      const idx = prev.findIndex(x => x.id === p.id);
-      if (idx >= 0) { const next = [...prev]; next[idx] = p; return next; }
-      return [p, ...prev];
-    });
-    setEditando(undefined);
+  useEffect(()=>{load();},[load]);
+
+  async function handleToggleAtivo(p:Produto) {
+    const updated = {...p, ativo:!p.ativo};
+    const {error,savedOffline} = await saveWithFallback("produtos_producao","produtos_producao","UPDATE",updated);
+    if (error) { toast.error("Erro ao atualizar"); return; }
+    toast.success(savedOffline?"Salvo offline":`Produto ${updated.ativo?"ativado":"desativado"}`);
+    setProdutos(prev=>prev.map(x=>x.id===p.id?updated:x));
   }
 
-  function toggleAtivo(id: string) {
-    setProdutos(prev => prev.map(p => p.id === id ? { ...p, ativo: !p.ativo } : p));
+  async function handleDelete(id:string) {
+    if (!confirm("Remover este produto?")) return;
+    await saveWithFallback("produtos_producao","produtos_producao","DELETE",{id} as Produto);
+    setProdutos(prev=>prev.filter(p=>p.id!==id));
+    toast.success("Produto removido");
   }
+
+  const filtered = produtos.filter(p=>!search||[p.codigo,p.descricao].some(v=>v.toLowerCase().includes(search.toLowerCase())));
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* Resumo */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "Total", value: produtos.length, color: "text-primary" },
-          { label: "Ativos", value: produtos.filter(p => p.ativo).length, color: "text-green-500" },
-          { label: "Inativos", value: produtos.filter(p => !p.ativo).length, color: "text-muted-foreground" },
-        ].map(item => (
-          <div key={item.label} className="rounded-2xl border bg-card/60 p-3 text-center">
-            <p className={cn("text-2xl font-bold tabular-nums", item.color)}>{item.value}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{item.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Filtros */}
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Buscar produto..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 rounded-xl text-sm h-9" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"/>
+          <Input className="pl-8 h-9 text-sm" placeholder="Buscar produto..." value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
-        <select value={filtroMaterial} onChange={e => setFiltroMaterial(e.target.value)}
-          className="h-9 rounded-xl border border-input bg-card px-3 text-sm">
-          <option value="todos">Todos materiais</option>
-          {(Object.keys(MATERIAL_LABEL) as TipoMaterial[]).map(m => (
-            <option key={m} value={m}>{MATERIAL_LABEL[m]}</option>
-          ))}
-        </select>
-        {isAdmin && (
-          <Button size="sm" className="h-9 rounded-xl shrink-0" onClick={() => { setEditando(undefined); setModalOpen(true); }}>
-            <Plus className="h-4 w-4 mr-1" /> Novo
-          </Button>
-        )}
+        {isAdmin && <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Novo</Button>}
+        <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
       </div>
 
-      {/* Tabela */}
-      <div className="rounded-2xl border bg-card/60 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/40 bg-muted/20">
-                {["Código", "Descrição", "Material", "Ciclo", "Pç/Hora", "Lead Time", "Status", ""].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] uppercase tracking-wide text-muted-foreground font-medium whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/30">
-              {filtered.map(p => (
-                <tr key={p.id} className={cn("hover:bg-muted/20 transition-colors", !p.ativo && "opacity-50")}>
-                  <td className="px-4 py-3 font-mono text-xs font-bold text-primary">{p.codigo}</td>
-                  <td className="px-4 py-3 text-xs font-medium">{p.descricao}</td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{MATERIAL_LABEL[p.tipoMaterial]}</td>
-                  <td className="px-4 py-3 text-xs tabular-nums">{p.tempoCiclo}s</td>
-                  <td className="px-4 py-3 text-xs tabular-nums">{p.pecasPorHora}</td>
-                  <td className="px-4 py-3 text-xs tabular-nums">{p.leadTime}d</td>
-                  <td className="px-4 py-3">
-                    <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full",
-                      p.ativo ? "bg-green-500/10 text-green-500" : "bg-muted/40 text-muted-foreground")}>
-                      {p.ativo ? "Ativo" : "Inativo"}
-                    </span>
-                  </td>
-                  {isAdmin && (
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => { setEditando(p); setModalOpen(true); }}
-                          className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-muted/40 transition-colors">
-                          <Edit2 className="h-3 w-3 text-muted-foreground" />
-                        </button>
-                        <button onClick={() => toggleAtivo(p.id)}
-                          className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-muted/40 transition-colors">
-                          <Trash2 className="h-3 w-3 text-muted-foreground" />
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                  {!isAdmin && <td />}
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                    Nenhum produto encontrado
-                  </td>
-                </tr>
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+          <Package className="h-8 w-8 opacity-30"/><p>{produtos.length===0?"Nenhum produto cadastrado":"Nenhum resultado"}</p>
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {filtered.map(p=>(
+            <div key={p.id} className={cn("rounded-2xl border p-4 space-y-2 transition-all", p.ativo?"bg-card/60":"bg-muted/30 opacity-60")}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm">{p.codigo}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{p.descricao}</p>
+                  <p className="text-[10px] text-muted-foreground">{MATERIAL_LABEL[p.tipo_material]}</p>
+                </div>
+                <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-medium", p.ativo?"bg-green-500/10 text-green-600":"bg-muted text-muted-foreground")}>
+                  {p.ativo?"Ativo":"Inativo"}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1 text-[11px] text-muted-foreground">
+                <span>Ciclo: <b className="text-foreground">{p.tempo_ciclo_seg}s</b></span>
+                <span>Pç/h: <b className="text-foreground">{p.pecas_por_hora}</b></span>
+                <span>Lead: <b className="text-foreground">{p.lead_time_dias}d</b></span>
+              </div>
+              {isAdmin && (
+                <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                  <button onClick={()=>handleToggleAtivo(p)} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">{p.ativo?"Desativar":"Ativar"}</button>
+                  <div className="flex-1"/>
+                  <button onClick={()=>{setEditTarget(p);setModalOpen(true);}} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
+                  <button onClick={()=>handleDelete(p.id)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                </div>
               )}
-            </tbody>
-          </table>
+            </div>
+          ))}
         </div>
-      </div>
-
-      <ProdutoModal
-        open={modalOpen} produto={editando}
-        onClose={() => { setModalOpen(false); setEditando(undefined); }}
-        onSaved={save}
-      />
+      )}
+      <ProdutoModal open={modalOpen} produto={editTarget} onClose={()=>setModalOpen(false)}
+        onSaved={p=>{setProdutos(prev=>editTarget?prev.map(x=>x.id===p.id?p:x):[p,...prev]);}}/>
     </div>
   );
 }

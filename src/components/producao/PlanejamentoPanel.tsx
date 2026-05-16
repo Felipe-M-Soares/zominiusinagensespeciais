@@ -1,284 +1,276 @@
 /**
  * PlanejamentoPanel — Planejamento de Produção
- * Ordens de produção, planejamento por máquina, carga, turnos, previsão
+ * ✓ Dados reais via Supabase (tabela ordens_planejamento)
+ * ✓ Fallback offline com IndexedDB
  */
 
-import { useState } from "react";
-import { Plus, X, CalendarClock, Factory, Layers, ChevronDown, Search } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, X, CalendarClock, Factory, Search, RefreshCw, Edit2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
-// ── Tipos ──────────────────────────────────────────────────────────────────────
-
-type OPStatus = "planejada" | "em_producao" | "concluida" | "cancelada";
-type Prioridade = "baixa" | "normal" | "alta" | "urgente";
+type OPStatus = "planejada"|"em_producao"|"concluida"|"cancelada";
+type Prioridade = "baixa"|"normal"|"alta"|"urgente";
 
 interface OrdemPlanejamento {
-  id: string;
-  numero: string;
-  produto: string;
-  maquina: string;
-  turno: string;
-  quantidade: number;
-  dataInicio: string;
-  dataFim: string;
-  status: OPStatus;
-  prioridade: Prioridade;
-  capacidade: number; // % da capacidade
+  id: string; numero: string; produto: string; maquina: string;
+  turno: string; quantidade: number; data_inicio: string; data_fim: string;
+  status: OPStatus; prioridade: Prioridade; capacidade: number;
+  user_id?: string; created_at?: string; updated_at?: string;
 }
 
-const STATUS_CFG: Record<OPStatus, { label: string; color: string; bg: string }> = {
-  planejada:   { label: "Planejada",    color: "text-blue-500",       bg: "bg-blue-500/10" },
-  em_producao: { label: "Em Produção",  color: "text-green-500",      bg: "bg-green-500/10" },
-  concluida:   { label: "Concluída",    color: "text-primary",        bg: "bg-primary/10" },
-  cancelada:   { label: "Cancelada",    color: "text-destructive",    bg: "bg-destructive/10" },
+const STATUS_CFG: Record<OPStatus,{label:string;color:string;bg:string}> = {
+  planejada:   {label:"Planejada",   color:"text-blue-500",     bg:"bg-blue-500/10"},
+  em_producao: {label:"Em Produção", color:"text-green-500",    bg:"bg-green-500/10"},
+  concluida:   {label:"Concluída",   color:"text-primary",      bg:"bg-primary/10"},
+  cancelada:   {label:"Cancelada",   color:"text-destructive",  bg:"bg-destructive/10"},
 };
-
-const PRIO_CFG: Record<Prioridade, { label: string; color: string }> = {
-  baixa:   { label: "Baixa",   color: "text-muted-foreground" },
-  normal:  { label: "Normal",  color: "text-blue-500" },
-  alta:    { label: "Alta",    color: "text-amber-500" },
-  urgente: { label: "Urgente", color: "text-destructive" },
+const PRIO_CFG: Record<Prioridade,{label:string;color:string}> = {
+  baixa:   {label:"Baixa",   color:"text-muted-foreground"},
+  normal:  {label:"Normal",  color:"text-blue-500"},
+  alta:    {label:"Alta",    color:"text-amber-500"},
+  urgente: {label:"Urgente", color:"text-destructive"},
 };
+const TURNOS = ["1º Turno","2º Turno","3º Turno"];
 
-const MOCK_OPS: OrdemPlanejamento[] = [
-  { id: "1", numero: "OP-2025-001", produto: "PÇ-001 Eixo", maquina: "CNC-01", turno: "1º Turno",
-    quantidade: 500, dataInicio: "2025-01-15", dataFim: "2025-01-17", status: "em_producao", prioridade: "alta", capacidade: 85 },
-  { id: "2", numero: "OP-2025-002", produto: "PÇ-002 Flange", maquina: "TORNO-01", turno: "2º Turno",
-    quantidade: 300, dataInicio: "2025-01-16", dataFim: "2025-01-18", status: "planejada", prioridade: "normal", capacidade: 70 },
-  { id: "3", numero: "OP-2025-003", produto: "PÇ-003 Tampa", maquina: "CNC-02", turno: "1º Turno",
-    quantidade: 800, dataInicio: "2025-01-14", dataFim: "2025-01-16", status: "concluida", prioridade: "urgente", capacidade: 95 },
-  { id: "4", numero: "OP-2025-004", produto: "PÇ-004 Bucha", maquina: "FRESA-01", turno: "3º Turno",
-    quantidade: 200, dataInicio: "2025-01-18", dataFim: "2025-01-20", status: "planejada", prioridade: "baixa", capacidade: 45 },
-];
-
-const cargaData = [
-  { maquina: "CNC-01", carga: 85 },
-  { maquina: "CNC-02", carga: 60 },
-  { maquina: "TORNO-01", carga: 70 },
-  { maquina: "TORNO-02", carga: 30 },
-  { maquina: "FRESA-01", carga: 45 },
-];
-
-// ── Modal Nova OP ─────────────────────────────────────────────────────────────
-
-function NovaOPModal({ open, onClose, onSaved }: {
-  open: boolean; onClose: () => void; onSaved: (op: OrdemPlanejamento) => void;
+function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
+  open:boolean; op?:OrdemPlanejamento; onClose:()=>void; onSaved:(o:OrdemPlanejamento)=>void;
+  maquinas:string[]; produtos:string[];
 }) {
-  const [form, setForm] = useState({
-    produto: "", maquina: "", turno: "1º Turno", quantidade: "",
-    dataInicio: "", dataFim: "", prioridade: "normal" as Prioridade,
+  const {saveWithFallback}=useOfflineSync();
+  const {user}=useAuth();
+  const isEdit=!!op;
+  const [form,setForm]=useState({
+    produto:"",maquina:"",turno:"1º Turno",quantidade:"",
+    data_inicio:"",data_fim:"",prioridade:"normal" as Prioridade,capacidade:"70",
   });
+  const [saving,setSaving]=useState(false);
 
-  if (!open) return null;
+  useEffect(()=>{
+    if(open) setForm({
+      produto:op?.produto||"",maquina:op?.maquina||"",turno:op?.turno||"1º Turno",
+      quantidade:String(op?.quantidade||""),data_inicio:op?.data_inicio||"",data_fim:op?.data_fim||"",
+      prioridade:op?.prioridade||"normal",capacidade:String(op?.capacidade||"70"),
+    });
+  },[open,op]);
 
-  function save() {
-    if (!form.produto || !form.maquina || !form.quantidade || !form.dataInicio || !form.dataFim) {
-      toast.error("Preencha todos os campos obrigatórios");
-      return;
+  if(!open) return null;
+
+  async function save() {
+    if(!form.produto||!form.maquina||!form.quantidade||!form.data_inicio||!form.data_fim){
+      toast.error("Preencha todos os campos obrigatórios"); return;
     }
-    const nova: OrdemPlanejamento = {
-      id: Date.now().toString(),
-      numero: `OP-${Date.now()}`,
-      produto: form.produto, maquina: form.maquina, turno: form.turno,
-      quantidade: Number(form.quantidade), dataInicio: form.dataInicio, dataFim: form.dataFim,
-      status: "planejada", prioridade: form.prioridade, capacidade: Math.floor(Math.random() * 40 + 50),
+    setSaving(true);
+    const id=op?.id||crypto.randomUUID();
+    const numero=op?.numero||`OP-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+    const data:OrdemPlanejamento={
+      id,numero,produto:form.produto,maquina:form.maquina,turno:form.turno,
+      quantidade:Number(form.quantidade),data_inicio:form.data_inicio,data_fim:form.data_fim,
+      status:op?.status||"planejada",prioridade:form.prioridade,
+      capacidade:Number(form.capacidade)||70,user_id:user?.id,
     };
-    onSaved(nova);
-    toast.success("Ordem de produção criada!");
-    onClose();
+    const {data:saved,error,savedOffline}=await saveWithFallback(
+      "ordens_planejamento","ordens_planejamento",isEdit?"UPDATE":"INSERT",data
+    );
+    setSaving(false);
+    if(error){toast.error("Erro ao salvar OP");return;}
+    toast.success(savedOffline?"Salvo offline":isEdit?"OP atualizada!":"OP criada!");
+    onSaved(saved||data); onClose();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-background border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
-          <p className="text-sm font-semibold">Nova Ordem de Produção</p>
-          <button onClick={onClose} className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-muted/40">
-            <X className="h-4 w-4 text-muted-foreground" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">{isEdit?"Editar OP":"Nova Ordem de Produção"}</h3>
+          <button onClick={onClose}><X className="h-4 w-4"/></button>
         </div>
-        <div className="px-5 py-4 space-y-3 max-h-[65vh] overflow-y-auto">
-          {[
-            { label: "Produto *", key: "produto", placeholder: "Ex: PÇ-001 Eixo" },
-            { label: "Máquina *", key: "maquina", placeholder: "Ex: CNC-01" },
-            { label: "Quantidade *", key: "quantidade", placeholder: "0", type: "number" },
-          ].map(f => (
-            <div key={f.key}>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{f.label}</label>
-              <Input type={f.type || "text"} placeholder={f.placeholder}
-                value={(form as Record<string, string>)[f.key]}
-                onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                className="rounded-xl"
-              />
-            </div>
-          ))}
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Produto *</label>
+            {produtos.length>0
+              ? <select value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{produtos.map(p=><option key={p} value={p}>{p}</option>)}</select>
+              : <Input value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} placeholder="Produto"/>}
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Máquina *</label>
+            {maquinas.length>0
+              ? <select value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{maquinas.map(m=><option key={m} value={m}>{m}</option>)}</select>
+              : <Input value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} placeholder="Máquina"/>}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Turno</label>
-              <select value={form.turno} onChange={e => setForm(f => ({ ...f, turno: e.target.value }))}
-                className="w-full h-10 rounded-xl border border-input bg-card px-3 text-sm">
-                {["1º Turno", "2º Turno", "3º Turno"].map(t => <option key={t}>{t}</option>)}
+              <select value={form.turno} onChange={e=>setForm(p=>({...p,turno:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
+                {TURNOS.map(t=><option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Prioridade</label>
-              <select value={form.prioridade} onChange={e => setForm(f => ({ ...f, prioridade: e.target.value as Prioridade }))}
-                className="w-full h-10 rounded-xl border border-input bg-card px-3 text-sm">
-                {(["baixa", "normal", "alta", "urgente"] as Prioridade[]).map(p => <option key={p} value={p}>{PRIO_CFG[p].label}</option>)}
-              </select>
-            </div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade *</label><Input type="number" value={form.quantidade} onChange={e=>setForm(p=>({...p,quantidade:e.target.value}))} placeholder="0"/></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Início *</label><Input type="date" value={form.data_inicio} onChange={e=>setForm(p=>({...p,data_inicio:e.target.value}))}/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Fim *</label><Input type="date" value={form.data_fim} onChange={e=>setForm(p=>({...p,data_fim:e.target.value}))}/></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Início *</label>
-              <Input type="date" value={form.dataInicio} onChange={e => setForm(f => ({ ...f, dataInicio: e.target.value }))} className="rounded-xl" />
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Prioridade</label>
+              <select value={form.prioridade} onChange={e=>setForm(p=>({...p,prioridade:e.target.value as Prioridade}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
+                {(Object.entries(PRIO_CFG)).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+              </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Previsão Fim *</label>
-              <Input type="date" value={form.dataFim} onChange={e => setForm(f => ({ ...f, dataFim: e.target.value }))} className="rounded-xl" />
-            </div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Capacidade (%)</label><Input type="number" min="0" max="100" value={form.capacidade} onChange={e=>setForm(p=>({...p,capacidade:e.target.value}))}/></div>
           </div>
         </div>
-        <div className="px-5 py-4 border-t border-border/40 flex gap-3">
-          <Button variant="outline" className="flex-1 rounded-xl" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1 rounded-xl" onClick={save}>Criar Ordem</Button>
+        <div className="flex gap-2 pt-1">
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Salvar"}</Button>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
+  const [ops,setOps]=useState<OrdemPlanejamento[]>([]);
+  const [maquinas,setMaquinas]=useState<string[]>([]);
+  const [produtos,setProdutos]=useState<string[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [search,setSearch]=useState("");
+  const [filtroStatus,setFiltroStatus]=useState<"todos"|OPStatus>("todos");
+  const [modalOpen,setModalOpen]=useState(false);
+  const [editTarget,setEditTarget]=useState<OrdemPlanejamento|undefined>();
+  const {loadWithFallback,saveWithFallback}=useOfflineSync();
 
-export function PlanejamentoPanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
-  const [ops, setOps] = useState<OrdemPlanejamento[]>(MOCK_OPS);
-  const [search, setSearch] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState<string>("todos");
-  const [modalOpen, setModalOpen] = useState(false);
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const data=await loadWithFallback<OrdemPlanejamento>("ordens_planejamento","ordens_planejamento");
+    setOps(data.sort((a,b)=>b.data_inicio.localeCompare(a.data_inicio)));
+    if(navigator.onLine){
+      const [{data:maq},{data:prod}]=await Promise.all([
+        supabase.from("maquinas_producao").select("codigo").order("codigo"),
+        supabase.from("produtos_producao").select("codigo,descricao").eq("ativo",true).order("codigo"),
+      ]);
+      if(maq) setMaquinas(maq.map((m:{codigo:string})=>m.codigo));
+      if(prod) setProdutos(prod.map((p:{codigo:string;descricao:string})=>`${p.codigo} ${p.descricao}`));
+    }
+    setLoading(false);
+  },[loadWithFallback]);
 
-  const filtered = ops.filter(op => {
-    const q = search.toLowerCase();
-    const matchSearch = op.numero.toLowerCase().includes(q) || op.produto.toLowerCase().includes(q) || op.maquina.toLowerCase().includes(q);
-    const matchStatus = filtroStatus === "todos" || op.status === filtroStatus;
-    return matchSearch && matchStatus;
+  useEffect(()=>{load();},[load]);
+
+  async function handleStatusChange(id:string,status:OPStatus){
+    const op=ops.find(o=>o.id===id);if(!op) return;
+    const updated={...op,status};
+    const {error,savedOffline}=await saveWithFallback("ordens_planejamento","ordens_planejamento","UPDATE",updated);
+    if(error){toast.error("Erro ao atualizar status");return;}
+    toast.success(savedOffline?"Salvo offline":"Status atualizado!");
+    setOps(prev=>prev.map(o=>o.id===id?updated:o));
+  }
+
+  async function handleDelete(id:string){
+    if(!confirm("Remover esta OP?")) return;
+    await saveWithFallback("ordens_planejamento","ordens_planejamento","DELETE",{id} as OrdemPlanejamento);
+    setOps(prev=>prev.filter(o=>o.id!==id));
+    toast.success("OP removida");
+  }
+
+  const filtered=ops.filter(o=>{
+    const matchSearch=!search||[o.numero,o.produto,o.maquina].some(v=>v.toLowerCase().includes(search.toLowerCase()));
+    const matchStatus=filtroStatus==="todos"||o.status===filtroStatus;
+    return matchSearch&&matchStatus;
   });
+
+  // Dados de carga por máquina para gráfico
+  const cargaMap:Record<string,number>={};
+  ops.filter(o=>o.status==="em_producao"||o.status==="planejada").forEach(o=>{cargaMap[o.maquina]=Math.max(cargaMap[o.maquina]||0,o.capacidade);});
+  const cargaData=Object.entries(cargaMap).map(([maquina,carga])=>({maquina,carga}));
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* Carga por Máquina */}
-      <div className="rounded-2xl border bg-card/60 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Layers className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold">Distribuição de Carga por Máquina</h3>
-        </div>
-        <div className="h-40">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={cargaData} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.5} />
-              <XAxis dataKey="maquina" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} unit="%" />
-              <Tooltip
-                contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }}
-                formatter={(v) => [`${v}%`, "Carga"]}
-              />
-              <Bar dataKey="carga" radius={[6, 6, 0, 0]}
-                fill="none"
-                label={false}
-              >
-                {cargaData.map((entry, idx) => (
-                  <rect key={idx} fill={entry.carga > 80 ? "#ef4444" : entry.carga > 60 ? "#f59e0b" : "#3b82f6"} />
-                ))}
-              </Bar>
-              <Bar dataKey="carga" radius={[6, 6, 0, 0]}
-                fill="#3b82f6"
-              />
+      {cargaData.length>0 && (
+        <div className="rounded-2xl border bg-card/60 p-4">
+          <p className="text-sm font-medium mb-3">Carga por Máquina (%)</p>
+          <ResponsiveContainer width="100%" height={120}>
+            <BarChart data={cargaData} margin={{top:0,right:0,left:-20,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
+              <XAxis dataKey="maquina" tick={{fontSize:10}}/>
+              <YAxis domain={[0,100]} tick={{fontSize:10}}/>
+              <Tooltip/>
+              <Bar dataKey="carga" fill="hsl(var(--primary))" radius={[4,4,0,0]}/>
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      )}
 
-      {/* Filtros e nova OP */}
       <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Buscar ordem, produto ou máquina..."
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="pl-9 rounded-xl text-sm h-9"
-          />
-        </div>
-        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}
-          className="h-9 rounded-xl border border-input bg-card px-3 text-sm">
+        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"/><Input className="pl-8 h-9 text-sm" placeholder="Buscar OP..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+        <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value as typeof filtroStatus)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm">
           <option value="todos">Todos</option>
-          {(Object.keys(STATUS_CFG) as OPStatus[]).map(s => (
-            <option key={s} value={s}>{STATUS_CFG[s].label}</option>
-          ))}
+          {(Object.keys(STATUS_CFG) as OPStatus[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
         </select>
-        <Button size="sm" className="h-9 rounded-xl shrink-0" onClick={() => setModalOpen(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Nova OP
-        </Button>
+        <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Nova OP</Button>
+        <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
       </div>
 
-      {/* Lista de OPs */}
-      <div className="space-y-3">
-        {filtered.map(op => {
-          const sc = STATUS_CFG[op.status];
-          const pc = PRIO_CFG[op.prioridade];
-          return (
-            <div key={op.id} className="rounded-2xl border bg-card/60 p-4 space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-sm">{op.numero}</p>
-                  <p className="text-[11px] text-muted-foreground">{op.produto}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={cn("text-[10px] font-bold", pc.color)}>{pc.label}</span>
-                  <Badge className={cn("text-[10px]", sc.color, sc.bg, "border-0")}>
-                    {sc.label}
-                  </Badge>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                {[
-                  { label: "Máquina", value: op.maquina },
-                  { label: "Turno", value: op.turno },
-                  { label: "Quantidade", value: `${op.quantidade.toLocaleString("pt-BR")} pç` },
-                  { label: "Período", value: `${op.dataInicio} → ${op.dataFim}` },
-                ].map(item => (
-                  <div key={item.label}>
-                    <p className="text-[9px] text-muted-foreground uppercase tracking-wide">{item.label}</p>
-                    <p className="text-xs font-medium">{item.value}</p>
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
+      ) : filtered.length===0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+          <CalendarClock className="h-8 w-8 opacity-30"/><p>{ops.length===0?"Nenhuma ordem criada":"Nenhum resultado"}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(op=>{
+            const sc=STATUS_CFG[op.status];
+            const pc=PRIO_CFG[op.prioridade];
+            return (
+              <div key={op.id} className="rounded-2xl border bg-card/60 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm">{op.numero}</p>
+                      <span className={cn("text-[10px] font-medium",pc.color)}>{pc.label}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate">{op.produto}</p>
+                    <p className="text-[10px] text-muted-foreground">{op.maquina} · {op.turno}</p>
                   </div>
-                ))}
-              </div>
-              <div>
-                <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                  <span>Capacidade alocada</span>
-                  <span>{op.capacidade}%</span>
+                  <Badge variant="outline" className={cn("text-[10px] shrink-0",sc.color)}>{sc.label}</Badge>
                 </div>
-                <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
-                  <div
-                    className={cn("h-full rounded-full", op.capacidade > 80 ? "bg-red-500" : op.capacidade > 60 ? "bg-amber-500" : "bg-blue-500")}
-                    style={{ width: `${op.capacidade}%` }}
-                  />
+                <div className="grid grid-cols-3 gap-2 text-[11px]">
+                  <div><span className="text-muted-foreground">Qtd:</span> <b>{op.quantidade.toLocaleString("pt-BR")}</b></div>
+                  <div><span className="text-muted-foreground">Início:</span> <b>{new Date(op.data_inicio+"T00:00:00").toLocaleDateString("pt-BR")}</b></div>
+                  <div><span className="text-muted-foreground">Fim:</span> <b>{new Date(op.data_fim+"T00:00:00").toLocaleDateString("pt-BR")}</b></div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Capacidade utilizada</span><span>{op.capacidade}%</span></div>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className={cn("h-full rounded-full",op.capacidade>=90?"bg-red-500":op.capacidade>=70?"bg-amber-500":"bg-green-500")} style={{width:`${op.capacidade}%`}}/></div>
+                </div>
+                <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                  <select value={op.status} onChange={e=>handleStatusChange(op.id,e.target.value as OPStatus)}
+                    className="flex-1 h-7 rounded-lg border border-input bg-background px-2 text-[11px]">
+                    {(Object.keys(STATUS_CFG) as OPStatus[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
+                  </select>
+                  {isAdmin && <>
+                    <button onClick={()=>{setEditTarget(op);setModalOpen(true);}} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
+                    <button onClick={()=>handleDelete(op.id)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                  </>}
                 </div>
               </div>
-            </div>
-          );
-        })}
-        {filtered.length === 0 && (
-          <div className="py-12 text-center">
-            <CalendarClock className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">Nenhuma ordem encontrada</p>
-          </div>
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
-      <NovaOPModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={op => setOps(p => [op, ...p])} />
+      <OPModal open={modalOpen} op={editTarget} onClose={()=>setModalOpen(false)}
+        onSaved={o=>{setOps(prev=>editTarget?prev.map(x=>x.id===o.id?o:x):[o,...prev]);}}
+        maquinas={maquinas} produtos={produtos}/>
     </div>
   );
 }
