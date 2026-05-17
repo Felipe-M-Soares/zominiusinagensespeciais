@@ -132,7 +132,7 @@ interface PedidoCardProps {
   pedido: Pedido;
   onIniciarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao, expIdByItem: Record<string, string>) => void;
   onSalvarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao, expIdByItem: Record<string, string>) => Promise<void>;
-  onMarcarPronto: (pedido: Pedido) => void;
+  onMarcarPronto: (pedido: Pedido, lotesSelecionados: LoteSelecao, expIdByItem: Record<string, string>) => void;
   onCancelar: (pedido: Pedido) => void;
   onEditarItem: (pedido: Pedido, item: PedidoItem) => void;
   isAdmin: boolean;
@@ -700,18 +700,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
             )}
 
             {isSeparando && (
-              <button type="button"
-                onClick={() => onSalvarSeparacao(pedido, sel, expIdByItem)}
-                disabled={loadingLotes}
-                className="h-9 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
-                title="Salvar distribuição de lotes">
-                <RefreshCw className="h-3.5 w-3.5" />
-                Salvar Lotes
-              </button>
-            )}
-
-            {isSeparando && (
-              <button type="button" onClick={() => onMarcarPronto(pedido)}
+              <button type="button" onClick={() => onMarcarPronto(pedido, sel, expIdByItem)}
                 className="flex-1 h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Marcar como Pronto
@@ -1453,10 +1442,61 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     }
   }
 
-  async function handleMarcarPronto(pedido: Pedido) {
+  async function handleMarcarPronto(
+    pedido: Pedido,
+    lotesSelecionados: LoteSelecao,
+    expIdByItem: Record<string, string>
+  ) {
     if (!user) return;
     try {
-      // Use atomic RPC — deducts stock + releases reservation + marks pronto in one transaction
+      // 1. Monta snapshot de lotes_separados a partir da seleção atual
+      //    (mesma lógica do handleSalvarSeparacao — merge por expId+lote)
+      const snapshotMap = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
+      for (const item of pedido.itens) {
+        const sel = lotesSelecionados[item.id] ?? {};
+        const expStockItemId = expIdByItem[item.id] ?? item.stock_item_id;
+        for (const [lote, quantidade] of Object.entries(sel)) {
+          if (quantidade <= 0) continue;
+          const key = `${expStockItemId}||${lote}`;
+          const existing = snapshotMap.get(key);
+          if (existing) {
+            existing.quantidade += quantidade;
+          } else {
+            snapshotMap.set(key, {
+              pedido_item_id: item.ids[0],
+              stock_item_id: expStockItemId,
+              lote,
+              quantidade,
+              device_model: item.device_model,
+            });
+          }
+        }
+      }
+      const snapshot = [...snapshotMap.values()];
+
+      // 2. Salva lotes_separados ANTES do RPC para que ele use os dados corretos
+      if (snapshot.length > 0) {
+        // Salva também o lote principal em cada pedido_item
+        const updates: { id: string; lote: string | null }[] = [];
+        for (const item of pedido.itens) {
+          const sel = lotesSelecionados[item.id] ?? {};
+          const lotePrincipal = Object.entries(sel).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+          for (const itemId of item.ids) updates.push({ id: itemId, lote: lotePrincipal });
+        }
+        await Promise.all(
+          updates.map(u => supabase.from("pedido_itens").update({ lote: u.lote }).eq("id", u.id))
+        );
+        const { error: snapErr } = await supabase
+          .from("pedidos_comerciais")
+          .update({ lotes_separados: snapshot })
+          .eq("id", pedido.id);
+        if (snapErr) {
+          toast.error("Erro ao salvar distribuição de lotes antes de concluir.");
+          return;
+        }
+      }
+
+      // 3. Chama RPC — agora ele lê lotes_separados e deduz corretamente
       const { data: result, error } = await supabase.rpc("marcar_pedido_pronto", {
         p_pedido_id: pedido.id,
         p_user_name: user.email ?? "Estoque",
@@ -1467,7 +1507,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         return;
       }
 
-      toast.success("Pedido marcado como pronto! Peças retiradas da expedição.");
+      toast.success("Pedido marcado como pronto! Peças retiradas por lote da expedição.");
       loadPedidos();
     } catch (err) {
       toast.error("Erro inesperado ao marcar pedido como pronto. Tente novamente.");

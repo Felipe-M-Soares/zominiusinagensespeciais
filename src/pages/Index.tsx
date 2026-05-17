@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, Loader2, Search, SlidersHorizontal, ScanBarcode, X as XIcon } from "lucide-react";
 import { CatalogButton } from "@/components/CatalogButton";
+import { ManuaisButton } from "@/components/ManuaisButton";
 import { cn } from "@/lib/utils";
 
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -136,9 +137,12 @@ const Index = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-lg font-bold font-display text-foreground">Base ANVISA</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">Dispositivos médicos cadastrados</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Componentes médicos cadastrados</p>
           </div>
-          <CatalogButton />
+          <div className="flex items-center gap-2">
+            <ManuaisButton />
+            <CatalogButton />
+          </div>
         </div>
         <div className="flex gap-2">
           <SearchBar
@@ -230,8 +234,8 @@ const Index = () => {
       <div className="px-4 sm:px-6 py-2 bg-background/50 border-b border-border/30 shrink-0">
         <p className="text-xs text-muted-foreground">
           {loading ? "Buscando..." : devices.length === totalCount
-            ? `${totalCount.toLocaleString("pt-BR")} dispositivos`
-            : `${devices.length.toLocaleString("pt-BR")} de ${totalCount.toLocaleString("pt-BR")} dispositivos`}
+            ? `${totalCount.toLocaleString("pt-BR")} componentes`
+            : `${devices.length.toLocaleString("pt-BR")} de ${totalCount.toLocaleString("pt-BR")} componentes`}
         </p>
       </div>
 
@@ -239,7 +243,7 @@ const Index = () => {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
-            <p className="text-sm text-muted-foreground">Carregando dispositivos...</p>
+            <p className="text-sm text-muted-foreground">Carregando componentes...</p>
           </div>
         ) : error ? (
           <div className="text-center py-20 text-destructive text-sm">{error}</div>

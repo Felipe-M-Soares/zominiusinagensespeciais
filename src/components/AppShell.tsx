@@ -29,7 +29,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Dispositivos", icon: Cpu, path: "/" },
+  { label: "Componentes", icon: Cpu, path: "/" },
   { label: "Estoque", icon: Boxes, path: "/estoque" },
   { label: "Comercial", icon: ShoppingBag, path: "/comercial", roles: ["vendedora", "admin"] },
   { label: "Financeiro", icon: Receipt, path: "/financeiro", roles: ["financeiro", "admin"] },
