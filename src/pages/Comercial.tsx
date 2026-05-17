@@ -1228,7 +1228,7 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
                 <p className="text-sm font-semibold">Histórico Geral — Comercial</p>
               </div>
               <p className="text-[12px] text-muted-foreground mt-0.5">
-                Últimas {movements.length} movimentações do comercial
+                Últimas movimentações do comercial (agrupadas por pedido)
               </p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -1263,46 +1263,74 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
               Nenhuma movimentação registrada no comercial
             </div>
           )}
-          {!loading && movements.map((mv) => {
-            const { date, time } = fmtDate(mv.created_at);
-            const isEntrada = mv.type === "entrada";
-            return (
-              <div
-                key={mv.id}
-                className={cn(
-                  "flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors",
-                  isEntrada ? "bg-success/4 border-success/15" : "bg-violet-500/4 border-violet-500/15"
-                )}
-              >
-                {isEntrada
-                  ? <ArrowDownCircle className="h-4 w-4 mt-0.5 text-success shrink-0" />
-                  : <ArrowUpCircle className="h-4 w-4 mt-0.5 text-violet-500 shrink-0" />}
-                <div className="min-w-0 flex-1 space-y-0.5">
-                  <p className="text-[12px] font-semibold text-foreground leading-snug line-clamp-1">{mv.device_model}</p>
-                  <p className="text-[10px] text-muted-foreground font-mono">{mv.device_reference}</p>
-                  {mv.lote && (
-                    <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-violet-500/80">
-                      <Tag className="h-2.5 w-2.5" />Lote {mv.lote}
-                    </p>
+          {!loading && (() => {
+            // Agrupa movimentos pelo mesmo pedido (mesmo device + reason + usuário + data)
+            // para não repetir uma linha por lote — mostra só nome da peça e total
+            const grouped = new Map<string, {
+              key: string;
+              device_model: string;
+              device_reference: string;
+              type: string;
+              quantity: number;
+              user_display_name: string | null;
+              created_at: string;
+            }>();
+
+            for (const mv of movements) {
+              // Extrai cliente do reason (ex: "Pedido comercial — cliente: felipe (lote: ...)")
+              const clienteMatch = mv.reason?.match(/cliente:\s*([^(]+)/i);
+              const clienteNome = clienteMatch ? clienteMatch[1].trim() : (mv.reason ?? "");
+              const key = `${mv.device_model}||${mv.type}||${clienteNome}||${mv.user_display_name}||${mv.created_at.slice(0, 16)}`;
+              if (grouped.has(key)) {
+                grouped.get(key)!.quantity += mv.quantity;
+              } else {
+                grouped.set(key, {
+                  key,
+                  device_model: mv.device_model ?? "",
+                  device_reference: mv.device_reference ?? "",
+                  type: mv.type,
+                  quantity: mv.quantity,
+                  user_display_name: mv.user_display_name ?? null,
+                  created_at: mv.created_at,
+                });
+              }
+            }
+
+            return [...grouped.values()].map((g) => {
+              const { date, time } = fmtDate(g.created_at);
+              const isEntrada = g.type === "entrada";
+              return (
+                <div
+                  key={g.key}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors",
+                    isEntrada ? "bg-success/4 border-success/15" : "bg-violet-500/4 border-violet-500/15"
                   )}
-                  {mv.reason && <p className="text-[11px] text-muted-foreground line-clamp-1">{mv.reason}</p>}
-                  {mv.user_display_name && (
-                    <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
-                      <User className="h-2.5 w-2.5" />{mv.user_display_name}
-                    </p>
-                  )}
+                >
+                  {isEntrada
+                    ? <ArrowDownCircle className="h-4 w-4 text-success shrink-0" />
+                    : <ArrowUpCircle className="h-4 w-4 text-violet-500 shrink-0" />}
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <p className="text-[12px] font-semibold text-foreground leading-snug line-clamp-1">{g.device_model}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">{g.device_reference}</p>
+                    {g.user_display_name && (
+                      <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
+                        <User className="h-2.5 w-2.5" />{g.user_display_name}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-violet-500")}>
+                      {isEntrada ? "+" : "-"}{g.quantity}
+                      <span className="text-[10px] font-normal ml-0.5 opacity-70">un.</span>
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{date}</span>
+                    <span className="text-[10px] text-muted-foreground/60">{time}</span>
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-violet-500")}>
-                    {isEntrada ? "+" : "-"}{mv.quantity}
-                    <span className="text-[10px] font-normal ml-0.5 opacity-70">un.</span>
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">{date}</span>
-                  <span className="text-[10px] text-muted-foreground/60">{time}</span>
-                </div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
       </div>
     </div>
