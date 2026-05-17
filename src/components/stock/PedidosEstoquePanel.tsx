@@ -547,42 +547,77 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
           {!loadingLotes && (
             <div className="space-y-2">
-              {pedido.itens.map(item => {
-                const lotes = lotesDisp[item.id] ?? [];
-                const selTotal = totalSel(item.id);
-                const itemOk = selTotal === item.quantidade;
-                const showLotePicker = isPendente || isSeparando;
+              {(() => {
+                // Agrupa itens por device_model + device_reference para exibir
+                // nome e referência uma única vez, mesmo com múltiplos lotes
+                const groups = new Map<string, typeof pedido.itens>();
+                for (const item of pedido.itens) {
+                  const key = `${item.device_model}|||${item.device_reference}`;
+                  if (!groups.has(key)) groups.set(key, []);
+                  groups.get(key)!.push(item);
+                }
 
-                return (
-                  <div key={item.id} className={cn(
-                    "rounded-xl border p-3 space-y-2.5 transition-colors",
-                    lotes.length === 0 && showLotePicker
-                      ? "border-destructive/30 bg-destructive/5"
-                      : itemOk && showLotePicker
-                        ? "border-emerald-500/25 bg-emerald-500/5"
-                        : "border-border/30 bg-background/50"
-                  )}>
-                    {/* Item header */}
-                    <div className="flex items-start gap-2">
-                      <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold truncate">{item.device_model}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 text-right">
-                        <div className="flex flex-col items-end">
-                          <span className="text-[10px] text-muted-foreground/60 leading-none">pedido</span>
-                          <span className="text-[13px] font-bold">{item.quantidade} un.</span>
+                return [...groups.entries()].map(([groupKey, groupItems]) => {
+                  const firstItem = groupItems[0];
+                  const showLotePicker = isPendente || isSeparando;
+                  const groupTotalPedido = groupItems.reduce((s, i) => s + i.quantidade, 0);
+
+                  return (
+                    <div key={groupKey} className="rounded-xl border border-border/30 bg-background/50 overflow-hidden">
+                      {/* Cabeçalho do grupo — nome e referência aparecem UMA VEZ */}
+                      <div className="flex items-center gap-2 px-3 py-2 bg-muted/20 border-b border-border/20">
+                        <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-semibold truncate">{firstItem.device_model}</p>
+                          <p className="text-[10px] text-muted-foreground font-mono">{firstItem.device_reference}</p>
                         </div>
-                        {isPendente && (
+                        <div className="flex flex-col items-end shrink-0">
+                          <span className="text-[10px] text-muted-foreground/60 leading-none">pedido</span>
+                          <span className="text-[13px] font-bold">{groupTotalPedido} un.</span>
+                        </div>
+                      </div>
+
+                      {/* Lotes do grupo */}
+                      <div className="divide-y divide-border/10">
+                        {groupItems.map(item => {
+                  const lotes = lotesDisp[item.id] ?? [];
+                  const selTotal = totalSel(item.id);
+                  const itemOk = selTotal === item.quantidade;
+
+                  return (
+                    <div key={item.id} className={cn(
+                      "px-3 py-2.5 space-y-2.5 transition-colors",
+                      lotes.length === 0 && showLotePicker
+                        ? "bg-destructive/5"
+                        : itemOk && showLotePicker
+                          ? "bg-emerald-500/5"
+                          : ""
+                    )}>
+                      {/* Linha de quantidade por lote (só mostra se há múltiplos itens no grupo) */}
+                      {groupItems.length > 1 && (
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 shrink-0 ml-auto">
+                            <span className="text-[11px] text-muted-foreground/60">lote · {item.quantidade} un.</span>
+                            {isPendente && (
+                              <button type="button" title="Editar quantidade"
+                                onClick={e => { e.stopPropagation(); onEditarItem(pedido, item); }}
+                                className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Para item único no grupo, mostra botão de editar à direita do header */}
+                      {groupItems.length === 1 && isPendente && (
+                        <div className="flex justify-end -mt-1">
                           <button type="button" title="Editar quantidade"
                             onClick={e => { e.stopPropagation(); onEditarItem(pedido, item); }}
                             className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                           </button>
-                        )}
-                      </div>
-                    </div>
+                        </div>
+                      )}
 
                     {/* Lote picker (pendente or separando) */}
                     {showLotePicker && (
@@ -671,9 +706,13 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                         </div>
                       );
                     })()}
-                  </div>
-                );
-              })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+                  );
+                })}
             </div>
           )}
 
