@@ -331,8 +331,20 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const hasSel = Object.keys(sel).length > 0;
     const hasSep = (pedido.lotes_separados ?? []).length > 0;
 
-    if (hasSel) {
-      // Use current screen state — most accurate
+    if (hasSep) {
+      // lotes_separados é sempre a fonte mais confiável — tem um entry por (stock_item, lote)
+      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
+      for (const ls of pedido.lotes_separados!) {
+        const item = pedido.itens.find(i => (expIdByItem[i.id] ?? i.stock_item_id) === ls.stock_item_id)
+          ?? pedido.itens.find(i => i.device_model === ls.device_model);
+        const key = `${ls.device_model}||${ls.lote}`;
+        const ex = rowMap.get(key);
+        if (ex) ex.quantidade += ls.quantidade;
+        else rowMap.set(key, { model: ls.device_model ?? item?.device_model, reference: item?.device_reference, lote: ls.lote, quantidade: ls.quantidade });
+      }
+      for (const row of rowMap.values()) printRows.push(row);
+    } else if (hasSel) {
+      // Seleção ativa na tela (pedido pendente ainda não iniciado)
       const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
       for (const item of pedido.itens) {
         for (const [lote, qty] of Object.entries(sel[item.id] ?? {})) {
@@ -342,17 +354,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
           if (ex) ex.quantidade += qty;
           else rowMap.set(key, { model: item.device_model, reference: item.device_reference, lote, quantidade: qty });
         }
-      }
-      for (const row of rowMap.values()) printRows.push(row);
-    } else if (hasSep) {
-      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
-      for (const ls of pedido.lotes_separados!) {
-        const item = pedido.itens.find(i => (expIdByItem[i.id] ?? i.stock_item_id) === ls.stock_item_id)
-          ?? pedido.itens.find(i => i.device_model === ls.device_model);
-        const key = `${ls.device_model}||${ls.lote}`;
-        const ex = rowMap.get(key);
-        if (ex) ex.quantidade += ls.quantidade;
-        else rowMap.set(key, { model: ls.device_model ?? item?.device_model, reference: item?.device_reference, lote: ls.lote, quantidade: ls.quantidade });
       }
       for (const row of rowMap.values()) printRows.push(row);
     } else {
