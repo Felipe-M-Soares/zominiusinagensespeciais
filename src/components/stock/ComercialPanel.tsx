@@ -1110,6 +1110,177 @@ interface ComercialPanelProps {
   expedicaoItems: StockItem[];
 }
 
+// ─── Export Excel do Mês — vendedora atual ───────────────────────────────────
+async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome: string | null, isAdmin: boolean) {
+  const now = new Date();
+  const mesAtual = now.getMonth(); // 0-based
+  const anoAtual = now.getFullYear();
+  const inicioMes = new Date(anoAtual, mesAtual, 1).toISOString();
+  const fimMes    = new Date(anoAtual, mesAtual + 1, 0, 23, 59, 59).toISOString();
+  const nomeMes   = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  let query = supabase
+    .from("pedidos_comerciais")
+    .select("*, clientes(nome)")
+    .gte("created_at", inicioMes)
+    .lte("created_at", fimMes)
+    .order("created_at", { ascending: false });
+
+  // Vendedoras vêem apenas seus pedidos; admins vêem todos mas com contexto de nome
+  if (!isAdmin && userId) {
+    query = query.eq("vendedora_id", userId);
+  }
+
+  const { data: pedidosData, error } = await query;
+  if (error || !pedidosData) { toast.error("Erro ao buscar pedidos do mês."); return; }
+
+  const pedidoIds = pedidosData.map((p: Record<string, unknown>) => p.id as string);
+
+  const { data: itensData } = await supabase
+    .from("pedido_itens")
+    .select("*, stock_items(devices(model, reference))")
+    .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"]);
+
+  const statusLabel: Record<string, string> = {
+    pendente: "Pendente",
+    faturado: "Faturado",
+    cancelado: "Cancelado",
+  };
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = vendedoraNome ?? "Sistema Comercial";
+  wb.created = now;
+
+  // ─── Aba Pedidos do Mês ──────────────────────────────────────────────────────
+  const wsPedidos = wb.addWorksheet("Pedidos do Mês");
+  const pedidosKeys = ["Pedido ID", "Cliente", "Vendedora", "Status", "Observações", "Criado em", "Faturado em"];
+  const pedidosCols = [12, 28, 20, 12, 30, 14, 14];
+  wsPedidos.columns = pedidosKeys.map((h, i) => ({ header: h, key: h, width: pedidosCols[i] }));
+
+  // Cabeçalho estilizado
+  wsPedidos.getRow(1).eachCell((cell) => {
+    cell.font      = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 10 };
+    cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4C1D95" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  });
+  wsPedidos.getRow(1).height = 18;
+  wsPedidos.views = [{ state: "frozen", ySplit: 1 }];
+
+  pedidosData.forEach((p: Record<string, unknown>, rowIdx: number) => {
+    const c = p.clientes as Record<string, unknown> | null;
+    const row = {
+      "Pedido ID":   String(p.id).slice(0, 8).toUpperCase(),
+      "Cliente":     String(c?.nome ?? "—"),
+      "Vendedora":   String(p.vendedora_nome ?? "—"),
+      "Status":      statusLabel[p.status as string] ?? String(p.status),
+      "Observações": String(p.observacoes ?? ""),
+      "Criado em":   p.created_at ? new Date(p.created_at as string).toLocaleDateString("pt-BR") : "",
+      "Faturado em": p.faturado_em ? new Date(p.faturado_em as string).toLocaleDateString("pt-BR") : "",
+    };
+    const exRow = wsPedidos.addRow(row);
+    const isEven = rowIdx % 2 === 0;
+    exRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      const key = pedidosKeys[colNumber - 1];
+      const status = row["Status"];
+      let bgArgb = isEven ? "FFF5F0FF" : "FFFFFFFF";
+      let fgArgb = "FF222222";
+      let bold   = false;
+      if (key === "Status") {
+        if (status === "Pendente")  { bgArgb = "FFFFF7E0"; fgArgb = "FFB45309"; bold = true; }
+        if (status === "Faturado")  { bgArgb = "FFEAFFEA"; fgArgb = "FF166534"; bold = true; }
+        if (status === "Cancelado") { bgArgb = "FFFFEAEA"; fgArgb = "FFCC0000"; bold = true; }
+      }
+      cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: bgArgb } };
+      cell.font      = { name: "Arial", size: 10, color: { argb: fgArgb }, bold };
+      cell.alignment = { horizontal: "left", vertical: "middle" };
+      cell.border    = { bottom: { style: "thin", color: { argb: "FFE0E0E0" } }, right: { style: "thin", color: { argb: "FFE0E0E0" } } };
+    });
+  });
+
+  // ─── Aba Itens ──────────────────────────────────────────────────────────────
+  const wsItens = wb.addWorksheet("Itens dos Pedidos");
+  const itensKeys = ["Pedido ID", "Cliente", "Modelo", "Referência", "Lote", "Quantidade", "Status Pedido"];
+  const itensCols = [12, 24, 36, 18, 14, 12, 14];
+  wsItens.columns = itensKeys.map((h, i) => ({ header: h, key: h, width: itensCols[i] }));
+  wsItens.getRow(1).eachCell((cell) => {
+    cell.font      = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 10 };
+    cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4C1D95" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  });
+  wsItens.getRow(1).height = 18;
+  wsItens.views = [{ state: "frozen", ySplit: 1 }];
+
+  (itensData ?? []).forEach((it: Record<string, unknown>, rowIdx: number) => {
+    const stockItem = it.stock_items as Record<string, unknown> | null;
+    const device    = stockItem?.devices as Record<string, unknown> | null;
+    const pedido    = pedidosData.find((p: Record<string, unknown>) => p.id === it.pedido_id) as Record<string, unknown> | undefined;
+    const cliente   = pedido?.clientes as Record<string, unknown> | null;
+    const row = {
+      "Pedido ID":     String(it.pedido_id).slice(0, 8).toUpperCase(),
+      "Cliente":       String(cliente?.nome ?? "—"),
+      "Modelo":        String(device?.model ?? "—"),
+      "Referência":    String(device?.reference ?? "—"),
+      "Lote":          String(it.lote ?? ""),
+      "Quantidade":    Number(it.quantidade ?? 0),
+      "Status Pedido": statusLabel[pedido?.status as string ?? ""] ?? String(pedido?.status ?? ""),
+    };
+    const exRow = wsItens.addRow(row);
+    const isEven = rowIdx % 2 === 0;
+    exRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      const key = itensKeys[colNumber - 1];
+      const isNum = key === "Quantidade";
+      cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: isEven ? "FFF5F0FF" : "FFFFFFFF" } };
+      cell.font      = { name: "Arial", size: 10, color: { argb: "FF222222" }, bold: isNum };
+      cell.alignment = { horizontal: isNum ? "center" : "left", vertical: "middle" };
+      cell.border    = { bottom: { style: "thin", color: { argb: "FFE0E0E0" } }, right: { style: "thin", color: { argb: "FFE0E0E0" } } };
+    });
+  });
+
+  // ─── Aba Resumo ─────────────────────────────────────────────────────────────
+  const total      = pedidosData.length;
+  const pendentes  = pedidosData.filter((p: Record<string, unknown>) => p.status === "pendente").length;
+  const faturados  = pedidosData.filter((p: Record<string, unknown>) => p.status === "faturado").length;
+  const cancelados = pedidosData.filter((p: Record<string, unknown>) => p.status === "cancelado").length;
+  const totalPecas = (itensData ?? []).reduce((s: number, i: Record<string, unknown>) => s + Number(i.quantidade ?? 0), 0);
+
+  const wsResumo = wb.addWorksheet("Resumo");
+  wsResumo.columns = [{ header: "Indicador", key: "Indicador", width: 34 }, { header: "Valor", key: "Valor", width: 22 }];
+  wsResumo.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 10 };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4C1D95" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  });
+  [
+    { Indicador: "Vendedora",          Valor: vendedoraNome ?? "—" },
+    { Indicador: "Período",            Valor: nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1) },
+    { Indicador: "Total de pedidos",   Valor: total },
+    { Indicador: "Pedidos pendentes",  Valor: pendentes },
+    { Indicador: "Pedidos faturados",  Valor: faturados },
+    { Indicador: "Pedidos cancelados", Valor: cancelados },
+    { Indicador: "Total de peças",     Valor: totalPecas },
+    { Indicador: "Data de exportação", Valor: now.toLocaleString("pt-BR") },
+  ].forEach((r, rowIdx) => {
+    const exRow = wsResumo.addRow(r);
+    exRow.eachCell({ includeEmpty: true }, (cell) => {
+      cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: rowIdx % 2 === 0 ? "FFF5F0FF" : "FFFFFFFF" } };
+      cell.font      = { name: "Arial", size: 10, color: { argb: "FF222222" } };
+      cell.alignment = { horizontal: "left", vertical: "middle" };
+      cell.border    = { bottom: { style: "thin", color: { argb: "FFE0E0E0" } } };
+    });
+  });
+
+  const mes2d = String(mesAtual + 1).padStart(2, "0");
+  const buf   = await wb.xlsx.writeBuffer();
+  const blob  = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement("a");
+  a.href      = url;
+  a.download  = `pedidos-${mes2d}-${anoAtual}${vendedoraNome ? `-${vendedoraNome.replace(/\s+/g, "_")}` : ""}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast.success(`${total} pedido${total !== 1 ? "s" : ""} de ${nomeMes} exportado${total !== 1 ? "s" : ""} com sucesso!`);
+}
+
 // ─── Export Excel Comercial ──────────────────────────────────────────────────
 async function exportExcelComercial() {
   const { data: pedidosData, error } = await supabase
@@ -1498,6 +1669,15 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
         >
           <History className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Histórico</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => exportExcelMesVendedora(user?.id, currentUserName, isAdmin)}
+          className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-all"
+          title="Exportar pedidos do mês atual em Excel"
+        >
+          <Download className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Exportar Mês</span>
         </button>
       </div>
 
