@@ -1319,15 +1319,19 @@ interface DashboardComercialProps {
 }
 
 function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: DashboardComercialProps) {
-  // Filtra apenas faturados
-  const faturados = pedidos.filter(p => p.status === "faturado");
+  // Pedidos "confirmados" = qualquer status além de pendente e cancelado
+  const CONFIRMADOS: PedidoCompleto["status"][] = ["separando", "pronto", "faturado", "enviado"];
+  const confirmados = pedidos.filter(p => CONFIRMADOS.includes(p.status));
 
-  const totalPecasFaturadas = faturados.reduce((sum, p) => sum + p.itens.reduce((s, i) => s + i.quantidade, 0), 0);
-  const totalPedidosFaturados = faturados.length;
+  // Para vendedoras: filtra apenas os próprios pedidos; admin vê todos
+  const meusPedidos = isAdmin ? confirmados : confirmados.filter(p => p.vendedora_nome === currentUserName);
 
-  // Ranking vendedoras
+  const totalPedidosConfirmados = meusPedidos.length;
+  const totalPecasConfirmadas = meusPedidos.reduce((sum, p) => sum + p.itens.reduce((s, i) => s + i.quantidade, 0), 0);
+
+  // Ranking vendedoras — admin vê todos; vendedora só vê a si mesma (não faz sentido mostrar ranking)
   const rankingVendedoras: Record<string, number> = {};
-  for (const p of faturados) {
+  for (const p of confirmados) {
     const nome = p.vendedora_nome ?? "—";
     rankingVendedoras[nome] = (rankingVendedoras[nome] ?? 0) + p.itens.reduce((s, i) => s + i.quantidade, 0);
   }
@@ -1335,9 +1339,10 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
-  // Ranking clientes
+  // Ranking clientes — vendedora vê só os seus clientes; admin vê todos
+  const pedidosParaRankingClientes = isAdmin ? confirmados : confirmados.filter(p => p.vendedora_nome === currentUserName);
   const rankingClientes: Record<string, number> = {};
-  for (const p of faturados) {
+  for (const p of pedidosParaRankingClientes) {
     rankingClientes[p.cliente_nome] = (rankingClientes[p.cliente_nome] ?? 0) + p.itens.reduce((s, i) => s + i.quantidade, 0);
   }
   const rankingClientesList = Object.entries(rankingClientes)
@@ -1346,12 +1351,14 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
 
   // PDF da vendedora atual
   function downloadPdfVendedora() {
-    const meusPedidos = faturados.filter(p => p.vendedora_nome === currentUserName);
-    if (meusPedidos.length === 0) { toast.error("Nenhum pedido faturado seu encontrado."); return; }
+    const meusPdfPedidos = isAdmin
+      ? confirmados.filter(p => p.vendedora_nome === currentUserName)
+      : meusPedidos;
+    if (meusPdfPedidos.length === 0) { toast.error("Nenhum pedido confirmado seu encontrado."); return; }
 
     // Agrupa por peça
     const pecas: Record<string, { model: string; ref: string; total: number }> = {};
-    for (const p of meusPedidos) {
+    for (const p of meusPdfPedidos) {
       for (const i of p.itens) {
         const key = i.stock_item_id;
         if (!pecas[key]) pecas[key] = { model: i.device_model ?? "—", ref: i.device_reference ?? "—", total: 0 };
@@ -1386,7 +1393,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
           ${pecasList.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.model)}</td><td>${esc(p.ref)}</td><td class="total">${p.total}</td></tr>`).join("")}
         </tbody>
       </table>
-      <p class="footer">Total de ${meusPedidos.length} pedido(s) faturado(s) &nbsp;·&nbsp; ${pecasList.reduce((s, p) => s + p.total, 0)} peças no total</p>
+      <p class="footer">Total de ${meusPdfPedidos.length} pedido(s) confirmado(s) &nbsp;·&nbsp; ${pecasList.reduce((s, p) => s + p.total, 0)} peças no total</p>
       </body></html>
     `;
     const blob = new Blob([html], { type: "text/html" });
@@ -1426,30 +1433,29 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
           </div>
           <div>
             <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Pedidos Efetuados</p>
-            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPedidosFaturados.toLocaleString("pt-BR")}</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{totalPecasFaturadas} peça(s)</p>
+            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPedidosConfirmados.toLocaleString("pt-BR")}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">confirmados pela vendedora</p>
           </div>
         </div>
-        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-start gap-3">
-          <div className="h-9 w-9 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
-            <Clock className="h-5 w-5 text-amber-500" />
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+            <Boxes className="h-5 w-5 text-emerald-500" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Pendentes</p>
-            <p className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
-              {pedidos.filter(p => p.status === "pendente").length}
-            </p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">aguardando faturamento</p>
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Total de Peças</p>
+            <p className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{totalPecasConfirmadas.toLocaleString("pt-BR")}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">nos pedidos confirmados</p>
           </div>
         </div>
       </div>
 
-      {/* Ranking Vendedoras */}
+      {/* Ranking Vendedoras — só admin vê */}
+      {isAdmin && (
       <div className="rounded-2xl border border-border/40 overflow-hidden">
         <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
           <Trophy className="h-4 w-4 text-amber-500" />
           <p className="text-sm font-semibold">Ranking de Vendedoras</p>
-          <span className="text-[11px] text-muted-foreground/60">(peças faturadas)</span>
+          <span className="text-[11px] text-muted-foreground/60">(peças em pedidos confirmados)</span>
         </div>
         {rankingVendList.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
@@ -1481,13 +1487,14 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
           </div>
         )}
       </div>
+      )}
 
       {/* Ranking Clientes */}
       <div className="rounded-2xl border border-border/40 overflow-hidden">
         <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-violet-500" />
           <p className="text-sm font-semibold">Clientes que Mais Compraram</p>
-          <span className="text-[11px] text-muted-foreground/60">(peças)</span>
+          <span className="text-[11px] text-muted-foreground/60">(peças em pedidos confirmados)</span>
         </div>
         {rankingClientesList.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
