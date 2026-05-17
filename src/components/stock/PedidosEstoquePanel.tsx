@@ -394,32 +394,29 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       grouped.get(key)!.push(row);
     }
 
-    let globalIdx = 0;
+    let rowIdx = 0;
     let tableBody = "";
     for (const [, rows] of grouped) {
+      rowIdx++;
       const first = rows[0];
       const tipoTotal = rows.reduce((s, r) => s + r.quantidade, 0);
-      // Separador de tipo
-      tableBody += `<tr class="tipo-separator">
-        <td colspan="5">
-          <div class="tipo-header">
-            <span class="tipo-name">${esc(first.model)}</span>
-            <span class="tipo-ref">${esc(first.reference)}</span>
-            <span class="tipo-total">${tipoTotal} un.</span>
-          </div>
+
+      // Lotes inline — todos os badges na mesma célula
+      const lotesBadges = rows
+        .filter(r => r.lote && !LOTE_PH.has(r.lote.toLowerCase()))
+        .map(r => `<span class="lote-badge">${esc(r.lote)}</span>`)
+        .join(" ");
+      const lotesCell = lotesBadges || `<span class="lote-empty">—</span>`;
+
+      tableBody += `<tr>
+        <td class="col-num">${rowIdx}</td>
+        <td class="col-model">
+          <span class="model-name">${esc(first.model)}</span>
+          <span class="model-ref">${esc(first.reference)}</span>
         </td>
+        <td class="col-lotes">${lotesCell}</td>
+        <td class="col-qty">${tipoTotal}</td>
       </tr>`;
-      for (const row of rows) {
-        globalIdx++;
-        const loteCell = row.lote && !LOTE_PH.has(row.lote.toLowerCase())
-          ? `<span class="lote-badge">${esc(row.lote)}</span>`
-          : `<span class="lote-empty">—</span>`;
-        tableBody += `<tr>
-          <td class="col-num">${globalIdx}</td>
-          <td class="col-lote" colspan="3">${loteCell}</td>
-          <td class="col-qty">${row.quantidade}</td>
-        </tr>`;
-      }
     }
 
     const totalPecas = printRows.reduce((s, r) => s + r.quantidade, 0);
@@ -440,20 +437,15 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     .obs { font-size: 12px; color: #666; background: #f9f5ff; border-left: 3px solid #a78bfa; padding: 8px 12px; margin-bottom: 14px; border-radius: 0 6px 6px 0; }
     table { width: 100%; border-collapse: collapse; }
     th { text-align: left; padding: 8px 10px; background: #f3f0ff; color: #5b21b6; border-bottom: 2px solid #ddd6fe; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-    td { padding: 6px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
-    .tipo-separator td { padding: 0; border-bottom: none; }
-    .tipo-header { display: flex; align-items: center; gap: 10px; background: #ede9fe; border-top: 2px solid #a78bfa; border-bottom: 1px solid #c4b5fd; padding: 7px 10px; margin-top: 8px; }
-    .tipo-name { font-weight: 700; font-size: 12px; color: #4c1d95; flex: 1; }
-    .tipo-ref { font-family: monospace; font-size: 10px; color: #6d28d9; background: #ddd6fe; padding: 2px 6px; border-radius: 4px; }
-    .tipo-total { font-weight: 700; font-size: 12px; color: #5b21b6; margin-left: auto; background: #c4b5fd; padding: 2px 8px; border-radius: 10px; }
-    .col-num { width: 32px; color: #aaa; font-size: 11px; }
-    .col-model { color: #888; font-size: 11px; }
-    .col-ref { font-family: monospace; font-size: 11px; }
-    .col-lote { text-align: center; }
-    .col-qty { text-align: center; font-weight: 700; font-size: 14px; }
-    .model-muted { color: #999; font-size: 11px; }
-    .ref-mono { color: #555; }
-    .lote-badge { display: inline-block; background: #f3f0ff; color: #5b21b6; font-family: monospace; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; border: 1px solid #ddd6fe; }
+    td { padding: 7px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    tr:nth-child(even) td { background: #faf9ff; }
+    .col-num { width: 28px; color: #bbb; font-size: 11px; }
+    .col-model { width: 38%; }
+    .col-lotes { }
+    .col-qty { width: 80px; text-align: right; font-weight: 800; font-size: 15px; color: #3b0764; white-space: nowrap; }
+    .model-name { display: block; font-weight: 600; font-size: 12px; color: #1a1a2e; }
+    .model-ref { display: block; font-family: monospace; font-size: 10px; color: #888; margin-top: 1px; }
+    .lote-badge { display: inline-block; background: #f3f0ff; color: #5b21b6; font-family: monospace; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; border: 1px solid #ddd6fe; margin: 1px 2px 1px 0; }
     .lote-empty { color: #bbb; font-size: 11px; }
     .footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #eee; display: flex; justify-content: space-between; font-size: 11px; color: #999; }
     .footer strong { color: #5b21b6; }
@@ -474,8 +466,9 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     <thead>
       <tr>
         <th class="col-num">#</th>
-        <th class="col-lote" colspan="3" style="text-align:center">Lote</th>
-        <th class="col-qty" style="text-align:center">Qtd.</th>
+        <th class="col-model">Peça</th>
+        <th class="col-lotes">Lotes</th>
+        <th class="col-qty" style="text-align:right">Qtd.</th>
       </tr>
     </thead>
     <tbody>${tableBody}</tbody>
