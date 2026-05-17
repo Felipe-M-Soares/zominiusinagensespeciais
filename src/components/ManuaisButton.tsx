@@ -12,7 +12,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -175,12 +174,25 @@ export function ManuaisButton() {
 
   return (
     <>
+      {/* Botão "+" separado para admin adicionar manual — fica ao lado do dropdown */}
+      {isAdmin && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 px-0 sm:px-0"
+          title="Adicionar manual"
+          onClick={() => setDialogOpen(true)}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      )}
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-1.5 h-9">
+          <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 gap-1 text-xs">
             <BookOpen className="h-4 w-4" />
             <span className="hidden sm:inline">Manuais</span>
-            <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            <ChevronDown className="h-3 w-3 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
 
@@ -227,19 +239,6 @@ export function ManuaisButton() {
                 )}
               </DropdownMenuItem>
             ))
-          )}
-
-          {isAdmin && (
-            <>
-              {manuals.length > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuItem
-                onSelect={(e) => { e.preventDefault(); setDialogOpen(true); }}
-                className="gap-2 cursor-pointer text-primary focus:text-primary"
-              >
-                <Plus className="h-4 w-4" />
-                Adicionar manual
-              </DropdownMenuItem>
-            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

@@ -579,140 +579,168 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
                       {/* Lotes do grupo */}
                       <div className="divide-y divide-border/10">
-                        {groupItems.map(item => {
-                  const lotes = lotesDisp[item.id] ?? [];
-                  const selTotal = totalSel(item.id);
-                  const itemOk = selTotal === item.quantidade;
+                        {groupItems.map((item) => {
+                          const lotes = lotesDisp[item.id] ?? [];
+                          const selTotal = totalSel(item.id);
+                          const itemOk = selTotal === item.quantidade;
 
-                  return (
-                    <div key={item.id} className={cn(
-                      "px-3 py-2.5 space-y-2.5 transition-colors",
-                      lotes.length === 0 && showLotePicker
-                        ? "bg-destructive/5"
-                        : itemOk && showLotePicker
-                          ? "bg-emerald-500/5"
-                          : ""
-                    )}>
-                      {/* Linha de quantidade por lote (só mostra se há múltiplos itens no grupo) */}
-                      {groupItems.length > 1 && (
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-2 shrink-0 ml-auto">
-                            <span className="text-[11px] text-muted-foreground/60">lote · {item.quantidade} un.</span>
-                            {isPendente && (
-                              <button type="button" title="Editar quantidade"
-                                onClick={e => { e.stopPropagation(); onEditarItem(pedido, item); }}
-                                className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      {/* Para item único no grupo, mostra botão de editar à direita do header */}
-                      {groupItems.length === 1 && isPendente && (
-                        <div className="flex justify-end -mt-1">
-                          <button type="button" title="Editar quantidade"
-                            onClick={e => { e.stopPropagation(); onEditarItem(pedido, item); }}
-                            className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          </button>
-                        </div>
-                      )}
-
-                    {/* Lote picker (pendente or separando) */}
-                    {showLotePicker && (
-                      lotes.length === 0 ? (
-                        <div className="flex items-center gap-1.5 text-[11px] text-destructive">
-                          <AlertTriangle className="h-3 w-3" />
-                          Sem estoque disponível na expedição
-                        </div>
-                      ) : (
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
-                              Lotes — escolha o que será enviado
-                            </p>
-                            <span className={cn("ml-auto text-[10px] font-bold",
-                              itemOk ? "text-emerald-500" : selTotal > 0 ? "text-amber-500" : "text-muted-foreground")}>
-                              {selTotal}/{item.quantidade} selecionados
-                            </span>
-                          </div>
-                          {lotes.map(l => {
-                            const isSel = !!(sel[item.id]?.[l.lote]);
-                            const qtySel = sel[item.id]?.[l.lote] ?? 0;
-                            return (
-                              <div key={l.lote} className={cn(
-                                "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
-                                isSel ? "bg-blue-500/8 border-blue-500/30" : "bg-muted/20 border-border/20"
-                              )}>
-                                <button type="button" onClick={() => toggleLote(item.id, l.lote, l.quantity)}
-                                  className={cn("h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
-                                    isSel ? "bg-blue-500 border-blue-500" : "border-muted-foreground/40")}>
-                                  {isSel && <CheckCircle2 className="h-3 w-3 text-white" />}
-                                </button>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] font-mono font-semibold">{l.lote}</p>
-                                  <p className="text-[10px] text-muted-foreground">{l.quantity} disponíveis</p>
-                                </div>
-                                {isSel && (
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button type="button"
-                                      onClick={() => setQtyLote(item.id, l.lote, qtySel - 1, l.quantity)}
-                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground">
-                                      <Minus className="h-3 w-3" />
-                                    </button>
-                                    <input type="number" min={1} max={l.quantity} value={qtySel}
-                                      onChange={e => setQtyLote(item.id, l.lote, parseInt(e.target.value) || 0, l.quantity)}
-                                      className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                                    <button type="button"
-                                      onClick={() => setQtyLote(item.id, l.lote, qtySel + 1, l.quantity)}
-                                      className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground">
-                                      <Plus className="h-3 w-3" />
-                                    </button>
+                          return (
+                            <div
+                              key={item.id}
+                              className={cn(
+                                "px-3 py-2.5 space-y-2.5 transition-colors",
+                                lotes.length === 0 && showLotePicker
+                                  ? "bg-destructive/5"
+                                  : itemOk && showLotePicker
+                                    ? "bg-emerald-500/5"
+                                    : ""
+                              )}
+                            >
+                              {/* Quantidade por lote quando há múltiplos */}
+                              {groupItems.length > 1 && (
+                                <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 shrink-0 ml-auto">
+                                    <span className="text-[11px] text-muted-foreground/60">lote · {item.quantidade} un.</span>
+                                    {isPendente && (
+                                      <button
+                                        type="button"
+                                        title="Editar quantidade"
+                                        onClick={(e) => { e.stopPropagation(); onEditarItem(pedido, item); }}
+                                        className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors"
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                      </button>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                          {!itemOk && selTotal > 0 && (
-                            <p className="text-[11px] text-amber-600 flex items-center gap-1">
-                              <AlertTriangle className="h-3 w-3" />
-                              {selTotal < item.quantidade
-                                ? `Faltam ${item.quantidade - selTotal} un.`
-                                : `Excesso de ${selTotal - item.quantidade} un.`}
-                            </p>
-                          )}
-                        </div>
-                      )
-                    )}
+                                </div>
+                              )}
 
-                    {/* Pronto: show chosen lotes */}
-                    {pedido.status === "pronto" && (() => {
-                      const entries = (pedido.lotes_separados ?? [])
-                        .filter(ls => ls.stock_item_id === (expIdByItem[item.id] ?? item.stock_item_id)
-                          || ls.device_model === item.device_model);
-                      if (entries.length === 0) return null;
-                      const agg: Record<string, number> = {};
-                      for (const ls of entries) agg[ls.lote] = (agg[ls.lote] ?? 0) + ls.quantidade;
-                      return (
-                        <div className="flex flex-wrap gap-1.5 pt-0.5">
-                          {Object.entries(agg).filter(([lote]) => displayLote(lote)).map(([lote, qty]) => (
-                            <div key={lote} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
-                              <Tag className="h-2.5 w-2.5 text-emerald-500/70 shrink-0" />
-                              <span className="text-[11px] font-mono font-bold text-emerald-600 tracking-wider">{lote}</span>
-                              <span className="text-[10px] text-emerald-500/70">{qty} un.</span>
+                              {/* Para item único no grupo, mostra botão de editar */}
+                              {groupItems.length === 1 && isPendente && (
+                                <div className="flex justify-end -mt-1">
+                                  <button
+                                    type="button"
+                                    title="Editar quantidade"
+                                    onClick={(e) => { e.stopPropagation(); onEditarItem(pedido, item); }}
+                                    className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Lote picker (pendente or separando) */}
+                              {showLotePicker && (
+                                lotes.length === 0 ? (
+                                  <div className="flex items-center gap-1.5 text-[11px] text-destructive">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Sem estoque disponível na expedição
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
+                                        Lotes — escolha o que será enviado
+                                      </p>
+                                      <span className={cn("ml-auto text-[10px] font-bold",
+                                        itemOk ? "text-emerald-500" : selTotal > 0 ? "text-amber-500" : "text-muted-foreground")}>
+                                        {selTotal}/{item.quantidade} selecionados
+                                      </span>
+                                    </div>
+                                    {lotes.map((l) => {
+                                      const isSel = !!(sel[item.id]?.[l.lote]);
+                                      const qtySel = sel[item.id]?.[l.lote] ?? 0;
+                                      return (
+                                        <div
+                                          key={l.lote}
+                                          className={cn(
+                                            "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
+                                            isSel ? "bg-blue-500/8 border-blue-500/30" : "bg-muted/20 border-border/20"
+                                          )}
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleLote(item.id, l.lote, l.quantity)}
+                                            className={cn("h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
+                                              isSel ? "bg-blue-500 border-blue-500" : "border-muted-foreground/40")}
+                                          >
+                                            {isSel && <CheckCircle2 className="h-3 w-3 text-white" />}
+                                          </button>
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-[11px] font-mono font-semibold">{l.lote}</p>
+                                            <p className="text-[10px] text-muted-foreground">{l.quantity} disponíveis</p>
+                                          </div>
+                                          {isSel && (
+                                            <div className="flex items-center gap-1 shrink-0">
+                                              <button
+                                                type="button"
+                                                onClick={() => setQtyLote(item.id, l.lote, qtySel - 1, l.quantity)}
+                                                className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground"
+                                              >
+                                                <Minus className="h-3 w-3" />
+                                              </button>
+                                              <input
+                                                type="number"
+                                                min={1}
+                                                max={l.quantity}
+                                                value={qtySel}
+                                                onChange={(e) => setQtyLote(item.id, l.lote, parseInt(e.target.value) || 0, l.quantity)}
+                                                className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => setQtyLote(item.id, l.lote, qtySel + 1, l.quantity)}
+                                                className="h-6 w-6 rounded bg-muted/40 hover:bg-muted flex items-center justify-center text-muted-foreground"
+                                              >
+                                                <Plus className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    {!itemOk && selTotal > 0 && (
+                                      <p className="text-[11px] text-amber-600 flex items-center gap-1">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        {selTotal < item.quantidade
+                                          ? `Faltam ${item.quantidade - selTotal} un.`
+                                          : `Excesso de ${selTotal - item.quantidade} un.`}
+                                      </p>
+                                    )}
+                                  </div>
+                                )
+                              )}
+
+                              {/* Pronto: exibe lotes escolhidos */}
+                              {pedido.status === "pronto" && (() => {
+                                const entries = (pedido.lotes_separados ?? [])
+                                  .filter((ls) =>
+                                    ls.stock_item_id === (expIdByItem[item.id] ?? item.stock_item_id) ||
+                                    ls.device_model === item.device_model
+                                  );
+                                if (entries.length === 0) return null;
+                                const agg: Record<string, number> = {};
+                                for (const ls of entries) agg[ls.lote] = (agg[ls.lote] ?? 0) + ls.quantidade;
+                                return (
+                                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                    {Object.entries(agg).filter(([lote]) => displayLote(lote)).map(([lote, qty]) => (
+                                      <div key={lote} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
+                                        <Tag className="h-2.5 w-2.5 text-emerald-500/70 shrink-0" />
+                                        <span className="text-[11px] font-mono font-bold text-emerald-600 tracking-wider">{lote}</span>
+                                        <span className="text-[10px] text-emerald-500/70">{qty} un.</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
-              </div>
-            </div>
-                  );
-                })}
+              })()}
             </div>
           )}
 
