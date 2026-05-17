@@ -126,6 +126,7 @@ export function StockListModal({ open, onClose, items }: Props) {
 
           {available.map((item) => {
             const isLow = item.quantity <= item.min_quantity;
+            const isRetrabalho = item.fase === "retrabalho";
             return (
               <div
                 key={item.id}
@@ -134,20 +135,31 @@ export function StockListModal({ open, onClose, items }: Props) {
                 {/* Indicador de status */}
                 {isLow
                   ? <TrendingDown className="h-3.5 w-3.5 text-warning shrink-0" />
-                  : <CheckCircle2  className="h-3.5 w-3.5 text-success shrink-0" />}
+                  : <CheckCircle2  className={cn("h-3.5 w-3.5 shrink-0", isRetrabalho ? "text-orange-400" : "text-success")} />}
 
                 {/* Info da peça */}
                 <div className="min-w-0 flex-1">
                   <p className="text-[12px] font-medium text-foreground leading-snug line-clamp-1">
                     {item.device.model}
                   </p>
-                  <p className="text-[10px] text-muted-foreground font-mono">{item.device.reference}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[10px] text-muted-foreground font-mono">{item.device.reference}</p>
+                    {isRetrabalho && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-orange-500 bg-orange-500/10 px-1 py-0.5 rounded">
+                        retrabalho
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Quantidade */}
                 <div className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-bold tabular-nums shrink-0",
-                  isLow ? "bg-warning/10 text-warning" : "bg-success/10 text-success"
+                  isLow
+                    ? "bg-warning/10 text-warning"
+                    : isRetrabalho
+                      ? "bg-orange-500/10 text-orange-500"
+                      : "bg-success/10 text-success"
                 )}>
                   <Package className="h-3 w-3" />
                   {item.quantity}
