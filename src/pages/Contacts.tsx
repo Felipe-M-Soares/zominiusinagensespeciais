@@ -138,7 +138,7 @@ export default function Contacts() {
     const digits = phone.replace(/\D/g, "");
     const normalized = !digits.startsWith("55") && digits.length <= 11 ? "55" + digits : digits;
     if (!/^\d{12,13}$/.test(normalized)) return null;
-    const message = encodeURIComponent("Olá! Vim do app Concept Usinagens, poderia me ajudar?");
+    const message = encodeURIComponent("Olá! Vim do app Zomini Usinagens, poderia me ajudar?");
     return `https://wa.me/${normalized}?text=${message}`;
   };
 

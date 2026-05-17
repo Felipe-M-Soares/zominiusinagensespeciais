@@ -1,7 +1,7 @@
 /**
  * Produção — Hub de Controle Industrial
  * Módulos: Dashboard, Controle de Produção, Planejamento, Máquinas,
- * Produtos, Paradas, Refugo/Qualidade, Matéria-Prima, Relatórios, Usuários
+ * Produtos, Paradas, Refugo/Qualidade, Matéria-Prima, Relatórios
  * ✓ Sem logo Concept
  * ✓ Sem aba Funcionalidades Futuras
  * ✓ Banner offline + sincronização automática
@@ -15,7 +15,7 @@ import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import {
   ArrowLeft, ChevronRight, LayoutDashboard, ClipboardList, CalendarClock,
   Settings2, Package, OctagonPause, ShieldAlert, Boxes, FileBarChart2,
-  Users, Factory, WifiOff, RefreshCw,
+  Factory, WifiOff, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/LoadingScreen";
@@ -29,9 +29,8 @@ const ParadasPanel      = lazy(() => import("@/components/producao/ParadasPanel"
 const QualidadePanel    = lazy(() => import("@/components/producao/QualidadeProducaoPanel").then(m => ({ default: m.QualidadeProducaoPanel })));
 const MateriaPrimaPanel = lazy(() => import("@/components/producao/MateriaPrimaPanel").then(m => ({ default: m.MateriaPrimaPanel })));
 const RelatoriosPanel   = lazy(() => import("@/components/producao/RelatoriosPanel").then(m => ({ default: m.RelatoriosPanel })));
-const UsuariosPanel     = lazy(() => import("@/components/producao/UsuariosProducaoPanel").then(m => ({ default: m.UsuariosProducaoPanel })));
 
-type ProdView = "menu"|"dashboard"|"controle"|"planejamento"|"maquinas"|"produtos"|"paradas"|"qualidade"|"materiaprima"|"relatorios"|"usuarios";
+type ProdView = "menu"|"dashboard"|"controle"|"planejamento"|"maquinas"|"produtos"|"paradas"|"qualidade"|"materiaprima"|"relatorios";
 
 interface ProdModule {
   id: ProdView; label: string; sublabel: string;
@@ -49,7 +48,6 @@ const MODULES: ProdModule[] = [
   { id:"qualidade",   label:"Refugo e Qualidade",         sublabel:"Defeitos, fotos, controle dimensional e índice de perdas",            Icon:ShieldAlert,     color:"text-orange-600 dark:text-orange-400",bg:"bg-orange-500/10", border:"border-orange-500/20" },
   { id:"materiaprima",label:"Controle de Matéria-Prima",  sublabel:"Estoque, baixa automática, rastreabilidade e alertas de lote",        Icon:Boxes,           color:"text-teal-600 dark:text-teal-400",    bg:"bg-teal-500/10",   border:"border-teal-500/20"   },
   { id:"relatorios",  label:"Relatórios",                 sublabel:"Produção diária/mensal, eficiência, paradas, exportação PDF/Excel",   Icon:FileBarChart2,   color:"text-indigo-600 dark:text-indigo-400",bg:"bg-indigo-500/10", border:"border-indigo-500/20" },
-  { id:"usuarios",    label:"Controle de Usuários",       sublabel:"Perfis admin, supervisor, operador e qualidade com permissões",       Icon:Users,           color:"text-pink-600 dark:text-pink-400",    bg:"bg-pink-500/10",   border:"border-pink-500/20",   adminOnly:true },
 ];
 
 function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:boolean; onSync:()=>void }) {
@@ -168,7 +166,6 @@ export default function Producao() {
             {view === "qualidade"    && <QualidadePanel />}
             {view === "materiaprima" && <MateriaPrimaPanel />}
             {view === "relatorios"   && <RelatoriosPanel isAdmin={isAdmin} />}
-            {view === "usuarios"     && <UsuariosPanel isAdmin={isAdmin} />}
           </Suspense>
         )}
       </main>

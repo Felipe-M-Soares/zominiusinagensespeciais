@@ -1,16 +1,12 @@
-import logoLight from "@/assets/logo_concept_light.png";
-import logoDark from "@/assets/logo_concept.png";
+import logoZomini from "@/assets/logo_zomini.png";
 
 interface LogoProps {
   className?: string;
   alt?: string;
 }
 
-export function Logo({ className = "h-10 object-contain", alt = "Concept Usinagens Especiais" }: LogoProps) {
+export function Logo({ className = "h-10 object-contain", alt = "Zomini Usinagens Especiais" }: LogoProps) {
   return (
-    <>
-      <img src={logoLight} alt={alt} className={`${className} dark:hidden`} />
-      <img src={logoDark} alt={alt} className={`${className} hidden dark:block`} />
-    </>
+    <img src={logoZomini} alt={alt} className={className} />
   );
 }

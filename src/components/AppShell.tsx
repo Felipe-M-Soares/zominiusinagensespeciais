@@ -3,12 +3,11 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { getStoredTheme, applyTheme } from "@/pages/Settings";
 import { cn } from "@/lib/utils";
+import logoZomini from "@/assets/logo_zomini.png";
 import {
-  Home,
   Boxes,
   ShoppingBag,
   Receipt,
-  ClipboardList,
   BookOpen,
   Settings,
   LogOut,
@@ -19,7 +18,6 @@ import {
   X,
   Factory,
   Cpu,
-  Bell,
 } from "lucide-react";
 
 interface NavItem {
@@ -86,16 +84,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Logo area */}
       <div className={cn(
         "flex items-center border-b border-sidebar-border/60 transition-all duration-300",
-        collapsed ? "px-3 py-4 justify-center" : "px-4 py-4 gap-3"
+        collapsed ? "px-3 py-3 justify-center" : "px-4 py-3 gap-3"
       )}>
-        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-sm">
-          <Cpu className="w-4 h-4 text-primary-foreground" />
-        </div>
-        {!collapsed && (
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-foreground leading-tight font-display truncate">Conceptus</p>
-            <p className="text-[10px] text-muted-foreground leading-tight truncate">Inag. Especiais</p>
+        {collapsed ? (
+          /* Ícone pequeno quando recolhido */
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+            <Cpu className="w-4 h-4 text-primary" />
           </div>
+        ) : (
+          /* Logo Zomini expandido */
+          <img
+            src={logoZomini}
+            alt="Zomini Usinagens Especiais"
+            className="h-9 w-auto object-contain flex-1 min-w-0"
+          />
         )}
         {!collapsed && (
           <button
@@ -188,7 +190,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </nav>
 
-      {/* Bottom user section */}
+      {/* Bottom section — tema + usuário + sair (SEM Configurações) */}
       <div className="border-t border-sidebar-border/60 p-2 space-y-0.5">
         {/* Theme toggle */}
         <button
@@ -204,22 +206,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             : <Moon className={cn("shrink-0", collapsed ? "w-5 h-5" : "w-4 h-4")} />
           }
           {!collapsed && <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>}
-        </button>
-
-        {/* Settings */}
-        <button
-          onClick={() => handleNav("/settings")}
-          title={collapsed ? "Configurações" : undefined}
-          className={cn(
-            "w-full flex items-center rounded-lg text-sm font-medium transition-colors",
-            collapsed ? "p-2.5 justify-center" : "px-3 py-2 gap-3",
-            isActive("/settings")
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-          )}
-        >
-          <Settings className={cn("shrink-0", collapsed ? "w-5 h-5" : "w-4 h-4")} />
-          {!collapsed && <span>Configurações</span>}
         </button>
 
         {/* User + Logout */}
@@ -289,16 +275,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex items-center justify-between px-4 py-4 border-b border-sidebar-border/60">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-sm">
-              <Cpu className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-foreground leading-tight font-display">Conceptus</p>
-              <p className="text-[10px] text-muted-foreground leading-tight">Inag. Especiais</p>
-            </div>
-          </div>
+        {/* Mobile header com logo Zomini */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-sidebar-border/60">
+          <img
+            src={logoZomini}
+            alt="Zomini"
+            className="h-9 w-auto object-contain"
+          />
           <button
             onClick={() => setMobileOpen(false)}
             className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground"
@@ -306,6 +289,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <X className="w-4 h-4" />
           </button>
         </div>
+
         <div className="flex-1 overflow-y-auto">
           <nav className="py-3 px-2 space-y-0.5">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 pb-1 pt-1">
@@ -358,6 +342,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </nav>
         </div>
+
+        {/* Mobile bottom — sem Configurações */}
         <div className="border-t border-sidebar-border/60 p-2 space-y-0.5">
           <button
             onClick={toggleTheme}
@@ -365,13 +351,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>
-          </button>
-          <button
-            onClick={() => handleNav("/settings")}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-            <span>Configurações</span>
           </button>
           <div className="pt-1 border-t border-sidebar-border/40 mt-1">
             <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg">
@@ -396,7 +375,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile topbar */}
+        {/* Mobile topbar com logo Zomini */}
         <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border/60 bg-card/90 backdrop-blur-md shrink-0 z-30">
           <button
             onClick={() => setMobileOpen(true)}
@@ -404,12 +383,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-primary flex items-center justify-center">
-              <Cpu className="w-3.5 h-3.5 text-primary-foreground" />
-            </div>
-            <span className="text-sm font-bold font-display text-foreground">Conceptus</span>
-          </div>
+          <img
+            src={logoZomini}
+            alt="Zomini"
+            className="h-7 w-auto object-contain"
+          />
         </header>
 
         {/* Page content */}
