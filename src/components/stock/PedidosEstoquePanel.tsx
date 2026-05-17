@@ -415,9 +415,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
           : `<span class="lote-empty">—</span>`;
         tableBody += `<tr>
           <td class="col-num">${globalIdx}</td>
-          <td class="col-model"><span class="model-muted">${esc(row.model)}</span></td>
-          <td class="col-ref"><span class="ref-mono">${esc(row.reference)}</span></td>
-          <td class="col-lote">${loteCell}</td>
+          <td class="col-lote" colspan="3">${loteCell}</td>
           <td class="col-qty">${row.quantidade}</td>
         </tr>`;
       }
@@ -463,7 +461,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 </head>
 <body>
   <div class="header">
-    <h1>📦 Pedido de Separação</h1>
+    <h1>📦 Pedido</h1>
     <div class="meta">
       <span>Cliente: <strong>${esc(pedido.cliente_nome)}</strong></span>
       <span>Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong></span>
@@ -475,9 +473,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     <thead>
       <tr>
         <th class="col-num">#</th>
-        <th class="col-model">Peça</th>
-        <th class="col-ref">Referência</th>
-        <th class="col-lote" style="text-align:center">Lote</th>
+        <th class="col-lote" colspan="3" style="text-align:center">Lote</th>
         <th class="col-qty" style="text-align:center">Qtd.</th>
       </tr>
     </thead>
