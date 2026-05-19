@@ -377,6 +377,23 @@ export async function transferToExpedicao(
   userId: string | null,
   userDisplayName: string | null
 ): Promise<{ ok: boolean; error?: string }> {
+  // 0. Verifica saldo antes da saída para detectar se vai sobrar algo
+  const { data: movsBefore } = await supabase
+    .from("stock_movements")
+    .select("lote, type, quantity")
+    .eq("stock_item_id", intermediariaItemId)
+    .not("lote", "is", null);
+
+  // Calcula saldo atual do lote específico no intermediário
+  let saldoLoteAtual = 0;
+  const loteUp = lote.toUpperCase();
+  for (const m of (movsBefore ?? []) as { lote: string; type: string; quantity: number }[]) {
+    if (m.lote?.toUpperCase() === loteUp) {
+      saldoLoteAtual += m.type === "entrada" ? m.quantity : -m.quantity;
+    }
+  }
+  const sobra = saldoLoteAtual - quantity;
+
   // 1. Saída da intermediária
   const saidaResult = await registerMovement(
     intermediariaItemId,
@@ -388,6 +405,41 @@ export async function transferToExpedicao(
     lote
   );
   if (!saidaResult.ok) return saidaResult;
+
+  // 1b. Se sobrou algo do lote, renomeia o restante com sufixo /A, /B, /C...
+  //     Regra: lote original sem sufixo → /A; já em /A → /B; /B → /C; etc.
+  if (sobra > 0) {
+    // Determina o próximo sufixo
+    function nextLoteSuffix(base: string): string {
+      const match = base.match(/^(.+)\/([A-Z])$/);
+      if (match) {
+        const nextChar = String.fromCharCode(match[2].charCodeAt(0) + 1);
+        return `${match[1]}/${nextChar}`;
+      }
+      return `${base}/A`;
+    }
+    const novoLote = nextLoteSuffix(loteUp);
+
+    // Registra a renomeação: saída do lote antigo + entrada no novo lote
+    await registerMovement(
+      intermediariaItemId,
+      "saida",
+      sobra,
+      `Renomeação de lote: ${loteUp} → ${novoLote}`,
+      userId,
+      userDisplayName,
+      loteUp
+    );
+    await registerMovement(
+      intermediariaItemId,
+      "entrada",
+      sobra,
+      `Renomeação de lote: ${loteUp} → ${novoLote}`,
+      userId,
+      userDisplayName,
+      novoLote
+    );
+  }
 
   // 2. Localiza ou cria item de expedição para o mesmo device
   let expedicaoItemId: string | null = null;

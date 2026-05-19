@@ -1592,6 +1592,180 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     }
   }
 
+  // ── Imprimir todos os pedidos do mês ──────────────────────────────────────
+  function handleImprimirTodos() {
+    const now = new Date();
+    const nowStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const mesAtual = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    const LOTE_PH = new Set(["a-definir", "a definir", "sem lote", ""]);
+
+    function escH(s?: string | null) {
+      return (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    // Filtra pedidos do mês atual
+    const pedidosDoMes = filtrados.filter(p => {
+      const d = new Date(p.created_at);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+
+    if (pedidosDoMes.length === 0) {
+      const d = new Date(filtrados[0]?.created_at ?? now.toISOString());
+      // Se não há nenhum do mês atual, imprime todos os visíveis
+      // (pode ser que o filtro de status já restrinja)
+    }
+
+    const pedidosParaImprimir = pedidosDoMes.length > 0 ? pedidosDoMes : filtrados;
+
+    let sections = "";
+    let totalGeralPecas = 0;
+
+    for (const pedido of pedidosParaImprimir) {
+      const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
+
+      if (pedido.lotes_separados && pedido.lotes_separados.length > 0) {
+        const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
+        for (const ls of pedido.lotes_separados) {
+          const item = pedido.itens.find(i => i.stock_item_id === ls.stock_item_id)
+            ?? pedido.itens.find(i => i.device_model === ls.device_model);
+          const key = `${ls.device_model}||${ls.lote}`;
+          const ex = rowMap.get(key);
+          if (ex) ex.quantidade += ls.quantidade;
+          else rowMap.set(key, { model: ls.device_model ?? item?.device_model, reference: item?.device_reference, lote: ls.lote, quantidade: ls.quantidade });
+        }
+        for (const row of rowMap.values()) printRows.push(row);
+      } else {
+        for (const item of pedido.itens) {
+          if (item.lote && !LOTE_PH.has(item.lote.trim().toLowerCase())) {
+            printRows.push({ model: item.device_model, reference: item.device_reference, lote: item.lote, quantidade: item.quantidade });
+          } else {
+            printRows.push({ model: item.device_model, reference: item.device_reference, lote: "", quantidade: item.quantidade });
+          }
+        }
+      }
+
+      const grouped = new Map<string, typeof printRows>();
+      for (const row of printRows) {
+        const key = `${row.model}|||${row.reference}`;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(row);
+      }
+
+      const statusLabel = pedido.status === "pronto" ? "✅ Pronto" : pedido.status === "separando" ? "🔄 Separando" : "⏳ Pendente";
+      const statusColor = pedido.status === "pronto" ? "#166534" : pedido.status === "separando" ? "#1e40af" : "#92400e";
+      const statusBg = pedido.status === "pronto" ? "#dcfce7" : pedido.status === "separando" ? "#dbeafe" : "#fef3c7";
+      const dataPedido = new Date(pedido.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+      let tableRows = "";
+      let idx = 0;
+      for (const [, rows] of grouped) {
+        idx++;
+        const first = rows[0];
+        const tipoTotal = rows.reduce((s, r) => s + r.quantidade, 0);
+        const lotesBadges = rows
+          .filter(r => r.lote && !LOTE_PH.has(r.lote.toLowerCase()))
+          .map(r => `<span class="lote-badge">${escH(r.lote)}</span>`)
+          .join(" ");
+        const lotesCell = lotesBadges || `<span class="lote-empty">—</span>`;
+        tableRows += `<tr>
+          <td class="col-num">${idx}</td>
+          <td class="col-model">
+            <span class="model-name">${escH(first.model)}</span>
+            <span class="model-ref">${escH(first.reference)}</span>
+          </td>
+          <td class="col-lotes">${lotesCell}</td>
+          <td class="col-qty">${tipoTotal}</td>
+        </tr>`;
+      }
+
+      const totalPecas = printRows.reduce((s, r) => s + r.quantidade, 0);
+      totalGeralPecas += totalPecas;
+      const totalTipos = grouped.size;
+
+      sections += `
+        <div class="pedido-section">
+          <div class="pedido-header">
+            <div class="pedido-header-main">
+              <div class="pedido-title">${escH(pedido.cliente_nome)}</div>
+              <div class="pedido-meta">
+                Vendedora: <strong>${escH(pedido.vendedora_nome ?? "—")}</strong>
+                &nbsp;·&nbsp; Data: <strong>${dataPedido}</strong>
+                ${pedido.observacoes ? `&nbsp;·&nbsp; Obs: ${escH(pedido.observacoes)}` : ""}
+              </div>
+            </div>
+            <span class="status-badge" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th class="col-num">#</th>
+                <th class="col-model">Peça</th>
+                <th class="col-lotes">Lotes</th>
+                <th class="col-qty" style="text-align:right">Qtd.</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+          <div class="pedido-footer">
+            <span>${totalPecas} peça${totalPecas !== 1 ? "s" : ""} · ${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}</span>
+          </div>
+        </div>`;
+    }
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Pedidos do Mês — ${mesAtual}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; padding: 24px 28px; color: #111; font-size: 13px; }
+    .page-header { margin-bottom: 20px; border-bottom: 3px solid #ddd6fe; padding-bottom: 16px; }
+    .page-header h1 { font-size: 22px; font-weight: 800; color: #3b0764; margin-bottom: 4px; }
+    .page-header p { font-size: 12px; color: #666; }
+    .pedido-section { margin-bottom: 24px; border: 1px solid #e8e4f7; border-radius: 10px; overflow: hidden; page-break-inside: avoid; }
+    .pedido-header { background: #f3f0ff; padding: 10px 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid #ddd6fe; }
+    .pedido-title { font-size: 14px; font-weight: 800; color: #3b0764; }
+    .pedido-meta { font-size: 11px; color: #666; margin-top: 2px; }
+    .status-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 7px 10px; background: #faf9ff; color: #5b21b6; border-bottom: 1px solid #ddd6fe; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+    td { padding: 6px 10px; border-bottom: 1px solid #f0eeff; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: #faf9ff; }
+    .col-num { width: 28px; color: #bbb; font-size: 11px; }
+    .col-model { width: 38%; }
+    .col-lotes { }
+    .col-qty { width: 70px; text-align: right; font-weight: 800; font-size: 14px; color: #3b0764; white-space: nowrap; }
+    .model-name { display: block; font-weight: 600; font-size: 12px; color: #1a1a2e; }
+    .model-ref { display: block; font-family: monospace; font-size: 10px; color: #888; margin-top: 1px; }
+    .lote-badge { display: inline-block; background: #f3f0ff; color: #5b21b6; font-family: monospace; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid #ddd6fe; margin: 1px 2px 1px 0; }
+    .lote-empty { color: #bbb; font-size: 11px; }
+    .pedido-footer { padding: 7px 14px; font-size: 11px; color: #888; background: #fafafa; border-top: 1px solid #f0eeff; }
+    .page-footer { margin-top: 24px; padding-top: 12px; border-top: 2px solid #eee; display: flex; justify-content: space-between; font-size: 11px; color: #999; }
+    @media print { button { display: none } body { padding: 16px } .pedido-section { page-break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>📦 Pedidos — ${mesAtual}</h1>
+    <p>Gerado em: ${nowStr} &nbsp;·&nbsp; ${pedidosParaImprimir.length} pedido${pedidosParaImprimir.length !== 1 ? "s" : ""} &nbsp;·&nbsp; ${totalGeralPecas} peças no total</p>
+  </div>
+  ${sections}
+  <div class="page-footer">
+    <span>Total: <strong>${totalGeralPecas} peças</strong> em <strong>${pedidosParaImprimir.length} pedido${pedidosParaImprimir.length !== 1 ? "s" : ""}</strong></span>
+    <span>Zomini Usinagens Especiais</span>
+  </div>
+</body>
+</html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(() => { w.focus(); w.print(); }, 250);
+  }
+
+
   return (
     <div className="space-y-4">
       {/* Busca + Atualizar */}
@@ -1609,7 +1783,15 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
         </button>
-        <PrintButton label="Imprimir" variant="outline" size="sm" className="h-9 shrink-0 no-print" />
+        <button
+          type="button"
+          onClick={handleImprimirTodos}
+          className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-border/40 bg-muted/30 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0 text-sm no-print"
+          title="Imprimir todos os pedidos do mês"
+        >
+          <Printer className="h-3.5 w-3.5" />
+          Imprimir
+        </button>
       </div>
 
       {/* Lista */}
