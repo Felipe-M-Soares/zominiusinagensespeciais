@@ -70,7 +70,7 @@ function MovimentoModal({open,materias,onClose,onSaved}:{open:boolean;materias:M
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">Movimentação de MP</h3><button onClick={onClose}><X className="h-4 w-4"/></button></div>
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Movimentação de MP</h3><button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button></div>
         <div className="space-y-3">
           <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Matéria-Prima *</label>
             <select value={form.materia_prima_id} onChange={e=>setForm(p=>({...p,materia_prima_id:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">

@@ -8,6 +8,7 @@ import { useState, useCallback } from "react";
 import { FileBarChart2, Download, Calendar, RefreshCw, BarChart2, Clock, ShieldAlert, Boxes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -82,7 +83,7 @@ export function RelatoriosPanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
       }
     } catch(e){
       toast.error("Erro ao gerar relatório");
-      console.error(e);
+      logger.error("RelatoriosPanel buscarDados error:", e);
     }
     setLoading(false);
   },[dataInicio,dataFim]);

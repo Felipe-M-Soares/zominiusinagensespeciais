@@ -90,7 +90,7 @@ function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
       <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">{isEdit?"Editar OP":"Nova Ordem de Produção"}</h3>
-          <button onClick={onClose}><X className="h-4 w-4"/></button>
+          <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>
         </div>
         <div className="space-y-3">
           <div>
@@ -258,8 +258,8 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
                     {(Object.keys(STATUS_CFG) as OPStatus[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
                   </select>
                   {isAdmin && <>
-                    <button onClick={()=>{setEditTarget(op);setModalOpen(true);}} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
-                    <button onClick={()=>handleDelete(op.id)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                    <button onClick={()=>{setEditTarget(op);setModalOpen(true);}} aria-label="Editar operação" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
+                    <button onClick={()=>handleDelete(op.id)} aria-label="Excluir operação" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
                   </>}
                 </div>
               </div>

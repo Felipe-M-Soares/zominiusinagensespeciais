@@ -80,7 +80,7 @@ function MaquinaModal({ open, maquina, onClose, onSaved }: {
       <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">{isEdit?"Editar Máquina":"Nova Máquina"}</h3>
-          <button onClick={onClose}><X className="h-4 w-4"/></button>
+          <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>
         </div>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -214,8 +214,8 @@ export function MaquinasPanel({ isAdmin }: { isAdmin: boolean }) {
                       className="flex-1 h-7 rounded-lg border border-input bg-background px-2 text-[11px]">
                       {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
                     </select>
-                    <button onClick={()=>{setEditTarget(m);setModalOpen(true);}} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
-                    <button onClick={()=>handleDelete(m.id)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                    <button onClick={()=>{setEditTarget(m);setModalOpen(true);}} aria-label="Editar máquina" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
+                    <button onClick={()=>handleDelete(m.id)} aria-label="Excluir máquina" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
                   </div>
                 )}
               </div>

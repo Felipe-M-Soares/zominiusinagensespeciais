@@ -84,7 +84,7 @@ function ProdutoModal({ open, produto, onClose, onSaved }: {
       <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">{isEdit?"Editar Produto":"Novo Produto"}</h3>
-          <button onClick={onClose}><X className="h-4 w-4"/></button>
+          <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>
         </div>
         <div className="space-y-3">
           <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Código *</label><Input value={form.codigo} onChange={e=>setForm(p=>({...p,codigo:e.target.value}))} placeholder="PÇ-001"/></div>
@@ -190,8 +190,8 @@ export function ProdutosPanel({ isAdmin }: { isAdmin: boolean }) {
                 <div className="flex items-center gap-2 pt-1 border-t border-border/30">
                   <button onClick={()=>handleToggleAtivo(p)} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">{p.ativo?"Desativar":"Ativar"}</button>
                   <div className="flex-1"/>
-                  <button onClick={()=>{setEditTarget(p);setModalOpen(true);}} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
-                  <button onClick={()=>handleDelete(p.id)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                  <button onClick={()=>{setEditTarget(p);setModalOpen(true);}} aria-label="Editar produto" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
+                  <button onClick={()=>handleDelete(p.id)} aria-label="Excluir produto" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
                 </div>
               )}
             </div>

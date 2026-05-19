@@ -201,8 +201,9 @@ export function useStock(search: string) {
             }
           }
         }
-      } catch {
-        // Falha silenciosa — usa o quantity_reserved do banco como fallback
+      } catch (e) {
+        // Falha no recálculo de reservas — usa o quantity_reserved do banco como fallback
+        logger.warn("useStock: falha ao recalcular reservas de expedição:", e);
       }
 
       setItems(normalized);
@@ -763,8 +764,9 @@ export async function fetchLotesDisponivelBatch(
         result.set(reserva.stock_item_id, map);
       }
     }
-  } catch {
+  } catch (e) {
     // Falha silenciosa — usa saldo bruto como fallback
+    logger.warn("useStock: falha ao buscar saldos de lotes disponíveis:", e);
   }
 
   // 3. Ordena cada mapa de lotes do mais antigo ao mais novo (FIFO por data de produção)
@@ -1155,7 +1157,10 @@ export async function downloadBackup(backupId: string): Promise<object | null> {
     if (error || !fileData) return null;
     try {
       return JSON.parse(await fileData.text());
-    } catch { return null; }
+    } catch (e) {
+      logger.warn("useStock: falha ao parsear payload de backup:", e);
+      return null;
+    }
   }
 
   return (row as { payload?: object }).payload ?? null;

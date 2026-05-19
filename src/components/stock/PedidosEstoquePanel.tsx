@@ -42,6 +42,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { PrintButton } from "@/components/PrintButton";
+import { escHtml } from "@/lib/escHtml";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -322,8 +323,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
   // ── Print ──────────────────────────────────────────────────────────────────
   async function handleImprimir() {
-    const esc = (s: string | null | undefined) =>
-      (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
     const LOTE_PH = new Set(["a-definir","a definir","sem lote",""]);
     const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
@@ -404,15 +403,15 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       // Lotes inline — todos os badges na mesma célula
       const lotesBadges = rows
         .filter(r => r.lote && !LOTE_PH.has(r.lote.toLowerCase()))
-        .map(r => `<span class="lote-badge">${esc(r.lote)}</span>`)
+        .map(r => `<span class="lote-badge">${escHtml(r.lote)}</span>`)
         .join(" ");
       const lotesCell = lotesBadges || `<span class="lote-empty">—</span>`;
 
       tableBody += `<tr>
         <td class="col-num">${rowIdx}</td>
         <td class="col-model">
-          <span class="model-name">${esc(first.model)}</span>
-          <span class="model-ref">${esc(first.reference)}</span>
+          <span class="model-name">${escHtml(first.model)}</span>
+          <span class="model-ref">${escHtml(first.reference)}</span>
         </td>
         <td class="col-lotes">${lotesCell}</td>
         <td class="col-qty">${tipoTotal}</td>
@@ -426,7 +425,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Pedido — ${esc(pedido.cliente_nome)}</title>
+  <title>Pedido — ${escHtml(pedido.cliente_nome)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; padding: 24px 28px; color: #111; font-size: 13px; }
@@ -456,12 +455,12 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   <div class="header">
     <h1>📦 Pedido</h1>
     <div class="meta">
-      <span>Cliente: <strong>${esc(pedido.cliente_nome)}</strong></span>
-      <span>Vendedora: <strong>${esc(pedido.vendedora_nome)}</strong></span>
+      <span>Cliente: <strong>${escHtml(pedido.cliente_nome)}</strong></span>
+      <span>Vendedora: <strong>${escHtml(pedido.vendedora_nome)}</strong></span>
       <span>Gerado em: <strong>${now}</strong></span>
     </div>
   </div>
-  ${pedido.observacoes ? `<div class="obs">Obs: ${esc(pedido.observacoes)}</div>` : ""}
+  ${pedido.observacoes ? `<div class="obs">Obs: ${escHtml(pedido.observacoes)}</div>` : ""}
   <table>
     <thead>
       <tr>

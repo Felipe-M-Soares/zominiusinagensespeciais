@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { StockItem } from "@/hooks/useStock";
 import { Package, AlertTriangle, TrendingDown, CheckCircle2, List, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { escHtml } from "@/lib/escHtml";
 
 interface Props {
   open: boolean;
@@ -20,17 +21,6 @@ export function StockListModal({ open, onClose, items }: Props) {
   const available = [...items]
     .filter((i) => i.quantity > 0)
     .sort((a, b) => a.device.model.localeCompare(b.device.model, "pt-BR"));
-
-  // SECURITY: escapa caracteres HTML especiais para evitar XSS ao injetar
-  // dados do banco (model, reference, udi_di, location) em HTML via document.write().
-  function escHtml(s: string | null | undefined): string {
-    return (s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
 
   function handlePrint() {
     const now = new Date().toLocaleDateString("pt-BR", {

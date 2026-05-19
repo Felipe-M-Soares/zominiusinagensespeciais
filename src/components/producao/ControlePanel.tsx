@@ -79,7 +79,7 @@ function NovoApontamentoModal({ open, onClose, onSaved, maquinas, produtos }: {
       <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">Novo Apontamento</h3>
-          <button onClick={onClose}><X className="h-4 w-4" /></button>
+          <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4" /></button>
         </div>
         <div className="space-y-3">
           <div>

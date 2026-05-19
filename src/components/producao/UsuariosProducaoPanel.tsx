@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 
 type AppRole = "admin"|"producao"|"funcionario"|"financeiro"|"comercial";
 
@@ -62,7 +63,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
       setUsuarios(users);
     } catch(e){
       toast.error("Erro ao carregar usuários");
-      console.error(e);
+      logger.error("UsuariosProducaoPanel load error:", e);
     }
     setLoading(false);
   },[]);
@@ -78,7 +79,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
       toast.success("Papel atualizado!");
     } catch(e){
       toast.error("Erro ao atualizar papel");
-      console.error(e);
+      logger.error("UsuariosProducaoPanel handleRoleChange error:", e);
     }
   }
 

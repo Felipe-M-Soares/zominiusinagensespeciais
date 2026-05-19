@@ -90,7 +90,7 @@ function NovoRefugoModal({open,onClose,onSaved,maquinas,produtos}:{
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">Registrar Refugo</h3><button onClick={onClose}><X className="h-4 w-4"/></button></div>
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Registrar Refugo</h3><button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button></div>
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Produto *</label>
@@ -146,7 +146,7 @@ function NovoRefugoModal({open,onClose,onSaved,maquinas,produtos}:{
                 <Input placeholder="Campo" value={m.campo} onChange={e=>{const n=[...medicoes];n[i]={...n[i],campo:e.target.value};setMedicoes(n);}} className="text-[11px] h-8"/>
                 <Input placeholder="Nominal" type="number" value={m.nominal} onChange={e=>{const n=[...medicoes];n[i]={...n[i],nominal:e.target.value};setMedicoes(n);}} className="text-[11px] h-8"/>
                 <Input placeholder="Medido" type="number" value={m.medido} onChange={e=>{const n=[...medicoes];n[i]={...n[i],medido:e.target.value};setMedicoes(n);}} className="text-[11px] h-8"/>
-                <button onClick={()=>setMedicoes(p=>p.filter((_,j)=>j!==i))} className="h-8 text-destructive hover:bg-destructive/10 rounded-lg"><X className="h-3 w-3 mx-auto"/></button>
+                <button onClick={()=>setMedicoes(p=>p.filter((_,j)=>j!==i))} aria-label="Remover medição" className="h-8 text-destructive hover:bg-destructive/10 rounded-lg"><X className="h-3 w-3 mx-auto"/></button>
               </div>
             ))}
           </div>
@@ -250,7 +250,7 @@ export function QualidadeProducaoPanel() {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-medium",DESTINACAO_COLOR[r.destinacao])}>{DESTINACAO_LABEL[r.destinacao]}</span>
-                  <button onClick={()=>handleDelete(r.id)} className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3 w-3"/></button>
+                  <button onClick={()=>handleDelete(r.id)} aria-label="Excluir registro" className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3 w-3"/></button>
                 </div>
               </div>
               <div className="flex items-center justify-between text-[11px]">

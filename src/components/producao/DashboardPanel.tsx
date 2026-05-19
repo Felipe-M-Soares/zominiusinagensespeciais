@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { Activity, TrendingUp, AlertTriangle, Clock, Zap, Award, RefreshCw, WifiOff } from "lucide-react";
+import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { dbGetAll } from "@/lib/offlineDB";
@@ -92,7 +93,7 @@ async function fetchDashData(): Promise<DashData> {
 
       return { emAndamento, totalHoje, paradasAtivas, refugosHoje, maquinasOperando, maquinasTotal, turnoData, paradasPorHora };
     } catch (e) {
-      console.error("Dashboard fetch error:", e);
+      logger.error("DashboardPanel fetch error:", e);
     }
   }
 
