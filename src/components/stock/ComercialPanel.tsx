@@ -58,7 +58,6 @@ import type { StockItem } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
-import ExcelJS from "exceljs";
 
 // ─── Lote helpers (formato DDMMYYS-NN ou DDMMYYS-NN/A) ───────────────────────
 const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
@@ -1112,6 +1111,7 @@ interface ComercialPanelProps {
 
 // ─── Export Excel do Mês — vendedora atual ───────────────────────────────────
 async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome: string | null, isAdmin: boolean) {
+  const ExcelJS = (await import("exceljs")).default;
   const now = new Date();
   const mesAtual = now.getMonth(); // 0-based
   const anoAtual = now.getFullYear();
@@ -1283,6 +1283,7 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
 
 // ─── Export Excel Comercial ──────────────────────────────────────────────────
 async function exportExcelComercial() {
+  const ExcelJS = (await import("exceljs")).default;
   const { data: pedidosData, error } = await supabase
     .from("pedidos_comerciais")
     .select("*, clientes(nome)")

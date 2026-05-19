@@ -21,7 +21,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
-import { getStoredTheme, applyTheme } from "@/pages/Settings";
+import { getStoredTheme, applyTheme } from "@/lib/theme";
 import {
   ArrowLeft, Receipt, CheckCircle2, Package, User, Clock,
   Truck, ChevronDown, ChevronUp, Send, X, RefreshCw,

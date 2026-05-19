@@ -6,7 +6,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { getStoredTheme, applyTheme } from "@/pages/Settings";
+import { getStoredTheme, applyTheme } from "@/lib/theme";
 import {
   Factory, ArrowLeft, Layers, Building2,
   ClipboardList, DollarSign, ChevronRight, ShieldCheck,

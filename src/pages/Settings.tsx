@@ -6,31 +6,11 @@ import { ArrowLeft, Sun, Moon, Monitor } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
+import { type Theme, getStoredTheme, applyTheme } from "@/lib/theme";
 
-type Theme = "light" | "dark" | "system";
-
-const VALID_THEMES = new Set<Theme>(["light", "dark", "system"]);
-
-export function getStoredTheme(): Theme {
-  if (typeof window === "undefined") return "light";
-  const stored = localStorage.getItem("theme");
-  if (stored && VALID_THEMES.has(stored as Theme)) {
-    return stored as Theme;
-  }
-  return "light";
-}
-
-export function applyTheme(theme: Theme) {
-  if (typeof window === "undefined") return;
-  const root = document.documentElement;
-  if (theme === "system") {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    root.classList.toggle("dark", prefersDark);
-  } else {
-    root.classList.toggle("dark", theme === "dark");
-  }
-  localStorage.setItem("theme", theme);
-}
+// Re-exporta para compatibilidade com imports legados que apontam para esta página.
+// ATENÇÃO: novos imports devem usar @/lib/theme diretamente.
+export { getStoredTheme, applyTheme };
 
 const Settings = () => {
   const { user } = useAuth();

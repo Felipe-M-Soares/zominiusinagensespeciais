@@ -11,7 +11,7 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
-import { getStoredTheme, applyTheme } from "@/pages/Settings";
+import { getStoredTheme, applyTheme } from "@/lib/theme";
 import {
   ArrowLeft, ChevronRight, LayoutDashboard, ClipboardList, CalendarClock,
   Settings2, Package, OctagonPause, ShieldAlert, Boxes, FileBarChart2,

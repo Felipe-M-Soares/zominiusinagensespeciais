@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import ExcelJS from "exceljs";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +39,7 @@ interface Props {
 
 // ─── Export Excel (.xlsx via ExcelJS) ────────────────────────────────────────
 async function exportExcel() {
+  const ExcelJS = (await import("exceljs")).default;
   const { data: items, error } = await supabase
     .from("stock_items")
     .select(`

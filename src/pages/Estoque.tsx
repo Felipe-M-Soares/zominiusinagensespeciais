@@ -75,7 +75,7 @@ const PedidosEstoquePanel = lazy(() => import("@/components/stock/PedidosEstoque
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
-import { getStoredTheme, applyTheme } from "@/pages/Settings";
+import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { countryFlag } from "@/components/DeviceCard";
 import { toast } from "sonner";
 

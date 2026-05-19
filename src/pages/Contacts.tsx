@@ -20,7 +20,7 @@ import { ArrowLeft, Trash2, Plus, User, MapPin, Phone, MessageCircle, Pencil } f
 import { toast } from "sonner";
 import { Logo } from "@/components/Logo";
 import { logger } from "@/lib/logger";
-import { getStoredTheme, applyTheme } from "@/pages/Settings";
+import { getStoredTheme, applyTheme } from "@/lib/theme";
 
 interface Contact {
   id: string;

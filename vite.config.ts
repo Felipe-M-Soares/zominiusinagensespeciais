@@ -16,15 +16,31 @@ export default defineConfig(({ mode }) => ({
     sourcemap: false,
     rollupOptions: {
       output: {
-        // Vite 8 / rolldown requer função em vez de objeto estático
         manualChunks(id: string) {
+          // Supabase SDK — carregado em todas as páginas autenticadas
           if (id.includes("node_modules/@supabase")) return "supabase";
+
+          // React core + router — crítico, mas pequeno
           if (
             id.includes("node_modules/react/") ||
             id.includes("node_modules/react-dom/") ||
-            id.includes("node_modules/react-router-dom/")
+            id.includes("node_modules/react-router-dom/") ||
+            id.includes("node_modules/scheduler/")
           ) return "vendor";
+
+          // Radix UI + Shadcn — UI components grandes
           if (id.includes("node_modules/@radix-ui")) return "ui";
+
+          // Recharts — só usado no DashboardPanel de Produção
+          if (id.includes("node_modules/recharts") ||
+              id.includes("node_modules/d3-") ||
+              id.includes("node_modules/victory-vendor")) return "charts";
+
+          // Tanstack Query — usado em todas as páginas
+          if (id.includes("node_modules/@tanstack")) return "query";
+
+          // ExcelJS é lazy (dynamic import) — ficará em chunk separado automático
+          // Não precisa de entrada aqui; o Vite cria chunk on-demand.
         },
       },
     },

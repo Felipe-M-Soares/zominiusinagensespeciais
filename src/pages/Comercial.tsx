@@ -63,7 +63,7 @@ import {
   Bell,
   Minus,
 } from "lucide-react";
-import { getStoredTheme, applyTheme } from "@/pages/Settings";
+import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { Logo } from "@/components/Logo";
 
 import { formatLote, loteValido, displayLote } from "@/lib/lote";

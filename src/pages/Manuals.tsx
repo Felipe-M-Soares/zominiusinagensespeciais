@@ -13,7 +13,7 @@ import {
 import { ArrowLeft, Upload, Trash2, Download, FileText, Plus, Loader2, X, CheckCircle2, AlertCircle, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
-import { getStoredTheme, applyTheme } from "@/pages/Settings";
+import { getStoredTheme, applyTheme } from "@/lib/theme";
 
 const MAX_FILE_SIZE_MB = 20;
 const MAX_FILES_AT_ONCE = 20;

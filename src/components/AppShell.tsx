@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { getStoredTheme, applyTheme } from "@/pages/Settings";
+import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import logoZomini from "@/assets/logo_zomini.png";
 import {
