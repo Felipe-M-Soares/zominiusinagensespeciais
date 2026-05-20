@@ -1,5 +1,4 @@
-import { FileSpreadsheet,
- useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -52,8 +51,8 @@ import {
   Inbox,
   ShoppingBag,
   Archive,
-,
-  FileSpreadsheet} from "lucide-react";
+  FileSpreadsheet,
+} from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
