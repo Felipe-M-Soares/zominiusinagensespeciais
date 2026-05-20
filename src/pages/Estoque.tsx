@@ -935,7 +935,7 @@ export default function Estoque() {
   }
 
   // Loading state — mostra skeleton enquanto estoque carrega
-  if (loading && items.length === 0) return <PageSkeleton />;
+  if (loading && allItems.length === 0) return <PageSkeleton />;
 
   return (
     <>
