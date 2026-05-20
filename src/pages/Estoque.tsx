@@ -52,7 +52,6 @@ import {
   Inbox,
   ShoppingBag,
   Archive,
-,
   FileSpreadsheet} from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { PageSkeleton } from "@/components/PageSkeleton";
