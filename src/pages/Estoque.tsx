@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
+import { FileSpreadsheet,
+ useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -51,7 +52,8 @@ import {
   Inbox,
   ShoppingBag,
   Archive,
-} from "lucide-react";
+,
+  FileSpreadsheet} from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
@@ -59,6 +61,7 @@ import { AddToStockModal } from "@/components/stock/AddToStockModal";
 import { StockListModal } from "@/components/stock/StockListModal";
 import { LotesPanel } from "@/components/stock/LotesPanel";
 import { StockCsvImport } from "@/components/stock/StockCsvImport";
+import { ExcelStockImport } from "@/components/stock/ExcelStockImport";
 import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicaoModal";
 import { RetrabalhoModal } from "@/components/stock/RetrabalhoModal";
@@ -663,6 +666,7 @@ export default function Estoque() {
   const [deleting, setDeleting] = useState(false);
   const [lotesItem, setLotesItem] = useState<StockItem | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
+  const [excelImportOpen, setExcelImportOpen] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deleteAllTyped, setDeleteAllTyped] = useState("");
   const [clearHistConfirm, setClearHistConfirm] = useState(false);
@@ -957,6 +961,9 @@ export default function Estoque() {
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setListOpen(true)}>
                     <List className="h-3.5 w-3.5" /> Lista
                   </Button>
+                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10" onClick={() => setExcelImportOpen(true)}>
+                    <FileSpreadsheet className="h-3.5 w-3.5" /> Importar Excel
+                  </Button>
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
                     <DatabaseBackup className="h-3.5 w-3.5" /> Backup
                   </Button>
@@ -987,6 +994,7 @@ export default function Estoque() {
                         { label: "Adicionar Peça", icon: Plus, action: () => setAddOpen(true) },
                         { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
                         { label: "Importar CSV", icon: ScanBarcode, action: () => setCsvOpen(true) },
+                        { label: "Importar Excel", icon: FileSpreadsheet, action: () => setExcelImportOpen(true) },
                         { label: "Backup", icon: DatabaseBackup, action: () => setBackupOpen(true) },
                         { label: "Apagar Histórico", icon: Trash2, action: () => setClearHistConfirm(true), danger: true },
                         { label: "Excluir Todo Estoque", icon: Trash2, action: () => setDeleteAllOpen(true), danger: true },
@@ -1438,6 +1446,12 @@ export default function Estoque() {
       <StockCsvImport
         open={csvOpen}
         onClose={() => setCsvOpen(false)}
+        onSuccess={refetch}
+      />
+
+      <ExcelStockImport
+        open={excelImportOpen}
+        onClose={() => setExcelImportOpen(false)}
         onSuccess={refetch}
       />
 
