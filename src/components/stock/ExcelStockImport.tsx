@@ -16,7 +16,7 @@
  */
 
 import { useRef, useState, useCallback } from "react";
-import * as XLSX from "xlsx";
+import * as XLSX from ".xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import { registerMovement } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
