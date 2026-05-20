@@ -59,6 +59,7 @@ import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
 import { AddToStockModal } from "@/components/stock/AddToStockModal";
 import { StockListModal } from "@/components/stock/StockListModal";
 import { LotesPanel } from "@/components/stock/LotesPanel";
+import { IntermediaryLotesModal } from "@/components/stock/IntermediaryLotesModal";
 import { StockCsvImport } from "@/components/stock/StockCsvImport";
 import { ExcelStockImport } from "@/components/stock/ExcelStockImport";
 import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
@@ -658,6 +659,7 @@ export default function Estoque() {
   const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const [intermediaryLotesOpen, setIntermediaryLotesOpen] = useState(false);
   const [allMovOpen, setAllMovOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [baixoOpen, setBaixoOpen] = useState(false);
@@ -960,6 +962,11 @@ export default function Estoque() {
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setListOpen(true)}>
                     <List className="h-3.5 w-3.5" /> Lista
                   </Button>
+                  {activeView === "intermediaria" && (
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-primary border-primary/40 hover:bg-primary/10" onClick={() => setIntermediaryLotesOpen(true)}>
+                      <Tag className="h-3.5 w-3.5" /> Lotes
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10" onClick={() => setExcelImportOpen(true)}>
                     <FileSpreadsheet className="h-3.5 w-3.5" /> Importar Excel
                   </Button>
@@ -992,6 +999,7 @@ export default function Estoque() {
                       {[
                         { label: "Adicionar Peça", icon: Plus, action: () => setAddOpen(true) },
                         { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
+                        ...(activeView === "intermediaria" ? [{ label: "Lotes do Intermediário", icon: Tag, action: () => setIntermediaryLotesOpen(true) }] : []),
                         { label: "Importar CSV", icon: ScanBarcode, action: () => setCsvOpen(true) },
                         { label: "Importar Excel / PDF", icon: FileSpreadsheet, action: () => setExcelImportOpen(true) },
                         { label: "Backup", icon: DatabaseBackup, action: () => setBackupOpen(true) },
@@ -1440,6 +1448,12 @@ export default function Estoque() {
         item={lotesItem}
         open={!!lotesItem}
         onClose={() => setLotesItem(null)}
+      />
+
+      <IntermediaryLotesModal
+        open={intermediaryLotesOpen}
+        onClose={() => setIntermediaryLotesOpen(false)}
+        intermediariaItems={intermediariaItems}
       />
 
       <StockCsvImport
