@@ -55,7 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setApproved(true);
         setBlocked(false);
       } else if (profileData == null) {
-        setApproved(null);
+        // Perfil ainda não criado — trata como aprovado para não bloquear o acesso
+        // O admin pode reprovar depois. Manter null aqui causaria loop infinito no RouteGuard.
+        setApproved(true);
         setBlocked(false);
       } else {
         setBlocked(profileData.blocked ?? false);

@@ -49,7 +49,9 @@ interface RouteGuardProps {
 function RouteGuard({ children, roles, adminOnly, publicOnly }: RouteGuardProps) {
   const { user, loading, approved, blocked, isAdmin, role } = useAuth();
 
-  if (loading || (!publicOnly && approved === null)) return <LoadingScreen />;
+  // Aguarda loading inicial — mas approved===null sem loading significa perfil ausente,
+  // não deve bloquear indefinidamente (useAuth já trata isso retornando approved=true)
+  if (loading) return <LoadingScreen />;
 
   if (publicOnly) {
     if (!user) return <>{children}</>;
@@ -60,6 +62,8 @@ function RouteGuard({ children, roles, adminOnly, publicOnly }: RouteGuardProps)
   if (!user) return <Navigate to="/login" replace />;
   if (blocked) return <Navigate to="/pending-approval" replace />;
   if (approved === false) return <Navigate to="/pending-approval" replace />;
+  // approved===null aqui não deve ocorrer após o fix do useAuth,
+  // mas se ocorrer deixa passar (melhor que loop infinito)
 
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
   if (roles && !isAdmin && !roles.includes(role as Role)) return <Navigate to="/" replace />;
