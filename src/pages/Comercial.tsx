@@ -1175,7 +1175,8 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
   ];
 
   const isComercialMovement = useCallback((m: AllMovement) => {
-    if (m.fase !== "expedicao") return false;
+    // Aceita expedicao ou fase não definida (item pode ter sido movido/deletado após)
+    if (m.fase && m.fase !== "expedicao") return false;
     if (!m.reason) return false;
     if (INTERNAL_REASONS.some(r => m.reason?.startsWith(r))) return false;
     return true;
@@ -1187,7 +1188,8 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
     let cancelled = false;
     if (open) {
       setLoading(true);
-      fetchAllMovements(100).then((data) => {
+      // Filtra direto no banco por fase=expedicao para não depender do join
+      fetchAllMovements(200, "expedicao").then((data) => {
         if (!cancelled) {
           setMovements(data.filter(isComercialMovement));
           setLoading(false);
@@ -1201,9 +1203,14 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
 
   async function load() {
     setLoading(true);
-    const data = await fetchAllMovements(100);
-    setMovements(data.filter(isComercialMovement));
-    setLoading(false);
+    try {
+      const data = await fetchAllMovements(200, "expedicao");
+      setMovements(data.filter(isComercialMovement));
+    } catch (_e) {
+      toast.error("Erro ao carregar histórico.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function fmtDate(iso: string) {
@@ -1385,16 +1392,21 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
       : meusPedidos;
     if (meusPdfPedidos.length === 0) { toast.error("Nenhum pedido confirmado seu encontrado."); return; }
 
-    // Agrupa por peça
+    // Agrupa por modelo de peça (device_model) — mais robusto que stock_item_id
+    // pois pedidos faturados podem ter itens sem join de stock_items
     const pecas: Record<string, { model: string; ref: string; total: number }> = {};
     for (const p of meusPdfPedidos) {
       for (const i of p.itens) {
-        const key = i.stock_item_id;
-        if (!pecas[key]) pecas[key] = { model: i.device_model ?? "—", ref: i.device_reference ?? "—", total: 0 };
-        pecas[key].total += i.quantidade;
+        const model = i.device_model?.trim() || "—";
+        const ref   = i.device_reference?.trim() || "—";
+        const key   = `${model}||${ref}`;
+        if (!pecas[key]) pecas[key] = { model, ref, total: 0 };
+        pecas[key].total += (i.quantidade ?? 0);
       }
     }
-    const pecasList = Object.values(pecas).sort((a, b) => b.total - a.total);
+    const pecasList = Object.values(pecas)
+      .filter(p => p.model !== "—" || p.total > 0)
+      .sort((a, b) => b.total - a.total);
 
     // XSS: escape all user-supplied values before injecting into HTML blob
     const esc = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -1402,7 +1414,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
     // Monta HTML para impressão
     const html = `
       <!DOCTYPE html><html><head><meta charset="UTF-8">
-      <title>Relatório — ${esc(currentUserName ?? "")}</title>
+      <title>Relatório de Pedidos — ${esc(currentUserName ?? "")}</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
         h1 { font-size: 18px; margin-bottom: 4px; }
@@ -1414,12 +1426,20 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
         .total { font-weight: bold; font-size: 15px; color: #5b21b6; }
         .footer { margin-top: 20px; font-size: 11px; color: #999; }
       </style></head><body>
-      <h1>📊 Relatório de Vendas</h1>
+      <h1>📋 Relatório de Pedidos</h1>
       <p class="sub">Vendedora: <strong>${esc(currentUserName ?? "")}</strong> &nbsp;·&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
+      ${pecasList.length > 0 ? `
       <table>
         <thead><tr><th>#</th><th>Peça</th><th>Referência</th><th>Qtd. Vendida</th></tr></thead>
         <tbody>
-          ${pecasList.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.model)}</td><td>${esc(p.ref)}</td><td class="total">${p.total}</td></tr>`).join("")}
+          ${pecasList.map((p, idx2) => `<tr><td>${idx2 + 1}</td><td>${esc(p.model)}</td><td>${esc(p.ref)}</td><td class="total">${p.total}</td></tr>`).join("")}
+        </tbody>
+      </table>` : `<p style="color:#888;font-size:13px">Detalhes das peças não disponíveis para este período.</p>`}
+      <h2 style="font-size:14px;margin:20px 0 8px;color:#5b21b6">Pedidos</h2>
+      <table>
+        <thead><tr><th>#</th><th>Cliente</th><th>Status</th><th>Data</th><th>Peças</th></tr></thead>
+        <tbody>
+          ${meusPdfPedidos.map((p, idx2) => `<tr><td>${idx2 + 1}</td><td>${esc(p.cliente_nome)}</td><td>${esc(p.status)}</td><td>${new Date(p.created_at).toLocaleDateString("pt-BR")}</td><td>${p.itens.reduce((s,i) => s + i.quantidade, 0)}</td></tr>`).join("")}
         </tbody>
       </table>
       <p class="footer">Total de ${meusPdfPedidos.length} pedido(s) confirmado(s) &nbsp;·&nbsp; ${pecasList.reduce((s, p) => s + p.total, 0)} peças no total</p>
