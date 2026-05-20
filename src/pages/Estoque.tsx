@@ -993,7 +993,7 @@ export default function Estoque() {
                         { label: "Adicionar Peça", icon: Plus, action: () => setAddOpen(true) },
                         { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
                         { label: "Importar CSV", icon: ScanBarcode, action: () => setCsvOpen(true) },
-                        { label: "Importar Excel", icon: FileSpreadsheet, action: () => setExcelImportOpen(true) },
+                        { label: "Importar Excel / PDF", icon: FileSpreadsheet, action: () => setExcelImportOpen(true) },
                         { label: "Backup", icon: DatabaseBackup, action: () => setBackupOpen(true) },
                         { label: "Apagar Histórico", icon: Trash2, action: () => setClearHistConfirm(true), danger: true },
                         { label: "Excluir Todo Estoque", icon: Trash2, action: () => setDeleteAllOpen(true), danger: true },
