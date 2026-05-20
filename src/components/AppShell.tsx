@@ -137,13 +137,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => handleNav(item.path)}
               title={collapsed ? item.label : undefined}
               className={cn(
-                "w-full flex items-center rounded-lg text-sm font-medium transition-all duration-150 group relative",
+                "w-full flex items-center rounded-lg text-sm font-medium transition-all duration-150 group relative overflow-hidden",
                 collapsed ? "p-2.5 justify-center" : "px-3 py-2.5 gap-3",
                 active
-                  ? "bg-primary text-primary-foreground shadow-sm"
+                  ? "bg-primary/10 text-primary font-semibold"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
               )}
             >
+              {/* Indicador de ativo — borda lateral esquerda */}
+              {!collapsed && active && (
+                <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary" />
+              )}
               <Icon className={cn("shrink-0 transition-colors", collapsed ? "w-5 h-5" : "w-4 h-4")} />
               {!collapsed && <span className="truncate">{item.label}</span>}
               {collapsed && active && (
@@ -373,25 +377,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile topbar com logo Zomini */}
-        <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-border/60 bg-card/90 backdrop-blur-md shrink-0 z-30">
-          <button
-            onClick={() => setMobileOpen(true)}
-            className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+        {/* Mobile topbar — logo + menu para admin/settings */}
+        <header className="md:hidden flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card/90 backdrop-blur-md shrink-0 z-30">
           <img
             src={logoZomini}
             alt="Zomini"
             className="h-7 w-auto object-contain"
           />
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground"
+            title="Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
           {children}
         </main>
+
+        {/* ── Bottom Navigation — mobile only ──────────────────────────── */}
+        <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border/60 bg-card/95 backdrop-blur-md">
+          <div className="flex items-center justify-around px-2 py-1 safe-area-inset-bottom">
+            {visibleItems.slice(0, 5).map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.path);
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => handleNav(item.path)}
+                  className={cn(
+                    "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-150 min-w-[52px]",
+                    active
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <div className={cn(
+                    "relative flex items-center justify-center w-9 h-7 rounded-xl transition-all duration-150",
+                    active && "bg-primary/10"
+                  )}>
+                    {active && (
+                      <span className="absolute inset-x-2 top-0 h-[2px] rounded-b-full bg-primary" />
+                    )}
+                    <Icon className="w-4.5 h-4.5" />
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-medium leading-none transition-all",
+                    active ? "font-semibold" : ""
+                  )}>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       </div>
     </div>
   );

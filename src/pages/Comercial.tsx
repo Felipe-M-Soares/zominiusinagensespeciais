@@ -16,6 +16,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { CardSkeleton } from "@/components/PageSkeleton";
 import { useStock, fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -1668,7 +1669,9 @@ export default function Comercial() {
         return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
     } catch (_e) {
-      toast.error("Erro ao carregar pedidos.");
+      toast.error("Erro ao carregar pedidos.", {
+        action: { label: "Tentar novamente", onClick: loadPedidos }
+      });
     } finally {
       setLoadingPedidos(false);
     }
@@ -1678,10 +1681,14 @@ export default function Comercial() {
     setLoadingClientes(true);
     try {
       const { data, error } = await supabase.from("clientes").select("*").order("nome");
-      if (error) { toast.error("Erro ao carregar clientes."); return; }
+      if (error) { toast.error("Erro ao carregar clientes.", {
+        action: { label: "Tentar novamente", onClick: loadClientes }
+      }); return; }
       setClientes((data as Cliente[]) ?? []);
     } catch (_e) {
-      toast.error("Erro ao carregar clientes.");
+      toast.error("Erro ao carregar clientes.", {
+        action: { label: "Tentar novamente", onClick: loadClientes }
+      });
       setClientes([]);
     } finally {
       setLoadingClientes(false);

@@ -18,6 +18,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { TableSkeleton } from "@/components/PageSkeleton";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
@@ -1813,6 +1814,19 @@ export default function Financeiro() {
   const filtrados = filtroStatus === "todos" ? pedidos : pedidos.filter(p => p.status === filtroStatus);
   const prontos   = pedidos.filter(p => p.status === "pronto").length;
   const enviados  = pedidos.filter(p => p.status === "enviado").length;
+
+  // Loading skeleton — evita tela em branco na primeira carga
+  if (loading && pedidos.length === 0) {
+    return (
+      <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-4">
+        <div className="flex items-center gap-2 h-14">
+          <div className="h-4 w-4 rounded bg-muted/60 animate-pulse" />
+          <div className="h-4 w-28 rounded bg-muted/60 animate-pulse" />
+        </div>
+        <TableSkeleton rows={5} />
+      </div>
+    );
+  }
 
   if (!canAccess) {
     return (

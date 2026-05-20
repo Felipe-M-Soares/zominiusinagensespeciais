@@ -53,6 +53,7 @@ import {
   Archive,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
 import { AddToStockModal } from "@/components/stock/AddToStockModal";
 import { StockListModal } from "@/components/stock/StockListModal";
@@ -669,15 +670,22 @@ export default function Estoque() {
 
   async function clearAllHistory() {
     setClearingHist(true);
-    const { error: e1 } = await supabase.from("pedido_itens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    if (!e1) await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    if (!e1) await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    if (!e1) await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
-    setClearingHist(false);
-    if (e1) { toast.error("Erro ao apagar histórico."); return; }
-    toast.success("Histórico apagado com sucesso.");
-    setClearHistConfirm(false);
-    refetch();
+    try {
+      const { error: e1 } = await supabase.from("pedido_itens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (!e1) await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (!e1) await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (!e1) await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
+      if (e1) throw e1;
+      toast.success("Histórico apagado com sucesso.");
+      setClearHistConfirm(false);
+      refetch();
+    } catch (_e) {
+      toast.error("Erro ao apagar histórico. Tente novamente.", {
+        action: { label: "Tentar novamente", onClick: clearAllHistory }
+      });
+    } finally {
+      setClearingHist(false);
+    }
   }
   const [deletingAll, setDeletingAll] = useState(false);
   const [transferItem, setTransferItem] = useState<StockItem | null>(null);
@@ -893,33 +901,41 @@ export default function Estoque() {
       return;
     }
 
-    // Deleta pedido_itens vinculados (FK restrict impede alterações cascata)
-    await supabase.from("pedido_itens").delete().eq("stock_item_id", resetItem.id);
+    try {
+      // Deleta pedido_itens vinculados (FK restrict impede alterações cascata)
+      await supabase.from("pedido_itens").delete().eq("stock_item_id", resetItem.id);
 
-    // Zera a quantidade e reserva do item
-    const { error: updateErr } = await supabase
-      .from("stock_items")
-      .update({ quantity: 0, quantity_reserved: 0 })
-      .eq("id", resetItem.id);
-    if (updateErr) {
-      toast.error("Erro ao zerar estoque.");
+      // Zera a quantidade e reserva do item
+      const { error: updateErr } = await supabase
+        .from("stock_items")
+        .update({ quantity: 0, quantity_reserved: 0 })
+        .eq("id", resetItem.id);
+      if (updateErr) throw updateErr;
+
+      // Deleta todos os movimentos do item (limpa histórico de lotes)
+      const { error: movErr } = await supabase
+        .from("stock_movements")
+        .delete()
+        .eq("stock_item_id", resetItem.id);
+
+      if (movErr) {
+        toast.error("Estoque zerado, mas não foi possível limpar o histórico.");
+      } else {
+        toast.success("Estoque e histórico zerados com sucesso.");
+      }
+      setResetItem(null);
+      refetch();
+    } catch (_e) {
+      toast.error("Erro ao zerar estoque. Tente novamente.", {
+        action: { label: "Tentar novamente", onClick: handleResetItem }
+      });
+    } finally {
       setResetting(false);
-      return;
     }
-    // Deleta todos os movimentos do item (limpa histórico de lotes)
-    const { error: movErr } = await supabase
-      .from("stock_movements")
-      .delete()
-      .eq("stock_item_id", resetItem.id);
-    setResetting(false);
-    if (movErr) {
-      toast.error("Estoque zerado, mas não foi possível limpar o histórico.");
-    } else {
-      toast.success("Estoque e histórico zerados com sucesso.");
-    }
-    setResetItem(null);
-    refetch();
   }
+
+  // Loading state — mostra skeleton enquanto estoque carrega
+  if (loading && items.length === 0) return <PageSkeleton />;
 
   return (
     <>
