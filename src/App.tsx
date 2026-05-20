@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { AppShell } from "@/components/AppShell";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense } from "react";
 
 import Login from "./pages/Login";
@@ -32,13 +33,41 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, approved, blocked } = useAuth();
+// ── Guard unificado — substitui os 5 componentes de rota duplicados ──────────
+type Role = "admin" | "vendedora" | "financeiro" | "producao" | "estoque";
+
+interface RouteGuardProps {
+  children: React.ReactNode;
+  /** Roles permitidos; undefined = qualquer usuário aprovado */
+  roles?: Role[];
+  /** Se true, exige isAdmin independente do role */
+  adminOnly?: boolean;
+  /** Se false, rota é pública (redireciona para / quando autenticado) */
+  publicOnly?: boolean;
+}
+
+function RouteGuard({ children, roles, adminOnly, publicOnly }: RouteGuardProps) {
+  const { user, loading, approved, blocked, isAdmin, role } = useAuth();
+
+  // Aguarda loading inicial — mas approved===null sem loading significa perfil ausente,
+  // não deve bloquear indefinidamente (useAuth já trata isso retornando approved=true)
   if (loading) return <LoadingScreen />;
+
+  if (publicOnly) {
+    if (!user) return <>{children}</>;
+    if (approved === false) return <Navigate to="/pending-approval" replace />;
+    return <Navigate to="/" replace />;
+  }
+
   if (!user) return <Navigate to="/login" replace />;
   if (blocked) return <Navigate to="/pending-approval" replace />;
-  if (approved === null) return <LoadingScreen />;
   if (approved === false) return <Navigate to="/pending-approval" replace />;
+  // approved===null aqui não deve ocorrer após o fix do useAuth,
+  // mas se ocorrer deixa passar (melhor que loop infinito)
+
+  if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
+  if (roles && !isAdmin && !roles.includes(role as Role)) return <Navigate to="/" replace />;
+
   return <AppShell>{children}</AppShell>;
 }
 
@@ -51,51 +80,12 @@ function PendingApprovalRoute() {
   return <PendingApproval />;
 }
 
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, isAdmin, approved, blocked } = useAuth();
-  if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" replace />;
-  if (blocked) return <Navigate to="/pending-approval" replace />;
-  if (approved === null) return <LoadingScreen />;
-  if (!isAdmin || approved === false) return <Navigate to="/" replace />;
-  return <AppShell>{children}</AppShell>;
-}
-
-function VendedoraRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, role, approved, blocked } = useAuth();
-  if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" replace />;
-  if (blocked) return <Navigate to="/pending-approval" replace />;
-  if (approved === null) return <LoadingScreen />;
-  if (approved === false) return <Navigate to="/pending-approval" replace />;
-  if (role !== "vendedora" && role !== "admin") return <Navigate to="/" replace />;
-  return <AppShell>{children}</AppShell>;
-}
-
-function FinanceiroRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading, role, isAdmin, approved, blocked } = useAuth();
-  if (loading || approved === null) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" replace />;
-  if (blocked) return <Navigate to="/pending-approval" replace />;
-  if (approved === false) return <Navigate to="/pending-approval" replace />;
-  if (!isAdmin && role !== "financeiro") return <Navigate to="/" replace />;
-  return <AppShell>{children}</AppShell>;
-}
-
 function IndexRoute() {
   const { role, loading, approved } = useAuth();
   if (loading || approved === null) return <LoadingScreen />;
   if (role === "vendedora") return <Navigate to="/comercial" replace />;
   if (role === "financeiro") return <Navigate to="/financeiro" replace />;
   return <Index />;
-}
-
-function PublicOnly({ children }: { children: React.ReactNode }) {
-  const { user, loading, approved } = useAuth();
-  if (loading) return <LoadingScreen />;
-  if (user && approved === false) return <Navigate to="/pending-approval" replace />;
-  if (user) return <Navigate to="/" replace />;
-  return <>{children}</>;
 }
 
 const App = () => (
@@ -106,17 +96,27 @@ const App = () => (
         <AuthProvider>
           <Suspense fallback={<LoadingScreen />}>
             <Routes>
-              <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-              <Route path="/set-password" element={<ProtectedRoute><SetPassword /></ProtectedRoute>} />
+              {/* Públicas */}
+              <Route path="/login" element={<RouteGuard publicOnly><Login /></RouteGuard>} />
+
+              {/* Aprovação pendente */}
               <Route path="/pending-approval" element={<PendingApprovalRoute />} />
-              <Route path="/" element={<ProtectedRoute><IndexRoute /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-              <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
-              <Route path="/manuals" element={<ProtectedRoute><Manuals /></ProtectedRoute>} />
-              <Route path="/estoque" element={<ProtectedRoute><Estoque /></ProtectedRoute>} />
-              <Route path="/comercial" element={<VendedoraRoute><Comercial /></VendedoraRoute>} />
-              <Route path="/financeiro" element={<FinanceiroRoute><Financeiro /></FinanceiroRoute>} />
-              <Route path="/producao" element={<ProtectedRoute><Producao /></ProtectedRoute>} />
+
+              {/* Protegidas — qualquer usuário aprovado */}
+              <Route path="/set-password" element={<ErrorBoundary><RouteGuard><SetPassword /></RouteGuard></ErrorBoundary>} />
+              <Route path="/"          element={<ErrorBoundary><RouteGuard><IndexRoute /></RouteGuard></ErrorBoundary>} />
+              <Route path="/settings"  element={<ErrorBoundary><RouteGuard><SettingsPage /></RouteGuard></ErrorBoundary>} />
+              <Route path="/manuals"   element={<ErrorBoundary><RouteGuard><Manuals /></RouteGuard></ErrorBoundary>} />
+              <Route path="/estoque"   element={<ErrorBoundary><RouteGuard><Estoque /></RouteGuard></ErrorBoundary>} />
+              <Route path="/producao"  element={<ErrorBoundary><RouteGuard><Producao /></RouteGuard></ErrorBoundary>} />
+
+              {/* Protegidas — roles específicos */}
+              <Route path="/comercial"  element={<ErrorBoundary><RouteGuard roles={["vendedora", "admin"]}><Comercial /></RouteGuard></ErrorBoundary>} />
+              <Route path="/financeiro" element={<ErrorBoundary><RouteGuard roles={["financeiro", "admin"]}><Financeiro /></RouteGuard></ErrorBoundary>} />
+
+              {/* Admin */}
+              <Route path="/admin" element={<ErrorBoundary><RouteGuard adminOnly><Admin /></RouteGuard></ErrorBoundary>} />
+
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

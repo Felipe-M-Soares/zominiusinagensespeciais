@@ -269,16 +269,7 @@ export function BackupPanel({ open, onClose }: Props) {
                   <DatabaseBackup className="h-4 w-4 text-primary" />
                   Backup e Exportação
                 </span>
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => setClearConfirm(true)}
-                    title="Apagar todo o histórico"
-                    className="h-7 w-7 flex items-center justify-center rounded-lg text-destructive/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
+
               </DialogTitle>
             </DialogHeader>
             <p className="text-[12px] text-muted-foreground mt-0.5">

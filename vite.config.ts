@@ -50,6 +50,9 @@ export default defineConfig(({ mode }) => ({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      // injectRegister: 'script' evita o uso de blob: URLs para registrar o SW
+      // o padrão 'auto' gera um inline script com blob: que é bloqueado pelo CSP
+      injectRegister: "script",
       includeAssets: [
         "favicon.ico",
         "favicon.png",
