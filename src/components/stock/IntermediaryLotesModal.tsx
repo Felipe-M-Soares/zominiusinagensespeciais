@@ -40,21 +40,14 @@ function printLabel(model: string, reference: string, lote: string) {
   <style>
     @page { size: 50mm 45mm; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      width: 50mm; height: 45mm;
-      font-family: Arial, Helvetica, sans-serif;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .label {
-      width: 48mm; height: 43mm;
-      border: 1px solid #000;
-      display: flex; flex-direction: column;
-      justify-content: center; align-items: center;
-      gap: 2mm; padding: 2mm; text-align: center;
-    }
-    .desc { font-size: 7pt; color: #333; letter-spacing: 0.02em; }
-    .ref  { font-size: 13pt; font-weight: bold; letter-spacing: 0.03em; }
-    .lote { font-size: 12pt; font-weight: bold; }
+    body { width:50mm; height:45mm; font-family:Arial,Helvetica,sans-serif;
+           display:flex; align-items:center; justify-content:center; }
+    .label { width:48mm; height:43mm; border:1px solid #000;
+             display:flex; flex-direction:column; justify-content:center;
+             align-items:center; gap:2mm; padding:2mm; text-align:center; }
+    .desc { font-size:7pt; color:#333; }
+    .ref  { font-size:13pt; font-weight:bold; }
+    .lote { font-size:12pt; font-weight:bold; }
   </style>
 </head>
 <body>
@@ -65,13 +58,30 @@ function printLabel(model: string, reference: string, lote: string) {
   </div>
 </body>
 </html>`;
-
   const win = window.open("", "_blank", "width=300,height=300");
   if (!win) return;
   win.document.write(html);
   win.document.close();
   win.focus();
   setTimeout(() => { win.print(); win.close(); }, 400);
+}
+
+// Busca stock_movements em chunks para evitar Bad Request (URL muito longa no .in())
+async function fetchMovimentosEmChunks(ids: string[]) {
+  const CHUNK = 50;
+  type MovRow = { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null };
+  const all: MovRow[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from("stock_movements")
+      .select("stock_item_id, lote, type, quantity, reason")
+      .in("stock_item_id", chunk)
+      .not("lote", "is", null);
+    if (error) throw new Error(`stock_movements: ${error.message}`);
+    all.push(...((data ?? []) as MovRow[]));
+  }
+  return all;
 }
 
 export function IntermediaryLotesModal({ open, onClose }: Props) {
@@ -86,13 +96,10 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
     setErro(null);
 
     try {
-      // Busca stock_items da fase intermediária já com dados do device (join)
+      // 1. Busca todos os stock_items intermediários com join no device
       const { data: siData, error: siErr } = await supabase
         .from("stock_items")
-        .select(`
-          id,
-          device:devices ( model, reference )
-        `)
+        .select("id, device_id, devices(model, reference)")
         .eq("fase", "intermediaria");
 
       if (siErr) throw new Error(`stock_items: ${siErr.message}`);
@@ -104,37 +111,28 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
         return;
       }
 
-      // Monta mapa id → device info
-      type SiRow = { id: string; device: { model: string; reference: string } | { model: string; reference: string }[] | null };
+      type SiRow = {
+        id: string;
+        device_id: string;
+        devices: { model: string; reference: string } | { model: string; reference: string }[] | null;
+      };
+
       const deviceMap = new Map<string, { model: string; reference: string }>();
       for (const si of siData as SiRow[]) {
-        const dev = Array.isArray(si.device) ? si.device[0] : si.device;
+        const dev = Array.isArray(si.devices) ? si.devices[0] : si.devices;
         if (dev) deviceMap.set(si.id, dev);
       }
 
       const allIds = [...deviceMap.keys()];
 
-      // Busca movimentos com lote de todos os itens intermediários
-      const { data: movData, error: movErr } = await supabase
-        .from("stock_movements")
-        .select("stock_item_id, lote, type, quantity, reason")
-        .in("stock_item_id", allIds)
-        .not("lote", "is", null);
-
-      if (movErr) throw new Error(`stock_movements: ${movErr.message}`);
+      // 2. Busca movimentos em chunks (evita Bad Request por URL longa)
+      if (cancelRef.current) return;
+      const movimentos = await fetchMovimentosEmChunks(allIds);
       if (cancelRef.current) return;
 
-      // Calcula saldo por (stock_item_id, lote)
-      type MovRow = {
-        stock_item_id: string;
-        lote: string;
-        type: string;
-        quantity: number;
-        reason: string | null;
-      };
-
+      // 3. Calcula saldo por (stock_item_id, lote)
       const saldos = new Map<string, number>();
-      for (const row of (movData ?? []) as MovRow[]) {
+      for (const row of movimentos) {
         if (!row.lote) continue;
         if (row.reason && IGNORE_REASONS.has(row.reason)) continue;
         const key = `${row.stock_item_id}|${row.lote.toUpperCase()}`;
@@ -142,7 +140,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
         saldos.set(key, row.type === "entrada" ? cur + row.quantity : cur - row.quantity);
       }
 
-      // Monta resultado — inclui TODOS os itens (não só os paginados nas props)
+      // 4. Monta resultado com saldo > 0
       const result: IntermediaryLoteRow[] = [];
       for (const [key, saldo] of saldos) {
         if (saldo <= 0) continue;
@@ -245,7 +243,6 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
                   <span className="text-[10px] text-muted-foreground ml-1">· {saldo} un.</span>
                 </div>
               </div>
-
               <Button
                 size="sm"
                 variant="outline"

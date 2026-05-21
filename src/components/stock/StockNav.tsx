@@ -6,7 +6,7 @@
  * do bloco <div className="flex items-stretch gap-2"> atual.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   LayoutDashboard,
   Package,
@@ -204,15 +204,19 @@ export function StockNav({
   pedidosPendentes = 0,
 }: StockNavProps) {
   const [animating, setAnimating] = useState<ActiveView | null>(null);
+  // Ref para evitar closure stale no handleClick (activeView pode ficar desatualizado
+  // em taps rápidos mobile porque o useCallback não re-executa imediatamente).
+  const activeViewRef = useRef<ActiveView>(activeView);
+  activeViewRef.current = activeView;
 
   const handleClick = useCallback(
     (view: ActiveView) => {
-      if (view === activeView) return;
+      if (view === activeViewRef.current) return;
       setAnimating(view);
       setTimeout(() => setAnimating(null), 500);
       onViewChange(view);
     },
-    [activeView, onViewChange]
+    [onViewChange]
   );
 
   // Mapeamento de view → itens para o preview
