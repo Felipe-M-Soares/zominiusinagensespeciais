@@ -2,14 +2,11 @@
  * ExcelStockImport — importa lotes via planilha Excel (.xlsx/.xls)
  * ou via PDF de "SALDO DE ESTOQUE" (relatório IPS/ERP).
  *
- * PDF: usa pdfjs-dist (instalar: npm install pdfjs-dist)
- * Excel: usa exceljs (já instalado)
- *
- * Formato do PDF:
- *   - "000044 - NOME DA PEÇA"          → item atual
- *   - "ENDERECO: EXP..." / "INT..."    → fase
- *   - "<17dígitos> <LOTE> ... UN <QTD> <RESERVA> <SALDO>" → lote + saldo
- * Importa somente lotes com SALDO > 0.
+ * Regra de peça não cadastrada:
+ *   Se a peça não for encontrada no banco, ela é criada automaticamente
+ *   com nome (model) e referência (reference) vindos da planilha/PDF.
+ *   Os demais campos obrigatórios ficam com "—" como placeholder até
+ *   que o usuário complete o cadastro depois.
  */
 
 import { useRef, useState, useCallback } from "react";
@@ -23,7 +20,7 @@ import { cn } from "@/lib/utils";
 import {
   FileSpreadsheet, Upload, Download, CheckCircle2,
   XCircle, AlertTriangle, Loader2, ChevronDown, ChevronUp,
-  X, Eye, ArrowRight, RefreshCw, FileText,
+  X, Eye, ArrowRight, RefreshCw, FileText, PlusCircle,
 } from "lucide-react";
 
 // Worker do pdfjs — usa o worker incluído no pacote via blob
@@ -45,7 +42,7 @@ interface ParsedRow {
   parseError?: string;
 }
 
-type ImportStatus = "pending" | "ok" | "notfound" | "error";
+type ImportStatus = "pending" | "ok" | "created" | "notfound" | "error";
 interface ImportResult extends ParsedRow {
   status: ImportStatus;
   message?: string;
@@ -92,8 +89,6 @@ async function parsePdfSaldo(
   const rows: ParsedRow[] = [];
   let lineCounter = 0;
 
-  // Regex para linha de lote do relatório IPS
-  // Formato: <17dígitos>  <LOTE>  <REFERENCIA...>  ATIVO  <DATA>  <DATA>  UN  <QTD>  <RESERVA>  <SALDO>
   const LOTE_RE  = /^\s*\d{17}\s+(\S+)\s+.+\bUN\b\s+(\d+)\s+(\d+)\s+(\d+)\s*$/;
   const ITEM_RE  = /^\d{6}\s*-\s*(.+)$/;
   const ADDR_RE  = /ENDERECO\s*:/i;
@@ -105,7 +100,6 @@ async function parsePdfSaldo(
     const page    = await pdf.getPage(p);
     const content = await page.getTextContent();
 
-    // Agrupa items por linha (coordenada Y)
     interface TItem { str: string; transform: number[] }
     const items = (content.items as TItem[]).filter(i => i.str.trim());
 
@@ -118,9 +112,9 @@ async function parsePdfSaldo(
     }
 
     const lines = [...byY.entries()]
-      .sort((a, b) => b[0] - a[0])                          // top → bottom
+      .sort((a, b) => b[0] - a[0])
       .map(([, its]) =>
-        its.sort((a, b) => a.transform[4] - b.transform[4]) // left → right
+        its.sort((a, b) => a.transform[4] - b.transform[4])
            .map(i => i.str).join(" ").trim()
       )
       .filter(Boolean);
@@ -139,7 +133,7 @@ async function parsePdfSaldo(
       const mLote = line.match(LOTE_RE);
       if (mLote && currentItem && currentFase) {
         const saldo = parseInt(mLote[4], 10);
-        if (saldo <= 0) continue;                            // ignora lotes sem saldo
+        if (saldo <= 0) continue;
 
         rows.push({
           line: lineCounter,
@@ -157,40 +151,91 @@ async function parsePdfSaldo(
   return rows;
 }
 
-// ── Busca stock_item no Supabase ───────────────────────────────────────────────
+// ── Busca ou cria stock_item no Supabase ───────────────────────────────────────
 
-async function findStockItem(
-  nomeNorm: string,
+/** Retorna { id, model, created } — created=true se a peça foi criada agora */
+async function findOrCreateStockItem(
+  nome: string,
+  lote: string,
   fase: Fase
-): Promise<{ id: string; model: string } | null> {
+): Promise<{ id: string; model: string; created: boolean } | null> {
+  const nomeNorm = normalizeStr(nome);
+
+  // 1. Tenta encontrar device existente pelo nome
   const { data: devices } = await supabase
     .from("devices")
     .select("id, model")
     .ilike("model", `%${nomeNorm}%`)
     .limit(10);
 
-  if (!devices?.length) return null;
+  let deviceId: string | null = null;
+  let deviceModel: string = nome;
 
-  for (const dev of devices as { id: string; model: string }[]) {
-    const { data: si } = await supabase
-      .from("stock_items")
-      .select("id")
-      .eq("device_id", dev.id)
-      .eq("fase", fase)
-      .maybeSingle();
-    if (si) return { id: si.id, model: dev.model };
+  if (devices?.length) {
+    // Encontrou dispositivo(s) — tenta achar o stock_item correspondente
+    for (const dev of devices as { id: string; model: string }[]) {
+      const { data: si } = await supabase
+        .from("stock_items")
+        .select("id")
+        .eq("device_id", dev.id)
+        .eq("fase", fase)
+        .maybeSingle();
+      if (si) return { id: si.id, model: dev.model, created: false };
+    }
+
+    // Device existe mas não tem stock_item para essa fase — cria o stock_item
+    const best = (devices as { id: string; model: string }[]).find(
+      d => normalizeStr(d.model) === nomeNorm
+    ) ?? (devices as { id: string; model: string }[])[0];
+
+    deviceId    = best.id;
+    deviceModel = best.model;
+  } else {
+    // 2. Peça não existe no banco — cria o device com nome e referência
+    //    Campos obrigatórios sem info real recebem "—" como placeholder
+    const PLACEHOLDER = "—";
+    const { data: newDevice, error: devErr } = await supabase
+      .from("devices")
+      .insert({
+        model:                  nome,
+        reference:              lote,         // usa o lote como referência inicial
+        internal_code:          PLACEHOLDER,
+        brand_name:             PLACEHOLDER,
+        anvisa_registration:    PLACEHOLDER,
+        classification_code:    PLACEHOLDER,
+        risk_class:             PLACEHOLDER,
+        intended_use:           PLACEHOLDER,
+        primary_material:       PLACEHOLDER,
+        manufacturer_country:   PLACEHOLDER,
+        body_region:            PLACEHOLDER,
+        udi_di:                 PLACEHOLDER,
+        exocad_compatibility:   PLACEHOLDER,
+        implantable:            false,
+        single_use:             false,
+        sterile:                false,
+      })
+      .select("id, model")
+      .single();
+
+    if (devErr || !newDevice) return null;
+
+    deviceId    = newDevice.id;
+    deviceModel = newDevice.model;
   }
 
-  const best = (devices as { id: string; model: string }[]).find(
-    d => normalizeStr(d.model) === nomeNorm
-  ) ?? (devices as { id: string; model: string }[])[0];
-
+  // 3. Cria (ou recupera) o stock_item para o device + fase
   const { data: upserted } = await supabase
     .from("stock_items")
-    .upsert({ device_id: best.id, quantity: 0, min_quantity: 0, fase }, { onConflict: "device_id,fase" })
-    .select("id").single();
+    .upsert(
+      { device_id: deviceId, quantity: 0, min_quantity: 0, fase },
+      { onConflict: "device_id,fase" }
+    )
+    .select("id")
+    .single();
 
-  return upserted ? { id: upserted.id, model: best.model } : null;
+  return upserted
+    ? { id: upserted.id, model: deviceModel, created: !devices?.length }
+    : null;
 }
 
 // ── Template Excel ─────────────────────────────────────────────────────────────
@@ -321,16 +366,16 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
     }));
     setResults([...res]);
 
-    let ok = 0, err = res.filter(r => r.status === "error").length;
+    let ok = 0, created = 0, err = res.filter(r => r.status === "error").length;
 
     for (let i = 0; i < valid.length; i++) {
       const row = valid[i];
       const idx = res.findIndex(r => r.line === row.line);
       try {
-        const found = await findStockItem(normalizeStr(row.nome), row.fase!);
+        const found = await findOrCreateStockItem(row.nome, row.lote, row.fase!);
         if (!found) {
-          res[idx] = { ...res[idx], status: "notfound",
-            message: `"${row.nome}" não encontrada para fase "${row.fase}"` };
+          res[idx] = { ...res[idx], status: "error",
+            message: `Não foi possível criar "${row.nome}"` };
           err++;
         } else {
           const mv = await registerMovement(
@@ -339,9 +384,15 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
             user?.id ?? null, null, row.lote
           );
           if (mv.ok) {
-            res[idx] = { ...res[idx], status: "ok", deviceModel: found.model,
-              message: `+${row.quantidade} un. em "${found.model}"` };
-            ok++;
+            if (found.created) {
+              res[idx] = { ...res[idx], status: "created", deviceModel: found.model,
+                message: `Peça criada e +${row.quantidade} un. registradas` };
+              created++;
+            } else {
+              res[idx] = { ...res[idx], status: "ok", deviceModel: found.model,
+                message: `+${row.quantidade} un. em "${found.model}"` };
+              ok++;
+            }
           } else {
             res[idx] = { ...res[idx], status: "error", message: mv.error ?? "Erro" };
             err++;
@@ -357,19 +408,26 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
     }
 
     setStep("done");
-    if (ok > 0) { toast.success(`${ok} lote${ok > 1 ? "s" : ""} importado${ok > 1 ? "s" : ""}!`); onSuccess(); }
+    const total = ok + created;
+    if (total > 0) {
+      const parts = [];
+      if (ok > 0)      parts.push(`${ok} atualizado${ok > 1 ? "s" : ""}`);
+      if (created > 0) parts.push(`${created} criado${created > 1 ? "s" : ""}`);
+      toast.success(`${parts.join(" · ")}!`);
+      onSuccess();
+    }
     if (err > 0) toast.error(`${err} com erro.`);
   }
 
   if (!open) return null;
 
-  const parseErrors = parsedRows.filter(r => r.parseError);
-  const validRows   = parsedRows.filter(r => !r.parseError);
-  const interRows   = validRows.filter(r => r.fase === "intermediaria");
-  const expRows     = validRows.filter(r => r.fase === "expedicao");
-  const resOk       = results.filter(r => r.status === "ok");
-  const resNotFound = results.filter(r => r.status === "notfound");
-  const resError    = results.filter(r => r.status === "error");
+  const parseErrors  = parsedRows.filter(r => r.parseError);
+  const validRows    = parsedRows.filter(r => !r.parseError);
+  const interRows    = validRows.filter(r => r.fase === "intermediaria");
+  const expRows      = validRows.filter(r => r.fase === "expedicao");
+  const resOk        = results.filter(r => r.status === "ok");
+  const resCreated   = results.filter(r => r.status === "created");
+  const resError     = results.filter(r => r.status === "error");
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -410,6 +468,18 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors">
                 <Download className="h-3.5 w-3.5" /> Baixar modelo
               </button>
+            </div>
+
+            {/* Aviso sobre criação automática de peças */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+              <PlusCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Peças não cadastradas são criadas automaticamente</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Se uma peça da planilha não existir no app, ela será criada com o nome e a referência informados.
+                  Os demais campos poderão ser preenchidos depois no cadastro de dispositivos.
+                </p>
+              </div>
             </div>
 
             <div className="flex items-start gap-2.5 p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
@@ -508,6 +578,14 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
               ))}
             </div>
 
+            {/* Aviso de criação automática no preview */}
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+              <PlusCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                Peças não encontradas no app serão criadas automaticamente com nome e referência. Complete o cadastro depois em Dispositivos.
+              </p>
+            </div>
+
             {parseErrors.length > 0 && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 overflow-hidden">
                 <button type="button" onClick={() => setShowErrors(v => !v)}
@@ -598,15 +676,24 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
             {step === "done" && (
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { label: "Importados",      value: resOk.length,       color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
-                  { label: "Não encontrados", value: resNotFound.length,  color: "text-amber-600 dark:text-amber-400",    bg: "bg-amber-500/10 border-amber-500/20" },
-                  { label: "Erros",           value: resError.length,     color: "text-destructive",                       bg: "bg-destructive/10 border-destructive/20" },
+                  { label: "Atualizados",   value: resOk.length,      color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
+                  { label: "Peças criadas", value: resCreated.length,  color: "text-blue-600 dark:text-blue-400",       bg: "bg-blue-500/10 border-blue-500/20" },
+                  { label: "Erros",         value: resError.length,    color: "text-destructive",                        bg: "bg-destructive/10 border-destructive/20" },
                 ].map(({ label, value, color, bg }) => (
                   <div key={label} className={cn("rounded-xl border p-3 text-center", bg)}>
                     <div className={cn("text-2xl font-bold tabular-nums", color)}>{value}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {step === "done" && resCreated.length > 0 && (
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                <PlusCircle className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-blue-700 dark:text-blue-400">
+                  {resCreated.length} peça{resCreated.length > 1 ? "s foram criadas" : " foi criada"} com nome e referência. Complete o cadastro em <strong>Admin → Dispositivos</strong>.
+                </p>
               </div>
             )}
 
@@ -617,10 +704,10 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
               <div className="max-h-72 overflow-y-auto divide-y divide-border/20">
                 {results.map(r => (
                   <div key={r.line} className="flex items-start gap-2.5 px-3 py-2.5">
-                    {r.status === "ok"       && <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />}
-                    {r.status === "notfound" && <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />}
-                    {r.status === "error"    && <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />}
-                    {r.status === "pending"  && <Loader2 className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5 animate-spin" />}
+                    {r.status === "ok"      && <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />}
+                    {r.status === "created" && <PlusCircle   className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />}
+                    {r.status === "error"   && <XCircle      className="h-4 w-4 text-destructive shrink-0 mt-0.5" />}
+                    {r.status === "pending" && <Loader2      className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5 animate-spin" />}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs font-medium truncate">{r.deviceModel ?? r.nome}</span>
@@ -629,7 +716,9 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                       </div>
                       {r.message && (
                         <p className={cn("text-[10px] mt-0.5",
-                          r.status === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
+                          r.status === "ok"      ? "text-emerald-600 dark:text-emerald-400" :
+                          r.status === "created" ? "text-blue-600 dark:text-blue-400" :
+                          "text-muted-foreground")}>
                           {r.message}
                         </p>
                       )}
