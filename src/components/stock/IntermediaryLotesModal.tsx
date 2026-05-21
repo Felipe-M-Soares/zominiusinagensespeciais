@@ -23,12 +23,13 @@ interface Props {
   onClose: () => void;
 }
 
+// Apenas movimentos que são espelhos contábeis da EXPEDIÇÃO são ignorados aqui.
+// Os rollbacks são entradas de recuperação reais na intermediária e NÃO devem ser ignorados.
+// "Recebido de Intermediário" é uma entrada na expedição — nunca aparece nos movimentos
+// da intermediária, mas fica listado aqui por segurança.
 const IGNORE_REASONS = new Set([
   "Recebido de Intermediário",
   "Retrabalho concluído — recebido do Retrabalho",
-  "Rollback — falha ao criar item de retrabalho",
-  "Rollback — falha ao criar item de expedição",
-  "Rollback — falha ao registrar entrada na expedição",
 ]);
 
 function printLabel(model: string, reference: string, lote: string) {
@@ -118,12 +119,19 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
       };
 
       const deviceMap = new Map<string, { model: string; reference: string }>();
+      const allStockItemIds: string[] = [];
       for (const si of siData as SiRow[]) {
+        allStockItemIds.push(si.id);
         const dev = Array.isArray(si.devices) ? si.devices[0] : si.devices;
         if (dev) deviceMap.set(si.id, dev);
       }
 
-      const allIds = [...deviceMap.keys()];
+      // allIds inclui TODOS os stock_item_ids (mesmo os sem device mapeado),
+      // mas no resultado final só aparecem os que têm device no deviceMap.
+      const allIds = allStockItemIds;
+
+      // Lotes placeholder que não representam estoque real
+      const LOTE_INDEFINIDO = new Set(["a-definir", "a definir", "sem lote"]);
 
       // 2. Busca movimentos em chunks (evita Bad Request por URL longa)
       if (cancelRef.current) return;
@@ -134,6 +142,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
       const saldos = new Map<string, number>();
       for (const row of movimentos) {
         if (!row.lote) continue;
+        if (LOTE_INDEFINIDO.has(row.lote.trim().toLowerCase())) continue;
         if (row.reason && IGNORE_REASONS.has(row.reason)) continue;
         const key = `${row.stock_item_id}|${row.lote.toUpperCase()}`;
         const cur = saldos.get(key) ?? 0;

@@ -809,7 +809,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
 
   return (
-    <div className={cn("rounded-2xl border overflow-hidden transition-colors",
+    <div className={cn("rounded-2xl border overflow-hidden transition-colors flex flex-col",
       pedido.status === "pronto"   ? "border-emerald-500/25 bg-emerald-500/3" :
       pedido.status === "faturado" ? "border-violet-500/25  bg-violet-500/3"  :
       pedido.status === "enviado"  ? "border-green-500/20   bg-green-500/3"   :
@@ -1225,7 +1225,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
           <p className="text-sm text-muted-foreground">Nenhum lançamento registrado</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
           {itens.map(item => {
             const CatIcon = allCats.find(c => c.valor === item.categoria)?.icon ?? Package;
             return (
@@ -1466,7 +1466,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
             <p className="text-sm text-muted-foreground">Nenhuma conta cadastrada</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {contas.map(c => (
               <div key={c.id} className="rounded-xl border border-border/30 bg-card p-3 space-y-2">
                 <div className="flex items-start justify-between gap-2">
@@ -1820,7 +1820,7 @@ export default function Financeiro() {
   // Loading skeleton — evita tela em branco na primeira carga
   if (loading && pedidos.length === 0) {
     return (
-      <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-4">
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
         <div className="flex items-center gap-2 h-14">
           <div className="h-4 w-4 rounded bg-muted/60 animate-pulse" />
           <div className="h-4 w-28 rounded bg-muted/60 animate-pulse" />
@@ -1853,7 +1853,7 @@ export default function Financeiro() {
   return (
     <div className="min-h-screen bg-transparent">
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => navigate("/")}
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
@@ -1889,7 +1889,7 @@ export default function Financeiro() {
         </div>
 
         {/* Sub-tabs */}
-        <div className="max-w-3xl mx-auto px-4 pb-2">
+        <div className="max-w-7xl mx-auto px-4 pb-2">
           <div className="flex items-center gap-0.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
             {TABS.map(tab => {
               const Icon = tab.icon;
@@ -1916,7 +1916,7 @@ export default function Financeiro() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-4 space-y-4">
+      <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
 
         {/* ─── NF-e / SEFAZ ─────────────────────────────────── */}
         {activeTab === "nfe" && (
@@ -1970,7 +1970,7 @@ export default function Financeiro() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {filtrados.map(p => <PedidoCard key={p.id} pedido={p} onEmitirNF={setSefazPedido} />)}
               </div>
             )}

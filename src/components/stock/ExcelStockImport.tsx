@@ -157,6 +157,7 @@ async function parsePdfSaldo(
 /** Retorna { id, model, created } — created=true se a peça foi criada agora */
 async function findOrCreateStockItem(
   nome: string,
+  referencia: string,
   lote: string,
   fase: Fase
 ): Promise<{ id: string; model: string; created: boolean } | null> {
@@ -199,7 +200,7 @@ async function findOrCreateStockItem(
       .from("devices")
       .insert({
         model:                  nome,
-        reference:              lote,         // usa o lote como referência inicial
+        reference:              referencia || lote, // usa referencia real ou lote como fallback
         internal_code:          PLACEHOLDER,
         brand_name:             PLACEHOLDER,
         anvisa_registration:    PLACEHOLDER,
