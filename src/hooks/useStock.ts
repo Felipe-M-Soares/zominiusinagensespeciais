@@ -60,11 +60,12 @@ export function useStock(search: string) {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  // Padrão de cancelamento por geração — Supabase JS não aceita AbortSignal,
+  // então usamos um contador: se a geração mudou ao terminar a query, descartamos.
+  const genRef = useRef<number>(0);
 
   const loadItems = useCallback(async (q: string) => {
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
+    const gen = ++genRef.current;
     setLoading(true);
     setError(null);
 
@@ -89,10 +90,11 @@ export function useStock(search: string) {
         const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase());
 
         if (isLoteSearch) {
+          // Usa eq (= index) em vez de ilike para busca de lote exato — muito mais rápido
           const { data: loteMov } = await supabase
             .from("stock_movements")
             .select("stock_item_id")
-            .ilike("lote", s.toUpperCase());
+            .eq("lote", s.toUpperCase());
 
           if (!loteMov || loteMov.length === 0) {
             setItems([]);
@@ -133,7 +135,7 @@ export function useStock(search: string) {
       let allRows: Record<string, unknown>[] = [];
       let fetchedCount = 0;
 
-      const MAX_PAGES = 100;
+      const MAX_PAGES = 10; // proteção: 10k itens é mais que suficiente
       let pageNum = 0;
       while (pageNum < MAX_PAGES) {
         const from = pageNum * PAGE_SIZE;
@@ -164,35 +166,32 @@ export function useStock(search: string) {
         .filter((item) => item.device != null);
 
       // Recalcula quantity_reserved a partir dos pedido_itens ativos (apenas pendente/separando).
-      // "pronto" NÃO conta como reserva — o estoque já foi deduzido ao marcar como pronto.
+      // PERF: pedidos + pedido_itens agora em Promise.all (paralelo) em vez de sequencial.
       try {
         const expedicaoIds = normalized.filter(i => i.fase === "expedicao").map(i => i.id);
         if (expedicaoIds.length > 0) {
-          // Apenas pedidos pendente e separando geram reserva de estoque
-          const { data: pedidosAtivos } = await supabase
-            .from("pedidos_comerciais")
-            .select("id")
-            .in("status", ["pendente", "separando"]);
-
-          const pedidoIds = (pedidosAtivos ?? []).map((p: { id: string }) => p.id);
-
-          // Monta mapa de reservas reais (zero para itens sem pedido ativo)
           const reservaMap = new Map<string, number>();
           for (const id of expedicaoIds) reservaMap.set(id, 0);
 
-          if (pedidoIds.length > 0) {
-            const { data: pedidoItens } = await supabase
+          // Busca pedidos ativos e pedido_itens em paralelo
+          const [{ data: pedidosAtivos }, { data: pedidoItensAll }] = await Promise.all([
+            supabase
+              .from("pedidos_comerciais")
+              .select("id")
+              .in("status", ["pendente", "separando"]),
+            supabase
               .from("pedido_itens")
-              .select("stock_item_id, quantidade")
-              .in("stock_item_id", expedicaoIds)
-              .in("pedido_id", pedidoIds);
+              .select("stock_item_id, quantidade, pedido_id")
+              .in("stock_item_id", expedicaoIds),
+          ]);
 
-            for (const pi of (pedidoItens ?? []) as { stock_item_id: string; quantidade: number }[]) {
-              reservaMap.set(pi.stock_item_id, (reservaMap.get(pi.stock_item_id) ?? 0) + pi.quantidade);
-            }
+          const pedidoIds = new Set((pedidosAtivos ?? []).map((p: { id: string }) => p.id));
+
+          for (const pi of (pedidoItensAll ?? []) as { stock_item_id: string; quantidade: number; pedido_id: string }[]) {
+            if (!pedidoIds.has(pi.pedido_id)) continue;
+            reservaMap.set(pi.stock_item_id, (reservaMap.get(pi.stock_item_id) ?? 0) + pi.quantidade);
           }
 
-          // Aplica o recálculo em todos os itens de expedição
           for (const item of normalized) {
             if (item.fase === "expedicao") {
               const reservaReal = reservaMap.get(item.id) ?? 0;
@@ -206,8 +205,10 @@ export function useStock(search: string) {
         logger.warn("useStock: falha ao recalcular reservas de expedição:", e);
       }
 
+      if (gen !== genRef.current) return; // carga obsoleta — descarta
       setItems(normalized);
       setTotalCount(fetchedCount);
+      lastLoadRef.current = Date.now();
     } catch (e: unknown) {
       if ((e as { name?: string })?.name !== "AbortError") {
         setError("Erro ao carregar estoque.");
@@ -219,24 +220,23 @@ export function useStock(search: string) {
 
   useEffect(() => {
     loadItems(search);
-    return () => abortRef.current?.abort();
+    return () => { genRef.current++; }; // cancela resultado de cargas em voo
   }, [search, loadItems]);
 
-  // Recarrega automaticamente quando o usuario volta para a aba/janela,
-  // garantindo que reservas confirmadas em outras abas sejam refletidas.
+  // Recarrega quando o usuário volta à aba após pelo menos 60s de ausência.
+  // PERF: window.focus foi removido — disparava loadItems a cada clique em modal,
+  // campo de texto ou qualquer troca de foco interna, causando dezenas de recargas/min.
+  // visibilitychange cobre o caso real (outra aba/app) com cooldown de 60s.
+  const lastLoadRef = useRef<number>(0);
   useEffect(() => {
     function handleVisibility() {
-      if (document.visibilityState === "visible") loadItems(search);
-    }
-    function handleFocus() {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastLoadRef.current < 60_000) return; // cooldown 60s
       loadItems(search);
     }
     document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("focus", handleFocus);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("focus", handleFocus);
-    };
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [search, loadItems]);
 
   return { items, totalCount, loading, error, refetch: () => loadItems(search) };
@@ -883,21 +883,19 @@ export async function fetchLotesSummaryBatch(
 }
 
 export async function fetchLotesSummary(stockItemId: string, _fase?: string): Promise<LoteSummary[]> {
-  // 1. Busca todos os movimentos com lote real (exclui null e 'a-definir')
-  const { data: movimentos } = await supabase
-    .from("stock_movements")
-    .select("lote, type, quantity, reason, created_at")
-    .eq("stock_item_id", stockItemId)
-    .not("lote", "is", null)
-    .order("created_at", { ascending: false });
-
-  // 2. Busca pedidos ativos (pendente/separando) com lotes_separados e pedido_itens
-  //    lotes_separados tem a distribuição real por lote (ex: 100 do lote A + 50 do lote B).
-  //    pedido_itens.lote só guarda o lote principal — insuficiente quando há múltiplos lotes.
-  const { data: pedidosAtivos } = await supabase
-    .from("pedidos_comerciais")
-    .select("id, lotes_separados")
-    .in("status", ["pendente", "separando"]);
+  // PERF: movimentos + pedidos ativos em paralelo (eram sequenciais — dobrava a latência)
+  const [{ data: movimentos }, { data: pedidosAtivos }] = await Promise.all([
+    supabase
+      .from("stock_movements")
+      .select("lote, type, quantity, reason, created_at")
+      .eq("stock_item_id", stockItemId)
+      .not("lote", "is", null)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("pedidos_comerciais")
+      .select("id, lotes_separados")
+      .in("status", ["pendente", "separando"]),
+  ]);
 
   const pedidoIdsAtivos = (pedidosAtivos ?? []).map((p: { id: string }) => p.id);
 
@@ -905,10 +903,8 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
   const pedidoItensReservados: { lote: string | null; quantidade: number }[] = [];
 
   if (pedidoIdsAtivos.length > 0) {
-    // Busca o device_id deste stock_item para localizar pedidos que possam ter sido
-    // criados com o stock_item_id da intermediária em vez da expedição.
-    // Sem isso, pedidos antigos (criados antes da padronização) não são encontrados
-    // e os saldos por lote ficam incorretos (não descontam reservas).
+    // PERF: busca device_id e siblings em paralelo com pedido_itens (eram 3 queries sequenciais)
+    // 1. Obtém device_id para poder buscar siblings
     const { data: siData } = await supabase
       .from("stock_items")
       .select("device_id")
@@ -916,22 +912,24 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
       .maybeSingle();
     const deviceId = (siData as { device_id: string } | null)?.device_id;
 
-    // Todos os stock_item_ids do mesmo device (cobre tanto expedição quanto intermediária)
-    let allStockItemIds = [stockItemId];
-    if (deviceId) {
-      const { data: siblings } = await supabase
-        .from("stock_items")
-        .select("id")
-        .eq("device_id", deviceId);
-      allStockItemIds = [...new Set([stockItemId, ...(siblings ?? []).map((s: { id: string }) => s.id)])];
-    }
+    // 2. siblings + pedido_itens em paralelo
+    const [siblingsResult, piResult] = await Promise.all([
+      deviceId
+        ? supabase.from("stock_items").select("id").eq("device_id", deviceId)
+        : Promise.resolve({ data: [] }),
+      supabase
+        .from("pedido_itens")
+        .select("pedido_id, stock_item_id, lote, quantidade")
+        .in("pedido_id", pedidoIdsAtivos),
+    ]);
 
-    // Busca pedido_itens por todos os stock_item_ids do device
-    const { data: piDataAll } = await supabase
-      .from("pedido_itens")
-      .select("pedido_id, stock_item_id, lote, quantidade")
-      .in("stock_item_id", allStockItemIds)
-      .in("pedido_id", pedidoIdsAtivos);
+    const allStockItemIds = deviceId
+      ? [...new Set([stockItemId, ...((siblingsResult.data ?? []) as { id: string }[]).map(s => s.id)])]
+      : [stockItemId];
+
+    // Filtra pedido_itens apenas para os stock_item_ids relevantes (feito no cliente — evita round trip extra)
+    const piDataAll = ((piResult.data ?? []) as { pedido_id: string; stock_item_id: string; lote: string | null; quantidade: number }[])
+      .filter(pi => allStockItemIds.includes(pi.stock_item_id));
 
     // Agrupa por pedido — mas normaliza: cada pedido conta UMA VEZ por device
     // (evita dupla contagem se o mesmo pedido tiver itens na intermediária e na expedição)

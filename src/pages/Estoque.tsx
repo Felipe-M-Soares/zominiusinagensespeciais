@@ -862,15 +862,18 @@ export default function Estoque() {
     [pagedItems.map((i) => i.id).join(",")]
   );
 
-  // Busca contagem de lotes em UMA única query batch (evita N requests simultâneas)
+  // Busca contagem de lotes em UMA única query batch (evita N requests simultâneas).
+  // PERF: só executa nas abas que mostram lotes (intermediaria/expedicao/retrabalho).
+  // Em dashboard/recebimento/pedidos não há cards com badge de lote.
+  const viewHasLotes = activeView === "intermediaria" || activeView === "expedicao" || activeView === "retrabalho";
   useEffect(() => {
-    if (pagedItemIds.length === 0) { setLotesSummary(new Map()); return; }
+    if (!viewHasLotes || pagedItemIds.length === 0) { setLotesSummary(new Map()); return; }
     let cancelled = false;
     fetchLotesSummaryBatch(pagedItemIds).then((result) => {
       if (!cancelled) setLotesSummary(result);
     });
     return () => { cancelled = true; };
-  }, [pagedItemIds]);
+  }, [pagedItemIds, viewHasLotes]);
 
   async function handleDeleteAll() {
     setDeletingAll(true);
