@@ -98,9 +98,11 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
 
     try {
       // 1. Busca todos os stock_items intermediários com join no device
+      // IMPORTANTE: usa alias "device:devices(...)" igual ao useStock — o PostgREST
+      // expõe o resultado sob a chave "device" (não "devices") por conta da constraint FK.
       const { data: siData, error: siErr } = await supabase
         .from("stock_items")
-        .select("id, device_id, devices(model, reference)")
+        .select("id, device_id, device:devices(model, reference)")
         .eq("fase", "intermediaria");
 
       if (siErr) throw new Error(`stock_items: ${siErr.message}`);
@@ -115,14 +117,14 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
       type SiRow = {
         id: string;
         device_id: string;
-        devices: { model: string; reference: string } | { model: string; reference: string }[] | null;
+        device: { model: string; reference: string } | { model: string; reference: string }[] | null;
       };
 
       const deviceMap = new Map<string, { model: string; reference: string }>();
       const allStockItemIds: string[] = [];
       for (const si of siData as SiRow[]) {
         allStockItemIds.push(si.id);
-        const dev = Array.isArray(si.devices) ? si.devices[0] : si.devices;
+        const dev = Array.isArray(si.device) ? si.device[0] : si.device;
         if (dev) deviceMap.set(si.id, dev);
       }
 
