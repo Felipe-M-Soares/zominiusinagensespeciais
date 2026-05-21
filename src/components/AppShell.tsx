@@ -394,45 +394,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+        <main className="flex-1 overflow-y-auto">
           {children}
         </main>
 
-        {/* ── Bottom Navigation — mobile only ──────────────────────────── */}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border/60 bg-card/95 backdrop-blur-md">
-          <div className="flex items-center justify-around px-2 py-1 safe-area-inset-bottom">
-            {visibleItems.slice(0, 5).map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.path);
-              return (
-                <button
-                  key={item.path}
-                  onClick={() => handleNav(item.path)}
-                  className={cn(
-                    "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all duration-150 min-w-[52px]",
-                    active
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <div className={cn(
-                    "relative flex items-center justify-center w-9 h-7 rounded-xl transition-all duration-150",
-                    active && "bg-primary/10"
-                  )}>
-                    {active && (
-                      <span className="absolute inset-x-2 top-0 h-[2px] rounded-b-full bg-primary" />
-                    )}
-                    <Icon className="w-4.5 h-4.5" />
-                  </div>
-                  <span className={cn(
-                    "text-[10px] font-medium leading-none transition-all",
-                    active ? "font-semibold" : ""
-                  )}>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </nav>
       </div>
     </div>
   );
