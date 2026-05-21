@@ -36,6 +36,7 @@ type Fase = "intermediaria" | "expedicao";
 interface ParsedRow {
   line: number;
   nome: string;
+  referencia: string;
   lote: string;
   quantidade: number | null;
   fase: Fase | null;
@@ -245,6 +246,7 @@ async function downloadTemplate() {
   const ws = wb.addWorksheet("Importação");
   ws.columns = [
     { header: "Peça (nome/modelo)", key: "peca", width: 38 },
+    { header: "Referência",          key: "ref",  width: 20 },
     { header: "Lote",               key: "lote", width: 20 },
     { header: "Quantidade",         key: "qtd",  width: 14 },
     { header: "Fase",               key: "fase", width: 18 },
@@ -254,8 +256,8 @@ async function downloadTemplate() {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF5B21B6" } };
     cell.alignment = { horizontal: "center" };
   });
-  ws.addRow({ peca: "IMPLANTE COCLEAR IC-200",   lote: "0101261-01", qtd: 50, fase: "intermediario" });
-  ws.addRow({ peca: "PROCESSADOR DE SOM PS-300", lote: "0202362-02", qtd: 30, fase: "expedicao" });
+  ws.addRow({ peca: "IMPLANTE COCLEAR IC-200",   ref: "UCIR 4018C", lote: "0101261-01", qtd: 50, fase: "intermediario" });
+  ws.addRow({ peca: "PROCESSADOR DE SOM PS-300", ref: "UCIR 3015C", lote: "0202362-02", qtd: 30, fase: "expedicao" });
   const buf  = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url  = URL.createObjectURL(blob);
@@ -301,12 +303,13 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
       ws.eachRow((row, rowNum) => {
         if (rowNum === 1) {
           const h = cellStr(row.getCell(1)).toLowerCase();
-          if (["peça","peca","nome","modelo"].some(k => h.includes(k))) return;
+          if (["peça","peca","nome","modelo","referencia","referência"].some(k => h.includes(k))) return;
         }
         const n = cellStr(row.getCell(1));
-        const l = cellStr(row.getCell(2));
-        const q = cellStr(row.getCell(3));
-        const f = cellStr(row.getCell(4));
+        const r = cellStr(row.getCell(2));
+        const l = cellStr(row.getCell(3));
+        const q = cellStr(row.getCell(4));
+        const f = cellStr(row.getCell(5));
         if (!n && !l && !q) return;
 
         const qtd  = parseInt(q.replace(/[^\d]/g, ""), 10);
@@ -317,7 +320,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
         else if (isNaN(qtd) || qtd <= 0)  parseError = `Quantidade inválida: "${q}"`;
         else if (!fase)                    parseError = `Fase inválida: "${f}"`;
 
-        rows.push({ line: rowNum, nome: n, lote: l,
+        rows.push({ line: rowNum, nome: n, referencia: r, lote: l,
           quantidade: isNaN(qtd) ? null : qtd, fase, parseError });
       });
 
@@ -372,7 +375,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
       const row = valid[i];
       const idx = res.findIndex(r => r.line === row.line);
       try {
-        const found = await findOrCreateStockItem(row.nome, row.lote, row.fase!);
+        const found = await findOrCreateStockItem(row.nome, row.referencia ?? "", row.lote, row.fase!);
         if (!found) {
           res[idx] = { ...res[idx], status: "error",
             message: `Não foi possível criar "${row.nome}"` };
@@ -517,12 +520,13 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
 
             <div className="rounded-xl border border-border/30 bg-muted/20 p-4 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Formato Excel (se não usar PDF)</p>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 {[
-                  { col: "A", label: "Peça",      desc: "Nome/modelo" },
-                  { col: "B", label: "Lote",       desc: "Ex: 0101261-01" },
-                  { col: "C", label: "Quantidade", desc: "Número inteiro" },
-                  { col: "D", label: "Fase",       desc: '"intermediario" / "expedicao"' },
+                  { col: "A", label: "Peça",       desc: "Nome/modelo" },
+                  { col: "B", label: "Referência",  desc: "Ex: UCIR 4018C" },
+                  { col: "C", label: "Lote",        desc: "Ex: 0101261-01" },
+                  { col: "D", label: "Quantidade",  desc: "Número inteiro" },
+                  { col: "E", label: "Fase",        desc: '"intermediario" / "expedicao"' },
                 ].map(({ col, label, desc }) => (
                   <div key={col} className="rounded-lg bg-card border border-border/30 p-2.5 text-center">
                     <div className="text-[10px] font-bold text-primary/70 mb-1">Col. {col}</div>
