@@ -6,21 +6,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Tag, Printer, RefreshCw, Package } from "lucide-react";
+import { Tag, Printer, RefreshCw, Package, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import type { StockItem } from "@/hooks/useStock";
 
 interface IntermediaryLoteRow {
   lote: string;
   saldo: number;
-  item: StockItem;
+  model: string;
+  reference: string;
+  stockItemId: string;
 }
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  intermediariaItems: StockItem[];
 }
 
 const IGNORE_REASONS = new Set([
@@ -31,11 +31,7 @@ const IGNORE_REASONS = new Set([
   "Rollback — falha ao registrar entrada na expedição",
 ]);
 
-// ─── Etiqueta 50×45mm ─────────────────────────────────────────────────────────
-function printLabel(item: StockItem, lote: string) {
-  const nome = item.device.model;
-  const ref = item.device.reference;
-
+function printLabel(model: string, reference: string, lote: string) {
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -63,8 +59,8 @@ function printLabel(item: StockItem, lote: string) {
 </head>
 <body>
   <div class="label">
-    <div class="desc">${nome}</div>
-    <div class="ref">${ref}</div>
+    <div class="desc">${model}</div>
+    <div class="ref">${reference}</div>
     <div class="lote">${lote}</div>
   </div>
 </body>
@@ -78,51 +74,65 @@ function printLabel(item: StockItem, lote: string) {
   setTimeout(() => { win.print(); win.close(); }, 400);
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
-export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Props) {
+export function IntermediaryLotesModal({ open, onClose }: Props) {
   const [rows, setRows] = useState<IntermediaryLoteRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  // Ref para cancelar cargas em voo se o modal fechar
   const cancelRef = useRef(false);
 
-  async function load(items: StockItem[]) {
+  async function load() {
     cancelRef.current = false;
     setLoading(true);
     setErro(null);
 
     try {
-      // Busca direto no banco — não depende das props para filtrar
-      // Filtra por fase=intermediaria para pegar TODOS os itens, não só os paginados
+      // Busca stock_items da fase intermediária já com dados do device (join)
       const { data: siData, error: siErr } = await supabase
         .from("stock_items")
-        .select("id, device_id")
+        .select(`
+          id,
+          device:devices ( model, reference )
+        `)
         .eq("fase", "intermediaria");
 
-      if (siErr) throw siErr;
+      if (siErr) throw new Error(`stock_items: ${siErr.message}`);
       if (cancelRef.current) return;
 
-      const allIntermediaryIds = (siData ?? []).map((r: { id: string }) => r.id);
-
-      if (allIntermediaryIds.length === 0) {
+      if (!siData || siData.length === 0) {
         setRows([]);
         setLoading(false);
         return;
       }
 
-      // Busca todos os movimentos com lote dos itens intermediários
+      // Monta mapa id → device info
+      type SiRow = { id: string; device: { model: string; reference: string } | { model: string; reference: string }[] | null };
+      const deviceMap = new Map<string, { model: string; reference: string }>();
+      for (const si of siData as SiRow[]) {
+        const dev = Array.isArray(si.device) ? si.device[0] : si.device;
+        if (dev) deviceMap.set(si.id, dev);
+      }
+
+      const allIds = [...deviceMap.keys()];
+
+      // Busca movimentos com lote de todos os itens intermediários
       const { data: movData, error: movErr } = await supabase
         .from("stock_movements")
         .select("stock_item_id, lote, type, quantity, reason")
-        .in("stock_item_id", allIntermediaryIds)
+        .in("stock_item_id", allIds)
         .not("lote", "is", null);
 
-      if (movErr) throw movErr;
+      if (movErr) throw new Error(`stock_movements: ${movErr.message}`);
       if (cancelRef.current) return;
 
-      type MovRow = { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null };
-
       // Calcula saldo por (stock_item_id, lote)
+      type MovRow = {
+        stock_item_id: string;
+        lote: string;
+        type: string;
+        quantity: number;
+        reason: string | null;
+      };
+
       const saldos = new Map<string, number>();
       for (const row of (movData ?? []) as MovRow[]) {
         if (!row.lote) continue;
@@ -132,23 +142,20 @@ export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Pr
         saldos.set(key, row.type === "entrada" ? cur + row.quantity : cur - row.quantity);
       }
 
-      // Monta mapa de items props para lookup (por id)
-      // Usa os items das props primeiro; fallback: busca device inline se não encontrar
-      const itemMap = new Map(items.map((i) => [i.id, i]));
-
+      // Monta resultado — inclui TODOS os itens (não só os paginados nas props)
       const result: IntermediaryLoteRow[] = [];
       for (const [key, saldo] of saldos) {
         if (saldo <= 0) continue;
         const pipeIdx = key.indexOf("|");
-        const itemId = key.slice(0, pipeIdx);
+        const stockItemId = key.slice(0, pipeIdx);
         const lote = key.slice(pipeIdx + 1);
-        const item = itemMap.get(itemId);
-        if (!item) continue; // item não está na página atual — pula
-        result.push({ lote, saldo, item });
+        const dev = deviceMap.get(stockItemId);
+        if (!dev) continue;
+        result.push({ lote, saldo, model: dev.model, reference: dev.reference, stockItemId });
       }
 
       result.sort((a, b) => {
-        const nm = a.item.device.model.localeCompare(b.item.device.model);
+        const nm = a.model.localeCompare(b.model);
         return nm !== 0 ? nm : a.lote.localeCompare(b.lote);
       });
 
@@ -156,17 +163,16 @@ export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Pr
         setRows(result);
         setLoading(false);
       }
-    } catch (e) {
+    } catch (e: unknown) {
+      console.error("[IntermediaryLotesModal] erro:", e);
       if (!cancelRef.current) {
-        setErro("Erro ao buscar lotes. Tente novamente.");
+        const msg = e instanceof Error ? e.message : String(e);
+        setErro(`Erro: ${msg}`);
         setLoading(false);
       }
     }
   }
 
-  // Dispara a carga sempre que o modal abre OU quando os items mudam enquanto aberto.
-  // Usar intermediariaItems direto (sem useCallback) evita o problema de memoização
-  // com lista vazia na abertura.
   useEffect(() => {
     if (!open) {
       cancelRef.current = true;
@@ -175,11 +181,10 @@ export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Pr
       setErro(null);
       return;
     }
-    // Aguarda um tick para garantir que intermediariaItems está populado
-    const t = setTimeout(() => load(intermediariaItems), 0);
+    const t = setTimeout(load, 0);
     return () => { clearTimeout(t); cancelRef.current = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, intermediariaItems.map(i => i.id).join(",")]);
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -192,7 +197,7 @@ export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Pr
             </DialogTitle>
             <button
               type="button"
-              onClick={() => load(intermediariaItems)}
+              onClick={load}
               disabled={loading}
               className="h-7 w-7 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
               title="Atualizar"
@@ -210,9 +215,10 @@ export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Pr
           )}
 
           {!loading && erro && (
-            <div className="flex flex-col items-center justify-center py-10 gap-2 text-destructive text-sm">
-              <p>{erro}</p>
-              <Button size="sm" variant="outline" onClick={() => load(intermediariaItems)}>
+            <div className="flex flex-col items-center justify-center py-10 gap-3 text-sm">
+              <AlertCircle className="h-6 w-6 text-destructive" />
+              <p className="text-destructive text-center text-xs px-4">{erro}</p>
+              <Button size="sm" variant="outline" onClick={load}>
                 Tentar novamente
               </Button>
             </div>
@@ -225,14 +231,14 @@ export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Pr
             </div>
           )}
 
-          {!loading && !erro && rows.map(({ lote, saldo, item }) => (
+          {!loading && !erro && rows.map(({ lote, saldo, model, reference, stockItemId }) => (
             <div
-              key={`${item.id}|${lote}`}
+              key={`${stockItemId}|${lote}`}
               className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-card px-4 py-2.5 hover:bg-accent/30 transition-colors"
             >
               <div className="min-w-0 flex-1 space-y-0.5">
-                <p className="text-[12px] font-semibold text-foreground truncate">{item.device.model}</p>
-                <p className="text-[11px] text-muted-foreground font-mono">{item.device.reference}</p>
+                <p className="text-[12px] font-semibold text-foreground truncate">{model}</p>
+                <p className="text-[11px] text-muted-foreground font-mono">{reference}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <Tag className="h-3 w-3 text-primary/60" />
                   <span className="text-[12px] font-bold text-primary font-mono">{lote}</span>
@@ -244,7 +250,7 @@ export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Pr
                 size="sm"
                 variant="outline"
                 className="h-8 gap-1.5 text-xs rounded-lg shrink-0"
-                onClick={() => printLabel(item, lote)}
+                onClick={() => printLabel(model, reference, lote)}
               >
                 <Printer className="h-3.5 w-3.5" />
                 Imprimir

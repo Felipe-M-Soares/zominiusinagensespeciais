@@ -1456,7 +1456,6 @@ export default function Estoque() {
       <IntermediaryLotesModal
         open={intermediaryLotesOpen}
         onClose={() => setIntermediaryLotesOpen(false)}
-        intermediariaItems={intermediariaItems}
       />
 
       <StockCsvImport
