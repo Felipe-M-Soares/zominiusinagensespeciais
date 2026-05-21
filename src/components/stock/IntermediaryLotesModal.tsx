@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tag, Printer, RefreshCw, Package, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchLotesSummary } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 
 interface IntermediaryLoteRow {
@@ -22,15 +23,6 @@ interface Props {
   open: boolean;
   onClose: () => void;
 }
-
-// Apenas movimentos que são espelhos contábeis da EXPEDIÇÃO são ignorados aqui.
-// Os rollbacks são entradas de recuperação reais na intermediária e NÃO devem ser ignorados.
-// "Recebido de Intermediário" é uma entrada na expedição — nunca aparece nos movimentos
-// da intermediária, mas fica listado aqui por segurança.
-const IGNORE_REASONS = new Set([
-  "Recebido de Intermediário",
-  "Retrabalho concluído — recebido do Retrabalho",
-]);
 
 function printLabel(model: string, reference: string, lote: string) {
   const html = `<!DOCTYPE html>
@@ -67,24 +59,6 @@ function printLabel(model: string, reference: string, lote: string) {
   setTimeout(() => { win.print(); win.close(); }, 400);
 }
 
-// Busca stock_movements em chunks para evitar Bad Request (URL muito longa no .in())
-async function fetchMovimentosEmChunks(ids: string[]) {
-  const CHUNK = 50;
-  type MovRow = { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null };
-  const all: MovRow[] = [];
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const chunk = ids.slice(i, i + CHUNK);
-    const { data, error } = await supabase
-      .from("stock_movements")
-      .select("stock_item_id, lote, type, quantity, reason")
-      .in("stock_item_id", chunk)
-      .not("lote", "is", null);
-    if (error) throw new Error(`stock_movements: ${error.message}`);
-    all.push(...((data ?? []) as MovRow[]));
-  }
-  return all;
-}
-
 export function IntermediaryLotesModal({ open, onClose }: Props) {
   const [rows, setRows] = useState<IntermediaryLoteRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -97,12 +71,11 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
     setErro(null);
 
     try {
-      // 1. Busca todos os stock_items intermediários com join no device
-      // IMPORTANTE: usa alias "device:devices(...)" igual ao useStock — o PostgREST
-      // expõe o resultado sob a chave "device" (não "devices") por conta da constraint FK.
+      // 1. Busca stock_items da fase intermediária com o mesmo join usado no useStock
+      //    (alias device:devices que é o padrão que funciona em toda a aplicação)
       const { data: siData, error: siErr } = await supabase
         .from("stock_items")
-        .select("id, device_id, device:devices(model, reference)")
+        .select(`id, device:devices(model, reference)`)
         .eq("fase", "intermediaria");
 
       if (siErr) throw new Error(`stock_items: ${siErr.message}`);
@@ -114,69 +87,44 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
         return;
       }
 
-      type SiRow = {
-        id: string;
-        device_id: string;
-        device: { model: string; reference: string } | { model: string; reference: string }[] | null;
-      };
-
-      const deviceMap = new Map<string, { model: string; reference: string }>();
-      const allStockItemIds: string[] = [];
-      for (const si of siData as SiRow[]) {
-        allStockItemIds.push(si.id);
-        const dev = Array.isArray(si.device) ? si.device[0] : si.device;
-        if (dev) deviceMap.set(si.id, dev);
-      }
-
-      // allIds inclui TODOS os stock_item_ids (mesmo os sem device mapeado),
-      // mas no resultado final só aparecem os que têm device no deviceMap.
-      const allIds = allStockItemIds;
-
-      // Lotes placeholder que não representam estoque real
-      const LOTE_INDEFINIDO = new Set(["a-definir", "a definir", "sem lote"]);
-
-      // 2. Busca movimentos em chunks (evita Bad Request por URL longa)
-      if (cancelRef.current) return;
-      const movimentos = await fetchMovimentosEmChunks(allIds);
-      if (cancelRef.current) return;
-
-      // 3. Calcula saldo por (stock_item_id, lote)
-      const saldos = new Map<string, number>();
-      for (const row of movimentos) {
-        if (!row.lote) continue;
-        if (LOTE_INDEFINIDO.has(row.lote.trim().toLowerCase())) continue;
-        if (row.reason && IGNORE_REASONS.has(row.reason)) continue;
-        const key = `${row.stock_item_id}|${row.lote.toUpperCase()}`;
-        const cur = saldos.get(key) ?? 0;
-        saldos.set(key, row.type === "entrada" ? cur + row.quantity : cur - row.quantity);
-      }
-
-      // 4. Monta resultado com saldo > 0
+      // 2. Para cada stock_item, usa fetchLotesSummary — a mesma função usada pelo
+      //    LotesPanel individual que funciona corretamente
       const result: IntermediaryLoteRow[] = [];
-      for (const [key, saldo] of saldos) {
-        if (saldo <= 0) continue;
-        const pipeIdx = key.indexOf("|");
-        const stockItemId = key.slice(0, pipeIdx);
-        const lote = key.slice(pipeIdx + 1);
-        const dev = deviceMap.get(stockItemId);
-        if (!dev) continue;
-        result.push({ lote, saldo, model: dev.model, reference: dev.reference, stockItemId });
-      }
+
+      await Promise.all(
+        (siData as { id: string; device: { model: string; reference: string } | null }[]).map(async (si) => {
+          if (!si.device) return;
+          if (cancelRef.current) return;
+
+          const lotes = await fetchLotesSummary(si.id, "intermediaria");
+
+          for (const l of lotes) {
+            if (l.saldo <= 0) continue;
+            result.push({
+              lote: l.lote,
+              saldo: l.saldo,
+              model: si.device!.model,
+              reference: si.device!.reference,
+              stockItemId: si.id,
+            });
+          }
+        })
+      );
+
+      if (cancelRef.current) return;
 
       result.sort((a, b) => {
         const nm = a.model.localeCompare(b.model);
         return nm !== 0 ? nm : a.lote.localeCompare(b.lote);
       });
 
-      if (!cancelRef.current) {
-        setRows(result);
-        setLoading(false);
-      }
+      setRows(result);
+      setLoading(false);
     } catch (e: unknown) {
       console.error("[IntermediaryLotesModal] erro:", e);
       if (!cancelRef.current) {
         const msg = e instanceof Error ? e.message : String(e);
-        setErro(`Erro: ${msg}`);
+        setErro(`Erro ao carregar: ${msg}`);
         setLoading(false);
       }
     }
