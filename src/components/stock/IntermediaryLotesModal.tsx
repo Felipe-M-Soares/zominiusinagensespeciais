@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,14 @@ interface Props {
   intermediariaItems: StockItem[];
 }
 
+const IGNORE_REASONS = new Set([
+  "Recebido de Intermediário",
+  "Retrabalho concluído — recebido do Retrabalho",
+  "Rollback — falha ao criar item de retrabalho",
+  "Rollback — falha ao criar item de expedição",
+  "Rollback — falha ao registrar entrada na expedição",
+]);
+
 // ─── Etiqueta 50×45mm ─────────────────────────────────────────────────────────
 function printLabel(item: StockItem, lote: string) {
   const nome = item.device.model;
@@ -34,45 +42,23 @@ function printLabel(item: StockItem, lote: string) {
   <meta charset="utf-8"/>
   <title>Etiqueta</title>
   <style>
-    @page {
-      size: 50mm 45mm;
-      margin: 0;
-    }
+    @page { size: 50mm 45mm; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 50mm;
-      height: 45mm;
+      width: 50mm; height: 45mm;
       font-family: Arial, Helvetica, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; align-items: center; justify-content: center;
     }
     .label {
-      width: 48mm;
-      height: 43mm;
+      width: 48mm; height: 43mm;
       border: 1px solid #000;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      gap: 2mm;
-      padding: 2mm;
-      text-align: center;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      gap: 2mm; padding: 2mm; text-align: center;
     }
-    .desc {
-      font-size: 7pt;
-      color: #333;
-      letter-spacing: 0.02em;
-    }
-    .ref {
-      font-size: 13pt;
-      font-weight: bold;
-      letter-spacing: 0.03em;
-    }
-    .lote {
-      font-size: 12pt;
-      font-weight: bold;
-    }
+    .desc { font-size: 7pt; color: #333; letter-spacing: 0.02em; }
+    .ref  { font-size: 13pt; font-weight: bold; letter-spacing: 0.03em; }
+    .lote { font-size: 12pt; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -96,65 +82,104 @@ function printLabel(item: StockItem, lote: string) {
 export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Props) {
   const [rows, setRows] = useState<IntermediaryLoteRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  // Ref para cancelar cargas em voo se o modal fechar
+  const cancelRef = useRef(false);
 
-  const IGNORE_REASONS = new Set([
-    "Recebido de Intermediário",
-    "Retrabalho concluído — recebido do Retrabalho",
-    "Rollback — falha ao criar item de retrabalho",
-    "Rollback — falha ao criar item de expedição",
-    "Rollback — falha ao registrar entrada na expedição",
-  ]);
-
-  const load = useCallback(async () => {
-    if (intermediariaItems.length === 0) { setRows([]); return; }
+  async function load(items: StockItem[]) {
+    cancelRef.current = false;
     setLoading(true);
+    setErro(null);
 
-    const ids = intermediariaItems.map((i) => i.id);
+    try {
+      // Busca direto no banco — não depende das props para filtrar
+      // Filtra por fase=intermediaria para pegar TODOS os itens, não só os paginados
+      const { data: siData, error: siErr } = await supabase
+        .from("stock_items")
+        .select("id, device_id")
+        .eq("fase", "intermediaria");
 
-    const { data } = await supabase
-      .from("stock_movements")
-      .select("stock_item_id, lote, type, quantity, reason")
-      .in("stock_item_id", ids)
-      .not("lote", "is", null);
+      if (siErr) throw siErr;
+      if (cancelRef.current) return;
 
-    if (!data) { setLoading(false); return; }
+      const allIntermediaryIds = (siData ?? []).map((r: { id: string }) => r.id);
 
-    type Row = { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null };
+      if (allIntermediaryIds.length === 0) {
+        setRows([]);
+        setLoading(false);
+        return;
+      }
 
-    // Calcula saldo por (item_id, lote)
-    const saldos = new Map<string, number>();
-    for (const row of data as Row[]) {
-      if (row.reason && IGNORE_REASONS.has(row.reason)) continue;
-      const key = `${row.stock_item_id}|${row.lote.toUpperCase()}`;
-      const cur = saldos.get(key) ?? 0;
-      saldos.set(key, row.type === "entrada" ? cur + row.quantity : cur - row.quantity);
+      // Busca todos os movimentos com lote dos itens intermediários
+      const { data: movData, error: movErr } = await supabase
+        .from("stock_movements")
+        .select("stock_item_id, lote, type, quantity, reason")
+        .in("stock_item_id", allIntermediaryIds)
+        .not("lote", "is", null);
+
+      if (movErr) throw movErr;
+      if (cancelRef.current) return;
+
+      type MovRow = { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null };
+
+      // Calcula saldo por (stock_item_id, lote)
+      const saldos = new Map<string, number>();
+      for (const row of (movData ?? []) as MovRow[]) {
+        if (!row.lote) continue;
+        if (row.reason && IGNORE_REASONS.has(row.reason)) continue;
+        const key = `${row.stock_item_id}|${row.lote.toUpperCase()}`;
+        const cur = saldos.get(key) ?? 0;
+        saldos.set(key, row.type === "entrada" ? cur + row.quantity : cur - row.quantity);
+      }
+
+      // Monta mapa de items props para lookup (por id)
+      // Usa os items das props primeiro; fallback: busca device inline se não encontrar
+      const itemMap = new Map(items.map((i) => [i.id, i]));
+
+      const result: IntermediaryLoteRow[] = [];
+      for (const [key, saldo] of saldos) {
+        if (saldo <= 0) continue;
+        const pipeIdx = key.indexOf("|");
+        const itemId = key.slice(0, pipeIdx);
+        const lote = key.slice(pipeIdx + 1);
+        const item = itemMap.get(itemId);
+        if (!item) continue; // item não está na página atual — pula
+        result.push({ lote, saldo, item });
+      }
+
+      result.sort((a, b) => {
+        const nm = a.item.device.model.localeCompare(b.item.device.model);
+        return nm !== 0 ? nm : a.lote.localeCompare(b.lote);
+      });
+
+      if (!cancelRef.current) {
+        setRows(result);
+        setLoading(false);
+      }
+    } catch (e) {
+      if (!cancelRef.current) {
+        setErro("Erro ao buscar lotes. Tente novamente.");
+        setLoading(false);
+      }
     }
+  }
 
-    // Monta lista de lotes com saldo > 0
-    const itemMap = new Map(intermediariaItems.map((i) => [i.id, i]));
-    const result: IntermediaryLoteRow[] = [];
-    for (const [key, saldo] of saldos) {
-      if (saldo <= 0) continue;
-      const [itemId, lote] = key.split("|");
-      const item = itemMap.get(itemId);
-      if (!item) continue;
-      result.push({ lote, saldo, item });
-    }
-
-    // Ordena: nome do modelo, depois lote
-    result.sort((a, b) => {
-      const nm = a.item.device.model.localeCompare(b.item.device.model);
-      return nm !== 0 ? nm : a.lote.localeCompare(b.lote);
-    });
-
-    setRows(result);
-    setLoading(false);
-  }, [intermediariaItems]);
-
+  // Dispara a carga sempre que o modal abre OU quando os items mudam enquanto aberto.
+  // Usar intermediariaItems direto (sem useCallback) evita o problema de memoização
+  // com lista vazia na abertura.
   useEffect(() => {
-    if (open) load();
-    else setRows([]);
-  }, [open, load]);
+    if (!open) {
+      cancelRef.current = true;
+      setRows([]);
+      setLoading(false);
+      setErro(null);
+      return;
+    }
+    // Aguarda um tick para garantir que intermediariaItems está populado
+    const t = setTimeout(() => load(intermediariaItems), 0);
+    return () => { clearTimeout(t); cancelRef.current = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, intermediariaItems.map(i => i.id).join(",")]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -167,7 +192,7 @@ export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Pr
             </DialogTitle>
             <button
               type="button"
-              onClick={load}
+              onClick={() => load(intermediariaItems)}
               disabled={loading}
               className="h-7 w-7 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
               title="Atualizar"
@@ -184,14 +209,23 @@ export function IntermediaryLotesModal({ open, onClose, intermediariaItems }: Pr
             </div>
           )}
 
-          {!loading && rows.length === 0 && (
+          {!loading && erro && (
+            <div className="flex flex-col items-center justify-center py-10 gap-2 text-destructive text-sm">
+              <p>{erro}</p>
+              <Button size="sm" variant="outline" onClick={() => load(intermediariaItems)}>
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+
+          {!loading && !erro && rows.length === 0 && (
             <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground">
               <Package className="h-8 w-8 opacity-30" />
               <p className="text-sm">Nenhum lote com saldo no intermediário.</p>
             </div>
           )}
 
-          {!loading && rows.map(({ lote, saldo, item }) => (
+          {!loading && !erro && rows.map(({ lote, saldo, item }) => (
             <div
               key={`${item.id}|${lote}`}
               className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-card px-4 py-2.5 hover:bg-accent/30 transition-colors"
