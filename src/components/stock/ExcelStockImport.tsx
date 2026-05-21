@@ -2,20 +2,19 @@
  * ExcelStockImport — importa lotes via planilha Excel (.xlsx/.xls)
  * ou via PDF de "SALDO DE ESTOQUE" (relatório IPS/ERP).
  *
- * PDF: carrega pdfjs-dist via CDN em runtime (sem instalar dependência).
- * Excel: usa exceljs (já instalado).
+ * PDF: usa pdfjs-dist (instalar: npm install pdfjs-dist)
+ * Excel: usa exceljs (já instalado)
  *
- * Formato do PDF reconhecido:
- *   - Linha de item:   "000044 - NOME DA PEÇA"
- *   - Linha endereço:  "ENDERECO: EXP..." ou "ENDERECO: INT..."
- *   - Linha de lote:   "<17 dígitos>  <LOTE>  <REF>  ... UN  <QTD>  <RESERVA>  <SALDO>"
- * → importa usando o campo SALDO (disponível).
- *
- * Formato Excel: Col A=Peça, B=Lote, C=Quantidade, D=Fase
+ * Formato do PDF:
+ *   - "000044 - NOME DA PEÇA"          → item atual
+ *   - "ENDERECO: EXP..." / "INT..."    → fase
+ *   - "<17dígitos> <LOTE> ... UN <QTD> <RESERVA> <SALDO>" → lote + saldo
+ * Importa somente lotes com SALDO > 0.
  */
 
 import { useRef, useState, useCallback } from "react";
 import ExcelJS from "exceljs";
+import * as pdfjsLib from "pdfjs-dist";
 import { supabase } from "@/integrations/supabase/client";
 import { registerMovement } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,6 +25,12 @@ import {
   XCircle, AlertTriangle, Loader2, ChevronDown, ChevronUp,
   X, Eye, ArrowRight, RefreshCw, FileText,
 } from "lucide-react";
+
+// Worker do pdfjs — usa o worker incluído no pacote via blob
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.js",
+  import.meta.url
+).toString();
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 
@@ -74,120 +79,85 @@ function cellStr(cell: ExcelJS.Cell): string {
   return String(v).trim();
 }
 
-// ── Parser do PDF de Saldo de Estoque ─────────────────────────────────────────
+// ── Parser PDF de Saldo de Estoque ────────────────────────────────────────────
 
 async function parsePdfSaldo(
   file: File,
-  onProgress: (p: number) => void
+  onProgress: (pct: number) => void
 ): Promise<ParsedRow[]> {
-  // Carrega pdfjs-dist via CDN (sem instalar dependência)
-  const PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-  const WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-
-  if (!(window as unknown as Record<string, unknown>)["pdfjsLib"]) {
-    await new Promise<void>((res, rej) => {
-      const s = document.createElement("script");
-      s.src = PDFJS_URL;
-      s.onload = () => res();
-      s.onerror = () => rej(new Error("Falha ao carregar pdfjs"));
-      document.head.appendChild(s);
-    });
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfjsLib = (window as any).pdfjsLib;
-  pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
-
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  const totalPages: number = pdf.numPages;
+  const buf  = await file.arrayBuffer();
+  const pdf  = await pdfjsLib.getDocument({ data: buf }).promise;
+  const total = pdf.numPages;
 
   const rows: ParsedRow[] = [];
   let lineCounter = 0;
 
-  // Regex para linha de lote
-  const LOTE_RE = /^\s*\d{17}\s+(\S+)\s+.+\bUN\b\s+(\d+)\s+(\d+)\s+(\d+)\s*$/;
-  // Regex para item: "000044 - NOME DA PEÇA"
-  const ITEM_RE = /^\d{6}\s*-\s*(.+)$/;
+  // Regex para linha de lote do relatório IPS
+  // Formato: <17dígitos>  <LOTE>  <REFERENCIA...>  ATIVO  <DATA>  <DATA>  UN  <QTD>  <RESERVA>  <SALDO>
+  const LOTE_RE  = /^\s*\d{17}\s+(\S+)\s+.+\bUN\b\s+(\d+)\s+(\d+)\s+(\d+)\s*$/;
+  const ITEM_RE  = /^\d{6}\s*-\s*(.+)$/;
+  const ADDR_RE  = /ENDERECO\s*:/i;
 
   let currentItem: string | null = null;
-  let currentFase: Fase | null = null;
+  let currentFase: Fase | null   = null;
 
-  for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-    const page = await pdf.getPage(pageNum);
+  for (let p = 1; p <= total; p++) {
+    const page    = await pdf.getPage(p);
     const content = await page.getTextContent();
 
-    // Reconstrói linhas ordenando por posição Y (de cima para baixo) e X
-    interface TextItem { str: string; transform: number[] }
-    const items = (content.items as TextItem[])
-      .filter(i => i.str.trim())
-      .sort((a, b) => {
-        const dy = b.transform[5] - a.transform[5];
-        return Math.abs(dy) > 2 ? dy : a.transform[4] - b.transform[4];
-      });
+    // Agrupa items por linha (coordenada Y)
+    interface TItem { str: string; transform: number[] }
+    const items = (content.items as TItem[]).filter(i => i.str.trim());
 
-    // Agrupa itens na mesma linha (mesma coordenada Y ± 3px)
-    const lineMap = new Map<number, TextItem[]>();
+    const byY = new Map<number, TItem[]>();
     for (const item of items) {
       const y = Math.round(item.transform[5]);
-      const key = [...lineMap.keys()].find(k => Math.abs(k - y) <= 3) ?? y;
-      if (!lineMap.has(key)) lineMap.set(key, []);
-      lineMap.get(key)!.push(item);
+      const key = [...byY.keys()].find(k => Math.abs(k - y) <= 3) ?? y;
+      if (!byY.has(key)) byY.set(key, []);
+      byY.get(key)!.push(item);
     }
 
-    // Ordena grupos por Y decrescente (topo → rodapé)
-    const sortedLines = [...lineMap.entries()]
-      .sort((a, b) => b[0] - a[0])
-      .map(([, items]) => items.map(i => i.str).join(" ").trim());
+    const lines = [...byY.entries()]
+      .sort((a, b) => b[0] - a[0])                          // top → bottom
+      .map(([, its]) =>
+        its.sort((a, b) => a.transform[4] - b.transform[4]) // left → right
+           .map(i => i.str).join(" ").trim()
+      )
+      .filter(Boolean);
 
-    for (const line of sortedLines) {
+    for (const line of lines) {
       lineCounter++;
-      if (!line) continue;
 
-      // Detecta item
       const mItem = line.match(ITEM_RE);
-      if (mItem) {
-        currentItem = mItem[1].trim();
-        currentFase = null;
-        continue;
-      }
+      if (mItem) { currentItem = mItem[1].trim(); currentFase = null; continue; }
 
-      // Detecta endereço
-      if (line.includes("ENDERECO:")) {
+      if (ADDR_RE.test(line)) {
         currentFase = line.includes("INT") ? "intermediaria" : "expedicao";
         continue;
       }
 
-      // Detecta linha de lote
       const mLote = line.match(LOTE_RE);
       if (mLote && currentItem && currentFase) {
-        const lote    = mLote[1];
-        const qtd     = parseInt(mLote[2], 10);
-        const reserva = parseInt(mLote[3], 10);
-        const saldo   = parseInt(mLote[4], 10);
-
-        // Importa apenas lotes com saldo > 0
-        if (saldo <= 0) continue;
+        const saldo = parseInt(mLote[4], 10);
+        if (saldo <= 0) continue;                            // ignora lotes sem saldo
 
         rows.push({
           line: lineCounter,
           nome: currentItem,
-          lote,
+          lote: mLote[1],
           quantidade: saldo,
           fase: currentFase,
         });
-
-        void qtd; void reserva; // disponíveis para debug
       }
     }
 
-    onProgress(Math.round((pageNum / totalPages) * 100));
+    onProgress(Math.round((p / total) * 100));
   }
 
   return rows;
 }
 
-// ── Busca stock_item no banco ──────────────────────────────────────────────────
+// ── Busca stock_item no Supabase ───────────────────────────────────────────────
 
 async function findStockItem(
   nomeNorm: string,
@@ -199,7 +169,7 @@ async function findStockItem(
     .ilike("model", `%${nomeNorm}%`)
     .limit(10);
 
-  if (!devices || devices.length === 0) return null;
+  if (!devices?.length) return null;
 
   for (const dev of devices as { id: string; model: string }[]) {
     const { data: si } = await supabase
@@ -211,20 +181,16 @@ async function findStockItem(
     if (si) return { id: si.id, model: dev.model };
   }
 
-  // Cria o stock_item se o device existir mas não tiver item para a fase
   const best = (devices as { id: string; model: string }[]).find(
     d => normalizeStr(d.model) === nomeNorm
   ) ?? (devices as { id: string; model: string }[])[0];
 
-  if (best) {
-    const { data: upserted } = await supabase
-      .from("stock_items")
-      .upsert({ device_id: best.id, quantity: 0, min_quantity: 0, fase }, { onConflict: "device_id,fase" })
-      .select("id").single();
-    if (upserted) return { id: upserted.id, model: best.model };
-  }
+  const { data: upserted } = await supabase
+    .from("stock_items")
+    .upsert({ device_id: best.id, quantity: 0, min_quantity: 0, fase }, { onConflict: "device_id,fase" })
+    .select("id").single();
 
-  return null;
+  return upserted ? { id: upserted.id, model: best.model } : null;
 }
 
 // ── Template Excel ─────────────────────────────────────────────────────────────
@@ -245,39 +211,37 @@ async function downloadTemplate() {
   });
   ws.addRow({ peca: "IMPLANTE COCLEAR IC-200",   lote: "0101261-01", qtd: 50, fase: "intermediario" });
   ws.addRow({ peca: "PROCESSADOR DE SOM PS-300", lote: "0202362-02", qtd: 30, fase: "expedicao" });
-  const buf = await wb.xlsx.writeBuffer();
+  const buf  = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a"); a.href = url; a.download = "template-importacao-estoque.xlsx"; a.click();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = "template-importacao-estoque.xlsx"; a.click();
   URL.revokeObjectURL(url);
 }
 
-// ── Componente ─────────────────────────────────────────────────────────────────
-
-type FileMode = "excel" | "pdf";
+// ── Componente principal ───────────────────────────────────────────────────────
 
 export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
-  const { user } = useAuth();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const { user }  = useAuth();
+  const fileRef   = useRef<HTMLInputElement>(null);
 
-  const [step, setStep]       = useState<"idle" | "parsing-pdf" | "preview" | "importing" | "done">("idle");
-  const [fileMode, setFileMode] = useState<FileMode>("excel");
+  const [step,       setStep]       = useState<"idle"|"parsing-pdf"|"preview"|"importing"|"done">("idle");
+  const [fileMode,   setFileMode]   = useState<"excel"|"pdf">("excel");
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
-  const [results, setResults]   = useState<ImportResult[]>([]);
+  const [results,    setResults]    = useState<ImportResult[]>([]);
   const [showErrors, setShowErrors] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0, label: "" });
+  const [progress,   setProgress]   = useState({ current: 0, total: 0 });
+  const [pdfPct,     setPdfPct]     = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const [pdfProgress, setPdfProgress] = useState(0);
 
   function reset() {
     setStep("idle"); setParsedRows([]); setResults([]);
-    setShowErrors(false); setProgress({ current: 0, total: 0, label: "" });
-    setPdfProgress(0);
+    setShowErrors(false); setProgress({ current: 0, total: 0 }); setPdfPct(0);
     if (fileRef.current) fileRef.current.value = "";
   }
-  function handleClose() { reset(); onClose(); }
+  const handleClose = () => { reset(); onClose(); };
 
-  // ── Parse Excel ────────────────────────────────────────────────────────────
+  // ── Parse Excel ─────────────────────────────────────────────────────────────
 
   const parseExcel = useCallback(async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls)$/i)) { toast.error("Use .xlsx ou .xls"); return; }
@@ -291,78 +255,66 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
       const rows: ParsedRow[] = [];
       ws.eachRow((row, rowNum) => {
         if (rowNum === 1) {
-          const first = cellStr(row.getCell(1)).toLowerCase();
-          if (["peça","peca","nome","modelo"].some(k => first.includes(k))) return;
+          const h = cellStr(row.getCell(1)).toLowerCase();
+          if (["peça","peca","nome","modelo"].some(k => h.includes(k))) return;
         }
-        const rawNome = cellStr(row.getCell(1));
-        const rawLote = cellStr(row.getCell(2));
-        const rawQtd  = cellStr(row.getCell(3));
-        const rawFase = cellStr(row.getCell(4));
-        if (!rawNome && !rawLote && !rawQtd) return;
+        const n = cellStr(row.getCell(1));
+        const l = cellStr(row.getCell(2));
+        const q = cellStr(row.getCell(3));
+        const f = cellStr(row.getCell(4));
+        if (!n && !l && !q) return;
 
-        const quantidade = parseInt(rawQtd.replace(/[^\d]/g, ""), 10);
-        const fase       = normalizeFase(rawFase);
+        const qtd  = parseInt(q.replace(/[^\d]/g, ""), 10);
+        const fase = normalizeFase(f);
         let parseError: string | undefined;
-        if (!rawNome)                          parseError = "Nome ausente";
-        else if (!rawLote)                     parseError = "Lote ausente";
-        else if (isNaN(quantidade) || quantidade <= 0) parseError = `Quantidade inválida: "${rawQtd}"`;
-        else if (!fase)                        parseError = `Fase inválida: "${rawFase}"`;
+        if (!n)                            parseError = "Nome ausente";
+        else if (!l)                       parseError = "Lote ausente";
+        else if (isNaN(qtd) || qtd <= 0)  parseError = `Quantidade inválida: "${q}"`;
+        else if (!fase)                    parseError = `Fase inválida: "${f}"`;
 
-        rows.push({ line: rowNum, nome: rawNome, lote: rawLote,
-          quantidade: isNaN(quantidade) ? null : quantidade, fase, parseError });
+        rows.push({ line: rowNum, nome: n, lote: l,
+          quantidade: isNaN(qtd) ? null : qtd, fase, parseError });
       });
 
       if (!rows.length) { toast.error("Nenhuma linha encontrada."); return; }
-      setFileMode("excel");
-      setParsedRows(rows);
-      setStep("preview");
-    } catch (err) {
-      toast.error("Erro ao ler planilha."); console.error(err);
-    }
+      setFileMode("excel"); setParsedRows(rows); setStep("preview");
+    } catch (e) { toast.error("Erro ao ler planilha."); console.error(e); }
   }, []);
 
-  // ── Parse PDF ─────────────────────────────────────────────────────────────
+  // ── Parse PDF ────────────────────────────────────────────────────────────────
 
   const parsePdf = useCallback(async (file: File) => {
-    if (!file.name.match(/\.pdf$/i)) { toast.error("Use um arquivo .pdf"); return; }
-    setFileMode("pdf");
-    setStep("parsing-pdf");
-    setPdfProgress(0);
+    setFileMode("pdf"); setStep("parsing-pdf"); setPdfPct(0);
     try {
-      const rows = await parsePdfSaldo(file, p => setPdfProgress(p));
+      const rows = await parsePdfSaldo(file, setPdfPct);
       if (!rows.length) {
         toast.error("Nenhum lote com saldo > 0 encontrado no PDF.");
         setStep("idle"); return;
       }
-      setParsedRows(rows);
-      setStep("preview");
-    } catch (err) {
+      setParsedRows(rows); setStep("preview");
+    } catch (e) {
       toast.error("Erro ao processar PDF. Verifique se é o relatório de saldo correto.");
-      console.error(err);
-      setStep("idle");
+      console.error(e); setStep("idle");
     }
   }, []);
 
-  // ── Detecta tipo de arquivo ────────────────────────────────────────────────
-
   const handleFile = useCallback((file: File) => {
-    if (file.name.match(/\.pdf$/i)) parsePdf(file);
-    else parseExcel(file);
+    if (file.name.match(/\.pdf$/i)) parsePdf(file); else parseExcel(file);
   }, [parseExcel, parsePdf]);
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault(); setIsDragging(false);
-    const file = e.dataTransfer.files[0]; if (file) handleFile(file);
+    const f = e.dataTransfer.files[0]; if (f) handleFile(f);
   }
 
-  // ── Importar ───────────────────────────────────────────────────────────────
+  // ── Importar ─────────────────────────────────────────────────────────────────
 
   async function handleImport() {
     const valid = parsedRows.filter(r => !r.parseError);
     if (!valid.length) { toast.error("Nenhuma linha válida."); return; }
 
     setStep("importing");
-    setProgress({ current: 0, total: valid.length, label: "Importando..." });
+    setProgress({ current: 0, total: valid.length });
 
     const res: ImportResult[] = parsedRows.map(r => ({
       ...r, status: r.parseError ? "error" : "pending", message: r.parseError,
@@ -383,7 +335,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
         } else {
           const mv = await registerMovement(
             found.id, "entrada", row.quantidade!,
-            `Importação ${fileMode === "pdf" ? "PDF Saldo" : "planilha Excel"} — lote: ${row.lote}`,
+            `Importação ${fileMode === "pdf" ? "PDF Saldo" : "Excel"} — lote: ${row.lote}`,
             user?.id ?? null, null, row.lote
           );
           if (mv.ok) {
@@ -391,7 +343,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
               message: `+${row.quantidade} un. em "${found.model}"` };
             ok++;
           } else {
-            res[idx] = { ...res[idx], status: "error", message: mv.error ?? "Erro ao registrar" };
+            res[idx] = { ...res[idx], status: "error", message: mv.error ?? "Erro" };
             err++;
           }
         }
@@ -400,13 +352,13 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
         err++;
       }
       setResults([...res]);
-      setProgress({ current: i + 1, total: valid.length, label: "Importando..." });
+      setProgress({ current: i + 1, total: valid.length });
       if (i < valid.length - 1) await new Promise(r => setTimeout(r, 60));
     }
 
     setStep("done");
     if (ok > 0) { toast.success(`${ok} lote${ok > 1 ? "s" : ""} importado${ok > 1 ? "s" : ""}!`); onSuccess(); }
-    if (err > 0) toast.error(`${err} linha${err > 1 ? "s" : ""} com erro.`);
+    if (err > 0) toast.error(`${err} com erro.`);
   }
 
   if (!open) return null;
@@ -421,7 +373,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-2xl bg-card border border-border/30 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-2xl rounded-2xl bg-card border border-border/30 shadow-2xl flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200 overflow-hidden">
 
         {/* Cabeçalho */}
         <div className="px-5 py-4 border-b border-border/30 shrink-0 flex items-center justify-between">
@@ -430,10 +382,10 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
               <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
             </div>
             <div>
-              <p className="text-sm font-semibold">Importar via Excel ou PDF</p>
+              <p className="text-sm font-semibold">Importar Excel ou PDF</p>
               <p className="text-[11px] text-muted-foreground">
                 {step === "preview" && fileMode === "pdf"
-                  ? `PDF de Saldo de Estoque — ${validRows.length} lotes com saldo`
+                  ? `PDF de Saldo — ${validRows.length} lotes com saldo disponível`
                   : "Intermediário e Expedição — por lote e quantidade"}
               </p>
             </div>
@@ -447,12 +399,11 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
         {/* Conteúdo */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
 
-          {/* ── idle ── */}
+          {/* ─ IDLE ─ */}
           {step === "idle" && (<>
-            {/* Template Excel */}
             <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/30">
               <div>
-                <p className="text-xs font-semibold">Baixar modelo de planilha Excel</p>
+                <p className="text-xs font-semibold">Baixar modelo Excel</p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">Colunas: Peça · Lote · Quantidade · Fase</p>
               </div>
               <button type="button" onClick={downloadTemplate}
@@ -461,30 +412,28 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
               </button>
             </div>
 
-            {/* Info PDF */}
             <div className="flex items-start gap-2.5 p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
               <FileText className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">PDF de Saldo de Estoque aceito</p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Arraste o relatório PDF (SALDO DE ESTOQUE) — o app lê automaticamente todos os lotes com saldo {">"} 0, identifica se é Intermediário ou Expedição e importa direto.
+                  Arraste o relatório PDF (SALDO DE ESTOQUE do IPS). O app lê todos os lotes com saldo {">"} 0, detecta Intermediário ou Expedição automaticamente e importa direto.
                 </p>
               </div>
             </div>
 
-            {/* Drop zone */}
             <label
               className={cn("flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 cursor-pointer transition-all",
                 isDragging ? "border-emerald-500 bg-emerald-500/5" : "border-border/60 hover:border-emerald-500/60 hover:bg-muted/20")}
               onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}>
-              <div className={cn("h-14 w-14 rounded-2xl flex items-center justify-center transition-colors",
+              <div className={cn("h-14 w-14 rounded-2xl flex items-center justify-center",
                 isDragging ? "bg-emerald-500/15" : "bg-muted/40")}>
-                <Upload className={cn("h-7 w-7 transition-colors", isDragging ? "text-emerald-500" : "text-muted-foreground")} />
+                <Upload className={cn("h-7 w-7", isDragging ? "text-emerald-500" : "text-muted-foreground")} />
               </div>
               <div className="text-center">
-                <p className="text-sm font-semibold">{isDragging ? "Solte o arquivo aqui" : "Arraste ou clique para selecionar"}</p>
+                <p className="text-sm font-semibold">{isDragging ? "Solte aqui" : "Arraste ou clique para selecionar"}</p>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   <span className="font-semibold text-emerald-600">.xlsx / .xls</span>
                   {" "}ou{" "}
@@ -496,15 +445,14 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             </label>
 
-            {/* Instruções Excel */}
             <div className="rounded-xl border border-border/30 bg-muted/20 p-4 space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Formato do Excel (se não usar PDF)</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Formato Excel (se não usar PDF)</p>
               <div className="grid grid-cols-4 gap-2">
                 {[
                   { col: "A", label: "Peça",      desc: "Nome/modelo" },
                   { col: "B", label: "Lote",       desc: "Ex: 0101261-01" },
                   { col: "C", label: "Quantidade", desc: "Número inteiro" },
-                  { col: "D", label: "Fase",       desc: '"intermediario" ou "expedicao"' },
+                  { col: "D", label: "Fase",       desc: '"intermediario" / "expedicao"' },
                 ].map(({ col, label, desc }) => (
                   <div key={col} className="rounded-lg bg-card border border-border/30 p-2.5 text-center">
                     <div className="text-[10px] font-bold text-primary/70 mb-1">Col. {col}</div>
@@ -516,7 +464,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
             </div>
           </>)}
 
-          {/* ── Processando PDF ── */}
+          {/* ─ PARSING PDF ─ */}
           {step === "parsing-pdf" && (
             <div className="flex flex-col items-center justify-center py-16 gap-6">
               <div className="h-16 w-16 rounded-2xl bg-blue-500/10 flex items-center justify-center">
@@ -524,35 +472,34 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
               </div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-semibold">Lendo PDF de Saldo de Estoque...</p>
-                <p className="text-xs text-muted-foreground">Processando página por página — pode levar alguns minutos</p>
+                <p className="text-xs text-muted-foreground">Processando página por página — aguarde</p>
               </div>
               <div className="w-full max-w-xs space-y-2">
                 <div className="h-2.5 rounded-full bg-muted/50 overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                    style={{ width: `${pdfProgress}%` }} />
+                  <div className="h-full bg-blue-500 rounded-full transition-all duration-200"
+                    style={{ width: `${pdfPct}%` }} />
                 </div>
-                <p className="text-center text-xs text-muted-foreground">{pdfProgress}% concluído</p>
+                <p className="text-center text-xs text-muted-foreground">{pdfPct}% concluído</p>
               </div>
             </div>
           )}
 
-          {/* ── Preview ── */}
+          {/* ─ PREVIEW ─ */}
           {step === "preview" && (<>
-            {/* Badge do tipo */}
-            <div className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold",
+            <div className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border",
               fileMode === "pdf"
-                ? "bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20"
-                : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20")}>
+                ? "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20"
+                : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20")}>
               {fileMode === "pdf" ? <FileText className="h-3.5 w-3.5" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
               {fileMode === "pdf" ? "PDF — Saldo de Estoque" : "Planilha Excel"}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { label: "Total lotes", value: validRows.length, color: "text-foreground" },
-                { label: "Linhas c/ erro", value: parseErrors.length, color: parseErrors.length ? "text-amber-600" : "text-muted-foreground" },
-                { label: "Intermediário", value: interRows.length, color: "text-blue-600 dark:text-blue-400" },
-                { label: "Expedição", value: expRows.length, color: "text-violet-600 dark:text-violet-400" },
+                { label: "Total lotes",    value: validRows.length,   color: "text-foreground" },
+                { label: "C/ erro",        value: parseErrors.length, color: parseErrors.length ? "text-amber-600" : "text-muted-foreground" },
+                { label: "Intermediário",  value: interRows.length,   color: "text-blue-600 dark:text-blue-400" },
+                { label: "Expedição",      value: expRows.length,     color: "text-violet-600 dark:text-violet-400" },
               ].map(({ label, value, color }) => (
                 <div key={label} className="rounded-xl border border-border/30 bg-muted/20 p-3 text-center">
                   <div className={cn("text-xl font-bold tabular-nums", color)}>{value}</div>
@@ -564,11 +511,11 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
             {parseErrors.length > 0 && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 overflow-hidden">
                 <button type="button" onClick={() => setShowErrors(v => !v)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-left">
+                  className="w-full flex items-center justify-between px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                     <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                      {parseErrors.length} linha{parseErrors.length > 1 ? "s" : ""} com erro — serão ignoradas
+                      {parseErrors.length} linha{parseErrors.length > 1 ? "s" : ""} com erro — ignoradas
                     </span>
                   </div>
                   {showErrors ? <ChevronUp className="h-3.5 w-3.5 text-amber-500" /> : <ChevronDown className="h-3.5 w-3.5 text-amber-500" />}
@@ -576,9 +523,9 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                 {showErrors && (
                   <div className="border-t border-amber-500/20 px-4 py-2 space-y-1">
                     {parseErrors.map(r => (
-                      <div key={r.line} className="text-[11px] text-amber-700 dark:text-amber-400">
+                      <p key={r.line} className="text-[11px] text-amber-700 dark:text-amber-400">
                         <span className="font-semibold">Linha {r.line}:</span> {r.parseError}
-                      </div>
+                      </p>
                     ))}
                   </div>
                 )}
@@ -596,17 +543,17 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-muted/50">
                     <tr>
-                      {["#", "Peça", "Lote", "Saldo", "Fase"].map(h => (
+                      {["#","Peça","Lote","Saldo","Fase"].map(h => (
                         <th key={h} className="text-left px-3 py-2 font-semibold text-muted-foreground">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/20">
-                    {validRows.slice(0, 200).map(r => (
+                    {validRows.slice(0, 300).map(r => (
                       <tr key={r.line} className="hover:bg-muted/20">
-                        <td className="px-3 py-2 text-muted-foreground">{r.line}</td>
-                        <td className="px-3 py-2 font-medium max-w-[200px] truncate" title={r.nome}>{r.nome}</td>
-                        <td className="px-3 py-2 font-mono text-muted-foreground text-[11px]">{r.lote}</td>
+                        <td className="px-3 py-2 text-muted-foreground tabular-nums">{r.line}</td>
+                        <td className="px-3 py-2 font-medium max-w-[180px] truncate" title={r.nome}>{r.nome}</td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">{r.lote}</td>
                         <td className="px-3 py-2 font-bold">{r.quantidade}</td>
                         <td className="px-3 py-2">
                           <span className={cn("inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold",
@@ -618,10 +565,10 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                         </td>
                       </tr>
                     ))}
-                    {validRows.length > 200 && (
+                    {validRows.length > 300 && (
                       <tr>
-                        <td colSpan={5} className="px-3 py-2 text-center text-[11px] text-muted-foreground">
-                          + {validRows.length - 200} lotes não exibidos (serão importados)
+                        <td colSpan={5} className="px-3 py-3 text-center text-[11px] text-muted-foreground">
+                          + {validRows.length - 300} lotes adicionais (todos serão importados)
                         </td>
                       </tr>
                     )}
@@ -631,16 +578,15 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
             </div>
           </>)}
 
-          {/* ── Importando / Done ── */}
+          {/* ─ IMPORTING / DONE ─ */}
           {(step === "importing" || step === "done") && (<>
             {step === "importing" && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span className="flex items-center gap-1.5">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    {progress.label}
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Importando...
                   </span>
-                  <span>{progress.current}/{progress.total}</span>
+                  <span>{progress.current} / {progress.total}</span>
                 </div>
                 <div className="h-2 rounded-full bg-muted/50 overflow-hidden">
                   <div className="h-full bg-emerald-500 rounded-full transition-all duration-300"
@@ -652,9 +598,9 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
             {step === "done" && (
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { label: "Importados", value: resOk.length, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
-                  { label: "Não encontrados", value: resNotFound.length, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
-                  { label: "Erros", value: resError.length, color: "text-destructive", bg: "bg-destructive/10 border-destructive/20" },
+                  { label: "Importados",      value: resOk.length,       color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
+                  { label: "Não encontrados", value: resNotFound.length,  color: "text-amber-600 dark:text-amber-400",    bg: "bg-amber-500/10 border-amber-500/20" },
+                  { label: "Erros",           value: resError.length,     color: "text-destructive",                       bg: "bg-destructive/10 border-destructive/20" },
                 ].map(({ label, value, color, bg }) => (
                   <div key={label} className={cn("rounded-xl border p-3 text-center", bg)}>
                     <div className={cn("text-2xl font-bold tabular-nums", color)}>{value}</div>
@@ -679,7 +625,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs font-medium truncate">{r.deviceModel ?? r.nome}</span>
                         <span className="text-[10px] font-mono text-muted-foreground">· {r.lote}</span>
-                        {r.quantidade && <span className="text-[10px] font-bold">· {r.quantidade} un.</span>}
+                        {r.quantidade != null && <span className="text-[10px] font-bold">· {r.quantidade} un.</span>}
                       </div>
                       {r.message && (
                         <p className={cn("text-[10px] mt-0.5",
