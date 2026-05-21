@@ -220,7 +220,8 @@ export function useStock(search: string) {
 
   useEffect(() => {
     loadItems(search);
-    return () => { genRef.current++; }; // cancela resultado de cargas em voo
+    const ref = genRef; // captura a ref antes do cleanup (geração é incrementada na limpeza)
+    return () => { ref.current++; }; // cancela resultado de cargas em voo
   }, [search, loadItems]);
 
   // Recarrega quando o usuário volta à aba após pelo menos 60s de ausência.

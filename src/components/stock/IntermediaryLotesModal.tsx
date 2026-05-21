@@ -140,7 +140,6 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
     }
     const t = setTimeout(load, 0);
     return () => { clearTimeout(t); cancelRef.current = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   return (

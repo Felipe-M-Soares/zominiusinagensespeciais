@@ -788,7 +788,6 @@ export default function Estoque() {
       setShowAutocomplete(suggestions.length > 0);
     }, 150);
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, allItems]);
 
   // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
