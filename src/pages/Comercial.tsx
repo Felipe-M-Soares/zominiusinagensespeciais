@@ -261,10 +261,9 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const [showAutocomp, setShowAutocomp] = useState(false);
   const [selectedPeca, setSelectedPeca] = useState<ReturnType<typeof useStock>["items"][0] | null>(null);
 
-  // Lista do pedido, frete e obs
+  // Lista do pedido e obs
   const [qtd, setQtd] = useState(1);
   const [itens, setItens] = useState<PedidoItem[]>([]);
-  const [frete, setFrete] = useState("0");
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -281,7 +280,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (!open) return;
     setClienteId(clienteFixo?.id ?? "");
     setClienteSearch(clienteFixo?.nome ?? "");
-    setItens([]); setObs(""); setFrete("0");
+    setItens([]); setObs("");
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
     setSelectedPeca(null); setQtd(1);
     loadClientes();
@@ -377,8 +376,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     try {
       const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
       const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
-      // BUG-06 FIX: garante que o frete seja um número não-negativo e razoável
-      const freteVal = Math.max(0, Math.min(99999.99, parseFloat(frete.replace(",", ".")) || 0));
+      // Cria o pedido
 
       // COD-01 FIX: usa criarPedidoComReserva para garantir que reserve_stock
       // seja chamado e quantity_reserved seja incrementado corretamente no banco.
@@ -395,11 +393,6 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         vendedoraNome,
         observacoes: obs || null,
       });
-
-      // Aplica frete ao pedido criado (campo extra não suportado pelo util genérico)
-      if (result.ok && result.pedidoId && freteVal > 0) {
-        await supabase.from("pedidos_comerciais").update({ frete: freteVal }).eq("id", result.pedidoId);
-      }
 
       if (!result.ok) {
         toast.error(result.error ?? "Erro ao criar pedido.");
@@ -463,22 +456,6 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
             <button type="button" onClick={() => setNovoClienteModal(true)} className="flex items-center gap-1.5 text-[11px] text-violet-500 hover:text-violet-400 transition-colors">
               <Plus className="h-3 w-3" /> Cadastrar novo cliente
             </button>
-          </div>
-
-          {/* ── Frete ── */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Valor do Frete</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground font-medium">R$</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={frete}
-                onChange={e => setFrete(e.target.value.replace(/[^0-9.,]/g, ""))}
-                placeholder="0,00"
-                className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
-              />
-            </div>
           </div>
 
           {/* ── Adicionar Peça ── */}
