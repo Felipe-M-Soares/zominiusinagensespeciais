@@ -776,10 +776,10 @@ export default function Estoque() {
       setShowAutocomplete(false);
       return;
     }
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
       const q = search.trim().toLowerCase();
-      const sourceItems = filteredItems.length > 0 ? filteredItems : allItems;
-      const suggestions = sourceItems
+      // Usa allItems diretamente — filteredItems não é estável (nova referência a cada render)
+      const suggestions = allItems
         .filter(i => i.device?.model)
         .map(i => i.device.model)
         .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
@@ -788,7 +788,8 @@ export default function Estoque() {
       setShowAutocomplete(suggestions.length > 0);
     }, 150);
     return () => clearTimeout(timer);
-  }, [search, allItems, filteredItems]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, allItems]);
 
   // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
   useClickOutside(autocompleteRef, () => setShowAutocomplete(false));
@@ -811,7 +812,9 @@ export default function Estoque() {
       return;
     }
     debouncedSearchUpdate(v.trim());
-  }, [debouncedSearchUpdate]);
+  // debouncedSearchUpdate agora é estável (useDebounce corrigido)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleSearchSubmit(v: string) {
     setQuerySearch(v);
