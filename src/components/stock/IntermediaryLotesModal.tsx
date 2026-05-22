@@ -8,7 +8,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tag, Printer, RefreshCw, Package, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchLotesSummary } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 import { escHtml } from "@/lib/escHtml";
 
@@ -24,6 +23,13 @@ interface Props {
   open: boolean;
   onClose: () => void;
 }
+
+const LOTE_PLACEHOLDER = new Set(["a-definir", "a definir", "sem lote"]);
+const ROLLBACK_REASONS = new Set([
+  "Rollback — falha ao criar item de retrabalho",
+  "Rollback — falha ao criar item de expedição",
+  "Rollback — falha ao registrar entrada na expedição",
+]);
 
 function printLabel(model: string, reference: string, lote: string) {
   const html = `<!DOCTYPE html>
@@ -72,13 +78,13 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
     setErro(null);
 
     try {
-      // 1. Busca stock_items da fase intermediária
+      // 1. Busca todos os stock_items da fase intermediária com dados do device
       const { data: siData, error: siErr } = await supabase
         .from("stock_items")
-        .select(`id, device:devices(model, reference)`)
+        .select("id, device:devices(model, reference)")
         .eq("fase", "intermediaria");
 
-      if (siErr) throw new Error(`stock_items: ${siErr.message}`);
+      if (siErr) throw new Error(siErr.message);
       if (cancelRef.current) return;
 
       if (!siData || siData.length === 0) {
@@ -87,30 +93,56 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
         return;
       }
 
-      // 2. Para cada stock_item, calcula saldo por lote via fetchLotesSummary
-      const result: IntermediaryLoteRow[] = [];
+      const stockItemIds = (siData as { id: string }[]).map((s) => s.id);
 
-      await Promise.all(
-        (siData as { id: string; device: { model: string; reference: string } | null }[]).map(async (si) => {
-          if (!si.device) return;
-          if (cancelRef.current) return;
+      // 2. Busca todos os movimentos dos itens da intermediária numa única query
+      const { data: movData, error: movErr } = await supabase
+        .from("stock_movements")
+        .select("stock_item_id, lote, type, quantity, reason")
+        .in("stock_item_id", stockItemIds)
+        .not("lote", "is", null);
 
-          const lotes = await fetchLotesSummary(si.id, "intermediaria");
+      if (movErr) throw new Error(movErr.message);
+      if (cancelRef.current) return;
 
-          for (const l of lotes) {
-            if (l.saldo <= 0) continue;
-            result.push({
-              lote: l.lote,
-              saldo: l.saldo,
-              model: si.device!.model,
-              reference: si.device!.reference,
-              stockItemId: si.id,
-            });
-          }
-        })
-      );
+      // 3. Calcula saldo por (stock_item_id, lote) em memória
+      // chave: `${stockItemId}||${lote}`
+      const saldoMap = new Map<string, number>();
+
+      for (const mov of (movData ?? []) as {
+        stock_item_id: string;
+        lote: string;
+        type: string;
+        quantity: number;
+        reason: string | null;
+      }[]) {
+        if (!mov.lote) continue;
+        if (mov.reason && ROLLBACK_REASONS.has(mov.reason)) continue;
+        const loteNorm = mov.lote.trim().toLowerCase();
+        if (LOTE_PLACEHOLDER.has(loteNorm)) continue;
+
+        const key = `${mov.stock_item_id}||${mov.lote.toUpperCase()}`;
+        const cur = saldoMap.get(key) ?? 0;
+        saldoMap.set(key, cur + (mov.type === "entrada" ? mov.quantity : -mov.quantity));
+      }
 
       if (cancelRef.current) return;
+
+      // 4. Monta resultado filtrando saldo > 0
+      const deviceMap = new Map(
+        (siData as { id: string; device: { model: string; reference: string } | null }[])
+          .filter((s) => s.device)
+          .map((s) => [s.id, s.device!])
+      );
+
+      const result: IntermediaryLoteRow[] = [];
+      for (const [key, saldo] of saldoMap) {
+        if (saldo <= 0) continue;
+        const [stockItemId, lote] = key.split("||");
+        const device = deviceMap.get(stockItemId);
+        if (!device) continue;
+        result.push({ lote, saldo, model: device.model, reference: device.reference, stockItemId });
+      }
 
       result.sort((a, b) => {
         const nm = a.model.localeCompare(b.model);
@@ -120,7 +152,6 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
       setRows(result);
       setLoading(false);
     } catch (e: unknown) {
-      console.error("[IntermediaryLotesModal] erro:", e);
       if (!cancelRef.current) {
         const msg = e instanceof Error ? e.message : String(e);
         setErro(`Erro ao carregar: ${msg}`);
@@ -137,9 +168,6 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
       setErro(null);
       return;
     }
-    // BUG FIX: sem setTimeout — o cleanup do React setava cancelRef=true
-    // antes do load() assíncrono rodar, fazendo o modal não exibir nada.
-    // Setar cancelRef=false aqui garante que o load() inicia sem ser cancelado.
     cancelRef.current = false;
     load();
     return () => { cancelRef.current = true; };
