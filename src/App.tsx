@@ -7,6 +7,7 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import { AppShell } from "@/components/AppShell";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense } from "react";
+import type { AppRole } from "@/types/roles";
 
 import Login from "./pages/Login";
 import SetPassword from "./pages/SetPassword";
@@ -28,8 +29,6 @@ const queryClient = new QueryClient({
     mutations: { retry: 0 },
   },
 });
-
-type Role = "admin" | "vendedora" | "financeiro" | "producao" | "estoque";
 
 // ── Rota pública: redireciona para / se já logado ─────────────────────────────
 function PublicGuard({ children }: { children: React.ReactNode }) {
@@ -59,12 +58,12 @@ function ProtectedLayout() {
 // ── Guard de role dentro das rotas protegidas ─────────────────────────────────
 function RoleGuard({ children, roles, adminOnly }: {
   children: React.ReactNode;
-  roles?: Role[];
+  roles?: AppRole[];
   adminOnly?: boolean;
 }) {
   const { isAdmin, role } = useAuth();
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
-  if (roles && !isAdmin && !roles.includes(role as Role)) return <Navigate to="/" replace />;
+  if (roles && !isAdmin && !roles.includes(role as AppRole)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 

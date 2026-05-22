@@ -83,7 +83,11 @@ export function StockListModal({ open, onClose, items }: Props) {
 </html>`;
 
     const win = window.open("", "_blank");
-    if (!win) return;
+    if (!win) {
+      // Popup blocker ativo — orientar o usuário
+      alert("Popup bloqueado pelo navegador. Permita popups para este site e tente novamente.");
+      return;
+    }
     win.document.write(html);
     win.document.close();
   }

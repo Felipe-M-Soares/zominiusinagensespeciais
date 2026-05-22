@@ -10,6 +10,7 @@ import { Tag, Printer, RefreshCw, Package, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchLotesSummary } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
+import { escHtml } from "@/lib/escHtml";
 
 interface IntermediaryLoteRow {
   lote: string;
@@ -45,9 +46,9 @@ function printLabel(model: string, reference: string, lote: string) {
 </head>
 <body>
   <div class="label">
-    <div class="desc">${model}</div>
-    <div class="ref">${reference}</div>
-    <div class="lote">${lote}</div>
+    <div class="desc">${escHtml(model)}</div>
+    <div class="ref">${escHtml(reference)}</div>
+    <div class="lote">${escHtml(lote)}</div>
   </div>
 </body>
 </html>`;

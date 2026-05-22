@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import type { Device } from "@/types/device";
+import { sanitizeQuery } from "@/lib/sanitize";
 
 // ─── Tipos locais ────────────────────────────────────────────────────────────
 
@@ -44,15 +45,6 @@ export interface LoteSummary {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function sanitize(raw: string): string {
-  return raw
-    .trim()
-    .slice(0, 200)
-    .split("").filter(ch => ch.charCodeAt(0) > 31 && ch.charCodeAt(0) !== 127).join("")
-    .replace(/[(),;'"`]/g, "")
-    .replace(/[%_\\]/g, "\\$&");
-}
-
 // ─── Hook principal de estoque ────────────────────────────────────────────────
 
 export function useStock(search: string) {
@@ -85,7 +77,7 @@ export function useStock(search: string) {
         )
         .order("updated_at", { ascending: false });
 
-      const s = sanitize(q);
+      const s = sanitizeQuery(q);
       if (s) {
         const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase());
 
