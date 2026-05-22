@@ -361,7 +361,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         .from("stock_movements")
         .select("stock_item_id, lote, type, quantity")
         .in("stock_item_id", stockItemIds)
-        .not("lote", "is", null);
+        .neq("lote", null);
 
       const saldoMap = new Map<string, Map<string, number>>();
       for (const m of (movs ?? []) as { stock_item_id: string; lote: string; type: string; quantity: number }[]) {

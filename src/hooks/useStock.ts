@@ -375,7 +375,7 @@ export async function transferToExpedicao(
     .from("stock_movements")
     .select("lote, type, quantity")
     .eq("stock_item_id", intermediariaItemId)
-    .not("lote", "is", null);
+    .neq("lote", null);
 
   // Calcula saldo atual do lote específico no intermediário
   let saldoLoteAtual = 0;
@@ -703,7 +703,7 @@ export async function fetchLotesDisponivelBatch(
     .from("stock_movements")
     .select("stock_item_id, lote, type, quantity")
     .in("stock_item_id", stockItemIds)
-    .not("lote", "is", null);
+    .neq("lote", null);
 
   for (const id of stockItemIds) result.set(id, {});
 
@@ -835,7 +835,7 @@ export async function fetchLotesSummaryBatch(
     .from("stock_movements")
     .select("stock_item_id, lote, type, quantity, reason")
     .in("stock_item_id", stockItemIds)
-    .not("lote", "is", null);
+    .neq("lote", null);
 
   if (!data || data.length === 0) return new Map();
 
@@ -882,7 +882,7 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
       .from("stock_movements")
       .select("lote, type, quantity, reason, created_at")
       .eq("stock_item_id", stockItemId)
-      .not("lote", "is", null)
+      .neq("lote", null)
       .order("created_at", { ascending: false }),
     supabase
       .from("pedidos_comerciais")

@@ -223,7 +223,7 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
               .from("stock_movements")
               .select("lote, type, quantity")
               .in("stock_item_id", chunk)
-              .not("lote", "is", null)
+              .neq("lote", null)
               .range(movPage * PAGE_SIZE, (movPage + 1) * PAGE_SIZE - 1);
             if (!movData || movData.length === 0) break;
             for (const m of movData as { lote: string; type: string; quantity: number }[]) {
