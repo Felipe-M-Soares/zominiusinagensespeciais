@@ -185,7 +185,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <Tag className="h-3 w-3 text-primary/60" />
                   <span className="text-[12px] font-bold text-primary font-mono">{row.lote}</span>
-                  <span className="text-[10px] text-muted-foreground ml-1">· {row.saldo} un.</span>
+
                 </div>
               </div>
               <Button
