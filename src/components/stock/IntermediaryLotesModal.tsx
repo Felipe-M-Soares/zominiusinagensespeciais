@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -66,14 +66,13 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const cancelRef = useRef(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     cancelRef.current = false;
     setLoading(true);
     setErro(null);
 
     try {
-      // 1. Busca stock_items da fase intermediária com o mesmo join usado no useStock
-      //    (alias device:devices que é o padrão que funciona em toda a aplicação)
+      // 1. Busca stock_items da fase intermediária
       const { data: siData, error: siErr } = await supabase
         .from("stock_items")
         .select(`id, device:devices(model, reference)`)
@@ -88,8 +87,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
         return;
       }
 
-      // 2. Para cada stock_item, usa fetchLotesSummary — a mesma função usada pelo
-      //    LotesPanel individual que funciona corretamente
+      // 2. Para cada stock_item, calcula saldo por lote via fetchLotesSummary
       const result: IntermediaryLoteRow[] = [];
 
       await Promise.all(
@@ -129,7 +127,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
         setLoading(false);
       }
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -139,9 +137,13 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
       setErro(null);
       return;
     }
-    const t = setTimeout(load, 0);
-    return () => { clearTimeout(t); cancelRef.current = true; };
-  }, [open]);
+    // BUG FIX: sem setTimeout — o cleanup do React setava cancelRef=true
+    // antes do load() assíncrono rodar, fazendo o modal não exibir nada.
+    // Setar cancelRef=false aqui garante que o load() inicia sem ser cancelado.
+    cancelRef.current = false;
+    load();
+    return () => { cancelRef.current = true; };
+  }, [open, load]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
