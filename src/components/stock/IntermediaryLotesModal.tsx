@@ -95,12 +95,20 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
 
       const stockItemIds = (siData as { id: string }[]).map((s) => s.id);
 
+      if (stockItemIds.length === 0) {
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+
       // 2. Busca todos os movimentos dos itens da intermediária numa única query
+      // Nota: .not("lote","is",null) gera Bad Request em algumas versões.
+      // Usar .neq("lote", null) — equivalente e compatível com PostgREST v14.
       const { data: movData, error: movErr } = await supabase
         .from("stock_movements")
         .select("stock_item_id, lote, type, quantity, reason")
         .in("stock_item_id", stockItemIds)
-        .not("lote", "is", null);
+        .neq("lote", null);
 
       if (movErr) throw new Error(movErr.message);
       if (cancelRef.current) return;
