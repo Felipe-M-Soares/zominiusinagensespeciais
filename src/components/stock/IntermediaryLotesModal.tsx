@@ -115,7 +115,7 @@ function printLabel(model: string, reference: string, lote: string) {
 
     /* Lote — destaque secundário */
     .row-lote {
-      font-size: 12pt;
+      font-size: 14pt;
       font-weight: 700;
       line-height: 1;
       width: 100%;
