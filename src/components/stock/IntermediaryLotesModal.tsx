@@ -29,47 +29,123 @@ interface Props {
 // ─── Impressão de etiqueta 50×45 mm ──────────────────────────────────────────
 
 function printLabel(model: string, reference: string, lote: string) {
-  const win = window.open("", "_blank", "width=320,height=320");
+  const win = window.open("", "_blank", "width=680,height=380");
   if (!win) {
     alert("Popup bloqueado. Permita popups para este site e tente novamente.");
     return;
   }
+
+  // Uma etiqueta individual: 50×45 mm
+  // Duas etiquetas idênticas lado a lado na mesma folha de impressão
+  const label = (m: string, ref: string, lt: string) => `
+    <div class="label">
+      <div class="row-model">${escHtml(m)}</div>
+      <div class="row-ref">${escHtml(ref)}</div>
+      <div class="row-lote">${escHtml(lt)}</div>
+    </div>`;
+
   win.document.write(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8"/>
   <title>Etiqueta</title>
   <style>
-    @page { size: 50mm 45mm; margin: 0; }
+    /* Página exata: duas etiquetas de 50mm lado a lado = 100mm × 45mm */
+    @page {
+      size: 100mm 45mm;
+      margin: 0;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      width: 50mm; height: 45mm;
+      width: 100mm;
+      height: 45mm;
       font-family: Arial, Helvetica, sans-serif;
-      display: flex; align-items: center; justify-content: center;
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      background: #fff;
+      overflow: hidden;
     }
+
+    /* Cada etiqueta ocupa exatamente 50×45 mm */
     .label {
-      width: 48mm; height: 43mm;
-      border: 1px solid #000;
-      display: flex; flex-direction: column;
-      justify-content: center; align-items: center;
-      gap: 2mm; padding: 2mm; text-align: center;
+      width: 50mm;
+      height: 45mm;
+      border: 0.4mm solid #000;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
+      align-items: center;
+      padding: 1.5mm 2mm;
+      text-align: center;
+      overflow: hidden;
+      flex-shrink: 0;
     }
-    .desc { font-size: 7pt; color: #333; }
-    .ref  { font-size: 13pt; font-weight: bold; }
-    .lote { font-size: 12pt; font-weight: bold; }
+
+    /* Separador entre as duas etiquetas */
+    .label + .label {
+      border-left: none;
+    }
+
+    /* Modelo — texto menor, cor cinza, nunca quebra em 2 linhas */
+    .row-model {
+      font-size: 6.5pt;
+      color: #444;
+      line-height: 1.1;
+      max-height: 10mm;
+      width: 100%;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    /* Referência — maior destaque, ocupa mais espaço */
+    .row-ref {
+      font-size: 15pt;
+      font-weight: 900;
+      line-height: 1;
+      width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      /* Comprime horizontalmente se não couber, sem quebrar */
+      transform-origin: center;
+    }
+
+    /* Lote — destaque secundário */
+    .row-lote {
+      font-size: 12pt;
+      font-weight: 700;
+      line-height: 1;
+      width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+    }
   </style>
+  <script>
+    // Após renderizar, comprime via scaleX textos que ultrapassem a largura da etiqueta
+    window.onload = function() {
+      document.querySelectorAll(".row-ref, .row-lote").forEach(function(el) {
+        var parent = el.parentElement;
+        var maxW = parent.clientWidth - 4; // padding 2mm cada lado ≈ 4px
+        var textW = el.scrollWidth;
+        if (textW > maxW) {
+          var scale = maxW / textW;
+          el.style.transform = "scaleX(" + scale + ")";
+        }
+      });
+      setTimeout(function() { window.print(); window.close(); }, 350);
+    };
+  </script>
 </head>
 <body>
-  <div class="label">
-    <div class="desc">${escHtml(model)}</div>
-    <div class="ref">${escHtml(reference)}</div>
-    <div class="lote">${escHtml(lote)}</div>
-  </div>
+  ${label(model, reference, lote)}
+  ${label(model, reference, lote)}
 </body>
 </html>`);
   win.document.close();
   win.focus();
-  setTimeout(() => { win.print(); win.close(); }, 400);
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
