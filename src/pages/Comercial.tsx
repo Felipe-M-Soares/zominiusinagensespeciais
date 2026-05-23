@@ -89,7 +89,6 @@ interface PedidoItem {
   quantidade: number;
   device_model: string;
   device_reference: string;
-  desconto_pct: number;
 }
 
 interface PedidoCompleto {
@@ -99,6 +98,7 @@ interface PedidoCompleto {
   vendedora_nome: string | null;
   status: "pendente" | "separando" | "pronto" | "faturado" | "enviado" | "cancelado";
   observacoes: string | null;
+  desconto_pct: number;
   created_at: string;
   faturado_em: string | null;
   itens: Array<{
@@ -109,7 +109,6 @@ interface PedidoCompleto {
     quantidade_reservada: number;
     device_model?: string;
     device_reference?: string;
-    desconto_pct?: number;
   }>;
 }
 
@@ -265,7 +264,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
   // Lista do pedido e obs
   const [qtd, setQtd] = useState(1);
-  const [descontoPct, setDescontoPct] = useState(0);
+  const [desconto, setDesconto] = useState(0);
   const [itens, setItens] = useState<PedidoItem[]>([]);
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
@@ -283,7 +282,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (!open) return;
     setClienteId(clienteFixo?.id ?? "");
     setClienteSearch(clienteFixo?.nome ?? "");
-    setItens([]); setObs(""); setDescontoPct(0);
+    setItens([]); setObs(""); setDesconto(0);
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
     setSelectedPeca(null); setQtd(1);
     loadClientes();
@@ -366,10 +365,9 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         quantidade: qtd,
         device_model: selectedPeca!.device?.model ?? "",
         device_reference: selectedPeca!.device?.reference ?? "",
-        desconto_pct: descontoPct,
       }];
     });
-    setSelectedPeca(null); setPecaSearch(""); setQtd(1); setDescontoPct(0);
+    setSelectedPeca(null); setPecaSearch(""); setQtd(1);
     setTimeout(() => pecaInputRef.current?.focus(), 50);
   }
 
@@ -392,11 +390,11 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           lote: i.lote || null,
           quantidade: i.quantidade,
           device_model: i.device_model,
-          desconto_pct: i.desconto_pct,
         })),
         vendedoraId: user?.id,
         vendedoraNome,
         observacoes: obs || null,
+        descontoPct: desconto,
       });
 
       if (!result.ok) {
@@ -505,17 +503,6 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 }}
                 className="w-14 h-10 rounded-xl border border-border/50 bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
               />
-              <select
-                value={descontoPct}
-                onChange={e => setDescontoPct(Number(e.target.value))}
-                title="Desconto nesta peça"
-                className="h-10 rounded-xl border border-border/50 bg-background text-[12px] font-semibold text-center px-2 focus:outline-none focus:ring-2 focus:ring-violet-500/30 cursor-pointer"
-                style={{ minWidth: "68px" }}
-              >
-                {[0,5,10,15,20,25,30,35,40,45,50].map(v => (
-                  <option key={v} value={v}>{v === 0 ? "Desc." : `${v}%`}</option>
-                ))}
-              </select>
               <button
                 type="button"
                 onClick={addItem}
@@ -550,14 +537,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                       <p className="text-[12px] font-medium truncate">{item.device_model}</p>
                       <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-[12px] font-bold">{item.quantidade} un.</span>
-                      {item.desconto_pct > 0 && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                          -{item.desconto_pct}%
-                        </span>
-                      )}
-                    </div>
+                    <span className="text-[12px] font-bold shrink-0">{item.quantidade} un.</span>
                     <button type="button" onClick={() => setItens(prev => prev.filter((_, i) => i !== idx))} className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors">
                       <X className="h-3 w-3" />
                     </button>
@@ -566,6 +546,33 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               </div>
             </div>
           )}
+
+          {/* ── Desconto do Pedido ── */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto no Pedido</label>
+            <div className="flex items-center gap-2">
+              {[0,5,10,15,20,25,30].map(v => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setDesconto(v)}
+                  className={cn(
+                    "flex-1 h-9 rounded-xl text-[12px] font-bold border transition-all",
+                    desconto === v
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                      : "border-border/50 bg-background text-muted-foreground hover:border-emerald-500/50 hover:text-emerald-600"
+                  )}
+                >
+                  {v === 0 ? "Sem" : `${v}%`}
+                </button>
+              ))}
+            </div>
+            {desconto > 0 && (
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <span className="font-bold">✓</span> Desconto de {desconto}% aplicado a todas as peças deste pedido
+              </p>
+            )}
+          </div>
 
           {/* ── Observações ── */}
           <div className="space-y-1.5">
@@ -613,33 +620,43 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
   const data = new Date(pedido.created_at).toLocaleDateString("pt-BR");
   const hora = new Date(pedido.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-  const statusColor = {
-    pendente: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25",
-    faturado: "text-success bg-success/8 border-success/25",
+  const statusColor = ({
+    pendente:  "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25",
+    separando: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/25",
+    pronto:    "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25",
+    faturado:  "text-green-600 dark:text-green-400 bg-green-500/10 border-green-500/25",
+    enviado:   "text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/25",
     cancelado: "text-muted-foreground bg-muted/20 border-border/40",
-  }[pedido.status];
+  } as Record<string, string>)[pedido.status] ?? "text-muted-foreground bg-muted/20 border-border/40";
 
-  const statusIcon = {
-    pendente: <Clock className="h-2.5 w-2.5" />,
-    faturado: <CheckCircle2 className="h-2.5 w-2.5" />,
+  const statusIcon = ({
+    pendente:  <Clock className="h-2.5 w-2.5" />,
+    separando: <PackageCheck className="h-2.5 w-2.5" />,
+    pronto:    <CheckCircle2 className="h-2.5 w-2.5" />,
+    faturado:  <CheckCircle2 className="h-2.5 w-2.5" />,
+    enviado:   <Truck className="h-2.5 w-2.5" />,
     cancelado: <Ban className="h-2.5 w-2.5" />,
-  }[pedido.status];
+  } as Record<string, React.ReactNode>)[pedido.status] ?? null;
 
-  const topBarColor = {
-    pendente: "via-amber-500 opacity-70",
-    faturado: "via-success opacity-60",
-    cancelado: "via-muted-foreground/40 opacity-30",
-  }[pedido.status];
+  const topBarColor = ({
+    pendente:  "bg-amber-400",
+    separando: "bg-blue-400",
+    pronto:    "bg-emerald-400",
+    faturado:  "bg-green-500",
+    enviado:   "bg-teal-500",
+    cancelado: "bg-muted-foreground/30",
+  } as Record<string, string>)[pedido.status] ?? "bg-border";
 
-  // Calcula se algum item tem desconto para mostrar badge
-  const temDesconto = pedido.itens.some(i => (i.desconto_pct ?? 0) > 0);
+  const temDesconto = pedido.desconto_pct > 0;
 
   return (
-    <div className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
-      style={{ boxShadow: "0 1px 3px hsl(var(--border)/0.4), 0 6px 16px -4px hsl(var(--border)/0.2), inset 0 1px 0 hsl(0 0% 100% / 0.07)" }}>
-
-      {/* Barra de status no topo */}
-      <div className={cn("h-[3px] bg-gradient-to-r from-transparent to-transparent transition-all group-hover:opacity-100", topBarColor)} />
+    <div className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-200 hover:-translate-y-0.5"
+      style={{ border: "1px solid hsl(var(--border))", boxShadow: "0 2px 8px -2px rgba(0,0,0,0.12), 0 0 0 0px transparent", transition: "box-shadow 0.2s, transform 0.2s" }}
+      onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 8px 24px -4px rgba(0,0,0,0.18), 0 0 0 1px hsl(var(--border))")}
+      onMouseLeave={e => (e.currentTarget.style.boxShadow = "0 2px 8px -2px rgba(0,0,0,0.12), 0 0 0 0px transparent")}
+    >
+      {/* Barra colorida no topo baseada no status */}
+      <div className={cn("h-[3px] w-full", topBarColor)} />
 
       <div className="p-4 space-y-3">
 
@@ -653,7 +670,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
               <h3 className="text-[13px] font-bold truncate leading-tight">{pedido.cliente_nome}</h3>
             </div>
             {pedido.vendedora_nome && (
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5 ml-7.5 pl-[1px]">{pedido.vendedora_nome}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 ml-7 pl-0.5">{pedido.vendedora_nome}</p>
             )}
           </div>
           <Badge variant="outline" className={cn("shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1 border", statusColor)}>
@@ -664,7 +681,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
 
         {/* ── Resumo: itens + desconto ── */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2 border bg-muted/15 border-border/25">
+          <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2 border bg-muted/30 border-border/50">
             <div className="flex items-center gap-1.5">
               <ShoppingBag className="h-3.5 w-3.5 text-violet-400" />
               <span className="text-[11px] text-muted-foreground">
@@ -684,10 +701,17 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
           )}
         </div>
 
-        {/* ── Data/hora ── */}
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
-          <Clock className="h-3 w-3" />
-          <span>{data} às {hora}</span>
+        {/* ── Data/hora + desconto ── */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
+            <Clock className="h-3 w-3" />
+            <span>{data} às {hora}</span>
+          </div>
+          {temDesconto && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              {pedido.desconto_pct}% desc.
+            </span>
+          )}
         </div>
 
         {/* ── Itens expandidos ── */}
@@ -709,11 +733,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
                     <span>{it.quantidade} un.</span>
                   </div>
                 </div>
-                {(it.desconto_pct ?? 0) > 0 && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
-                    -{it.desconto_pct}%
-                  </span>
-                )}
+
               </div>
             ))}
             {pedido.observacoes && (
@@ -1740,7 +1760,7 @@ export default function Comercial() {
 
       setPedidos(pedidosData.map((p: Record<string, unknown>) => {
         const c = p.clientes as Record<string, unknown> | null;
-        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
+        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
     } catch (_e) {
       toast.error("Erro ao carregar pedidos.", {

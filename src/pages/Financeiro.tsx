@@ -44,7 +44,6 @@ interface PedidoItem {
   quantidade: number;
   device_model?: string;
   device_reference?: string;
-  desconto_pct?: number;
   ncm?: string;
   cfop?: string;
   valor_unitario?: number;
@@ -65,6 +64,7 @@ interface Pedido {
   nota_fiscal: string | null;
   protocolo_sefaz?: string | null;
   chave_acesso_nfe?: string | null;
+  desconto_pct?: number;
   xml_nfe?: string | null;
   created_at: string;
   separado_em: string | null;
@@ -567,14 +567,53 @@ function SefazModal({
           {/* PASSO 3 — Itens Fiscais */}
           {step === 3 && (
             <div className="space-y-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Dados Fiscais por Item ({dados.itens.length})
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Dados Fiscais por Item ({dados.itens.length})
+                </p>
+              </div>
+
+              {/* Banner de desconto da vendedora */}
+              {(pedido?.desconto_pct ?? 0) > 0 && (
+                <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/8 border border-emerald-500/25">
+                  <div className="flex items-center gap-2">
+                    <Percent className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                      Vendedora informou <strong>{pedido!.desconto_pct}% de desconto</strong> em cada peça
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pct = pedido!.desconto_pct ?? 0;
+                      setDados(prev => {
+                        if (!prev) return prev;
+                        return {
+                          ...prev,
+                          itens: prev.itens.map(it => {
+                            const vOrig = parseFloat(it.valorUnitario) || 0;
+                            if (vOrig <= 0) return it;
+                            const vDesc = vOrig * (1 - pct / 100);
+                            return { ...it, valorUnitario: vDesc.toFixed(2) };
+                          }),
+                        };
+                      });
+                    }}
+                    className="shrink-0 h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition-colors"
+                  >
+                    Aplicar desconto
+                  </button>
+                </div>
+              )}
+
               {dados.itens.map((item, idx) => {
-                const vTotal = item.quantidade * (parseFloat(item.valorUnitario) || 0);
+                const vOrig  = parseFloat(item.valorUnitario) || 0;
+                const pct    = pedido?.desconto_pct ?? 0;
+                const vDesc  = pct > 0 && vOrig > 0 ? vOrig * (1 - pct / 100) : null;
+                const vTotal = item.quantidade * vOrig;
                 const ncmOk  = item.ncm.replace(/\D/g,"").length >= 8;
                 const cfopOk = item.cfop.replace(/\D/g,"").length >= 4;
-                const vlrOk  = parseFloat(item.valorUnitario) > 0;
+                const vlrOk  = vOrig > 0;
                 return (
                   <div key={item.pedido_item_id}
                     className={cn("rounded-xl border p-3 space-y-2.5 transition-colors",
@@ -615,6 +654,11 @@ function SefazModal({
                               vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
+                        {vDesc !== null && (
+                          <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-mono">
+                            com {pct}% desc → R$ {vDesc.toFixed(2)}
+                          </p>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">
@@ -907,17 +951,21 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             </button>
           )}
 
-          {/* Itens com desconto por peça */}
+          {/* Desconto do pedido (badge único) */}
+          {(pedido.desconto_pct ?? 0) > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
+              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                {pedido.desconto_pct}% de desconto em todas as peças
+              </span>
+            </div>
+          )}
+
+          {/* Itens */}
           <div className="space-y-1">
             {pedido.itens.map(item => (
               <div key={item.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/60 border border-border/20">
                 <Package className="h-3 w-3 text-muted-foreground shrink-0" />
                 <span className="text-[12px] flex-1 truncate">{item.device_model}</span>
-                {(item.desconto_pct ?? 0) > 0 && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
-                    -{item.desconto_pct}%
-                  </span>
-                )}
                 <span className="text-[12px] font-bold shrink-0">{item.quantidade} un.</span>
               </div>
             ))}
@@ -1654,10 +1702,10 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
       .from("pedidos_comerciais")
       .select(`
         id, vendedora_id, vendedora_nome, status, frete, observacoes,
-        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe,
+        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe, desconto_pct,
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes!inner(nome, documento),
-        pedido_itens(id, stock_item_id, lote, quantidade, desconto_pct,
+        pedido_itens(id, stock_item_id, lote, quantidade,
           stock_items!inner(devices!inner(model, reference)))
       `)
       .in("status", ["faturado", "enviado"])
@@ -1678,6 +1726,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
           protocolo_sefaz: p.protocolo_sefaz as string | null,
           chave_acesso_nfe: p.chave_acesso_nfe as string | null,
           xml_nfe: p.xml_nfe as string | null,
+          desconto_pct: (p.desconto_pct as number) ?? 0,
           created_at: p.created_at as string,
           separado_em: p.separado_em as string | null,
           nf_criada_em: p.nf_criada_em as string | null,
@@ -1804,11 +1853,11 @@ export default function Financeiro() {
       .from("pedidos_comerciais")
       .select(`
         id, vendedora_id, vendedora_nome, status, frete, observacoes,
-        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe,
+        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe, desconto_pct,
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes!inner(nome, documento, telefone, email, endereco),
         pedido_itens(
-          id, stock_item_id, lote, quantidade, desconto_pct,
+          id, stock_item_id, lote, quantidade,
           stock_items!inner(devices!inner(model, reference))
         )
       `)
@@ -1832,6 +1881,7 @@ export default function Financeiro() {
           protocolo_sefaz: p.protocolo_sefaz as string | null,
           chave_acesso_nfe: p.chave_acesso_nfe as string | null,
           xml_nfe: p.xml_nfe as string | null,
+          desconto_pct: (p.desconto_pct as number) ?? 0,
           created_at: p.created_at as string,
           separado_em: p.separado_em as string | null,
           nf_criada_em: p.nf_criada_em as string | null,
