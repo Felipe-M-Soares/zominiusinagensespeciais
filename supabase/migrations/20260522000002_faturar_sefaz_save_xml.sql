@@ -1,5 +1,8 @@
--- Atualiza faturar_pedido_sefaz para aceitar e salvar o xml_nfe da NF autorizada.
--- Mantém compatibilidade: p_xml_nfe é opcional (default NULL).
+-- DROP das versões anteriores de faturar_pedido_sefaz (assinaturas diferentes causam ambiguidade).
+-- CREATE OR REPLACE falha quando existem múltiplas versões com nomes iguais mas parâmetros distintos.
+DROP FUNCTION IF EXISTS public.faturar_pedido_sefaz(uuid, text, text, text, timestamptz, uuid, text);
+DROP FUNCTION IF EXISTS public.faturar_pedido_sefaz(uuid, text, text, text, timestamptz, uuid, text, text);
+
 CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(
   p_pedido_id      uuid,
   p_nf             text,
@@ -52,7 +55,7 @@ BEGIN
       v_item.stock_item_id,
       'saida',
       v_item.quantidade,
-      'Saída via NF ' || p_nf || ' — Pedido ' || p_pedido_id::text,
+      'Saida via NF ' || p_nf || ' - Pedido ' || p_pedido_id::text,
       p_user_id,
       p_user_name,
       v_item.lote
@@ -63,4 +66,4 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz TO authenticated;
+GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz(uuid, text, text, text, timestamptz, uuid, text, text) TO authenticated;
