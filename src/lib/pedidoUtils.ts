@@ -16,6 +16,7 @@ export interface PedidoItemInput {
   lote: string | null;
   quantidade: number;
   device_model?: string;
+  desconto_pct?: number;
 }
 
 export interface CriarPedidoParams {
@@ -64,6 +65,7 @@ export async function criarPedidoComReserva(
     lote: i.lote ?? null,
     quantidade: i.quantidade,
     quantidade_reservada: i.quantidade,
+    desconto_pct: i.desconto_pct ?? 0,
   }));
 
   const { error: itensErr } = await supabase

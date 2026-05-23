@@ -44,6 +44,7 @@ interface PedidoItem {
   quantidade: number;
   device_model?: string;
   device_reference?: string;
+  desconto_pct?: number;
   ncm?: string;
   cfop?: string;
   valor_unitario?: number;
@@ -906,12 +907,17 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             </button>
           )}
 
-          {/* Itens SEM lote conforme solicitado */}
+          {/* Itens com desconto por peça */}
           <div className="space-y-1">
             {pedido.itens.map(item => (
               <div key={item.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/60 border border-border/20">
                 <Package className="h-3 w-3 text-muted-foreground shrink-0" />
                 <span className="text-[12px] flex-1 truncate">{item.device_model}</span>
+                {(item.desconto_pct ?? 0) > 0 && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                    -{item.desconto_pct}%
+                  </span>
+                )}
                 <span className="text-[12px] font-bold shrink-0">{item.quantidade} un.</span>
               </div>
             ))}
@@ -1651,7 +1657,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
         nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe,
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes!inner(nome, documento),
-        pedido_itens(id, stock_item_id, lote, quantidade,
+        pedido_itens(id, stock_item_id, lote, quantidade, desconto_pct,
           stock_items!inner(devices!inner(model, reference)))
       `)
       .in("status", ["faturado", "enviado"])
@@ -1802,7 +1808,7 @@ export default function Financeiro() {
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes!inner(nome, documento, telefone, email, endereco),
         pedido_itens(
-          id, stock_item_id, lote, quantidade,
+          id, stock_item_id, lote, quantidade, desconto_pct,
           stock_items!inner(devices!inner(model, reference))
         )
       `)
@@ -1833,6 +1839,7 @@ export default function Financeiro() {
           itens: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
             id: i.id as string, stock_item_id: i.stock_item_id as string,
             lote: i.lote as string, quantidade: i.quantidade as number,
+            desconto_pct: (i.desconto_pct as number) ?? 0,
             device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
             device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
           })),

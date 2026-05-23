@@ -35,7 +35,6 @@ BEGIN
     RETURN jsonb_build_object('error', 'Pedido não encontrado ou status inválido');
   END IF;
 
-  -- Baixa estoque atomicamente
   FOR v_item IN
     SELECT pi.stock_item_id, pi.quantidade, pi.lote
     FROM public.pedido_itens pi
