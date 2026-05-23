@@ -369,8 +369,8 @@ Deno.serve(async (req: Request) => {
       dhAutorizacao: r.dhRecbto || undefined,
       cStat:         r.cStat,
       xMotivo:       r.xMotivo,
+      xmlAssinado:   ok ? xmlAssinado : undefined,   // sempre retorna quando autorizado
       xmlGerado:     c.debug ? xml : undefined,
-      xmlAssinado:   c.debug ? xmlAssinado : undefined,
       rawResp:       c.debug ? xmlResp : undefined,
     }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
 

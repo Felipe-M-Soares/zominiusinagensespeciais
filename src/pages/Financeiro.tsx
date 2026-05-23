@@ -64,6 +64,7 @@ interface Pedido {
   nota_fiscal: string | null;
   protocolo_sefaz?: string | null;
   chave_acesso_nfe?: string | null;
+  xml_nfe?: string | null;
   created_at: string;
   separado_em: string | null;
   nf_criada_em: string | null;
@@ -108,6 +109,7 @@ interface SefazResult {
   cStat?: string;
   xMotivo?: string;
   erro?: string;
+  xmlAssinado?: string;
 }
 
 type CategoriaCompra =
@@ -411,6 +413,7 @@ function SefazModal({
         p_chave_acesso: result.chaveAcesso ?? "", p_protocolo: result.protocolo ?? "",
         p_dh_autorizacao: result.dhAutorizacao ?? new Date().toISOString(),
         p_user_id: user.id, p_user_name: "Financeiro",
+        p_xml_nfe: result.xmlAssinado ?? null,
       } as Record<string, unknown>);
 
       if (rpcErr) { toast.error(`NF autorizada, mas erro ao salvar: ${rpcErr.message}`); return; }
@@ -875,6 +878,32 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
                 <p className="text-[9px] text-violet-500 font-mono">Protocolo: {pedido.protocolo_sefaz}</p>
               )}
             </div>
+          )}
+
+          {pedido.xml_nfe && (
+            <button
+              type="button"
+              onClick={() => {
+                const blob = new Blob([pedido.xml_nfe!], { type: "application/xml" });
+                const url  = URL.createObjectURL(blob);
+                const a    = document.createElement("a");
+                a.href     = url;
+                a.download = `NFe-${pedido.nota_fiscal ?? pedido.chave_acesso_nfe ?? "nota"}.xml`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="w-full h-8 rounded-xl border border-violet-500/40 bg-violet-500/5 hover:bg-violet-500/15
+                         text-violet-600 dark:text-violet-400 text-[12px] font-semibold transition-colors
+                         flex items-center justify-center gap-1.5"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Baixar XML da NF-e
+            </button>
           )}
 
           {/* Itens SEM lote conforme solicitado */}
@@ -1619,7 +1648,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
       .from("pedidos_comerciais")
       .select(`
         id, vendedora_id, vendedora_nome, status, frete, observacoes,
-        nota_fiscal, protocolo_sefaz, chave_acesso_nfe,
+        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe,
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes!inner(nome, documento),
         pedido_itens(id, stock_item_id, lote, quantidade,
@@ -1642,6 +1671,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
           nota_fiscal: p.nota_fiscal as string | null,
           protocolo_sefaz: p.protocolo_sefaz as string | null,
           chave_acesso_nfe: p.chave_acesso_nfe as string | null,
+          xml_nfe: p.xml_nfe as string | null,
           created_at: p.created_at as string,
           separado_em: p.separado_em as string | null,
           nf_criada_em: p.nf_criada_em as string | null,
@@ -1768,7 +1798,7 @@ export default function Financeiro() {
       .from("pedidos_comerciais")
       .select(`
         id, vendedora_id, vendedora_nome, status, frete, observacoes,
-        nota_fiscal, protocolo_sefaz, chave_acesso_nfe,
+        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe,
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes!inner(nome, documento, telefone, email, endereco),
         pedido_itens(
@@ -1795,6 +1825,7 @@ export default function Financeiro() {
           nota_fiscal: p.nota_fiscal as string | null,
           protocolo_sefaz: p.protocolo_sefaz as string | null,
           chave_acesso_nfe: p.chave_acesso_nfe as string | null,
+          xml_nfe: p.xml_nfe as string | null,
           created_at: p.created_at as string,
           separado_em: p.separado_em as string | null,
           nf_criada_em: p.nf_criada_em as string | null,
