@@ -548,24 +548,37 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           )}
 
           {/* ── Desconto do Pedido ── */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto no Pedido</label>
-            <div className="flex items-center gap-2">
-              {[0,5,10,15,20,25,30].map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setDesconto(v)}
-                  className={cn(
-                    "flex-1 h-9 rounded-xl text-[12px] font-bold border transition-all",
-                    desconto === v
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                      : "border-border/50 bg-background text-muted-foreground hover:border-emerald-500/50 hover:text-emerald-600"
-                  )}
-                >
-                  {v === 0 ? "Sem" : `${v}%`}
-                </button>
-              ))}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto no Pedido</label>
+              <span className={cn(
+                "text-[13px] font-black tabular-nums px-2 py-0.5 rounded-lg",
+                desconto > 0 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+              )}>
+                {desconto === 0 ? "Sem desconto" : `${desconto}%`}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={desconto}
+              onChange={e => setDesconto(Number(e.target.value))}
+              className="w-full h-2 rounded-full appearance-none cursor-pointer"
+              style={{
+                background: desconto === 0
+                  ? "#e2e8f0"
+                  : `linear-gradient(to right, #059669 ${desconto}%, #e2e8f0 ${desconto}%)`,
+                accentColor: "#059669",
+              }}
+            />
+            <div className="flex justify-between text-[9px] text-muted-foreground/60 font-mono px-0.5">
+              <span>0%</span>
+              <span>25%</span>
+              <span>50%</span>
+              <span>75%</span>
+              <span>100%</span>
             </div>
             {desconto > 0 && (
               <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">

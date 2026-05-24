@@ -33,6 +33,9 @@ import {
   Cpu, FlaskConical, Factory, PlusCircle, Edit3, Trash2,
   Link, TestTube2, CheckSquare, AlertTriangle, TrendingDown,
   Wallet, CalendarDays, BarChart3, Tag, Building,
+  TrendingUp, ArrowUpRight, ArrowDownRight, PieChart,
+  FileSpreadsheet, Download, Filter, Search, Eye, EyeOff,
+  Copy, ExternalLink, Star, Award, Repeat2,
 } from "lucide-react";
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────
@@ -1922,7 +1925,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
         pedido_itens(id, stock_item_id, lote, quantidade,
           stock_items!inner(devices!inner(model, reference)))
       `)
-      .in("status", ["faturado", "enviado"])
+      .or("status.eq.faturado,status.eq.enviado")
       .order("nf_criada_em", { ascending: false })
       .limit(50);
 
@@ -2077,7 +2080,7 @@ export default function Financeiro() {
           stock_items!inner(devices!inner(model, reference))
         )
       `)
-      .in("status", ["pronto", "faturado", "enviado"])
+      .or("status.eq.pronto,status.eq.faturado,status.eq.enviado")
       .order("created_at", { ascending: false })
       .abortSignal(ctrl.signal);
 
