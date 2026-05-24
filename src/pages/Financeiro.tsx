@@ -896,11 +896,11 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
     ? { background: "#f5f3ff", color: "#6d28d9",  border: "1px solid #c4b5fd" }
     : isEnviado
     ? { background: "#f0fdf4", color: "#166534",  border: "1px solid #4ade80" }
-    : { background: "#f1f5f9", color: "#64748b",  border: "1px solid #cbd5e1" };
+    : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" };
 
   return (
-    <div style={{ border: cardBorder, boxShadow: "0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05)", borderRadius: "16px", overflow: "hidden", background: "white" }}
-      className="dark:bg-card transition-shadow hover:shadow-lg flex flex-col">
+    <div style={{ border: cardBorder, boxShadow: "0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05)", borderRadius: "16px", overflow: "hidden", background: "hsl(var(--card))" }}
+      className=" transition-shadow hover:shadow-lg flex flex-col">
 
       {/* Linha de status colorida */}
       <div style={{ height: "3px", background: barColor, width: "100%" }} />
@@ -913,7 +913,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
         <div className="shrink-0 mt-0.5" style={{
           width: 36, height: 36, borderRadius: 10, display: "flex",
           alignItems: "center", justifyContent: "center",
-          background: isPronto ? "#dcfce7" : isFaturado ? "#ede9fe" : isEnviado ? "#dcfce7" : "#f1f5f9"
+          background: isPronto ? "hsl(142 76% 90%)" : isFaturado ? "hsl(258 90% 94%)" : isEnviado ? "hsl(142 76% 90%)" : "hsl(var(--muted))"
         }}>
           {isEnviado  ? <BadgeCheck size={18} color="#22c55e" /> :
            isFaturado ? <FileCheck2 size={18} color="#7c3aed" /> :
@@ -972,7 +972,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
               { label: "Separado", value: pedido.separado_em, icon: <CheckCircle2 size={10} />,  color: "#10b981" },
               { label: "NF emitida",value: pedido.nf_criada_em,icon: <Receipt size={10} />,     color: "#7c3aed" },
             ].map(({ label, value, icon, color }) => (
-              <div key={label} className="rounded-xl p-2 text-center" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+              <div key={label} className="rounded-xl p-2 text-center bg-muted border border-border">
                 <div className="flex items-center justify-center gap-1 mb-1" style={{ color }}>
                   {icon}
                   <span className="text-[9px] font-semibold uppercase tracking-wide">{label}</span>
@@ -984,7 +984,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
 
           {/* Cliente info */}
           {(pedido.cliente_documento || pedido.cliente_telefone || pedido.cliente_email) && (
-            <div className="rounded-xl p-3 space-y-1.5" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+            <div className="rounded-xl p-3 space-y-1.5 bg-muted border border-border">
               <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Dados do Cliente</p>
               {pedido.cliente_documento && (
                 <p className="text-[11px] text-gray-700 font-mono">{mascararDoc(pedido.cliente_documento)}</p>
@@ -1007,7 +1007,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Itens do Pedido</p>
             {pedido.itens.map(item => (
               <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                className="bg-muted border border-border">
                 <Package size={12} className="text-gray-400 shrink-0" />
                 <span className="text-[12px] font-medium text-gray-800 flex-1 truncate">{item.device_model}</span>
                 <span className="text-[11px] font-bold text-gray-700">{item.quantidade} un.</span>
@@ -1017,12 +1017,12 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
 
           {/* Chave de acesso SEFAZ */}
           {pedido.chave_acesso_nfe && (
-            <div className="rounded-xl p-3 space-y-2" style={{ background: "#faf5ff", border: "1px solid #e9d5ff" }}>
+            <div className="rounded-xl p-3 space-y-2" className="rounded-xl p-3 space-y-2 bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#7c3aed" }}>Chave de Acesso NF-e</p>
                 <button type="button" onClick={copyChave}
                   className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg transition-colors"
-                  style={{ background: copied ? "#ede9fe" : "#f5f3ff", color: "#7c3aed", border: "1px solid #c4b5fd" }}>
+                  className={cn("flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 transition-colors", copied ? "bg-violet-200 dark:bg-violet-900/50" : "bg-violet-100 dark:bg-violet-900/30")}>
                   <Copy size={10} />{copied ? "Copiado!" : "Copiar"}
                 </button>
               </div>
@@ -1038,7 +1038,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
           {/* Desconto */}
           {(pedido.desconto_pct ?? 0) > 0 && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
-              style={{ background: "#f0fdf4", border: "1px solid #86efac" }}>
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
               <Percent size={12} color="#15803d" />
               <span className="text-[11px] font-semibold" style={{ color: "#15803d" }}>
                 {pedido.desconto_pct}% de desconto aplicado em todas as peças
@@ -1048,7 +1048,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
 
           {/* Observações */}
           {pedido.observacoes && (
-            <div className="flex items-start gap-2 px-3 py-2 rounded-xl" style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
+            <div className="flex items-start gap-2 px-3 py-2 rounded-xl" className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
               <FileText size={12} className="mt-0.5 shrink-0" color="#d97706" />
               <p className="text-[11px] text-amber-800 italic">{pedido.observacoes}</p>
             </div>
@@ -1059,7 +1059,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             {pedido.xml_nfe && (
               <button type="button" onClick={downloadXml}
                 className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold transition-colors"
-                style={{ background: "#f5f3ff", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 transition-colors">
                 <Download size={13} />XML NF-e
               </button>
             )}
@@ -1390,7 +1390,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
           <div key={k.label} className="rounded-xl p-3 flex items-center gap-3"
             style={{ background: k.bg, border: `1px solid ${k.border}` }}>
             <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
-              style={{ background: "white", color: k.color, boxShadow: "0 1px 3px rgba(0,0,0,0.07)" }}>
+              style={{ color: k.color }} className="h-8 w-8 rounded-lg bg-card flex items-center justify-center shrink-0 shadow-sm">
               {k.icon}
             </div>
             <div className="min-w-0">
@@ -1414,12 +1414,12 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
           <input type="text" placeholder="Buscar descrição ou fornecedor…"
             value={search} onChange={e => setSearch(e.target.value)}
             className="w-full h-9 pl-8 pr-3 rounded-xl text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-400"
-            style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }} />
+            style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }} />
         </div>
 
         <select value={filtroNF} onChange={e => setFiltroNF(e.target.value as typeof filtroNF)}
           className="h-9 rounded-xl px-3 text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-400"
-          style={{ background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569" }}>
+          className="h-9 rounded-xl px-3 text-[12px] font-medium bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-400">
           <option value="todos">Todas NFs</option>
           <option value="sem_nf">Sem NF</option>
           <option value="manual">NF Manual</option>
@@ -1430,14 +1430,15 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         <button type="button" onClick={() => setShowRecorr(v => !v)}
           className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold transition-colors"
           style={showRecorr
-            ? { background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }
-            : { background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0" }}>
+            ? { background: undefined, color: undefined, border: undefined }
+            : undefined}
+                    className={cn("h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5", filtroStatus !== f.id && "bg-muted text-muted-foreground border-border")}>
           <Repeat2 size={13} />Recorrentes
         </button>
 
         <button type="button" onClick={load} disabled={loading}
           className="h-9 w-9 flex items-center justify-center rounded-xl transition-colors"
-          style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+          className="bg-muted border border-border">
           <RefreshCw size={13} color="#64748b" className={loading ? "animate-spin" : ""} />
         </button>
       </div>
@@ -1456,7 +1457,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         </div>
       ) : itensFiltrados.length === 0 ? (
         <div className="text-center py-14 space-y-3">
-          <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center" style={{ background: "#f1f5f9" }}>
+          <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted">
             <ShoppingCart size={28} color="#94a3b8" />
           </div>
           <div>
@@ -1477,17 +1478,17 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
             const isMesAtual = item.data_lancamento.startsWith(mesAtualStr);
             return (
               <div key={item.id} className="rounded-xl overflow-hidden flex flex-col transition-shadow hover:shadow-md"
-                style={{ border: "1.5px solid #e2e8f0", background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+                className="bg-card border border-border rounded-xl overflow-hidden flex flex-col transition-shadow hover:shadow-md">
 
                 {/* Topo colorido: mês atual = laranja, antigo = cinza */}
-                <div style={{ height: 3, background: isMesAtual ? "#f97316" : "#cbd5e1" }} />
+                <div style={{ height: 3, background: isMesAtual ? "#f97316" : "hsl(var(--border))" }} />
 
                 <div className="p-3 flex-1 space-y-2">
                   {/* Ícone + valor */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ background: "#f5f3ff" }}>
+                        className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 dark:bg-violet-900/30">
                         <CatIcon size={15} color="#7c3aed" />
                       </div>
                       <div className="min-w-0">
@@ -1508,7 +1509,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                     </span>
                     {item.recorrente && (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1"
-                        style={{ background: "#f5f3ff", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+                        className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 transition-colors">
                         <Repeat2 size={9} />{item.periodicidade}
                       </span>
                     )}
@@ -1530,7 +1531,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
 
                   {/* NF info */}
                   {(item.nota_fiscal_manual || item.chave_nfe) && (
-                    <div className="rounded-lg px-2 py-1.5" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                    <div className="rounded-lg px-2 py-1.5" className="bg-muted border border-border">
                       {item.nota_fiscal_manual && (
                         <p className="text-[10px] font-mono text-gray-600">NF: {item.nota_fiscal_manual}</p>
                       )}
@@ -1552,7 +1553,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                     className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-violet-50 text-gray-500 hover:text-violet-700">
                     <Edit3 size={11} />Editar
                   </button>
-                  <div style={{ width: 1, background: "#f1f5f9" }} />
+                  <div style={{ width: 1, background: "hsl(var(--muted))" }} />
                   <button type="button" onClick={() => setDelItem(item)}
                     className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-red-50 text-gray-400 hover:text-red-600">
                     <Trash2 size={11} />Excluir
@@ -1572,11 +1573,10 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
 
       {delItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-card p-5 space-y-4 shadow-2xl"
-            style={{ border: "1.5px solid #e2e8f0" }}>
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-5 space-y-4 shadow-2xl">
             <div className="flex items-start gap-3">
               <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: "#fef2f2" }}>
+                className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-red-100 dark:bg-red-950/40">
                 <Trash2 size={18} color="#dc2626" />
               </div>
               <div>
@@ -1588,7 +1588,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
             <div className="flex gap-2">
               <button type="button" onClick={() => setDelItem(null)} disabled={deleting}
                 className="flex-1 h-9 rounded-xl text-sm font-semibold transition-colors"
-                style={{ border: "1px solid #e2e8f0", color: "#64748b" }}>
+                style={{ border: "1px solid hsl(var(--border))", color: "#64748b" }}>
                 Cancelar
               </button>
               <button type="button" onClick={handleDelete} disabled={deleting}
@@ -2196,18 +2196,18 @@ export default function Financeiro() {
   ];
 
   return (
-    <div className="min-h-screen" style={{ background: "#f8fafc" }}>
-      <header className="sticky top-0 z-30 bg-white dark:bg-background border-b"
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-30 bg-background border-b"
         style={{ borderColor: "#e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => navigate("/")}
               className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors"
-              style={{ border: "1px solid #e2e8f0" }}>
+              style={{ border: "1px solid hsl(var(--border))" }}>
               <ArrowLeft size={15} color="#64748b" />
             </button>
             <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg flex items-center justify-center" style={{ background: "#f5f3ff" }}>
+              <div className="h-7 w-7 rounded-lg flex items-center justify-center" className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 dark:bg-violet-900/30">
                 <Receipt size={15} color="#7c3aed" />
               </div>
               <div>
@@ -2290,7 +2290,7 @@ export default function Financeiro() {
                 <div key={kpi.label} className="rounded-2xl p-4 flex items-start gap-3"
                   style={{ background: kpi.bg, border: `1.5px solid ${kpi.border}` }}>
                   <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: "white", color: kpi.color, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    style={{ background: "hsl(var(--card))", color: kpi.color, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                     {kpi.icon}
                   </div>
                   <div>
@@ -2314,7 +2314,8 @@ export default function Financeiro() {
                     className="h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5"
                     style={filtroStatus === f.id
                       ? { background: "#7c3aed", color: "white", border: "1px solid #7c3aed" }
-                      : { background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0" }}>
+                      : undefined}
+                    className={cn("h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5", filtroStatus !== f.id && "bg-muted text-muted-foreground border-border")}>
                     {f.label}
                     <span className="text-[10px] px-1 rounded-md"
                       style={filtroStatus === f.id
@@ -2333,7 +2334,7 @@ export default function Financeiro() {
                   value={searchNF}
                   onChange={e => setSearchNF(e.target.value)}
                   className="w-full h-8 pl-8 pr-3 rounded-xl text-[12px] focus:outline-none focus:ring-2"
-                  style={{ background: "#f8fafc", border: "1px solid #e2e8f0", focusRingColor: "#7c3aed" }}
+                  style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))", focusRingColor: "#7c3aed" }}
                 />
               </div>
             </div>
@@ -2344,7 +2345,7 @@ export default function Financeiro() {
               </div>
             ) : filtradosSearch.length === 0 ? (
               <div className="text-center py-16 space-y-3">
-                <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center" style={{ background: "#f1f5f9" }}>
+                <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted">
                   <Receipt size={28} color="#94a3b8" />
                 </div>
                 <div>
