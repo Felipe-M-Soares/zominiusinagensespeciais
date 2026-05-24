@@ -854,133 +854,226 @@ function SefazModal({
 
 function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pedido) => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [copied,   setCopied]   = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
 
-  return (
-    <div className={cn("rounded-2xl border overflow-hidden transition-colors flex flex-col",
-      pedido.status === "pronto"   ? "border-emerald-500/25 bg-emerald-500/3" :
-      pedido.status === "faturado" ? "border-violet-500/25  bg-violet-500/3"  :
-      pedido.status === "enviado"  ? "border-green-500/20   bg-green-500/3"   :
-      "border-border/30 bg-card")}>
+  function copyChave() {
+    if (!pedido.chave_acesso_nfe) return;
+    navigator.clipboard.writeText(pedido.chave_acesso_nfe);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
+  function downloadXml() {
+    const blob = new Blob([pedido.xml_nfe!], { type: "application/xml" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `NFe-${pedido.nota_fiscal ?? "nota"}.xml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const isPronto   = pedido.status === "pronto";
+  const isFaturado = pedido.status === "faturado";
+  const isEnviado  = pedido.status === "enviado";
+
+  const cardBorder = isPronto   ? "1.5px solid #34d399" :
+                     isFaturado ? "1.5px solid #a78bfa" :
+                     isEnviado  ? "1.5px solid #4ade80" :
+                                  "1.5px solid #e2e8f0";
+
+  const barColor   = isPronto   ? "#10b981" :
+                     isFaturado ? "#7c3aed" :
+                     isEnviado  ? "#22c55e" : "#94a3b8";
+
+  const badgeStyle = isPronto
+    ? { background: "#f0fdf4", color: "#15803d",  border: "1px solid #86efac" }
+    : isFaturado
+    ? { background: "#f5f3ff", color: "#6d28d9",  border: "1px solid #c4b5fd" }
+    : isEnviado
+    ? { background: "#f0fdf4", color: "#166534",  border: "1px solid #4ade80" }
+    : { background: "#f1f5f9", color: "#64748b",  border: "1px solid #cbd5e1" };
+
+  return (
+    <div style={{ border: cardBorder, boxShadow: "0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05)", borderRadius: "16px", overflow: "hidden", background: "white" }}
+      className="dark:bg-card transition-shadow hover:shadow-lg flex flex-col">
+
+      {/* Linha de status colorida */}
+      <div style={{ height: "3px", background: barColor, width: "100%" }} />
+
+      {/* Header clicável */}
       <button type="button" onClick={() => setExpanded(v => !v)}
-        className="w-full text-left px-4 py-3 flex items-start gap-3">
-        <div className="h-9 w-9 rounded-xl bg-muted/30 flex items-center justify-center shrink-0 mt-0.5">
-          {pedido.status === "enviado"
-            ? <BadgeCheck className="h-4 w-4 text-green-500" />
-            : <Receipt className="h-4 w-4 text-muted-foreground" />}
+        className="w-full text-left px-4 pt-3 pb-3 flex items-start gap-3">
+
+        {/* Ícone status */}
+        <div className="shrink-0 mt-0.5" style={{
+          width: 36, height: 36, borderRadius: 10, display: "flex",
+          alignItems: "center", justifyContent: "center",
+          background: isPronto ? "#dcfce7" : isFaturado ? "#ede9fe" : isEnviado ? "#dcfce7" : "#f1f5f9"
+        }}>
+          {isEnviado  ? <BadgeCheck size={18} color="#22c55e" /> :
+           isFaturado ? <FileCheck2 size={18} color="#7c3aed" /> :
+                        <Receipt    size={18} color="#10b981" />}
         </div>
+
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[13px] font-semibold truncate">{pedido.cliente_nome}</span>
-            <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", statusColor(pedido.status))}>
+          {/* Cliente + status */}
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-[14px] font-bold text-gray-900 dark:text-foreground truncate">{pedido.cliente_nome}</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg" style={badgeStyle}>
               {statusLabel(pedido.status)}
             </span>
-          </div>
-          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-            {pedido.vendedora_nome && (
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                <User className="h-2.5 w-2.5" />{pedido.vendedora_nome}
+            {(pedido.desconto_pct ?? 0) > 0 && (
+              <span style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac" }}
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg">
+                -{pedido.desconto_pct}%
               </span>
             )}
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Package className="h-2.5 w-2.5" />{totalItens} un.
+          </div>
+
+          {/* Metadados */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {pedido.vendedora_nome && (
+              <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                <User size={10} />{pedido.vendedora_nome}
+              </span>
+            )}
+            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+              <Package size={10} />{totalItens} un. · {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}
             </span>
             {pedido.nota_fiscal && (
-              <span className="flex items-center gap-1 text-[11px] text-violet-500 font-mono">
-                <FileText className="h-2.5 w-2.5" />{pedido.nota_fiscal}
+              <span className="flex items-center gap-1 text-[11px] font-mono" style={{ color: "#7c3aed" }}>
+                <FileText size={10} />{pedido.nota_fiscal}
               </span>
             )}
+            <span className="flex items-center gap-1 text-[10px] text-gray-400">
+              <Clock size={10} />{fmtDate(pedido.created_at)}
+            </span>
           </div>
         </div>
-        {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0 mt-2" />
-                  : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-2" />}
+
+        {expanded
+          ? <ChevronUp size={16} className="text-gray-400 shrink-0 mt-1" />
+          : <ChevronDown size={16} className="text-gray-400 shrink-0 mt-1" />}
       </button>
 
+      {/* Expandido */}
       {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-border/20 pt-3">
-          <div className="space-y-1">
-            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Clock className="h-3 w-3" />Criado: {fmtDate(pedido.created_at)}
-            </p>
-            {pedido.separado_em && (
-              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <CheckCircle2 className="h-3 w-3 text-emerald-500" />Separado: {fmtDate(pedido.separado_em)}
-              </p>
-            )}
-            {pedido.nf_criada_em && (
-              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Receipt className="h-3 w-3 text-violet-500" />NF emitida: {fmtDate(pedido.nf_criada_em)}
-              </p>
-            )}
+        <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid #f1f5f9" }}>
+
+          {/* Timeline de datas */}
+          <div className="grid grid-cols-3 gap-2 pt-3">
+            {[
+              { label: "Criado",   value: pedido.created_at,  icon: <Clock size={10} />,        color: "#64748b" },
+              { label: "Separado", value: pedido.separado_em, icon: <CheckCircle2 size={10} />,  color: "#10b981" },
+              { label: "NF emitida",value: pedido.nf_criada_em,icon: <Receipt size={10} />,     color: "#7c3aed" },
+            ].map(({ label, value, icon, color }) => (
+              <div key={label} className="rounded-xl p-2 text-center" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                <div className="flex items-center justify-center gap-1 mb-1" style={{ color }}>
+                  {icon}
+                  <span className="text-[9px] font-semibold uppercase tracking-wide">{label}</span>
+                </div>
+                <p className="text-[10px] font-mono text-gray-600">{value ? fmtDate(value) : "—"}</p>
+              </div>
+            ))}
           </div>
 
-          {pedido.chave_acesso_nfe && (
-            <div className="rounded-lg border border-border/30 bg-background/60 px-2.5 py-2 space-y-1">
-              <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Chave de Acesso</p>
-              <p className="text-[9px] font-mono break-all leading-relaxed">{pedido.chave_acesso_nfe}</p>
-              {pedido.protocolo_sefaz && (
-                <p className="text-[9px] text-violet-500 font-mono">Protocolo: {pedido.protocolo_sefaz}</p>
+          {/* Cliente info */}
+          {(pedido.cliente_documento || pedido.cliente_telefone || pedido.cliente_email) && (
+            <div className="rounded-xl p-3 space-y-1.5" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Dados do Cliente</p>
+              {pedido.cliente_documento && (
+                <p className="text-[11px] text-gray-700 font-mono">{mascararDoc(pedido.cliente_documento)}</p>
               )}
-            </div>
-          )}
-
-          {pedido.xml_nfe && (
-            <button
-              type="button"
-              onClick={() => {
-                const blob = new Blob([pedido.xml_nfe!], { type: "application/xml" });
-                const url  = URL.createObjectURL(blob);
-                const a    = document.createElement("a");
-                a.href     = url;
-                a.download = `NFe-${pedido.nota_fiscal ?? pedido.chave_acesso_nfe ?? "nota"}.xml`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="w-full h-8 rounded-xl border border-violet-500/40 bg-violet-500/5 hover:bg-violet-500/15
-                         text-violet-600 dark:text-violet-400 text-[12px] font-semibold transition-colors
-                         flex items-center justify-center gap-1.5"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Baixar XML da NF-e
-            </button>
-          )}
-
-          {/* Desconto do pedido (badge único) */}
-          {(pedido.desconto_pct ?? 0) > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
-              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                {pedido.desconto_pct}% de desconto em todas as peças
-              </span>
+              {pedido.cliente_telefone && (
+                <p className="flex items-center gap-1 text-[11px] text-gray-600">
+                  <MapPin size={10} />{pedido.cliente_telefone}
+                </p>
+              )}
+              {pedido.cliente_email && (
+                <p className="flex items-center gap-1 text-[11px] text-gray-600">
+                  <Mail size={10} />{pedido.cliente_email}
+                </p>
+              )}
             </div>
           )}
 
           {/* Itens */}
           <div className="space-y-1">
+            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Itens do Pedido</p>
             {pedido.itens.map(item => (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/60 border border-border/20">
-                <Package className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="text-[12px] flex-1 truncate">{item.device_model}</span>
-                <span className="text-[12px] font-bold shrink-0">{item.quantidade} un.</span>
+              <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                <Package size={12} className="text-gray-400 shrink-0" />
+                <span className="text-[12px] font-medium text-gray-800 flex-1 truncate">{item.device_model}</span>
+                <span className="text-[11px] font-bold text-gray-700">{item.quantidade} un.</span>
               </div>
             ))}
           </div>
 
-          {pedido.observacoes && (
-            <p className="text-[11px] text-muted-foreground italic">"{pedido.observacoes}"</p>
+          {/* Chave de acesso SEFAZ */}
+          {pedido.chave_acesso_nfe && (
+            <div className="rounded-xl p-3 space-y-2" style={{ background: "#faf5ff", border: "1px solid #e9d5ff" }}>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#7c3aed" }}>Chave de Acesso NF-e</p>
+                <button type="button" onClick={copyChave}
+                  className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg transition-colors"
+                  style={{ background: copied ? "#ede9fe" : "#f5f3ff", color: "#7c3aed", border: "1px solid #c4b5fd" }}>
+                  <Copy size={10} />{copied ? "Copiado!" : "Copiar"}
+                </button>
+              </div>
+              <p className="text-[9px] font-mono break-all leading-relaxed text-gray-600">{pedido.chave_acesso_nfe}</p>
+              {pedido.protocolo_sefaz && (
+                <p className="text-[10px] font-mono font-semibold" style={{ color: "#7c3aed" }}>
+                  Protocolo: {pedido.protocolo_sefaz}
+                </p>
+              )}
+            </div>
           )}
 
-          {pedido.status === "pronto" && (
-            <button type="button" onClick={() => onEmitirNF(pedido)}
-              className="w-full h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5">
-              <FileCheck2 className="h-3.5 w-3.5" />Emitir Nota Fiscal (SEFAZ)
-            </button>
+          {/* Desconto */}
+          {(pedido.desconto_pct ?? 0) > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+              style={{ background: "#f0fdf4", border: "1px solid #86efac" }}>
+              <Percent size={12} color="#15803d" />
+              <span className="text-[11px] font-semibold" style={{ color: "#15803d" }}>
+                {pedido.desconto_pct}% de desconto aplicado em todas as peças
+              </span>
+            </div>
           )}
+
+          {/* Observações */}
+          {pedido.observacoes && (
+            <div className="flex items-start gap-2 px-3 py-2 rounded-xl" style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
+              <FileText size={12} className="mt-0.5 shrink-0" color="#d97706" />
+              <p className="text-[11px] text-amber-800 italic">{pedido.observacoes}</p>
+            </div>
+          )}
+
+          {/* Ações */}
+          <div className="flex gap-2 pt-1">
+            {pedido.xml_nfe && (
+              <button type="button" onClick={downloadXml}
+                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold transition-colors"
+                style={{ background: "#f5f3ff", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+                <Download size={13} />XML NF-e
+              </button>
+            )}
+            {isPronto && (
+              <button type="button" onClick={() => onEmitirNF(pedido)}
+                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[12px] font-bold text-white transition-colors"
+                style={{ background: "#7c3aed", boxShadow: "0 2px 8px rgba(124,58,237,0.35)" }}>
+                <FileCheck2 size={14} />Emitir NF-e
+              </button>
+            )}
+            {isEnviado && (
+              <div className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold"
+                style={{ background: "#f0fdf4", color: "#166534", border: "1px solid #86efac" }}>
+                <BadgeCheck size={14} />NF emitida e enviada
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1231,6 +1324,9 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
   const [editItem,  setEditItem]  = useState<LancamentoFinanceiro | null>(null);
   const [delItem,   setDelItem]   = useState<LancamentoFinanceiro | null>(null);
   const [deleting,  setDeleting]  = useState(false);
+  const [search,    setSearch]    = useState("");
+  const [filtroNF,  setFiltroNF]  = useState<"todos" | LancamentoFinanceiro["status_nf"]>("todos");
+  const [showRecorr,setShowRecorr]= useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1252,101 +1348,211 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
   }
 
   const now = new Date();
-  const totalMes = useMemo(() =>
-    itens.filter(i => {
-      const d = new Date(i.data_lancamento);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }).reduce((s, i) => s + i.valor, 0),
-  [itens]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mesAtualStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-  const total = itens.reduce((s, i) => s + i.valor, 0);
+  const totalMes   = useMemo(() => itens.filter(i => i.data_lancamento.startsWith(mesAtualStr)).reduce((s, i) => s + i.valor, 0), [itens, mesAtualStr]);
+  const total      = itens.reduce((s, i) => s + i.valor, 0);
+  const totalRecorr= itens.filter(i => i.recorrente).reduce((s, i) => s + i.valor, 0);
+  const semNF      = itens.filter(i => i.status_nf === "sem_nf" || i.status_nf === "pendente").length;
 
   const allCats = [...CATEGORIAS_PRODUCAO, ...CATEGORIAS_EMPRESA, ...CATEGORIAS_CUSTO];
 
-  const nfBadge = (s: LancamentoFinanceiro["status_nf"]) => ({
-    sem_nf:    "bg-muted/30 text-muted-foreground border-border/20",
-    manual:    "bg-violet-500/10 text-violet-600 border-violet-500/20",
-    pendente:  "bg-amber-500/10 text-amber-600 border-amber-500/20",
-    autorizada:"bg-green-500/10 text-green-600 border-green-500/20",
-  }[s]);
+  const itensFiltrados = useMemo(() => itens.filter(i => {
+    const matchSearch = !search.trim() ||
+      i.descricao.toLowerCase().includes(search.toLowerCase()) ||
+      (i.fornecedor ?? "").toLowerCase().includes(search.toLowerCase());
+    const matchNF     = filtroNF === "todos" || i.status_nf === filtroNF;
+    const matchRecorr = !showRecorr || i.recorrente;
+    return matchSearch && matchNF && matchRecorr;
+  }), [itens, search, filtroNF, showRecorr]);
 
-  const nfLabel = (s: LancamentoFinanceiro["status_nf"]) => ({
-    sem_nf: "Sem NF", manual: "NF Manual", pendente: "NF Pendente", autorizada: "NF Autorizada",
-  }[s]);
+  const nfMeta: Record<LancamentoFinanceiro["status_nf"], { bg: string; color: string; border: string; label: string }> = {
+    sem_nf:     { bg: "#f1f5f9", color: "#64748b", border: "#cbd5e1", label: "Sem NF"       },
+    manual:     { bg: "#f5f3ff", color: "#6d28d9", border: "#c4b5fd", label: "NF Manual"    },
+    pendente:   { bg: "#fffbeb", color: "#d97706", border: "#fde68a", label: "NF Pendente"  },
+    autorizada: { bg: "#f0fdf4", color: "#15803d", border: "#86efac", label: "NF Autorizada"},
+  };
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 flex items-center gap-2">
-          <TrendingDown className="h-4 w-4 text-red-500 shrink-0" />
-          <div>
-            <p className="text-[9px] text-muted-foreground uppercase font-medium">Este mês</p>
-            <p className="text-sm font-bold text-red-600">{fmtCurrency(totalMes)}</p>
+    <div className="space-y-4">
+
+      {/* KPI strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "Este Mês",   value: fmtCurrency(totalMes),   icon: <CalendarDays size={16} />, bg: "#fff7ed", border: "#fdba74", color: "#c2410c" },
+          { label: "Total Geral",value: fmtCurrency(total),       icon: <BarChart3 size={16} />,   bg: "#f8fafc", border: "#cbd5e1", color: "#475569" },
+          { label: "Recorrentes",value: fmtCurrency(totalRecorr), icon: <Repeat2 size={16} />,     bg: "#f5f3ff", border: "#c4b5fd", color: "#6d28d9" },
+          { label: "Sem NF",     value: `${semNF} lançamentos`,   icon: <AlertTriangle size={16} />,bg: semNF > 0 ? "#fffbeb" : "#f0fdf4", border: semNF > 0 ? "#fde68a" : "#86efac", color: semNF > 0 ? "#d97706" : "#15803d" },
+        ].map(k => (
+          <div key={k.label} className="rounded-xl p-3 flex items-center gap-3"
+            style={{ background: k.bg, border: `1px solid ${k.border}` }}>
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: "white", color: k.color, boxShadow: "0 1px 3px rgba(0,0,0,0.07)" }}>
+              {k.icon}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: k.color }}>{k.label}</p>
+              <p className="text-[13px] font-black truncate" style={{ color: k.color }}>{k.value}</p>
+            </div>
           </div>
-        </div>
-        <div className="rounded-xl border border-border/30 bg-muted/10 px-3 py-2.5 flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-muted-foreground shrink-0" />
-          <div>
-            <p className="text-[9px] text-muted-foreground uppercase font-medium">Total geral</p>
-            <p className="text-sm font-bold">{fmtCurrency(total)}</p>
-          </div>
-        </div>
+        ))}
       </div>
 
-      <button type="button" onClick={() => { setEditItem(null); setModalOpen(true); }}
-        className="w-full h-9 flex items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-violet-500/30 text-violet-600 text-[12px] font-medium hover:bg-violet-500/5 transition-colors">
-        <PlusCircle className="h-3.5 w-3.5" />Novo lançamento
-      </button>
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button type="button" onClick={() => { setEditItem(null); setModalOpen(true); }}
+          className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[12px] font-bold text-white transition-colors"
+          style={{ background: "#7c3aed", boxShadow: "0 2px 8px rgba(124,58,237,0.3)" }}>
+          <PlusCircle size={14} />Novo lançamento
+        </button>
+
+        <div className="relative flex-1 min-w-[160px]">
+          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" placeholder="Buscar descrição ou fornecedor…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full h-9 pl-8 pr-3 rounded-xl text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-400"
+            style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }} />
+        </div>
+
+        <select value={filtroNF} onChange={e => setFiltroNF(e.target.value as typeof filtroNF)}
+          className="h-9 rounded-xl px-3 text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-400"
+          style={{ background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569" }}>
+          <option value="todos">Todas NFs</option>
+          <option value="sem_nf">Sem NF</option>
+          <option value="manual">NF Manual</option>
+          <option value="pendente">NF Pendente</option>
+          <option value="autorizada">NF Autorizada</option>
+        </select>
+
+        <button type="button" onClick={() => setShowRecorr(v => !v)}
+          className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold transition-colors"
+          style={showRecorr
+            ? { background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }
+            : { background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0" }}>
+          <Repeat2 size={13} />Recorrentes
+        </button>
+
+        <button type="button" onClick={load} disabled={loading}
+          className="h-9 w-9 flex items-center justify-center rounded-xl transition-colors"
+          style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+          <RefreshCw size={13} color="#64748b" className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+
+      {/* Results count */}
+      {!loading && itens.length > 0 && (
+        <p className="text-[11px] text-gray-400">
+          {itensFiltrados.length} de {itens.length} lançamentos
+          {search && ` · "${search}"`}
+        </p>
+      )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-10">
-          <div className="animate-spin h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full" />
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin h-6 w-6 border-2 border-violet-500 border-t-transparent rounded-full" />
         </div>
-      ) : itens.length === 0 ? (
-        <div className="text-center py-12 space-y-2">
-          <ShoppingCart className="h-8 w-8 text-muted-foreground/30 mx-auto" />
-          <p className="text-sm text-muted-foreground">Nenhum lançamento registrado</p>
+      ) : itensFiltrados.length === 0 ? (
+        <div className="text-center py-14 space-y-3">
+          <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center" style={{ background: "#f1f5f9" }}>
+            <ShoppingCart size={28} color="#94a3b8" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-700">
+              {itens.length === 0 ? "Nenhum lançamento registrado" : "Nenhum resultado para o filtro"}
+            </p>
+            <p className="text-[12px] text-gray-400 mt-0.5">
+              {itens.length === 0 ? "Clique em 'Novo lançamento' para começar" : "Limpe os filtros para ver todos"}
+            </p>
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-          {itens.map(item => {
-            const CatIcon = allCats.find(c => c.valor === item.categoria)?.icon ?? Package;
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {itensFiltrados.map(item => {
+            const CatIcon = allCats.find(cat => cat.valor === item.categoria)?.icon ?? Package;
+            const catLabel = allCats.find(cat => cat.valor === item.categoria)?.label ?? item.categoria;
+            const nf = nfMeta[item.status_nf];
+            const isMesAtual = item.data_lancamento.startsWith(mesAtualStr);
             return (
-              <div key={item.id} className="rounded-xl border border-border/30 bg-card overflow-hidden">
-                <div className="px-3 py-2.5 flex items-start gap-2.5">
-                  <div className="h-8 w-8 rounded-lg bg-muted/30 flex items-center justify-center shrink-0">
-                    <CatIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-[12px] font-semibold truncate">{item.descricao}</p>
-                      <span className="text-[13px] font-bold text-red-600 shrink-0 font-mono">{fmtCurrency(item.valor)}</span>
+              <div key={item.id} className="rounded-xl overflow-hidden flex flex-col transition-shadow hover:shadow-md"
+                style={{ border: "1.5px solid #e2e8f0", background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+
+                {/* Topo colorido: mês atual = laranja, antigo = cinza */}
+                <div style={{ height: 3, background: isMesAtual ? "#f97316" : "#cbd5e1" }} />
+
+                <div className="p-3 flex-1 space-y-2">
+                  {/* Ícone + valor */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ background: "#f5f3ff" }}>
+                        <CatIcon size={15} color="#7c3aed" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-bold text-gray-900 truncate">{item.descricao}</p>
+                        <p className="text-[10px] text-gray-400">{catLabel}</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      {item.fornecedor && <span className="text-[10px] text-muted-foreground">{item.fornecedor}</span>}
-                      <span className="text-[10px] text-muted-foreground/60">
-                        {new Date(item.data_lancamento + "T12:00:00").toLocaleDateString("pt-BR")}
+                    <p className="text-[14px] font-black shrink-0" style={{ color: "#dc2626", fontFamily: "monospace" }}>
+                      {fmtCurrency(item.valor)}
+                    </p>
+                  </div>
+
+                  {/* Metadados */}
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg"
+                      style={{ background: nf.bg, color: nf.color, border: `1px solid ${nf.border}` }}>
+                      {nf.label}
+                    </span>
+                    {item.recorrente && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1"
+                        style={{ background: "#f5f3ff", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
+                        <Repeat2 size={9} />{item.periodicidade}
                       </span>
-                      <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border", nfBadge(item.status_nf))}>
-                        {nfLabel(item.status_nf)}
+                    )}
+                    {isMesAtual && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg"
+                        style={{ background: "#fff7ed", color: "#c2410c", border: "1px solid #fdba74" }}>
+                        mês atual
                       </span>
-                      {item.recorrente && (
-                        <span className="text-[9px] font-medium text-violet-500 bg-violet-500/10 px-1.5 py-0.5 rounded-full">
-                          {item.periodicidade}
-                        </span>
+                    )}
+                  </div>
+
+                  {/* Fornecedor + data */}
+                  <div className="flex items-center justify-between text-[10px] text-gray-400">
+                    <span>{item.fornecedor ?? "—"}</span>
+                    <span className="font-mono">
+                      {new Date(item.data_lancamento + "T12:00:00").toLocaleDateString("pt-BR")}
+                    </span>
+                  </div>
+
+                  {/* NF info */}
+                  {(item.nota_fiscal_manual || item.chave_nfe) && (
+                    <div className="rounded-lg px-2 py-1.5" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                      {item.nota_fiscal_manual && (
+                        <p className="text-[10px] font-mono text-gray-600">NF: {item.nota_fiscal_manual}</p>
+                      )}
+                      {item.chave_nfe && (
+                        <p className="text-[9px] font-mono text-gray-400 truncate">Chave: {item.chave_nfe.slice(0, 20)}…</p>
                       )}
                     </div>
-                  </div>
+                  )}
+
+                  {/* Obs */}
+                  {item.observacoes && (
+                    <p className="text-[10px] text-gray-500 italic line-clamp-2">{item.observacoes}</p>
+                  )}
                 </div>
-                <div className="flex border-t border-border/20">
+
+                {/* Footer de ações */}
+                <div className="flex" style={{ borderTop: "1px solid #f1f5f9" }}>
                   <button type="button" onClick={() => { setEditItem(item); setModalOpen(true); }}
-                    className="flex-1 h-7 flex items-center justify-center gap-1 text-[10px] text-muted-foreground hover:bg-muted/30 transition-colors">
-                    <Edit3 className="h-2.5 w-2.5" />Editar
+                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-violet-50 text-gray-500 hover:text-violet-700">
+                    <Edit3 size={11} />Editar
                   </button>
-                  <div className="w-px bg-border/20" />
+                  <div style={{ width: 1, background: "#f1f5f9" }} />
                   <button type="button" onClick={() => setDelItem(item)}
-                    className="flex-1 h-7 flex items-center justify-center gap-1 text-[10px] text-destructive/70 hover:bg-destructive/5 hover:text-destructive transition-colors">
-                    <Trash2 className="h-2.5 w-2.5" />Excluir
+                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-red-50 text-gray-400 hover:text-red-600">
+                    <Trash2 size={11} />Excluir
                   </button>
                 </div>
               </div>
@@ -1363,22 +1569,30 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
 
       {delItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-card p-5 space-y-4 shadow-2xl"
+            style={{ border: "1.5px solid #e2e8f0" }}>
             <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
-                <Trash2 className="h-4 w-4 text-destructive" />
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: "#fef2f2" }}>
+                <Trash2 size={18} color="#dc2626" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Excluir lançamento?</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">{delItem.descricao}</p>
+                <p className="text-[14px] font-bold text-gray-900">Excluir lançamento?</p>
+                <p className="text-[12px] text-gray-500 mt-0.5">{delItem.descricao}</p>
+                <p className="text-[13px] font-bold mt-1" style={{ color: "#dc2626" }}>{fmtCurrency(delItem.valor)}</p>
               </div>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => setDelItem(null)} disabled={deleting}
-                className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30">Cancelar</button>
+                className="flex-1 h-9 rounded-xl text-sm font-semibold transition-colors"
+                style={{ border: "1px solid #e2e8f0", color: "#64748b" }}>
+                Cancelar
+              </button>
               <button type="button" onClick={handleDelete} disabled={deleting}
-                className="flex-1 h-9 rounded-xl bg-destructive text-white text-sm font-semibold hover:bg-destructive/90 disabled:opacity-60 flex items-center justify-center gap-1.5">
-                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Excluir
+                className="flex-1 h-9 rounded-xl text-white text-sm font-bold transition-colors flex items-center justify-center gap-1.5"
+                style={{ background: "#dc2626" }}>
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Excluir
               </button>
             </div>
           </div>
@@ -1817,6 +2031,8 @@ export default function Financeiro() {
   const [sefazPedido,   setSefazPedido]   = useState<Pedido | null>(null);
   const [historicoOpen, setHistoricoOpen] = useState(false);
   const [activeTab,     setActiveTab]     = useState<FinTab>("nfe");
+  const [lancamentos,   setLancamentos]   = useState<LancamentoFinanceiro[]>([]);
+  const [searchNF,      setSearchNF]      = useState("");
 
   const [modoTeste, setModoTeste] = useState(() =>
     localStorage.getItem("financeiro_modo_teste") !== "producao"
@@ -1899,11 +2115,49 @@ export default function Financeiro() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadPedidos(); }, [loadPedidos]);
+  const loadLancamentos = useCallback(async () => {
+    const { data } = await supabase
+      .from("financeiro_lancamentos")
+      .select("*")
+      .order("data_lancamento", { ascending: false })
+      .limit(200);
+    setLancamentos((data ?? []) as LancamentoFinanceiro[]);
+  }, []);
 
+  useEffect(() => { loadPedidos(); loadLancamentos(); }, [loadPedidos, loadLancamentos]);
+
+  // KPIs calculados
   const filtrados = filtroStatus === "todos" ? pedidos : pedidos.filter(p => p.status === filtroStatus);
+  const filtradosSearch = searchNF.trim()
+    ? filtrados.filter(p =>
+        p.cliente_nome.toLowerCase().includes(searchNF.toLowerCase()) ||
+        (p.nota_fiscal ?? "").toLowerCase().includes(searchNF.toLowerCase()) ||
+        (p.vendedora_nome ?? "").toLowerCase().includes(searchNF.toLowerCase())
+      )
+    : filtrados;
   const prontos   = pedidos.filter(p => p.status === "pronto").length;
+  const faturados = pedidos.filter(p => p.status === "faturado").length;
   const enviados  = pedidos.filter(p => p.status === "enviado").length;
+
+  // Totais financeiros
+  const totalReceita = useMemo(() =>
+    pedidos.filter(p => p.status === "faturado" || p.status === "enviado")
+      .reduce((s, p) => s + p.itens.reduce((si, i) => si + i.quantidade, 0), 0),
+    [pedidos]
+  );
+  const totalCustos = useMemo(() =>
+    lancamentos.reduce((s, l) => s + l.valor, 0),
+    [lancamentos]
+  );
+  const receitaEstimada = useMemo(() =>
+    pedidos.filter(p => p.status === "faturado" || p.status === "enviado").length,
+    [pedidos]
+  );
+  const mesAtual = new Date().toISOString().slice(0, 7);
+  const custosMes = useMemo(() =>
+    lancamentos.filter(l => l.data_lancamento.startsWith(mesAtual)).reduce((s, l) => s + l.valor, 0),
+    [lancamentos, mesAtual]
+  );
 
   // Loading skeleton — evita tela em branco na primeira carga
   if (loading && pedidos.length === 0) {
@@ -1939,61 +2193,74 @@ export default function Financeiro() {
   ];
 
   return (
-    <div className="min-h-screen bg-transparent">
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
+    <div className="min-h-screen" style={{ background: "#f8fafc" }}>
+      <header className="sticky top-0 z-30 bg-white dark:bg-background border-b"
+        style={{ borderColor: "#e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button type="button" onClick={() => navigate("/")}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
-              <ArrowLeft className="h-4 w-4" />
+              className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors"
+              style={{ border: "1px solid #e2e8f0" }}>
+              <ArrowLeft size={15} color="#64748b" />
             </button>
             <div className="flex items-center gap-2">
-              <Receipt className="h-4 w-4 text-violet-500" />
-              <h1 className="text-sm font-semibold">Financeiro</h1>
+              <div className="h-7 w-7 rounded-lg flex items-center justify-center" style={{ background: "#f5f3ff" }}>
+                <Receipt size={15} color="#7c3aed" />
+              </div>
+              <div>
+                <h1 className="text-[13px] font-bold text-gray-900 dark:text-foreground leading-tight">Financeiro</h1>
+                <p className="text-[10px] text-gray-400 leading-tight">Sistema de gestão fiscal</p>
+              </div>
               <TestBadge modoTeste={modoTeste} />
             </div>
             {prontos > 0 && (
-              <span className="flex items-center gap-0.5 bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                {prontos} pronto{prontos > 1 ? "s" : ""}
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac" }}>
+                {prontos} aguardando NF
               </span>
             )}
           </div>
           <div className="flex items-center gap-1">
             <button type="button" onClick={toggleTheme}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
               {isDark
-                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-                : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
+                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
             </button>
             <button type="button" onClick={() => setHistoricoOpen(true)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
-              <History className="h-4 w-4" />
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              title="Histórico SEFAZ">
+              <History size={15} color="#64748b" />
             </button>
-            <button type="button" onClick={loadPedidos}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            <button type="button" onClick={() => { loadPedidos(); loadLancamentos(); }}
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              title="Atualizar dados">
+              <RefreshCw size={15} color="#64748b" className={loading ? "animate-spin" : ""} />
             </button>
           </div>
         </div>
 
-        {/* Sub-tabs */}
-        <div className="max-w-7xl mx-auto px-4 pb-2">
-          <div className="flex items-center gap-0.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+        {/* Tab bar */}
+        <div className="max-w-7xl mx-auto px-4 pb-0">
+          <div className="flex items-center gap-0 overflow-x-auto border-t" style={{ scrollbarWidth: "none", borderColor: "#f1f5f9" }}>
             {TABS.map(tab => {
               const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
               return (
                 <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    "flex items-center gap-1.5 h-8 px-3 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all shrink-0",
-                    activeTab === tab.id
-                      ? "bg-violet-600 text-white shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
-                  )}>
-                  <Icon className="h-3 w-3" />
+                  className="flex items-center gap-1.5 h-10 px-4 text-[11px] font-semibold whitespace-nowrap transition-all shrink-0 relative"
+                  style={{
+                    color: isActive ? "#7c3aed" : "#64748b",
+                    borderBottom: isActive ? "2px solid #7c3aed" : "2px solid transparent",
+                    marginBottom: "-1px",
+                  }}>
+                  <Icon size={13} />
                   {tab.label}
                   {tab.badge && tab.badge > 0 ? (
-                    <span className={cn("min-w-[15px] h-3.5 rounded-full text-[8px] font-bold px-1 flex items-center justify-center",
-                      activeTab === tab.id ? "bg-white/20 text-white" : "bg-emerald-500/20 text-emerald-600")}>
+                    <span className="min-w-[16px] h-4 rounded-full text-[9px] font-bold px-1 flex items-center justify-center"
+                      style={isActive
+                        ? { background: "#ede9fe", color: "#7c3aed" }
+                        : { background: "#dcfce7", color: "#15803d" }}>
                       {tab.badge}
                     </span>
                   ) : null}
@@ -2004,62 +2271,91 @@ export default function Financeiro() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+      <main className="max-w-7xl mx-auto px-4 py-5 space-y-5">
 
         {/* ─── NF-e / SEFAZ ─────────────────────────────────── */}
         {activeTab === "nfe" && (
           <>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-start gap-3">
-                <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+            {/* KPI strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Aguardando NF", value: prontos,   icon: <Receipt size={18} />,      bg: "#f0fdf4", border: "#86efac", color: "#15803d" },
+                { label: "Faturados",     value: faturados, icon: <FileCheck2 size={18} />,   bg: "#f5f3ff", border: "#c4b5fd", color: "#6d28d9" },
+                { label: "Enviados",      value: enviados,  icon: <Send size={18} />,          bg: "#f0f9ff", border: "#7dd3fc", color: "#0369a1" },
+                { label: "Custos/mês",    value: fmtCurrency(custosMes), icon: <TrendingDown size={18} />, bg: "#fff7ed", border: "#fdba74", color: "#c2410c", isText: true },
+              ].map(kpi => (
+                <div key={kpi.label} className="rounded-2xl p-4 flex items-start gap-3"
+                  style={{ background: kpi.bg, border: `1.5px solid ${kpi.border}` }}>
+                  <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ background: "white", color: kpi.color, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    {kpi.icon}
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: kpi.color }}>{kpi.label}</p>
+                    <p className="text-2xl font-black tabular-nums" style={{ color: kpi.color }}>{kpi.value}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Aguardando NF</p>
-                  <p className="text-2xl font-bold tabular-nums text-emerald-600">{prontos}</p>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-green-500/20 bg-green-500/5 p-4 flex items-start gap-3">
-                <div className="h-9 w-9 rounded-xl bg-green-500/10 flex items-center justify-center shrink-0">
-                  <Send className="h-5 w-5 text-green-500" />
-                </div>
-                <div>
-                  <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Enviados</p>
-                  <p className="text-2xl font-bold tabular-nums text-green-600">{enviados}</p>
-                </div>
-              </div>
+              ))}
             </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {[
-                { id: "pronto",  label: "Aguardando NF" },
-                { id: "enviado", label: "Enviados"       },
-                { id: "todos",   label: "Todos"          },
-              ].map(f => (
-                <button key={f.id} type="button" onClick={() => setFiltroStatus(f.id)}
-                  className={cn("h-7 px-3 rounded-full text-[11px] font-medium border transition-colors",
-                    filtroStatus === f.id
-                      ? "bg-violet-600 text-white border-violet-600"
-                      : "bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/60")}>
-                  {f.label}
-                </button>
-              ))}
+            {/* Filtros + busca */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1 flex-wrap">
+                {[
+                  { id: "pronto",  label: "Aguardando NF", count: prontos },
+                  { id: "faturado",label: "Faturados",      count: faturados },
+                  { id: "enviado", label: "Enviados",        count: enviados },
+                  { id: "todos",   label: "Todos",           count: pedidos.length },
+                ].map(f => (
+                  <button key={f.id} type="button" onClick={() => setFiltroStatus(f.id)}
+                    className="h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5"
+                    style={filtroStatus === f.id
+                      ? { background: "#7c3aed", color: "white", border: "1px solid #7c3aed" }
+                      : { background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0" }}>
+                    {f.label}
+                    <span className="text-[10px] px-1 rounded-md"
+                      style={filtroStatus === f.id
+                        ? { background: "rgba(255,255,255,0.2)" }
+                        : { background: "#e2e8f0" }}>
+                      {f.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 min-w-[180px] relative">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar cliente, NF ou vendedora…"
+                  value={searchNF}
+                  onChange={e => setSearchNF(e.target.value)}
+                  className="w-full h-8 pl-8 pr-3 rounded-xl text-[12px] focus:outline-none focus:ring-2"
+                  style={{ background: "#f8fafc", border: "1px solid #e2e8f0", focusRingColor: "#7c3aed" }}
+                />
+              </div>
             </div>
 
             {loading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="animate-spin h-6 w-6 border-2 border-violet-500 border-t-transparent rounded-full" />
               </div>
-            ) : filtrados.length === 0 ? (
-              <div className="text-center py-16 space-y-2">
-                <Receipt className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-                <p className="text-sm text-muted-foreground">
-                  {filtroStatus === "pronto" ? "Nenhum pedido aguardando nota fiscal" : "Nenhum pedido encontrado"}
-                </p>
+            ) : filtradosSearch.length === 0 ? (
+              <div className="text-center py-16 space-y-3">
+                <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center" style={{ background: "#f1f5f9" }}>
+                  <Receipt size={28} color="#94a3b8" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">
+                    {filtroStatus === "pronto" ? "Nenhum pedido aguardando nota fiscal" : "Nenhum pedido encontrado"}
+                  </p>
+                  <p className="text-[12px] text-gray-400 mt-0.5">
+                    {searchNF ? "Tente outra busca" : "Os pedidos aparecem aqui quando marcados como prontos no estoque"}
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {filtrados.map(p => <PedidoCard key={p.id} pedido={p} onEmitirNF={setSefazPedido} />)}
+                {filtradosSearch.map(p => <PedidoCard key={p.id} pedido={p} onEmitirNF={setSefazPedido} />)}
               </div>
             )}
           </>
@@ -2067,52 +2363,77 @@ export default function Financeiro() {
 
         {/* ─── Compras Produção ─────────────────────────────── */}
         {activeTab === "compras_producao" && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Factory className="h-4 w-4 text-violet-500" />
-              <p className="text-sm font-semibold">Compras — Produção</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
+                  <Factory size={18} color="#7c3aed" />Compras — Produção
+                </h2>
+                <p className="text-[12px] text-gray-500 mt-0.5">
+                  Máquinas, matérias-primas, insumos e materiais de produção
+                </p>
+              </div>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Máquinas, matérias-primas, insumos e materiais diretamente vinculados à produção.
-            </p>
             <PainelLancamentos tipo="compra_producao" modoTeste={modoTeste} />
           </div>
         )}
 
         {/* ─── Compras Empresa ─────────────────────────────── */}
         {activeTab === "compras_empresa" && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-violet-500" />
-              <p className="text-sm font-semibold">Compras — Empresa</p>
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
+                <Building2 size={18} color="#7c3aed" />Compras — Empresa
+              </h2>
+              <p className="text-[12px] text-gray-500 mt-0.5">
+                Computadores, mobiliário, materiais de escritório e ativos permanentes
+              </p>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Computadores, mobiliário, materiais de escritório e outros ativos da empresa.
-            </p>
             <PainelLancamentos tipo="compra_empresa" modoTeste={modoTeste} />
           </div>
         )}
 
         {/* ─── Custos Operacionais ─────────────────────────── */}
         {activeTab === "custos" && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-violet-500" />
-              <p className="text-sm font-semibold">Custos Operacionais</p>
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
+                <Zap size={18} color="#7c3aed" />Custos Operacionais
+              </h2>
+              <p className="text-[12px] text-gray-500 mt-0.5">
+                Energia, aluguel, serviços recorrentes e custos fixos e variáveis
+              </p>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Energia, aluguel, serviços recorrentes e demais custos fixos e variáveis.
-            </p>
+            {/* KPI de custos do mês */}
+            <div className="grid grid-cols-3 gap-3">
+              {["compra_producao","compra_empresa","custo_operacional"].map((tipo, i) => {
+                const labels = ["Produção", "Empresa", "Operacional"];
+                const colors = ["#7c3aed","#0369a1","#c2410c"];
+                const bgs    = ["#f5f3ff","#f0f9ff","#fff7ed"];
+                const borders= ["#c4b5fd","#7dd3fc","#fdba74"];
+                const total  = lancamentos.filter(l => l.tipo === tipo).reduce((s, l) => s + l.valor, 0);
+                return (
+                  <div key={tipo} className="rounded-xl p-3 text-center" style={{ background: bgs[i], border: `1px solid ${borders[i]}` }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: colors[i] }}>{labels[i]}</p>
+                    <p className="text-[15px] font-black" style={{ color: colors[i] }}>{fmtCurrency(total)}</p>
+                  </div>
+                );
+              })}
+            </div>
             <PainelLancamentos tipo="custo_operacional" modoTeste={modoTeste} />
           </div>
         )}
 
         {/* ─── Bancos & Integração ─────────────────────────── */}
         {activeTab === "bancos" && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Landmark className="h-4 w-4 text-violet-500" />
-              <p className="text-sm font-semibold">Bancos & Integração</p>
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
+                <Landmark size={18} color="#7c3aed" />Bancos & Integração SEFAZ
+              </h2>
+              <p className="text-[12px] text-gray-500 mt-0.5">
+                Contas bancárias, webhooks e configuração do ambiente SEFAZ
+              </p>
             </div>
             <PainelBancos modoTeste={modoTeste} onToggleModoTeste={toggleModoTeste} />
           </div>

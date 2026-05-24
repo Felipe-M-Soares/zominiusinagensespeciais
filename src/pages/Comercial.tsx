@@ -619,140 +619,116 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const data = new Date(pedido.created_at).toLocaleDateString("pt-BR");
   const hora = new Date(pedido.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-
-  const statusColor = ({
-    pendente:  "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25",
-    separando: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/25",
-    pronto:    "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25",
-    faturado:  "text-green-600 dark:text-green-400 bg-green-500/10 border-green-500/25",
-    enviado:   "text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/25",
-    cancelado: "text-muted-foreground bg-muted/20 border-border/40",
-  } as Record<string, string>)[pedido.status] ?? "text-muted-foreground bg-muted/20 border-border/40";
-
-  const statusIcon = ({
-    pendente:  <Clock className="h-2.5 w-2.5" />,
-    separando: <PackageCheck className="h-2.5 w-2.5" />,
-    pronto:    <CheckCircle2 className="h-2.5 w-2.5" />,
-    faturado:  <CheckCircle2 className="h-2.5 w-2.5" />,
-    enviado:   <Truck className="h-2.5 w-2.5" />,
-    cancelado: <Ban className="h-2.5 w-2.5" />,
-  } as Record<string, React.ReactNode>)[pedido.status] ?? null;
-
-  const topBarColor = ({
-    pendente:  "bg-amber-400",
-    separando: "bg-blue-400",
-    pronto:    "bg-emerald-400",
-    faturado:  "bg-green-500",
-    enviado:   "bg-teal-500",
-    cancelado: "bg-muted-foreground/30",
-  } as Record<string, string>)[pedido.status] ?? "bg-border";
-
   const temDesconto = pedido.desconto_pct > 0;
 
+  // Cores sólidas por status — sem opacidade para garantir visibilidade no tema claro
+  const statusMeta: Record<string, { bar: string; badge: string; label: string; icon: React.ReactNode }> = {
+    pendente:  { bar: "bg-amber-400",          badge: "bg-amber-50 text-amber-700 border-amber-300",          label: "Pendente",  icon: <Clock className="h-3 w-3" /> },
+    separando: { bar: "bg-blue-400",            badge: "bg-blue-50 text-blue-700 border-blue-300",            label: "Separando", icon: <PackageCheck className="h-3 w-3" /> },
+    pronto:    { bar: "bg-emerald-500",         badge: "bg-emerald-50 text-emerald-700 border-emerald-300",   label: "Pronto",    icon: <CheckCircle2 className="h-3 w-3" /> },
+    faturado:  { bar: "bg-green-500",           badge: "bg-green-50 text-green-700 border-green-300",         label: "Faturado",  icon: <CheckCircle2 className="h-3 w-3" /> },
+    enviado:   { bar: "bg-teal-500",            badge: "bg-teal-50 text-teal-700 border-teal-300",            label: "Enviado",   icon: <Truck className="h-3 w-3" /> },
+    cancelado: { bar: "bg-gray-300",            badge: "bg-gray-100 text-gray-500 border-gray-300",           label: "Cancelado", icon: <Ban className="h-3 w-3" /> },
+  };
+  const meta = statusMeta[pedido.status] ?? statusMeta["cancelado"];
+
   return (
-    <div className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-200 hover:-translate-y-0.5"
-      style={{ border: "1px solid hsl(var(--border))", boxShadow: "0 2px 8px -2px rgba(0,0,0,0.12), 0 0 0 0px transparent", transition: "box-shadow 0.2s, transform 0.2s" }}
-      onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 8px 24px -4px rgba(0,0,0,0.18), 0 0 0 1px hsl(var(--border))")}
-      onMouseLeave={e => (e.currentTarget.style.boxShadow = "0 2px 8px -2px rgba(0,0,0,0.12), 0 0 0 0px transparent")}
-    >
-      {/* Barra colorida no topo baseada no status */}
-      <div className={cn("h-[3px] w-full", topBarColor)} />
+    <div className="rounded-2xl bg-white dark:bg-card overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+      style={{ border: "1.5px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06)" }}>
+
+      {/* Barra de status — sólida, visível */}
+      <div className={cn("h-1 w-full", meta.bar)} />
 
       <div className="p-4 space-y-3">
 
         {/* ── Cabeçalho: cliente + status ── */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                <User className="h-3 w-3 text-violet-500" />
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-violet-100 dark:bg-violet-500/20 flex items-center justify-center shrink-0">
+                <User className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
               </div>
-              <h3 className="text-[13px] font-bold truncate leading-tight">{pedido.cliente_nome}</h3>
+              <h3 className="text-[14px] font-bold text-gray-900 dark:text-foreground truncate">{pedido.cliente_nome}</h3>
             </div>
             {pedido.vendedora_nome && (
-              <p className="text-[11px] text-muted-foreground mt-0.5 ml-7 pl-0.5">{pedido.vendedora_nome}</p>
+              <p className="text-[11px] text-gray-500 dark:text-muted-foreground mt-1 ml-9">{pedido.vendedora_nome}</p>
             )}
           </div>
-          <Badge variant="outline" className={cn("shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1 border", statusColor)}>
-            {statusIcon}
-            {{ pendente: "Pendente", separando: "Separando", pronto: "Pronto", faturado: "Faturado", enviado: "Enviado", cancelado: "Cancelado" }[pedido.status]}
-          </Badge>
+          <span className={cn("shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1.5 border", meta.badge)}>
+            {meta.icon} {meta.label}
+          </span>
         </div>
 
-        {/* ── Resumo: itens + desconto ── */}
+        {/* ── Resumo: qtd + desconto ── */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2 border bg-muted/30 border-border/50">
-            <div className="flex items-center gap-1.5">
-              <ShoppingBag className="h-3.5 w-3.5 text-violet-400" />
-              <span className="text-[11px] text-muted-foreground">
-                {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}
+          <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5"
+            style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+            <div className="flex items-center gap-2">
+              <ShoppingBag className="h-3.5 w-3.5 text-violet-500" />
+              <span className="text-[12px] text-gray-600 dark:text-muted-foreground">
+                {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça
               </span>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[16px] font-bold tabular-nums text-foreground">{totalItens}</span>
-              <span className="text-[10px] text-muted-foreground">un.</span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-[18px] font-black text-gray-900 dark:text-foreground tabular-nums">{totalItens}</span>
+              <span className="text-[11px] text-gray-500 dark:text-muted-foreground">un.</span>
             </div>
           </div>
           {temDesconto && (
-            <div className="flex items-center gap-1 rounded-xl px-2.5 py-2 border border-emerald-500/25 bg-emerald-500/8">
-              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">%</span>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">desc.</span>
+            <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2"
+              style={{ background: "#f0fdf4", border: "1px solid #86efac" }}>
+              <span className="text-[14px] font-black text-green-700">{pedido.desconto_pct}%</span>
+              <span className="text-[9px] font-semibold text-green-600 uppercase tracking-wide">desc.</span>
             </div>
           )}
         </div>
 
-        {/* ── Data/hora + desconto ── */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
-            <Clock className="h-3 w-3" />
-            <span>{data} às {hora}</span>
-          </div>
-          {temDesconto && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-              {pedido.desconto_pct}% desc.
-            </span>
-          )}
+        {/* ── Data/hora ── */}
+        <div className="flex items-center gap-1.5">
+          <Clock className="h-3 w-3 text-gray-400" />
+          <span className="text-[11px] text-gray-500 dark:text-muted-foreground">{data} às {hora}</span>
         </div>
 
         {/* ── Itens expandidos ── */}
         {expanded && (
-          <div className="space-y-1 pt-2 border-t border-border/20">
+          <div className="space-y-1.5 pt-2" style={{ borderTop: "1px solid #e2e8f0" }}>
             {pedido.itens.map(it => (
-              <div key={it.id} className="flex items-center gap-2 rounded-xl bg-muted/15 border border-border/20 px-3 py-2">
-                <Package className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+              <div key={it.id} className="flex items-center gap-2 rounded-xl px-3 py-2"
+                style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                <Package className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold truncate">{it.device_model}</p>
-                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
+                  <p className="text-[12px] font-semibold text-gray-800 dark:text-foreground truncate">{it.device_model}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
                     {displayLote(it.lote) && (
                       <>
-                        <Tag className="h-2.5 w-2.5" />
-                        <span className="font-mono">{displayLote(it.lote)}</span>
-                        <span className="opacity-40">·</span>
+                        <Tag className="h-2.5 w-2.5 text-gray-400" />
+                        <span className="text-[10px] font-mono text-gray-500">{displayLote(it.lote)}</span>
+                        <span className="text-gray-300">·</span>
                       </>
                     )}
-                    <span>{it.quantidade} un.</span>
+                    <span className="text-[11px] text-gray-500">{it.quantidade} un.</span>
                   </div>
                 </div>
-
               </div>
             ))}
             {pedido.observacoes && (
-              <div className="flex items-start gap-1.5 text-[10px] text-muted-foreground/60 px-1 pt-1">
-                <FileText className="h-3 w-3 mt-0.5 shrink-0" />
-                <span className="italic">{pedido.observacoes}</span>
+              <div className="flex items-start gap-1.5 px-1 pt-1">
+                <FileText className="h-3 w-3 mt-0.5 text-gray-400 shrink-0" />
+                <span className="text-[11px] text-gray-500 italic">{pedido.observacoes}</span>
               </div>
             )}
           </div>
         )}
 
         {/* ── Ações ── */}
-        <div className="space-y-1.5 pt-1 border-t border-border/20">
+        <div className="space-y-2 pt-2" style={{ borderTop: "1px solid #e2e8f0" }}>
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-center gap-1.5 h-7 rounded-xl bg-muted/20 hover:bg-muted/50 text-muted-foreground text-[10px] font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-gray-600 dark:text-muted-foreground transition-colors"
+            style={{ background: "#f1f5f9", border: "1px solid #e2e8f0" }}
           >
-            {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             {expanded ? "Ocultar peças" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
           </button>
 
@@ -760,25 +736,28 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
             <button
               type="button"
               onClick={() => onAdicionarPeca(pedido)}
-              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl bg-violet-500/8 hover:bg-violet-500/15 text-violet-600 dark:text-violet-400 text-[11px] font-semibold transition-colors border border-violet-500/20"
+              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-violet-700 transition-colors"
+              style={{ background: "#f5f3ff", border: "1px solid #c4b5fd" }}
             >
               <Plus className="h-3.5 w-3.5" /> Adicionar peça
             </button>
           )}
 
           {pedido.status === "pendente" && isAdmin && (
-            <div className="flex gap-1.5">
+            <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => onFaturar(pedido)}
-                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-bold transition-colors flex items-center justify-center gap-1.5"
+                style={{ boxShadow: "0 2px 8px rgba(124,58,237,0.35)" }}
               >
                 <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar Pedido
               </button>
               <button
                 type="button"
                 onClick={() => onCancelar(pedido)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                className="h-9 w-9 flex items-center justify-center rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                style={{ border: "1px solid #e2e8f0" }}
                 title="Cancelar pedido"
               >
                 <Ban className="h-3.5 w-3.5" />
@@ -787,17 +766,20 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
           )}
 
           {pedido.status === "separando" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl bg-blue-500/8 border border-blue-500/20 text-blue-600 text-[11px] font-medium">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 text-[11px] font-semibold"
+              style={{ background: "#eff6ff", border: "1px solid #93c5fd" }}>
               <PackageCheck className="h-3.5 w-3.5" /> Estoque separando...
             </div>
           )}
           {pedido.status === "pronto" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl bg-emerald-500/8 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 text-[11px] font-semibold"
+              style={{ background: "#f0fdf4", border: "1px solid #86efac" }}>
               <CheckCircle2 className="h-3.5 w-3.5" /> Pronto — aguardando NF
             </div>
           )}
           {pedido.status === "enviado" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl bg-success/8 border border-success/20 text-success text-[11px] font-semibold">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 text-[11px] font-semibold"
+              style={{ background: "#f0fdfa", border: "1px solid #5eead4" }}>
               <Truck className="h-3.5 w-3.5" /> Enviado ao cliente! 🎉
             </div>
           )}
