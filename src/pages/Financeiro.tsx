@@ -884,18 +884,18 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
   const cardBorder = isPronto   ? "1.5px solid #34d399" :
                      isFaturado ? "1.5px solid #a78bfa" :
                      isEnviado  ? "1.5px solid #4ade80" :
-                                  "1.5px solid #e2e8f0";
+                                  "1.5px solid hsl(var(--border))";
 
   const barColor   = isPronto   ? "#10b981" :
                      isFaturado ? "#7c3aed" :
-                     isEnviado  ? "#22c55e" : "#94a3b8";
+                     isEnviado  ? "#22c55e" : "hsl(var(--muted-foreground))";
 
   const badgeStyle = isPronto
-    ? { background: "#f0fdf4", color: "#15803d",  border: "1px solid #86efac" }
+    ? { background: "rgba(16,185,129,0.12)", color: "#34d399",  border: "1px solid rgba(52,211,153,0.3)" }
     : isFaturado
-    ? { background: "#f5f3ff", color: "#6d28d9",  border: "1px solid #c4b5fd" }
+    ? { background: "rgba(124,58,237,0.12)", color: "#a78bfa",  border: "1px solid rgba(167,139,250,0.3)" }
     : isEnviado
-    ? { background: "#f0fdf4", color: "#166534",  border: "1px solid #4ade80" }
+    ? { background: "rgba(34,197,94,0.12)",  color: "#4ade80",  border: "1px solid rgba(74,222,128,0.3)" }
     : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" };
 
   return (
@@ -923,13 +923,12 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
         <div className="flex-1 min-w-0">
           {/* Cliente + status */}
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-[14px] font-bold text-gray-900 dark:text-foreground truncate">{pedido.cliente_nome}</span>
+            <span className="text-[14px] font-bold text-foreground truncate">{pedido.cliente_nome}</span>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg" style={badgeStyle}>
               {statusLabel(pedido.status)}
             </span>
             {(pedido.desconto_pct ?? 0) > 0 && (
-              <span style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac" }}
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg">
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-500/30">
                 -{pedido.desconto_pct}%
               </span>
             )}
@@ -938,37 +937,37 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
           {/* Metadados */}
           <div className="flex items-center gap-3 flex-wrap">
             {pedido.vendedora_nome && (
-              <span className="flex items-center gap-1 text-[11px] text-gray-500">
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <User size={10} />{pedido.vendedora_nome}
               </span>
             )}
-            <span className="flex items-center gap-1 text-[11px] text-gray-500">
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
               <Package size={10} />{totalItens} un. · {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}
             </span>
             {pedido.nota_fiscal && (
-              <span className="flex items-center gap-1 text-[11px] font-mono" style={{ color: "#7c3aed" }}>
+              <span className="flex items-center gap-1 text-[11px] font-mono text-violet-600 dark:text-violet-400">
                 <FileText size={10} />{pedido.nota_fiscal}
               </span>
             )}
-            <span className="flex items-center gap-1 text-[10px] text-gray-400">
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
               <Clock size={10} />{fmtDate(pedido.created_at)}
             </span>
           </div>
         </div>
 
         {expanded
-          ? <ChevronUp size={16} className="text-gray-400 shrink-0 mt-1" />
-          : <ChevronDown size={16} className="text-gray-400 shrink-0 mt-1" />}
+          ? <ChevronUp size={16} className="text-muted-foreground/70 shrink-0 mt-1" />
+          : <ChevronDown size={16} className="text-muted-foreground/70 shrink-0 mt-1" />}
       </button>
 
       {/* Expandido */}
       {expanded && (
-        <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid #f1f5f9" }}>
+        <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid hsl(var(--border))" }}>
 
           {/* Timeline de datas */}
           <div className="grid grid-cols-3 gap-2 pt-3">
             {[
-              { label: "Criado",   value: pedido.created_at,  icon: <Clock size={10} />,        color: "#64748b" },
+              { label: "Criado",   value: pedido.created_at,  icon: <Clock size={10} />,        color: "hsl(var(--muted-foreground))" },
               { label: "Separado", value: pedido.separado_em, icon: <CheckCircle2 size={10} />,  color: "#10b981" },
               { label: "NF emitida",value: pedido.nf_criada_em,icon: <Receipt size={10} />,     color: "#7c3aed" },
             ].map(({ label, value, icon, color }) => (
@@ -977,7 +976,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
                   {icon}
                   <span className="text-[9px] font-semibold uppercase tracking-wide">{label}</span>
                 </div>
-                <p className="text-[10px] font-mono text-gray-600">{value ? fmtDate(value) : "—"}</p>
+                <p className="text-[10px] font-mono text-muted-foreground">{value ? fmtDate(value) : "—"}</p>
               </div>
             ))}
           </div>
@@ -985,17 +984,17 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
           {/* Cliente info */}
           {(pedido.cliente_documento || pedido.cliente_telefone || pedido.cliente_email) && (
             <div className="rounded-xl p-3 space-y-1.5 bg-muted border border-border">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Dados do Cliente</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dados do Cliente</p>
               {pedido.cliente_documento && (
-                <p className="text-[11px] text-gray-700 font-mono">{mascararDoc(pedido.cliente_documento)}</p>
+                <p className="text-[11px] text-foreground/90 font-mono">{mascararDoc(pedido.cliente_documento)}</p>
               )}
               {pedido.cliente_telefone && (
-                <p className="flex items-center gap-1 text-[11px] text-gray-600">
+                <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
                   <MapPin size={10} />{pedido.cliente_telefone}
                 </p>
               )}
               {pedido.cliente_email && (
-                <p className="flex items-center gap-1 text-[11px] text-gray-600">
+                <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Mail size={10} />{pedido.cliente_email}
                 </p>
               )}
@@ -1004,13 +1003,13 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
 
           {/* Itens */}
           <div className="space-y-1">
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Itens do Pedido</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Itens do Pedido</p>
             {pedido.itens.map(item => (
               <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg"
                 className="bg-muted border border-border">
-                <Package size={12} className="text-gray-400 shrink-0" />
-                <span className="text-[12px] font-medium text-gray-800 flex-1 truncate">{item.device_model}</span>
-                <span className="text-[11px] font-bold text-gray-700">{item.quantidade} un.</span>
+                <Package size={12} className="text-muted-foreground/70 shrink-0" />
+                <span className="text-[12px] font-medium text-foreground flex-1 truncate">{item.device_model}</span>
+                <span className="text-[11px] font-bold text-foreground/90">{item.quantidade} un.</span>
               </div>
             ))}
           </div>
@@ -1019,16 +1018,16 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
           {pedido.chave_acesso_nfe && (
             <div className="rounded-xl p-3 space-y-2" className="rounded-xl p-3 space-y-2 bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#7c3aed" }}>Chave de Acesso NF-e</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">Chave de Acesso NF-e</p>
                 <button type="button" onClick={copyChave}
                   className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg transition-colors"
                   className={cn("flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 transition-colors", copied ? "bg-violet-200 dark:bg-violet-900/50" : "bg-violet-100 dark:bg-violet-900/30")}>
                   <Copy size={10} />{copied ? "Copiado!" : "Copiar"}
                 </button>
               </div>
-              <p className="text-[9px] font-mono break-all leading-relaxed text-gray-600">{pedido.chave_acesso_nfe}</p>
+              <p className="text-[9px] font-mono break-all leading-relaxed text-muted-foreground">{pedido.chave_acesso_nfe}</p>
               {pedido.protocolo_sefaz && (
-                <p className="text-[10px] font-mono font-semibold" style={{ color: "#7c3aed" }}>
+                <p className="text-[10px] font-mono font-semibold text-violet-600 dark:text-violet-400">
                   Protocolo: {pedido.protocolo_sefaz}
                 </p>
               )}
@@ -1040,7 +1039,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
               className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
               <Percent size={12} color="#15803d" />
-              <span className="text-[11px] font-semibold" style={{ color: "#15803d" }}>
+              <span className="text-[11px] font-semibold text-green-700 dark:text-green-400">
                 {pedido.desconto_pct}% de desconto aplicado em todas as peças
               </span>
             </div>
@@ -1072,7 +1071,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             )}
             {isEnviado && (
               <div className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold"
-                style={{ background: "#f0fdf4", color: "#166534", border: "1px solid #86efac" }}>
+                className="bg-green-50 dark:bg-green-500/10 text-green-800 dark:text-green-400 border border-green-200 dark:border-green-500/30">
                 <BadgeCheck size={14} />NF emitida e enviada
               </div>
             )}
@@ -1271,7 +1270,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                 <button type="button" onClick={() => setRecorrente(v => !v)}
                   className={cn("h-5 w-9 rounded-full transition-colors relative shrink-0",
                     recorrente ? "bg-violet-500" : "bg-muted/50")}>
-                  <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all",
+                  <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-background shadow transition-all",
                     recorrente ? "left-[calc(100%-18px)]" : "left-0.5")} />
                 </button>
                 <span className="text-[11px] font-medium">Custo recorrente</span>
@@ -1330,6 +1329,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
   const [search,    setSearch]    = useState("");
   const [filtroNF,  setFiltroNF]  = useState<"todos" | LancamentoFinanceiro["status_nf"]>("todos");
   const [showRecorr,setShowRecorr]= useState(false);
+  const isDark = document.documentElement.classList.contains("dark");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1370,10 +1370,10 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
   }), [itens, search, filtroNF, showRecorr]);
 
   const nfMeta: Record<LancamentoFinanceiro["status_nf"], { bg: string; color: string; border: string; label: string }> = {
-    sem_nf:     { bg: "#f1f5f9", color: "#64748b", border: "#cbd5e1", label: "Sem NF"       },
-    manual:     { bg: "#f5f3ff", color: "#6d28d9", border: "#c4b5fd", label: "NF Manual"    },
-    pendente:   { bg: "#fffbeb", color: "#d97706", border: "#fde68a", label: "NF Pendente"  },
-    autorizada: { bg: "#f0fdf4", color: "#15803d", border: "#86efac", label: "NF Autorizada"},
+    sem_nf:     { bg: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "hsl(var(--border))", label: "Sem NF"       },
+    manual:     { bg: isDark ? "rgba(109,40,217,0.15)" : "#f5f3ff", color: isDark ? "#a78bfa" : "#6d28d9", border: isDark ? "rgba(167,139,250,0.3)" : "#c4b5fd", label: "NF Manual"    },
+    pendente:   { bg: isDark ? "rgba(217,119,6,0.15)"  : "#fffbeb", color: isDark ? "#fbbf24" : "#d97706", border: isDark ? "rgba(251,191,36,0.3)"  : "#fde68a", label: "NF Pendente"  },
+    autorizada: { bg: isDark ? "rgba(21,128,61,0.15)"  : "#f0fdf4", color: isDark ? "#34d399" : "#15803d", border: isDark ? "rgba(52,211,153,0.3)"  : "#86efac", label: "NF Autorizada"},
   };
 
   return (
@@ -1382,15 +1382,13 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
       {/* KPI strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Este Mês",   value: fmtCurrency(totalMes),   icon: <CalendarDays size={16} />, bg: "#fff7ed", border: "#fdba74", color: "#c2410c" },
-          { label: "Total Geral",value: fmtCurrency(total),       icon: <BarChart3 size={16} />,   bg: "#f8fafc", border: "#cbd5e1", color: "#475569" },
-          { label: "Recorrentes",value: fmtCurrency(totalRecorr), icon: <Repeat2 size={16} />,     bg: "#f5f3ff", border: "#c4b5fd", color: "#6d28d9" },
-          { label: "Sem NF",     value: `${semNF} lançamentos`,   icon: <AlertTriangle size={16} />,bg: semNF > 0 ? "#fffbeb" : "#f0fdf4", border: semNF > 0 ? "#fde68a" : "#86efac", color: semNF > 0 ? "#d97706" : "#15803d" },
+          { label: "Este Mês",   value: fmtCurrency(totalMes),   icon: <CalendarDays size={16} />, color: isDark ? "#fb923c" : "#c2410c" },
+          { label: "Total Geral",value: fmtCurrency(total),       icon: <BarChart3 size={16} />,   color: "hsl(var(--muted-foreground))" },
+          { label: "Recorrentes",value: fmtCurrency(totalRecorr), icon: <Repeat2 size={16} />,     color: isDark ? "#a78bfa" : "#6d28d9" },
+          { label: "Sem NF",     value: `${semNF} lançamentos`,   icon: <AlertTriangle size={16} />, color: semNF > 0 ? (isDark ? "#fbbf24" : "#d97706") : (isDark ? "#34d399" : "#15803d") },
         ].map(k => (
-          <div key={k.label} className="rounded-xl p-3 flex items-center gap-3"
-            style={{ background: k.bg, border: `1px solid ${k.border}` }}>
-            <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
-              style={{ color: k.color }} className="h-8 w-8 rounded-lg bg-card flex items-center justify-center shrink-0 shadow-sm">
+          <div key={k.label} className="rounded-xl p-3 flex items-center gap-3 bg-card border border-border">
+            <div className="h-8 w-8 rounded-lg bg-card flex items-center justify-center shrink-0 shadow-sm" style={{ color: k.color }}>
               {k.icon}
             </div>
             <div className="min-w-0">
@@ -1410,7 +1408,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         </button>
 
         <div className="relative flex-1 min-w-[160px]">
-          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
           <input type="text" placeholder="Buscar descrição ou fornecedor…"
             value={search} onChange={e => setSearch(e.target.value)}
             className="w-full h-9 pl-8 pr-3 rounded-xl text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-400"
@@ -1439,13 +1437,13 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         <button type="button" onClick={load} disabled={loading}
           className="h-9 w-9 flex items-center justify-center rounded-xl transition-colors"
           className="bg-muted border border-border">
-          <RefreshCw size={13} color="#64748b" className={loading ? "animate-spin" : ""} />
+          <RefreshCw size={13} color="currentColor" className={loading ? "animate-spin" : ""} />
         </button>
       </div>
 
       {/* Results count */}
       {!loading && itens.length > 0 && (
-        <p className="text-[11px] text-gray-400">
+        <p className="text-[11px] text-muted-foreground/70">
           {itensFiltrados.length} de {itens.length} lançamentos
           {search && ` · "${search}"`}
         </p>
@@ -1458,13 +1456,13 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
       ) : itensFiltrados.length === 0 ? (
         <div className="text-center py-14 space-y-3">
           <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted">
-            <ShoppingCart size={28} color="#94a3b8" />
+            <ShoppingCart size={28} color="currentColor" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-700">
+            <p className="text-sm font-semibold text-foreground/90">
               {itens.length === 0 ? "Nenhum lançamento registrado" : "Nenhum resultado para o filtro"}
             </p>
-            <p className="text-[12px] text-gray-400 mt-0.5">
+            <p className="text-[12px] text-muted-foreground/70 mt-0.5">
               {itens.length === 0 ? "Clique em 'Novo lançamento' para começar" : "Limpe os filtros para ver todos"}
             </p>
           </div>
@@ -1492,11 +1490,11 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                         <CatIcon size={15} color="#7c3aed" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[12px] font-bold text-gray-900 truncate">{item.descricao}</p>
-                        <p className="text-[10px] text-gray-400">{catLabel}</p>
+                        <p className="text-[12px] font-bold text-foreground truncate">{item.descricao}</p>
+                        <p className="text-[10px] text-muted-foreground/70">{catLabel}</p>
                       </div>
                     </div>
-                    <p className="text-[14px] font-black shrink-0" style={{ color: "#dc2626", fontFamily: "monospace" }}>
+                    <p className="text-[14px] font-black shrink-0" className="text-red-600 dark:text-red-400 font-mono">
                       {fmtCurrency(item.valor)}
                     </p>
                   </div>
@@ -1515,14 +1513,14 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                     )}
                     {isMesAtual && (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg"
-                        style={{ background: "#fff7ed", color: "#c2410c", border: "1px solid #fdba74" }}>
+                        className="bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 rounded-lg px-1.5 py-0.5">
                         mês atual
                       </span>
                     )}
                   </div>
 
                   {/* Fornecedor + data */}
-                  <div className="flex items-center justify-between text-[10px] text-gray-400">
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground/70">
                     <span>{item.fornecedor ?? "—"}</span>
                     <span className="font-mono">
                       {new Date(item.data_lancamento + "T12:00:00").toLocaleDateString("pt-BR")}
@@ -1533,29 +1531,29 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                   {(item.nota_fiscal_manual || item.chave_nfe) && (
                     <div className="rounded-lg px-2 py-1.5" className="bg-muted border border-border">
                       {item.nota_fiscal_manual && (
-                        <p className="text-[10px] font-mono text-gray-600">NF: {item.nota_fiscal_manual}</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">NF: {item.nota_fiscal_manual}</p>
                       )}
                       {item.chave_nfe && (
-                        <p className="text-[9px] font-mono text-gray-400 truncate">Chave: {item.chave_nfe.slice(0, 20)}…</p>
+                        <p className="text-[9px] font-mono text-muted-foreground/70 truncate">Chave: {item.chave_nfe.slice(0, 20)}…</p>
                       )}
                     </div>
                   )}
 
                   {/* Obs */}
                   {item.observacoes && (
-                    <p className="text-[10px] text-gray-500 italic line-clamp-2">{item.observacoes}</p>
+                    <p className="text-[10px] text-muted-foreground italic line-clamp-2">{item.observacoes}</p>
                   )}
                 </div>
 
                 {/* Footer de ações */}
-                <div className="flex" style={{ borderTop: "1px solid #f1f5f9" }}>
+                <div className="flex" style={{ borderTop: "1px solid hsl(var(--border))" }}>
                   <button type="button" onClick={() => { setEditItem(item); setModalOpen(true); }}
-                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-violet-50 text-gray-500 hover:text-violet-700">
+                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-violet-50 text-muted-foreground hover:text-violet-700">
                     <Edit3 size={11} />Editar
                   </button>
                   <div style={{ width: 1, background: "hsl(var(--muted))" }} />
                   <button type="button" onClick={() => setDelItem(item)}
-                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-red-50 text-gray-400 hover:text-red-600">
+                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-red-50 text-muted-foreground/70 hover:text-red-600">
                     <Trash2 size={11} />Excluir
                   </button>
                 </div>
@@ -1580,15 +1578,15 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                 <Trash2 size={18} color="#dc2626" />
               </div>
               <div>
-                <p className="text-[14px] font-bold text-gray-900">Excluir lançamento?</p>
-                <p className="text-[12px] text-gray-500 mt-0.5">{delItem.descricao}</p>
-                <p className="text-[13px] font-bold mt-1" style={{ color: "#dc2626" }}>{fmtCurrency(delItem.valor)}</p>
+                <p className="text-[14px] font-bold text-foreground">Excluir lançamento?</p>
+                <p className="text-[12px] text-muted-foreground mt-0.5">{delItem.descricao}</p>
+                <p className="text-[13px] font-bold mt-1 text-red-500">{fmtCurrency(delItem.valor)}</p>
               </div>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => setDelItem(null)} disabled={deleting}
                 className="flex-1 h-9 rounded-xl text-sm font-semibold transition-colors"
-                style={{ border: "1px solid hsl(var(--border))", color: "#64748b" }}>
+                style={{ border: "1px solid hsl(var(--border))" }} className="text-muted-foreground">
                 Cancelar
               </button>
               <button type="button" onClick={handleDelete} disabled={deleting}
@@ -1699,7 +1697,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
             <button type="button" onClick={onToggleModoTeste}
               className={cn("h-5 w-10 rounded-full transition-colors relative shrink-0",
                 modoTeste ? "bg-orange-500" : "bg-green-500")}>
-              <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all",
+              <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-background shadow transition-all",
                 modoTeste ? "left-0.5" : "left-[calc(100%-18px)]")} />
             </button>
           </div>
@@ -1882,7 +1880,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
                       <button type="button" onClick={() => f.set((v: boolean) => !v)}
                         className={cn("h-5 w-9 rounded-full transition-colors relative shrink-0",
                           f.val ? "bg-violet-500" : "bg-muted/50")}>
-                        <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all",
+                        <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-background shadow transition-all",
                           f.val ? "left-[calc(100%-18px)]" : "left-0.5")} />
                       </button>
                       <span className="text-[10px] font-medium">{f.label}</span>
@@ -2198,54 +2196,54 @@ export default function Financeiro() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-30 bg-background border-b"
-        style={{ borderColor: "#e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+        style={{ borderColor: "hsl(var(--border))", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => navigate("/")}
               className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors"
               style={{ border: "1px solid hsl(var(--border))" }}>
-              <ArrowLeft size={15} color="#64748b" />
+              <ArrowLeft size={15} color="currentColor" />
             </button>
             <div className="flex items-center gap-2">
               <div className="h-7 w-7 rounded-lg flex items-center justify-center" className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 dark:bg-violet-900/30">
                 <Receipt size={15} color="#7c3aed" />
               </div>
               <div>
-                <h1 className="text-[13px] font-bold text-gray-900 dark:text-foreground leading-tight">Financeiro</h1>
-                <p className="text-[10px] text-gray-400 leading-tight">Sistema de gestão fiscal</p>
+                <h1 className="text-[13px] font-bold text-foreground leading-tight">Financeiro</h1>
+                <p className="text-[10px] text-muted-foreground/70 leading-tight">Sistema de gestão fiscal</p>
               </div>
               <TestBadge modoTeste={modoTeste} />
             </div>
             {prontos > 0 && (
               <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
-                style={{ background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac" }}>
+                className="bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-500/30 rounded-full px-2 py-0.5">
                 {prontos} aguardando NF
               </span>
             )}
           </div>
           <div className="flex items-center gap-1">
             <button type="button" onClick={toggleTheme}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors">
               {isDark
-                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-                : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
+                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
             </button>
             <button type="button" onClick={() => setHistoricoOpen(true)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
               title="Histórico SEFAZ">
-              <History size={15} color="#64748b" />
+              <History size={15} color="currentColor" />
             </button>
             <button type="button" onClick={() => { loadPedidos(); loadLancamentos(); }}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
               title="Atualizar dados">
-              <RefreshCw size={15} color="#64748b" className={loading ? "animate-spin" : ""} />
+              <RefreshCw size={15} color="currentColor" className={loading ? "animate-spin" : ""} />
             </button>
           </div>
         </div>
 
         {/* Tab bar */}
         <div className="max-w-7xl mx-auto px-4 pb-0">
-          <div className="flex items-center gap-0 overflow-x-auto border-t" style={{ scrollbarWidth: "none", borderColor: "#f1f5f9" }}>
+          <div className="flex items-center gap-0 overflow-x-auto border-t" style={{ scrollbarWidth: "none", borderColor: "hsl(var(--border))" }}>
             {TABS.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -2253,7 +2251,7 @@ export default function Financeiro() {
                 <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
                   className="flex items-center gap-1.5 h-10 px-4 text-[11px] font-semibold whitespace-nowrap transition-all shrink-0 relative"
                   style={{
-                    color: isActive ? "#7c3aed" : "#64748b",
+                    color: isActive ? "#7c3aed" : "hsl(var(--muted-foreground))",
                     borderBottom: isActive ? "2px solid #7c3aed" : "2px solid transparent",
                     marginBottom: "-1px",
                   }}>
@@ -2282,20 +2280,20 @@ export default function Financeiro() {
             {/* KPI strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: "Aguardando NF", value: prontos,   icon: <Receipt size={18} />,      bg: "#f0fdf4", border: "#86efac", color: "#15803d" },
-                { label: "Faturados",     value: faturados, icon: <FileCheck2 size={18} />,   bg: "#f5f3ff", border: "#c4b5fd", color: "#6d28d9" },
-                { label: "Enviados",      value: enviados,  icon: <Send size={18} />,          bg: "#f0f9ff", border: "#7dd3fc", color: "#0369a1" },
-                { label: "Custos/mês",    value: fmtCurrency(custosMes), icon: <TrendingDown size={18} />, bg: "#fff7ed", border: "#fdba74", color: "#c2410c", isText: true },
+                { label: "Aguardando NF", value: prontos,   icon: <Receipt size={18} />,      bg: "hsl(var(--card))", border: "hsl(var(--border))", color: "#15803d", darkColor: "#34d399" },
+                { label: "Faturados",     value: faturados, icon: <FileCheck2 size={18} />,   bg: "hsl(var(--card))", border: "hsl(var(--border))", color: "#6d28d9", darkColor: "#a78bfa" },
+                { label: "Enviados",      value: enviados,  icon: <Send size={18} />,          bg: "hsl(var(--card))", border: "hsl(var(--border))", color: "#0369a1", darkColor: "#38bdf8" },
+                { label: "Custos/mês",    value: fmtCurrency(custosMes), icon: <TrendingDown size={18} />, bg: "hsl(var(--card))", border: "hsl(var(--border))", color: "#c2410c", darkColor: "#fb923c", isText: true },
               ].map(kpi => (
                 <div key={kpi.label} className="rounded-2xl p-4 flex items-start gap-3"
                   style={{ background: kpi.bg, border: `1.5px solid ${kpi.border}` }}>
                   <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: "hsl(var(--card))", color: kpi.color, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    style={{ background: "hsl(var(--card))", color: isDark ? (kpi as any).darkColor ?? kpi.color : kpi.color, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                     {kpi.icon}
                   </div>
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: kpi.color }}>{kpi.label}</p>
-                    <p className="text-2xl font-black tabular-nums" style={{ color: kpi.color }}>{kpi.value}</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: isDark ? (kpi as any).darkColor ?? kpi.color : kpi.color }}>{kpi.label}</p>
+                    <p className="text-2xl font-black tabular-nums" style={{ color: isDark ? (kpi as any).darkColor ?? kpi.color : kpi.color }}>{kpi.value}</p>
                   </div>
                 </div>
               ))}
@@ -2313,21 +2311,21 @@ export default function Financeiro() {
                   <button key={f.id} type="button" onClick={() => setFiltroStatus(f.id)}
                     className="h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5"
                     style={filtroStatus === f.id
-                      ? { background: "#7c3aed", color: "white", border: "1px solid #7c3aed" }
+                      ? { background: "#7c3aed", color: "white", border: "1px solid #7c3aed", borderRadius: "9999px" }
                       : undefined}
                     className={cn("h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5", filtroStatus !== f.id && "bg-muted text-muted-foreground border-border")}>
                     {f.label}
                     <span className="text-[10px] px-1 rounded-md"
                       style={filtroStatus === f.id
                         ? { background: "rgba(255,255,255,0.2)" }
-                        : { background: "#e2e8f0" }}>
+                        : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", borderRadius: "9999px" }}>
                       {f.count}
                     </span>
                   </button>
                 ))}
               </div>
               <div className="flex-1 min-w-[180px] relative">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
                 <input
                   type="text"
                   placeholder="Buscar cliente, NF ou vendedora…"
@@ -2346,13 +2344,13 @@ export default function Financeiro() {
             ) : filtradosSearch.length === 0 ? (
               <div className="text-center py-16 space-y-3">
                 <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted">
-                  <Receipt size={28} color="#94a3b8" />
+                  <Receipt size={28} color="currentColor" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-700">
+                  <p className="text-sm font-semibold text-foreground/90">
                     {filtroStatus === "pronto" ? "Nenhum pedido aguardando nota fiscal" : "Nenhum pedido encontrado"}
                   </p>
-                  <p className="text-[12px] text-gray-400 mt-0.5">
+                  <p className="text-[12px] text-muted-foreground/70 mt-0.5">
                     {searchNF ? "Tente outra busca" : "Os pedidos aparecem aqui quando marcados como prontos no estoque"}
                   </p>
                 </div>
@@ -2370,10 +2368,10 @@ export default function Financeiro() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
+                <h2 className="text-base font-bold text-foreground flex items-center gap-2">
                   <Factory size={18} color="#7c3aed" />Compras — Produção
                 </h2>
-                <p className="text-[12px] text-gray-500 mt-0.5">
+                <p className="text-[12px] text-muted-foreground mt-0.5">
                   Máquinas, matérias-primas, insumos e materiais de produção
                 </p>
               </div>
@@ -2386,10 +2384,10 @@ export default function Financeiro() {
         {activeTab === "compras_empresa" && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-base font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
                 <Building2 size={18} color="#7c3aed" />Compras — Empresa
               </h2>
-              <p className="text-[12px] text-gray-500 mt-0.5">
+              <p className="text-[12px] text-muted-foreground mt-0.5">
                 Computadores, mobiliário, materiais de escritório e ativos permanentes
               </p>
             </div>
@@ -2401,10 +2399,10 @@ export default function Financeiro() {
         {activeTab === "custos" && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-base font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
                 <Zap size={18} color="#7c3aed" />Custos Operacionais
               </h2>
-              <p className="text-[12px] text-gray-500 mt-0.5">
+              <p className="text-[12px] text-muted-foreground mt-0.5">
                 Energia, aluguel, serviços recorrentes e custos fixos e variáveis
               </p>
             </div>
@@ -2418,7 +2416,7 @@ export default function Financeiro() {
                 const total  = lancamentos.filter(l => l.tipo === tipo).reduce((s, l) => s + l.valor, 0);
                 return (
                   <div key={tipo} className="rounded-xl p-3 text-center" style={{ background: bgs[i], border: `1px solid ${borders[i]}` }}>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: colors[i] }}>{labels[i]}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-1 text-muted-foreground" style={{ color: colors[i] }}>{labels[i]}</p>
                     <p className="text-[15px] font-black" style={{ color: colors[i] }}>{fmtCurrency(total)}</p>
                   </div>
                 );
@@ -2432,10 +2430,10 @@ export default function Financeiro() {
         {activeTab === "bancos" && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-base font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
                 <Landmark size={18} color="#7c3aed" />Bancos & Integração SEFAZ
               </h2>
-              <p className="text-[12px] text-gray-500 mt-0.5">
+              <p className="text-[12px] text-muted-foreground mt-0.5">
                 Contas bancárias, webhooks e configuração do ambiente SEFAZ
               </p>
             </div>
