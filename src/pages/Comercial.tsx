@@ -646,8 +646,8 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
   const meta = statusMeta[pedido.status] ?? statusMeta["cancelado"];
 
   return (
-    <div className="rounded-2xl bg-card overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
-      style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06)" }}>
+    <div className="rounded-2xl bg-card border border-border/40 overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+      style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
 
       {/* Barra de status — sólida, visível */}
       <div className={cn("h-1 w-full", meta.bar)} />
@@ -1677,6 +1677,11 @@ export default function Comercial() {
     if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
     return theme === "dark";
   });
+
+  // Aplica o tema salvo ao montar a página
+  useEffect(() => {
+    applyTheme(getStoredTheme());
+  }, []);
 
   const toggleTheme = useCallback(() => {
     const next = !isDark;

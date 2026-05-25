@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
@@ -198,6 +198,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
     return theme === "dark";
   });
+
+  // Garante que o tema salvo seja aplicado ao montar o shell
+  useEffect(() => {
+    applyTheme(getStoredTheme());
+  }, []);
 
   const toggleTheme = useCallback(() => {
     const next = !isDark;

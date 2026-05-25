@@ -899,7 +899,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
     : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" };
 
   return (
-    <div style={{ border: cardBorder, boxShadow: "0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05)", borderRadius: "16px", overflow: "hidden", background: "hsl(var(--card))" }}
+    <div style={{ border: cardBorder, boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)", borderRadius: "16px", overflow: "hidden", background: "hsl(var(--card))" }}
       className=" transition-shadow hover:shadow-lg flex flex-col">
 
       {/* Linha de status colorida */}
@@ -2053,6 +2053,11 @@ export default function Financeiro() {
     return t === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : t === "dark";
   });
 
+  // Aplica o tema salvo ao montar a página
+  useEffect(() => {
+    applyTheme(getStoredTheme());
+  }, []);
+
   const toggleTheme = useCallback(() => {
     setIsDark(v => { applyTheme(!v ? "dark" : "light"); return !v; });
   }, []);
@@ -2196,7 +2201,7 @@ export default function Financeiro() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-30 bg-background border-b"
-        style={{ borderColor: "hsl(var(--border))", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+        style={{ borderColor: "hsl(var(--border))", boxShadow: "0 1px 0 hsl(var(--border) / 0.6)" }}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => navigate("/")}
@@ -2288,7 +2293,7 @@ export default function Financeiro() {
                 <div key={kpi.label} className="rounded-2xl p-4 flex items-start gap-3"
                   style={{ background: kpi.bg, border: `1.5px solid ${kpi.border}` }}>
                   <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: "hsl(var(--card))", color: isDark ? (kpi as any).darkColor ?? kpi.color : kpi.color, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    style={{ background: "hsl(var(--card))", color: isDark ? (kpi as any).darkColor ?? kpi.color : kpi.color, boxShadow: "0 1px 2px hsl(var(--border) / 0.3)" }}>
                     {kpi.icon}
                   </div>
                   <div>
