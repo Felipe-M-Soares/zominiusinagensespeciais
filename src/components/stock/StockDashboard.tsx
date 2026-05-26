@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { fetchAllMovements } from "@/hooks/useStock";
 import { supabase } from "@/integrations/supabase/client";
+import { StockGlobalSearch } from "@/components/stock/StockGlobalSearch";
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { toast } from "sonner";
@@ -318,6 +319,18 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* ── Pesquisa Global de Estoque ── */}
+      <div className="rounded-2xl border border-border/40 overflow-hidden">
+        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+          <Package className="h-4 w-4 text-muted-foreground" />
+          <p className="text-sm font-semibold">Pesquisa Geral do Estoque</p>
+          <span className="text-[10px] text-muted-foreground/50 ml-auto">Localização · Lotes · Reservas · Retrabalho</span>
+        </div>
+        <div className="p-4">
+          <StockGlobalSearch />
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Card 1 — Total de Peças na Expedição */}
         <KpiCard
