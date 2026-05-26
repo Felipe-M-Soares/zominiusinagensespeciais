@@ -674,8 +674,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
 
         {/* ── Resumo: qtd + desconto ── */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5"
-            className="rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
+          <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5 rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
             <div className="flex items-center gap-2">
               <ShoppingBag className="h-3.5 w-3.5 text-violet-500" />
               <span className="text-[12px] text-muted-foreground">
@@ -688,8 +687,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
             </div>
           </div>
           {temDesconto && (
-            <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2"
-              className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
+            <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2 flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
               <span className="text-[14px] font-black text-green-700">{pedido.desconto_pct}%</span>
               <span className="text-[9px] font-semibold text-green-600 uppercase tracking-wide">desc.</span>
             </div>
@@ -706,8 +704,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
         {expanded && (
           <div className="space-y-1.5 pt-2" className="border-t border-border">
             {pedido.itens.map(it => (
-              <div key={it.id} className="flex items-center gap-2 rounded-xl px-3 py-2"
-                className="rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
+              <div key={it.id} className="flex items-center gap-2 rounded-xl px-3 py-2 rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
                 <Package className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-semibold text-foreground truncate">{it.device_model}</p>
@@ -738,8 +735,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted/50 transition-colors"
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground bg-muted/30 border border-border"
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted/50 transition-colors w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground bg-muted/30 border border-border"
           >
             {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             {expanded ? "Ocultar peças" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
@@ -777,20 +773,17 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
           )}
 
           {pedido.status === "separando" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 text-[11px] font-semibold"
-              className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 dark:text-blue-300 text-[11px] font-semibold bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 dark:text-blue-300 text-[11px] font-semibold bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700">
               <PackageCheck className="h-3.5 w-3.5" /> Estoque separando...
             </div>
           )}
           {pedido.status === "pronto" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 text-[11px] font-semibold"
-              className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
               <CheckCircle2 className="h-3.5 w-3.5" /> Pronto — aguardando NF
             </div>
           )}
           {pedido.status === "enviado" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 text-[11px] font-semibold"
-              className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 dark:text-teal-300 text-[11px] font-semibold bg-teal-100 dark:bg-teal-900/30 border border-teal-300 dark:border-teal-700">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 dark:text-teal-300 text-[11px] font-semibold bg-teal-100 dark:bg-teal-900/30 border border-teal-300 dark:border-teal-700">
               <Truck className="h-3.5 w-3.5" /> Enviado ao cliente! 🎉
             </div>
           )}

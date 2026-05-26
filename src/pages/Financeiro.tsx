@@ -1005,8 +1005,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
           <div className="space-y-1">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Itens do Pedido</p>
             {pedido.itens.map(item => (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                className="bg-muted/30 border border-border">
+              <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border">
                 <Package size={12} className="text-muted-foreground/70 shrink-0" />
                 <span className="text-[12px] font-medium text-foreground flex-1 truncate">{item.device_model}</span>
                 <span className="text-[11px] font-bold text-foreground/90">{item.quantidade} un.</span>
@@ -1036,8 +1035,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
 
           {/* Desconto */}
           {(pedido.desconto_pct ?? 0) > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
               <Percent size={12} color="#15803d" />
               <span className="text-[11px] font-semibold text-green-700 dark:text-green-400">
                 {pedido.desconto_pct}% de desconto aplicado em todas as peças
@@ -1057,8 +1055,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
           <div className="flex gap-2 pt-1">
             {pedido.xml_nfe && (
               <button type="button" onClick={downloadXml}
-                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold transition-colors"
-                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 transition-colors">
+                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold transition-colors flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 transition-colors">
                 <Download size={13} />XML NF-e
               </button>
             )}
@@ -1070,8 +1067,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
               </button>
             )}
             {isEnviado && (
-              <div className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold"
-                className="bg-green-50 dark:bg-green-500/10 text-green-800 dark:text-green-400 border border-green-200 dark:border-green-500/30">
+              <div className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-green-50 dark:bg-green-500/10 text-green-800 dark:text-green-400 border border-green-200 dark:border-green-500/30">
                 <BadgeCheck size={14} />NF emitida e enviada
               </div>
             )}
@@ -1416,8 +1412,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         </div>
 
         <select value={filtroNF} onChange={e => setFiltroNF(e.target.value as typeof filtroNF)}
-          className="h-9 rounded-xl px-3 text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-400"
-          className="h-9 rounded-xl px-3 text-[12px] font-medium bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-400">
+          className="h-9 rounded-xl px-3 text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-400 h-9 rounded-xl px-3 text-[12px] font-medium bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-400">
           <option value="todos">Todas NFs</option>
           <option value="sem_nf">Sem NF</option>
           <option value="manual">NF Manual</option>
@@ -1435,8 +1430,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         </button>
 
         <button type="button" onClick={load} disabled={loading}
-          className="h-9 w-9 flex items-center justify-center rounded-xl transition-colors"
-          className="bg-muted/30 border border-border">
+          className="h-9 w-9 flex items-center justify-center rounded-xl transition-colors bg-muted/30 border border-border">
           <RefreshCw size={13} color="currentColor" className={loading ? "animate-spin" : ""} />
         </button>
       </div>
@@ -1475,8 +1469,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
             const nf = nfMeta[item.status_nf];
             const isMesAtual = item.data_lancamento.startsWith(mesAtualStr);
             return (
-              <div key={item.id} className="rounded-xl overflow-hidden flex flex-col transition-shadow hover:shadow-md"
-                className="bg-card border border-border rounded-xl overflow-hidden flex flex-col transition-shadow hover:shadow-md">
+              <div key={item.id} className="rounded-xl overflow-hidden flex flex-col transition-shadow hover:shadow-md bg-card border border-border rounded-xl overflow-hidden flex flex-col transition-shadow hover:shadow-md">
 
                 {/* Topo colorido: mês atual = laranja, antigo = cinza */}
                 <div style={{ height: 3, background: isMesAtual ? "#f97316" : "hsl(var(--border))" }} />
@@ -1485,8 +1478,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                   {/* Ícone + valor */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
-                        className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 dark:bg-violet-900/30">
+                      <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 dark:bg-violet-900/30">
                         <CatIcon size={15} color="#7c3aed" />
                       </div>
                       <div className="min-w-0">
@@ -1506,14 +1498,12 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                       {nf.label}
                     </span>
                     {item.recorrente && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1"
-                        className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 transition-colors">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1 flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 transition-colors">
                         <Repeat2 size={9} />{item.periodicidade}
                       </span>
                     )}
                     {isMesAtual && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg"
-                        className="bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 rounded-lg px-1.5 py-0.5">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 rounded-lg px-1.5 py-0.5">
                         mês atual
                       </span>
                     )}
@@ -1573,8 +1563,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-5 space-y-4 shadow-2xl">
             <div className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
-                className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-red-100 dark:bg-red-950/40">
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-red-100 dark:bg-red-950/40">
                 <Trash2 size={18} color="#dc2626" />
               </div>
               <div>
@@ -2220,8 +2209,7 @@ export default function Financeiro() {
               <TestBadge modoTeste={modoTeste} />
             </div>
             {prontos > 0 && (
-              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
-                className="bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-500/30 rounded-full px-2 py-0.5">
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-500/30 rounded-full px-2 py-0.5">
                 {prontos} aguardando NF
               </span>
             )}
