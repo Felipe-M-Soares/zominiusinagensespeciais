@@ -110,18 +110,7 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     .in("device_id", deviceIds);
 
   if (!stockData || stockData.length === 0) {
-    return {
-      suggestions,
-      results: topDevices.map(d => ({
-        device_id: d.id,
-        model: d.model,
-        reference: d.reference,
-        internal_code: d.internal_code,
-        fases: [],
-        em_retrabalho: false,
-        tem_reservas: false,
-      })),
-    };
+    return { suggestions, results: [] };
   }
 
   const stockItems = stockData as {
@@ -202,7 +191,10 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     };
   });
 
-  return { suggestions, results };
+  // Remove peças sem estoque ativo em nenhuma fase
+  const activeResults = results.filter(r => r.fases.length > 0);
+
+  return { suggestions, results: activeResults };
 }
 
 // ── Sub-componentes ────────────────────────────────────────────────────────────
