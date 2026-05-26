@@ -50,7 +50,7 @@ function printLabel(model: string, reference: string, lote: string) {
   <meta charset="utf-8"/>
   <title>Etiqueta</title>
   <style>
-    /* Página exata: duas etiquetas de 50mm lado a lado = 100mm × 45mm */
+    /* Página: duas etiquetas 50×45 mm lado a lado = 100×45 mm */
     @page {
       size: 100mm 45mm;
       margin: 0;
@@ -63,79 +63,115 @@ function printLabel(model: string, reference: string, lote: string) {
       font-family: Arial, Helvetica, sans-serif;
       display: flex;
       flex-direction: row;
-      align-items: stretch;
       background: #fff;
       overflow: hidden;
     }
 
-    /* Cada etiqueta ocupa exatamente 50×45 mm */
+    /* Etiqueta: ocupa exatamente 50×45 mm, sem padding — conteúdo vai até a borda */
     .label {
       width: 50mm;
       height: 45mm;
-      border: 0.4mm solid #000;
+      border: 0.5mm solid #000;
       display: flex;
       flex-direction: column;
-      justify-content: space-evenly;
-      align-items: center;
-      padding: 1.5mm 2mm;
-      text-align: center;
+      align-items: stretch;
       overflow: hidden;
       flex-shrink: 0;
     }
+    .label + .label { border-left: none; }
 
-    /* Separador entre as duas etiquetas */
-    .label + .label {
-      border-left: none;
-    }
-
-    /* Modelo — texto menor, cor cinza, nunca quebra em 2 linhas */
+    /* Modelo — ocupa espaço disponível no topo (~22% da altura) */
     .row-model {
-      font-size: 6.5pt;
-      color: #444;
-      line-height: 1.1;
-      max-height: 10mm;
-      width: 100%;
+      flex: 2.2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 1.5mm;
+      font-size: 7pt;
+      color: #222;
+      line-height: 1.15;
+      text-align: center;
       overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+      word-break: break-word;
     }
 
-    /* Referência — maior destaque, ocupa mais espaço */
+    /* Referência — bloco maior, centralizado verticalmente (~46% da altura) */
     .row-ref {
-      font-size: 15pt;
+      flex: 4.6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 1mm;
       font-weight: 900;
       line-height: 1;
-      width: 100%;
+      text-align: center;
       overflow: hidden;
       white-space: nowrap;
-      /* Comprime horizontalmente se não couber, sem quebrar */
-      transform-origin: center;
+      transform-origin: center center;
     }
 
-    /* Lote — destaque secundário */
+    /* Lote — bloco menor inferior (~32% da altura) */
     .row-lote {
-      font-size: 14pt;
+      flex: 3.2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 1mm;
       font-weight: 700;
       line-height: 1;
-      width: 100%;
+      text-align: center;
       overflow: hidden;
       white-space: nowrap;
+      transform-origin: center center;
     }
   </style>
   <script>
-    // Após renderizar, comprime via scaleX textos que ultrapassem a largura da etiqueta
+    // Ajusta font-size de .row-ref e .row-lote para preencher a largura disponível
+    // e comprime via scaleX se mesmo assim ultrapassar
     window.onload = function() {
-      document.querySelectorAll(".row-ref, .row-lote").forEach(function(el) {
-        var parent = el.parentElement;
-        var maxW = parent.clientWidth - 4; // padding 2mm cada lado ≈ 4px
-        var textW = el.scrollWidth;
-        if (textW > maxW) {
-          var scale = maxW / textW;
-          el.style.transform = "scaleX(" + scale + ")";
+      var labels = document.querySelectorAll(".label");
+      labels.forEach(function(lbl) {
+        // largura interna disponível em px (sem bordas)
+        var availW = lbl.clientWidth - 4; // ~2px cada lado de padding mínimo
+
+        [".row-ref", ".row-lote"].forEach(function(sel) {
+          var el = lbl.querySelector(sel);
+          if (!el) return;
+
+          // Altura do bloco flex para calcular font-size que preencha verticalmente
+          var blockH = el.clientHeight;
+
+          // Começa com font-size baseado na altura do bloco (sem padding)
+          var fs = blockH * 0.72; // fator empírico para Arial maiúsculo caber na altura
+          el.style.fontSize = fs + "px";
+
+          // Verifica largura e reduz font-size até caber, ou usa scaleX
+          var textW = el.scrollWidth;
+          if (textW > availW) {
+            // Tenta reduzir o font-size primeiro
+            var fsReduced = fs * (availW / textW);
+            if (fsReduced > blockH * 0.35) {
+              el.style.fontSize = fsReduced + "px";
+            } else {
+              // Font-size mínimo atingido — comprime horizontalmente
+              el.style.fontSize = (blockH * 0.35) + "px";
+              var finalW = el.scrollWidth;
+              if (finalW > availW) {
+                el.style.transform = "scaleX(" + (availW / finalW) + ")";
+              }
+            }
+          }
+        });
+
+        // .row-model: ajuste simples de font-size proporcional
+        var modelEl = lbl.querySelector(".row-model");
+        if (modelEl) {
+          var mBlockH = modelEl.clientHeight;
+          modelEl.style.fontSize = Math.min(mBlockH * 0.55, 9) + "pt";
         }
       });
-      setTimeout(function() { window.print(); window.close(); }, 350);
+
+      setTimeout(function() { window.print(); window.close(); }, 400);
     };
   </script>
 </head>
