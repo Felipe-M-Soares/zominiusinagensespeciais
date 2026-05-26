@@ -13,7 +13,6 @@ import {
   Truck,
   Wrench,
   Inbox,
-  AlertTriangle,
   ShoppingBag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -108,91 +107,6 @@ const TABS = [
   },
 ] as const;
 
-// ── Preview de métricas por aba ─────────────────────────────────────────────────
-function PreviewCard({
-  items,
-  view,
-  label,
-  pecasExpedicao,
-  pecasRetrabalho,
-  tiposBaixo,
-  pedidosSeparando,
-}: {
-  items: StockItem[];
-  view: ActiveView;
-  label: string;
-  pecasExpedicao?: number;
-  pecasRetrabalho?: number;
-  tiposBaixo?: number;
-  pedidosSeparando?: number;
-}) {
-  // Para o dashboard: agrupa por device_id para não contar a mesma peça em múltiplas fases
-  const byDevice = new Map<string, { quantity: number; min_quantity: number }>();
-  for (const i of items) {
-    const cur = byDevice.get(i.device_id);
-    byDevice.set(i.device_id, {
-      quantity: (cur?.quantity ?? 0) + i.quantity,
-      min_quantity: Math.max(cur?.min_quantity ?? 0, i.min_quantity),
-    });
-  }
-  const devEntries = Array.from(byDevice.values());
-
-  const ok = (view === "dashboard" ? devEntries : items).filter((i) => i.quantity > i.min_quantity).length;
-  const low = (view === "dashboard" ? devEntries : items).filter(
-    (i) => i.quantity > 0 && i.quantity <= i.min_quantity
-  ).length;
-  const empty = (view === "dashboard" ? devEntries : items).filter((i) => i.quantity === 0).length;
-  const total = items.reduce((s, i) => s + i.quantity, 0);
-
-  const totalIntermediaria = items
-    .filter(i => i.fase === "intermediaria")
-    .reduce((s, i) => s + i.quantity, 0);
-
-  if (view === "dashboard") {
-    return (
-      <div className="grid grid-cols-4 gap-2">
-        <PreviewStat value={(pecasExpedicao ?? 0).toLocaleString("pt-BR")} label="Expedição" color="text-primary" />
-        <PreviewStat value={(pecasRetrabalho ?? 0).toLocaleString("pt-BR")} label="Retrabalho" color="text-amber-500" />
-        <PreviewStat value={tiposBaixo ?? 0} label="Baixo" color="text-warning" />
-        <PreviewStat value={pedidosSeparando ?? 0} label="Separando" color="text-blue-500" />
-      </div>
-    );
-  }
-
-  if (view === "recebimento" || view === "pedidos") {
-    return (
-      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        {view === "pedidos"
-          ? <><ShoppingBag className="h-3.5 w-3.5" />Pedidos das vendedoras para separar</>
-          : <><Inbox className="h-3.5 w-3.5" />Registre entradas por lote aqui</>
-        }
-      </div>
-    );
-  }
-
-  // Sem preview de stats para as abas de lista
-  return null;
-}
-
-function PreviewStat({
-  value,
-  label,
-  color,
-}: {
-  value: number;
-  label: string;
-  color: string;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center rounded-xl bg-background border border-border/30 py-2 px-1 gap-0.5">
-      <span className={cn("text-[15px] font-bold tabular-nums leading-none", color)}>
-        {value}
-      </span>
-      <span className="text-[9px] text-muted-foreground/70 leading-tight">{label}</span>
-    </div>
-  );
-}
-
 // ── Componente principal ───────────────────────────────────────────────────────
 export function StockNav({
   activeView,
@@ -219,23 +133,6 @@ export function StockNav({
     [onViewChange]
   );
 
-  // Mapeamento de view → itens para o preview
-  const previewItems: Record<ActiveView, StockItem[]> = {
-    dashboard: [...intermediariaItems, ...expedicaoItems, ...retrabalhoItems],
-    intermediaria: intermediariaItems,
-    expedicao: expedicaoItems,
-    retrabalho: retrabalhoItems,
-    recebimento: [],
-    pedidos: [],
-  };
-
-  // Métricas do dashboard (espelham o StockDashboard)
-  const pecasExpedicao = expedicaoItems.reduce((s, i) => s + i.quantity, 0);
-  const pecasRetrabalho = retrabalhoItems.reduce((s, i) => s + i.quantity, 0);
-  const expByDevice = new Map<string, number>();
-  for (const i of expedicaoItems) expByDevice.set(i.device_id, (expByDevice.get(i.device_id) ?? 0) + i.quantity);
-  const tiposBaixo = Array.from(expByDevice.values()).filter(q => q > 0 && q < 100).length;
-
   // Contagens para badges
   const counts: Partial<Record<ActiveView, number>> = {
     intermediaria: intermediariaItems.length,
@@ -243,8 +140,6 @@ export function StockNav({
     retrabalho: retrabalhoItems.length,
     pedidos: pedidosPendentes || undefined,
   };
-
-  const activeTab = TABS.find((t) => t.id === activeView)!;
 
   return (
     <div className="space-y-2">
@@ -315,35 +210,6 @@ export function StockNav({
           );
         })}
       </div>
-
-      {/* ── Preview card (aparece sempre, animado) ── */}
-      {!loading && (
-        <div
-          key={activeView}
-          className={cn(
-            "rounded-2xl border border-border/30 bg-muted/20 px-3 py-2.5",
-            "animate-in fade-in slide-in-from-top-1 duration-200"
-          )}
-        >
-          <div className="flex items-center gap-1.5 mb-2">
-            <activeTab.Icon
-              className={cn("h-3 w-3", activeTab.activeColor)}
-            />
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              {activeTab.label === "Interm." ? "Intermediário" : activeTab.label}
-            </span>
-          </div>
-          <PreviewCard
-            items={previewItems[activeView]}
-            view={activeView}
-            label={activeTab.label}
-            pecasExpedicao={pecasExpedicao}
-            pecasRetrabalho={pecasRetrabalho}
-            tiposBaixo={tiposBaixo}
-            pedidosSeparando={pedidosPendentes ?? 0}
-          />
-        </div>
-      )}
 
       <style>{`
         @keyframes navIconPop {
