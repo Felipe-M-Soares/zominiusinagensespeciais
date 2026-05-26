@@ -971,7 +971,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
               { label: "Separado", value: pedido.separado_em, icon: <CheckCircle2 size={10} />,  color: "#10b981" },
               { label: "NF emitida",value: pedido.nf_criada_em,icon: <Receipt size={10} />,     color: "#7c3aed" },
             ].map(({ label, value, icon, color }) => (
-              <div key={label} className="rounded-xl p-2 text-center bg-muted border border-border">
+              <div key={label} className="rounded-xl p-2 text-center bg-muted/30 border border-border">
                 <div className="flex items-center justify-center gap-1 mb-1" style={{ color }}>
                   {icon}
                   <span className="text-[9px] font-semibold uppercase tracking-wide">{label}</span>
@@ -983,7 +983,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
 
           {/* Cliente info */}
           {(pedido.cliente_documento || pedido.cliente_telefone || pedido.cliente_email) && (
-            <div className="rounded-xl p-3 space-y-1.5 bg-muted border border-border">
+            <div className="rounded-xl p-3 space-y-1.5 bg-muted/30 border border-border">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dados do Cliente</p>
               {pedido.cliente_documento && (
                 <p className="text-[11px] text-foreground/90 font-mono">{mascararDoc(pedido.cliente_documento)}</p>
@@ -1006,7 +1006,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Itens do Pedido</p>
             {pedido.itens.map(item => (
               <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                className="bg-muted border border-border">
+                className="bg-muted/30 border border-border">
                 <Package size={12} className="text-muted-foreground/70 shrink-0" />
                 <span className="text-[12px] font-medium text-foreground flex-1 truncate">{item.device_model}</span>
                 <span className="text-[11px] font-bold text-foreground/90">{item.quantidade} un.</span>
@@ -1417,7 +1417,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
 
         <select value={filtroNF} onChange={e => setFiltroNF(e.target.value as typeof filtroNF)}
           className="h-9 rounded-xl px-3 text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-400"
-          className="h-9 rounded-xl px-3 text-[12px] font-medium bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-400">
+          className="h-9 rounded-xl px-3 text-[12px] font-medium bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-400">
           <option value="todos">Todas NFs</option>
           <option value="sem_nf">Sem NF</option>
           <option value="manual">NF Manual</option>
@@ -1430,13 +1430,13 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
           style={showRecorr
             ? { background: undefined, color: undefined, border: undefined }
             : undefined}
-                    className={cn("h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5", filtroStatus !== f.id && "bg-muted text-muted-foreground border-border")}>
+                    className={cn("h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5", filtroStatus !== f.id && "bg-muted/30 text-muted-foreground border-border")}>
           <Repeat2 size={13} />Recorrentes
         </button>
 
         <button type="button" onClick={load} disabled={loading}
           className="h-9 w-9 flex items-center justify-center rounded-xl transition-colors"
-          className="bg-muted border border-border">
+          className="bg-muted/30 border border-border">
           <RefreshCw size={13} color="currentColor" className={loading ? "animate-spin" : ""} />
         </button>
       </div>
@@ -1455,7 +1455,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         </div>
       ) : itensFiltrados.length === 0 ? (
         <div className="text-center py-14 space-y-3">
-          <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted">
+          <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted/30">
             <ShoppingCart size={28} color="currentColor" />
           </div>
           <div>
@@ -1529,7 +1529,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
 
                   {/* NF info */}
                   {(item.nota_fiscal_manual || item.chave_nfe) && (
-                    <div className="rounded-lg px-2 py-1.5" className="bg-muted border border-border">
+                    <div className="rounded-lg px-2 py-1.5" className="bg-muted/30 border border-border">
                       {item.nota_fiscal_manual && (
                         <p className="text-[10px] font-mono text-muted-foreground">NF: {item.nota_fiscal_manual}</p>
                       )}
@@ -2228,18 +2228,18 @@ export default function Financeiro() {
           </div>
           <div className="flex items-center gap-1">
             <button type="button" onClick={toggleTheme}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors">
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors">
               {isDark
                 ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
                 : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
             </button>
             <button type="button" onClick={() => setHistoricoOpen(true)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors"
               title="Histórico SEFAZ">
               <History size={15} color="currentColor" />
             </button>
             <button type="button" onClick={() => { loadPedidos(); loadLancamentos(); }}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors"
               title="Atualizar dados">
               <RefreshCw size={15} color="currentColor" className={loading ? "animate-spin" : ""} />
             </button>
@@ -2318,7 +2318,7 @@ export default function Financeiro() {
                     style={filtroStatus === f.id
                       ? { background: "#7c3aed", color: "white", border: "1px solid #7c3aed", borderRadius: "9999px" }
                       : undefined}
-                    className={cn("h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5", filtroStatus !== f.id && "bg-muted text-muted-foreground border-border")}>
+                    className={cn("h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5", filtroStatus !== f.id && "bg-muted/30 text-muted-foreground border-border")}>
                     {f.label}
                     <span className="text-[10px] px-1 rounded-md"
                       style={filtroStatus === f.id
@@ -2348,7 +2348,7 @@ export default function Financeiro() {
               </div>
             ) : filtradosSearch.length === 0 ? (
               <div className="text-center py-16 space-y-3">
-                <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted">
+                <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted/30">
                   <Receipt size={28} color="currentColor" />
                 </div>
                 <div>

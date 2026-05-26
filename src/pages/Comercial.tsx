@@ -553,7 +553,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto no Pedido</label>
               <span className={cn(
                 "text-[13px] font-black tabular-nums px-2 py-0.5 rounded-lg",
-                desconto > 0 ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"
+                desconto > 0 ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted/30 text-muted-foreground"
               )}>
                 {desconto === 0 ? "Sem desconto" : `${desconto}%`}
               </span>
@@ -641,7 +641,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
     pronto:    { bar: "bg-emerald-500",         badge: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700",   label: "Pronto",    icon: <CheckCircle2 className="h-3 w-3" /> },
     faturado:  { bar: "bg-green-500",           badge: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",         label: "Faturado",  icon: <CheckCircle2 className="h-3 w-3" /> },
     enviado:   { bar: "bg-teal-500",            badge: "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-700",            label: "Enviado",   icon: <Truck className="h-3 w-3" /> },
-    cancelado: { bar: "bg-muted",            badge: "bg-muted text-muted-foreground border-border",           label: "Cancelado", icon: <Ban className="h-3 w-3" /> },
+    cancelado: { bar: "bg-muted/30",            badge: "bg-muted/30 text-muted-foreground border-border",           label: "Cancelado", icon: <Ban className="h-3 w-3" /> },
   };
   const meta = statusMeta[pedido.status] ?? statusMeta["cancelado"];
 
@@ -675,7 +675,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
         {/* ── Resumo: qtd + desconto ── */}
         <div className="flex items-center gap-2">
           <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5"
-            className="rounded-xl px-3 py-2.5 bg-muted border border-border">
+            className="rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
             <div className="flex items-center gap-2">
               <ShoppingBag className="h-3.5 w-3.5 text-violet-500" />
               <span className="text-[12px] text-muted-foreground">
@@ -707,7 +707,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
           <div className="space-y-1.5 pt-2" className="border-t border-border">
             {pedido.itens.map(it => (
               <div key={it.id} className="flex items-center gap-2 rounded-xl px-3 py-2"
-                className="rounded-xl px-3 py-2.5 bg-muted border border-border">
+                className="rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
                 <Package className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-semibold text-foreground truncate">{it.device_model}</p>
@@ -739,7 +739,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
             type="button"
             onClick={() => setExpanded(v => !v)}
             className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted/50 transition-colors"
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground bg-muted border border-border"
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground bg-muted/30 border border-border"
           >
             {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             {expanded ? "Ocultar peças" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
