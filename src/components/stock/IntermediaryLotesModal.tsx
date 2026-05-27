@@ -29,20 +29,13 @@ interface Props {
 // ─── Impressão de etiqueta 50×45 mm ──────────────────────────────────────────
 
 function printLabel(model: string, reference: string, lote: string) {
-  const win = window.open("", "_blank", "width=680,height=380");
+  const win = window.open("", "_blank", "width=600,height=340");
   if (!win) {
     alert("Popup bloqueado. Permita popups para este site e tente novamente.");
     return;
   }
 
-  // Uma etiqueta individual: 50×45 mm
-  // Duas etiquetas idênticas lado a lado na mesma folha de impressão
-  const label = (m: string, ref: string, lt: string) => `
-    <div class="label">
-      <div class="row-model">${escHtml(m)}</div>
-      <div class="row-ref">${escHtml(ref)}</div>
-      <div class="row-lote">${escHtml(lt)}</div>
-    </div>`;
+  const e = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
   win.document.write(`<!DOCTYPE html>
 <html>
@@ -50,136 +43,121 @@ function printLabel(model: string, reference: string, lote: string) {
   <meta charset="utf-8"/>
   <title>Etiqueta</title>
   <style>
-    /* Página: duas etiquetas 50×45 mm lado a lado = 100×45 mm */
     @page {
       size: 100mm 45mm;
       margin: 0;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       width: 100mm;
       height: 45mm;
-      font-family: Arial, Helvetica, sans-serif;
+      overflow: hidden;
+      background: #fff;
       display: flex;
       flex-direction: row;
-      background: #fff;
-      overflow: hidden;
     }
 
-    /* Etiqueta: ocupa exatamente 50×45 mm, sem padding — conteúdo vai até a borda */
     .label {
       width: 50mm;
       height: 45mm;
-      border: 0.5mm solid #000;
+      border: 0.4mm solid #000;
       display: flex;
       flex-direction: column;
-      align-items: stretch;
       overflow: hidden;
       flex-shrink: 0;
     }
     .label + .label { border-left: none; }
 
-    /* Modelo — ocupa espaço disponível no topo (~22% da altura) */
+    /* Modelo: 9mm de altura */
     .row-model {
-      flex: 2.2;
+      height: 9mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 2mm;
+      border-bottom: 0.3mm solid #ccc;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 6.5pt;
+      font-weight: 600;
+      color: #111;
+      text-align: center;
+      line-height: 1.2;
+      word-break: break-word;
+      overflow: hidden;
+    }
+
+    /* Referência: 21mm de altura — font-size via JS */
+    .row-ref {
+      height: 21mm;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 0 1.5mm;
-      font-size: 7pt;
-      color: #222;
-      line-height: 1.15;
-      text-align: center;
-      overflow: hidden;
-      word-break: break-word;
-    }
-
-    /* Referência — bloco maior, centralizado verticalmente (~46% da altura) */
-    .row-ref {
-      flex: 4.6;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 1mm;
+      font-family: Arial, Helvetica, sans-serif;
       font-weight: 900;
-      line-height: 1;
+      color: #000;
       text-align: center;
-      overflow: hidden;
       white-space: nowrap;
-      transform-origin: center center;
+      overflow: hidden;
     }
 
-    /* Lote — bloco menor inferior (~32% da altura) */
+    /* Lote: 15mm de altura — font-size via JS */
     .row-lote {
-      flex: 3.2;
+      height: 15mm;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 0 1mm;
+      padding: 0 1.5mm;
+      border-top: 0.3mm solid #ccc;
+      font-family: Arial, Helvetica, sans-serif;
       font-weight: 700;
-      line-height: 1;
+      color: #000;
       text-align: center;
-      overflow: hidden;
       white-space: nowrap;
-      transform-origin: center center;
+      overflow: hidden;
     }
   </style>
   <script>
-    // Ajusta font-size de .row-ref e .row-lote para preencher a largura disponível
-    // e comprime via scaleX se mesmo assim ultrapassar
-    window.onload = function() {
-      var labels = document.querySelectorAll(".label");
-      labels.forEach(function(lbl) {
-        // largura interna disponível em px (sem bordas)
-        var availW = lbl.clientWidth - 4; // ~2px cada lado de padding mínimo
+    var MM = 3.7795; // px por mm a 96 dpi
 
-        [".row-ref", ".row-lote"].forEach(function(sel) {
-          var el = lbl.querySelector(sel);
-          if (!el) return;
+    function fitText(el, availW, blockH) {
+      if (!el) return;
+      // target: preencher ~82% da altura do bloco
+      var fs = blockH * 0.82;
+      el.style.fontSize = fs + "px";
+      // se texto ultrapassa a largura, reduz font-size proporcionalmente
+      var tw = el.scrollWidth;
+      if (tw > availW) {
+        fs = fs * (availW / tw) * 0.96;
+        el.style.fontSize = fs + "px";
+      }
+    }
 
-          // Altura do bloco flex para calcular font-size que preencha verticalmente
-          var blockH = el.clientHeight;
-
-          // Começa com font-size baseado na altura do bloco (sem padding)
-          var fs = blockH * 0.72; // fator empírico para Arial maiúsculo caber na altura
-          el.style.fontSize = fs + "px";
-
-          // Verifica largura e reduz font-size até caber, ou usa scaleX
-          var textW = el.scrollWidth;
-          if (textW > availW) {
-            // Tenta reduzir o font-size primeiro
-            var fsReduced = fs * (availW / textW);
-            if (fsReduced > blockH * 0.35) {
-              el.style.fontSize = fsReduced + "px";
-            } else {
-              // Font-size mínimo atingido — comprime horizontalmente
-              el.style.fontSize = (blockH * 0.35) + "px";
-              var finalW = el.scrollWidth;
-              if (finalW > availW) {
-                el.style.transform = "scaleX(" + (availW / finalW) + ")";
-              }
-            }
-          }
-        });
-
-        // .row-model: ajuste simples de font-size proporcional
-        var modelEl = lbl.querySelector(".row-model");
-        if (modelEl) {
-          var mBlockH = modelEl.clientHeight;
-          modelEl.style.fontSize = Math.min(mBlockH * 0.55, 9) + "pt";
-        }
+    window.onload = function () {
+      var availW = (50 - 3) * MM; // 50mm - 2x1.5mm padding
+      document.querySelectorAll(".label").forEach(function (lbl) {
+        fitText(lbl.querySelector(".row-ref"),  availW, 21 * MM);
+        fitText(lbl.querySelector(".row-lote"), availW, 15 * MM);
       });
-
-      setTimeout(function() { window.print(); window.close(); }, 400);
+      setTimeout(function () { window.print(); window.close(); }, 350);
     };
   </script>
 </head>
 <body>
-  ${label(model, reference, lote)}
-  ${label(model, reference, lote)}
+  <div class="label">
+    <div class="row-model">${e(model)}</div>
+    <div class="row-ref">${e(reference)}</div>
+    <div class="row-lote">${e(lote)}</div>
+  </div>
+  <div class="label">
+    <div class="row-model">${e(model)}</div>
+    <div class="row-ref">${e(reference)}</div>
+    <div class="row-lote">${e(lote)}</div>
+  </div>
 </body>
 </html>`);
+
   win.document.close();
   win.focus();
 }
