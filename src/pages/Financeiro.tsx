@@ -1,15 +1,7 @@
 /**
- * src/pages/Financeiro.tsx — Módulo Financeiro Completo
- *
- * Abas:
- *  1. NF-e / SEFAZ        — emissão automática e manual de notas fiscais de venda
- *  2. Compras / Produção   — máquinas, matéria-prima, equipamentos, insumos
- *  3. Compras / Empresa    — mobiliário, TI, materiais de escritório, ativos
- *  4. Custos Operacionais  — energia, aluguel, serviços recorrentes
- *  5. Bancos & Integração  — contas bancárias, webhooks, envio automático de NFs
- *
- * Número de NF gerado automaticamente (sequencial via RPC get_next_nf_number).
- * Toggle "Ambiente de Teste" em todas as seções — sem valor fiscal em homologação.
+ * src/pages/Financeiro.tsx — Módulo Financeiro Completo v2
+ * Reformulado: design profissional, todas as abas funcionando,
+ * pedidos "pronto" aparecem corretamente, bugs de className corrigidos.
  */
 
 import {
@@ -28,17 +20,16 @@ import {
   Truck, ChevronDown, ChevronUp, Send, X, RefreshCw,
   FileText, History, BadgeCheck, Ban, Bell, FileCheck2,
   AlertCircle, Building2, Hash, DollarSign, CreditCard,
-  Banknote, Landmark, ChevronRight, Info, Loader2, MapPin,
+  Banknote, Landmark, ChevronRight, Loader2, MapPin,
   Mail, Percent, ShoppingCart, Wrench, Monitor, Zap,
   Cpu, FlaskConical, Factory, PlusCircle, Edit3, Trash2,
   Link, TestTube2, CheckSquare, AlertTriangle, TrendingDown,
   Wallet, CalendarDays, BarChart3, Tag, Building,
-  TrendingUp, ArrowUpRight, ArrowDownRight, PieChart,
-  FileSpreadsheet, Download, Filter, Search, Eye, EyeOff,
-  Copy, ExternalLink, Star, Award, Repeat2,
+  TrendingUp, Download, Search, Copy, Repeat2,
+  BarChart2, PieChart, Layers, Sun, Moon,
 } from "lucide-react";
 
-// ─── Tipos ─────────────────────────────────────────────────────────────────
+// ─── Tipos ───────────────────────────────────────────────────────────────────
 
 interface PedidoItem {
   id: string;
@@ -153,7 +144,7 @@ interface ContaBancaria {
   created_at: string;
 }
 
-// ─── Constantes ────────────────────────────────────────────────────────────
+// ─── Constantes ──────────────────────────────────────────────────────────────
 
 const TIPOS_PAGAMENTO = [
   { valor: "01", label: "Dinheiro",       icon: Banknote   },
@@ -201,7 +192,7 @@ const BANCOS_BR = [
   "Nubank", "Inter", "C6 Bank", "BTG Pactual", "Sicoob", "Sicredi", "Outro",
 ];
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -218,16 +209,9 @@ function fmtCurrency(v: number) {
 function statusLabel(s: string) {
   const m: Record<string, string> = {
     pendente: "Pendente", separando: "Separando", pronto: "Pronto",
-    faturado: "Faturado", enviado: "Enviado",     cancelado: "Cancelado",
+    faturado: "Faturado", enviado: "Enviado", cancelado: "Cancelado",
   };
   return m[s] ?? s;
-}
-
-function statusColor(s: string) {
-  if (s === "pronto")   return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
-  if (s === "faturado") return "bg-violet-500/10  text-violet-600  border-violet-500/20";
-  if (s === "enviado")  return "bg-green-500/10   text-green-600   border-green-500/20";
-  return "bg-muted/30 text-muted-foreground border-border/30";
 }
 
 function mascararDoc(doc: string) {
@@ -270,7 +254,7 @@ function initDados(pedido: Pedido, numero: string): DadosFiscais {
   };
 }
 
-// ─── Step Indicator ────────────────────────────────────────────────────────
+// ─── StepBar ─────────────────────────────────────────────────────────────────
 
 function StepBar({ step, total, labels }: { step: number; total: number; labels: string[] }) {
   return (
@@ -299,7 +283,7 @@ function StepBar({ step, total, labels }: { step: number; total: number; labels:
   );
 }
 
-// ─── Badge Modo Teste ──────────────────────────────────────────────────────
+// ─── TestBadge ───────────────────────────────────────────────────────────────
 
 function TestBadge({ modoTeste }: { modoTeste: boolean }) {
   return (
@@ -314,7 +298,7 @@ function TestBadge({ modoTeste }: { modoTeste: boolean }) {
   );
 }
 
-// ─── Modal SEFAZ ───────────────────────────────────────────────────────────
+// ─── SefazModal ──────────────────────────────────────────────────────────────
 
 function SefazModal({
   pedido, onClose, onSuccess, modoTeste,
@@ -374,7 +358,6 @@ function SefazModal({
     if (!pedido || !user || !dados) return;
     if (submitting.current) return;
     submitting.current = true; setSaving(true); setLastResult(null);
-
     try {
       if (modoTeste) {
         await new Promise(r => setTimeout(r, 1800));
@@ -396,12 +379,10 @@ function SefazModal({
         toast.success(`[TESTE] NF-e simulada! Protocolo ${fake.protocolo}`, { duration: 5000 });
         onClose(); onSuccess(); return;
       }
-
       const { data, error } = await supabase.functions.invoke("sefaz-emitir", {
         body: { pedidoId: pedido.id, dadosFiscais: dados, modoTeste },
       });
       if (error) throw new Error(error.message);
-
       const result = data as SefazResult;
       setLastResult(result);
       if (!result.sucesso) {
@@ -410,7 +391,6 @@ function SefazModal({
           : result.erro ?? "Nota rejeitada pelo SEFAZ", { duration: 8000 });
         return;
       }
-
       const nfLabel = `${dados.tipoNota.toUpperCase()}-${dados.numero.padStart(9,"0")}`;
       const { data: rpc, error: rpcErr } = await supabase.rpc("faturar_pedido_sefaz", {
         p_pedido_id: pedido.id, p_nf: nfLabel,
@@ -419,11 +399,9 @@ function SefazModal({
         p_user_id: user.id, p_user_name: "Financeiro",
         p_xml_nfe: result.xmlAssinado ?? null,
       } as Record<string, unknown>);
-
       if (rpcErr) { toast.error(`NF autorizada, mas erro ao salvar: ${rpcErr.message}`); return; }
       const rpcData = rpc as { error?: string } | null;
       if (rpcData?.error) { toast.error(`Erro: ${rpcData.error}`); return; }
-
       if (pedido.vendedora_id) {
         await supabase.from("notificacoes").insert({
           user_id: pedido.vendedora_id, pedido_id: pedido.id, tipo: "pedido_enviado",
@@ -431,7 +409,6 @@ function SefazModal({
           mensagem: `${pedido.cliente_nome} — ${nfLabel} — Prot. ${result.protocolo}`,
         });
       }
-
       toast.success(`✅ ${dados.tipoNota.toUpperCase()} autorizada! Protocolo ${result.protocolo}`, { duration: 6000 });
       onClose(); onSuccess();
     } catch (err) {
@@ -443,14 +420,17 @@ function SefazModal({
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
-
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileCheck2 className="h-4 w-4 text-violet-500" />
-              <span className="text-sm font-semibold">Emissão {dados.tipoNota === "nfce" ? "NFC-e" : "NF-e"} — SEFAZ</span>
+              <div className="h-7 w-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
+                <FileCheck2 className="h-4 w-4 text-violet-500" />
+              </div>
+              <span className="text-sm font-semibold">
+                Emissão {dados.tipoNota === "nfce" ? "NFC-e" : "NF-e"} — SEFAZ
+              </span>
               <TestBadge modoTeste={modoTeste} />
             </div>
             <button type="button" onClick={onClose} disabled={saving}
@@ -463,7 +443,10 @@ function SefazModal({
               <p className="text-[12px] font-semibold truncate">{pedido.cliente_nome}</p>
               <p className="text-[10px] text-muted-foreground">{totalItens} un. · Frete R$ {pedido.frete.toFixed(2)}</p>
             </div>
-            <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0", statusColor(pedido.status))}>
+            <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border",
+              pedido.status === "pronto"   ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" :
+              pedido.status === "faturado" ? "bg-violet-500/10 text-violet-600 border-violet-500/20" :
+              "bg-muted/30 text-muted-foreground border-border/30")}>
               {statusLabel(pedido.status)}
             </span>
           </div>
@@ -471,8 +454,7 @@ function SefazModal({
         </div>
 
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-
-          {/* PASSO 1 — Tipo e Identificação */}
+          {/* STEP 1 */}
           {step === 1 && (
             <div className="space-y-4">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tipo e Identificação</p>
@@ -532,14 +514,14 @@ function SefazModal({
                   : <CheckSquare className="h-3.5 w-3.5 text-green-600 shrink-0 mt-0.5" />}
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
                   {modoTeste
-                    ? <>Modo <strong>Homologação</strong>: nota simulada sem valor fiscal. Altere em <strong>Bancos & Integração</strong>.</>
-                    : <>Modo <strong>Produção</strong>: esta nota terá valor fiscal real e será transmitida ao SEFAZ.</>}
+                    ? <><strong>Homologação</strong>: nota simulada sem valor fiscal. Altere em <strong>Bancos &amp; Integração</strong>.</>
+                    : <><strong>Produção</strong>: esta nota terá valor fiscal real e será transmitida ao SEFAZ.</>}
                 </p>
               </div>
             </div>
           )}
 
-          {/* PASSO 2 — Destinatário */}
+          {/* STEP 2 */}
           {step === 2 && (
             <div className="space-y-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dados do Destinatário</p>
@@ -567,26 +549,21 @@ function SefazModal({
             </div>
           )}
 
-          {/* PASSO 3 — Itens Fiscais */}
+          {/* STEP 3 */}
           {step === 3 && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Dados Fiscais por Item ({dados.itens.length})
-                </p>
-              </div>
-
-              {/* Banner de desconto da vendedora */}
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Dados Fiscais por Item ({dados.itens.length})
+              </p>
               {(pedido?.desconto_pct ?? 0) > 0 && (
                 <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/8 border border-emerald-500/25">
                   <div className="flex items-center gap-2">
-                    <Percent className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <Percent className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                     <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
                       Vendedora informou <strong>{pedido!.desconto_pct}% de desconto</strong> em cada peça
                     </p>
                   </div>
-                  <button
-                    type="button"
+                  <button type="button"
                     onClick={() => {
                       const pct = pedido!.desconto_pct ?? 0;
                       setDados(prev => {
@@ -596,30 +573,24 @@ function SefazModal({
                           itens: prev.itens.map(it => {
                             const vOrig = parseFloat(it.valorUnitario) || 0;
                             if (vOrig <= 0) return it;
-                            const vDesc = vOrig * (1 - pct / 100);
-                            return { ...it, valorUnitario: vDesc.toFixed(2) };
+                            return { ...it, valorUnitario: (vOrig * (1 - pct / 100)).toFixed(2) };
                           }),
                         };
                       });
                     }}
-                    className="shrink-0 h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition-colors"
-                  >
+                    className="shrink-0 h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition-colors">
                     Aplicar desconto
                   </button>
                 </div>
               )}
-
               {dados.itens.map((item, idx) => {
                 const vOrig  = parseFloat(item.valorUnitario) || 0;
-                const pct    = pedido?.desconto_pct ?? 0;
-                const vDesc  = pct > 0 && vOrig > 0 ? vOrig * (1 - pct / 100) : null;
-                const vTotal = item.quantidade * vOrig;
                 const ncmOk  = item.ncm.replace(/\D/g,"").length >= 8;
                 const cfopOk = item.cfop.replace(/\D/g,"").length >= 4;
                 const vlrOk  = vOrig > 0;
                 return (
                   <div key={item.pedido_item_id}
-                    className={cn("rounded-xl border p-3 space-y-2.5 transition-colors",
+                    className={cn("rounded-xl border p-3 space-y-2.5",
                       ncmOk && cfopOk && vlrOk ? "border-border/30 bg-muted/10" : "border-amber-500/30 bg-amber-500/4")}>
                     <div className="flex items-center gap-2">
                       <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
@@ -630,8 +601,8 @@ function SefazModal({
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { key: "ncm"  as const, label: "NCM (8 dígitos) *", ph: "90213990", maxLen: 8, ok: ncmOk  },
-                        { key: "cfop" as const, label: "CFOP (4 dígitos) *", ph: "5102",    maxLen: 4, ok: cfopOk },
+                        { key: "ncm"  as const, label: "NCM (8 díg.) *", ph: "90213990", maxLen: 8, ok: ncmOk  },
+                        { key: "cfop" as const, label: "CFOP (4 díg.) *", ph: "5102",    maxLen: 4, ok: cfopOk },
                       ].map(f => (
                         <div key={f.key} className="space-y-1">
                           <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">{f.label}</label>
@@ -657,16 +628,9 @@ function SefazModal({
                               vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
-                        {vDesc !== null && (
-                          <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-mono">
-                            com {pct}% desc → R$ {vDesc.toFixed(2)}
-                          </p>
-                        )}
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">
-                          <Percent className="h-2 w-2" />ICMS %
-                        </label>
+                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">ICMS %</label>
                         <input type="number" min="0" max="100" step="0.01"
                           value={item.aliqICMS}
                           onChange={e => updItem(idx, "aliqICMS", e.target.value)}
@@ -685,8 +649,10 @@ function SefazModal({
                         </select>
                       </div>
                     </div>
-                    {vTotal > 0 && (
-                      <div className="text-right text-[10px] font-mono font-semibold text-violet-500">= R$ {vTotal.toFixed(2)}</div>
+                    {vOrig > 0 && (
+                      <div className="text-right text-[10px] font-mono font-semibold text-violet-500">
+                        = R$ {(item.quantidade * vOrig).toFixed(2)}
+                      </div>
                     )}
                   </div>
                 );
@@ -705,7 +671,7 @@ function SefazModal({
             </div>
           )}
 
-          {/* PASSO 4 — Pagamento */}
+          {/* STEP 4 */}
           {step === 4 && (
             <div className="space-y-4">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pagamento e Transporte</p>
@@ -756,7 +722,7 @@ function SefazModal({
             </div>
           )}
 
-          {/* PASSO 5 — Revisão */}
+          {/* STEP 5 */}
           {step === 5 && (
             <div className="space-y-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Revisão — confirme antes de emitir</p>
@@ -770,17 +736,12 @@ function SefazModal({
                 <p className="text-[10px] text-muted-foreground">{dados.naturezaOperacao}</p>
               </div>
               <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-1">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                  <User className="h-2.5 w-2.5" />Destinatário
-                </p>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Destinatário</p>
                 <p className="text-[13px] font-semibold">{dados.destNome}</p>
                 {dados.destDocumento && <p className="text-[10px] text-muted-foreground font-mono">{mascararDoc(dados.destDocumento)}</p>}
-                {dados.destEmail && <p className="text-[10px] text-muted-foreground">{dados.destEmail}</p>}
               </div>
               <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                  <Package className="h-2.5 w-2.5" />Itens ({dados.itens.length})
-                </p>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Itens ({dados.itens.length})</p>
                 {dados.itens.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between text-[11px]">
                     <span className="truncate flex-1 mr-2">{item.descricao}</span>
@@ -789,29 +750,11 @@ function SefazModal({
                     </span>
                   </div>
                 ))}
-                <div className="border-t border-border/30 pt-1 flex items-center justify-between text-[11px]">
-                  <span className="text-muted-foreground">Frete</span>
-                  <span className="font-mono text-muted-foreground">R$ {parseFloat(dados.valorFrete || "0").toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between">
+                <div className="border-t border-border/30 pt-1 flex items-center justify-between">
                   <span className="text-[13px] font-bold">Total</span>
                   <span className="text-[15px] font-bold text-violet-600 font-mono">R$ {dados.valorTotal}</span>
                 </div>
               </div>
-              <div className="rounded-xl border border-border/30 bg-muted/10 px-3 py-2 flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Pagamento</span>
-                <span className="text-[12px] font-semibold">
-                  {TIPOS_PAGAMENTO.find(t => t.valor === dados.tipoPagamento)?.label}
-                </span>
-              </div>
-              {pedido.vendedora_nome && (
-                <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-3 py-2.5 flex items-start gap-2">
-                  <Bell className="h-3.5 w-3.5 text-violet-500 shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-muted-foreground">
-                    <strong>{pedido.vendedora_nome}</strong> receberá notificação ao autorizar.
-                  </p>
-                </div>
-              )}
               {lastResult && !lastResult.sucesso && (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 flex items-start gap-2">
                   <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
@@ -853,7 +796,7 @@ function SefazModal({
   );
 }
 
-// ─── Card de Pedido ────────────────────────────────────────────────────────
+// ─── PedidoCard ──────────────────────────────────────────────────────────────
 
 function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pedido) => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -880,51 +823,29 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
   const isPronto   = pedido.status === "pronto";
   const isFaturado = pedido.status === "faturado";
   const isEnviado  = pedido.status === "enviado";
-
-  const cardBorder = isPronto   ? "1.5px solid #34d399" :
-                     isFaturado ? "1.5px solid #a78bfa" :
-                     isEnviado  ? "1.5px solid #4ade80" :
-                                  "1.5px solid hsl(var(--border))";
-
-  const barColor   = isPronto   ? "#10b981" :
-                     isFaturado ? "#7c3aed" :
-                     isEnviado  ? "#22c55e" : "hsl(var(--muted-foreground))";
-
-  const badgeStyle = isPronto
-    ? { background: "rgba(16,185,129,0.12)", color: "#34d399",  border: "1px solid rgba(52,211,153,0.3)" }
-    : isFaturado
-    ? { background: "rgba(124,58,237,0.12)", color: "#a78bfa",  border: "1px solid rgba(167,139,250,0.3)" }
-    : isEnviado
-    ? { background: "rgba(34,197,94,0.12)",  color: "#4ade80",  border: "1px solid rgba(74,222,128,0.3)" }
-    : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))" };
+  const accentColor = isPronto ? "#10b981" : isFaturado ? "#7c3aed" : isEnviado ? "#22c55e" : "hsl(var(--muted-foreground))";
+  const borderColor = isPronto ? "#34d399" : isFaturado ? "#a78bfa" : isEnviado ? "#4ade80" : "hsl(var(--border))";
 
   return (
-    <div style={{ border: cardBorder, boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)", borderRadius: "16px", overflow: "hidden", background: "hsl(var(--card))" }}
-      className=" transition-shadow hover:shadow-lg flex flex-col">
-
-      {/* Linha de status colorida */}
-      <div style={{ height: "3px", background: barColor, width: "100%" }} />
-
-      {/* Header clicável */}
+    <div style={{ border: `1.5px solid ${borderColor}`, borderRadius: 16, overflow: "hidden", background: "hsl(var(--card))" }}
+      className="transition-shadow hover:shadow-lg flex flex-col">
+      <div style={{ height: 3, background: accentColor }} />
       <button type="button" onClick={() => setExpanded(v => !v)}
         className="w-full text-left px-4 pt-3 pb-3 flex items-start gap-3">
-
-        {/* Ícone status */}
         <div className="shrink-0 mt-0.5" style={{
           width: 36, height: 36, borderRadius: 10, display: "flex",
           alignItems: "center", justifyContent: "center",
-          background: isPronto ? "hsl(142 76% 90%)" : isFaturado ? "hsl(258 90% 94%)" : isEnviado ? "hsl(142 76% 90%)" : "hsl(var(--muted))"
+          background: isPronto ? "rgba(16,185,129,0.12)" : isFaturado ? "rgba(124,58,237,0.12)" : isEnviado ? "rgba(34,197,94,0.12)" : "hsl(var(--muted))"
         }}>
           {isEnviado  ? <BadgeCheck size={18} color="#22c55e" /> :
            isFaturado ? <FileCheck2 size={18} color="#7c3aed" /> :
                         <Receipt    size={18} color="#10b981" />}
         </div>
-
         <div className="flex-1 min-w-0">
-          {/* Cliente + status */}
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="text-[14px] font-bold text-foreground truncate">{pedido.cliente_nome}</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg" style={badgeStyle}>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg"
+              style={{ background: `${accentColor}18`, color: accentColor, border: `1px solid ${accentColor}40` }}>
               {statusLabel(pedido.status)}
             </span>
             {(pedido.desconto_pct ?? 0) > 0 && (
@@ -933,8 +854,6 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
               </span>
             )}
           </div>
-
-          {/* Metadados */}
           <div className="flex items-center gap-3 flex-wrap">
             {pedido.vendedora_nome && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -942,7 +861,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
               </span>
             )}
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Package size={10} />{totalItens} un. · {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}
+              <Package size={10} />{totalItens} un.
             </span>
             {pedido.nota_fiscal && (
               <span className="flex items-center gap-1 text-[11px] font-mono text-violet-600 dark:text-violet-400">
@@ -954,114 +873,58 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             </span>
           </div>
         </div>
-
-        {expanded
-          ? <ChevronUp size={16} className="text-muted-foreground/70 shrink-0 mt-1" />
-          : <ChevronDown size={16} className="text-muted-foreground/70 shrink-0 mt-1" />}
+        {expanded ? <ChevronUp size={16} className="text-muted-foreground/70 shrink-0 mt-1" /> : <ChevronDown size={16} className="text-muted-foreground/70 shrink-0 mt-1" />}
       </button>
 
-      {/* Expandido */}
       {expanded && (
         <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid hsl(var(--border))" }}>
-
-          {/* Timeline de datas */}
           <div className="grid grid-cols-3 gap-2 pt-3">
             {[
-              { label: "Criado",   value: pedido.created_at,  icon: <Clock size={10} />,        color: "hsl(var(--muted-foreground))" },
-              { label: "Separado", value: pedido.separado_em, icon: <CheckCircle2 size={10} />,  color: "#10b981" },
-              { label: "NF emitida",value: pedido.nf_criada_em,icon: <Receipt size={10} />,     color: "#7c3aed" },
-            ].map(({ label, value, icon, color }) => (
-              <div key={label} className="rounded-xl p-2 text-center bg-muted/30 border border-border">
-                <div className="flex items-center justify-center gap-1 mb-1" style={{ color }}>
-                  {icon}
-                  <span className="text-[9px] font-semibold uppercase tracking-wide">{label}</span>
-                </div>
+              { label: "Criado",     value: pedido.created_at,   color: "hsl(var(--muted-foreground))" },
+              { label: "Separado",   value: pedido.separado_em,  color: "#10b981" },
+              { label: "NF emitida", value: pedido.nf_criada_em, color: "#7c3aed" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="rounded-xl p-2 text-center bg-muted/20 border border-border/50">
+                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color }}>{label}</p>
                 <p className="text-[10px] font-mono text-muted-foreground">{value ? fmtDate(value) : "—"}</p>
               </div>
             ))}
           </div>
-
-          {/* Cliente info */}
-          {(pedido.cliente_documento || pedido.cliente_telefone || pedido.cliente_email) && (
-            <div className="rounded-xl p-3 space-y-1.5 bg-muted/30 border border-border">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dados do Cliente</p>
-              {pedido.cliente_documento && (
-                <p className="text-[11px] text-foreground/90 font-mono">{mascararDoc(pedido.cliente_documento)}</p>
-              )}
-              {pedido.cliente_telefone && (
-                <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <MapPin size={10} />{pedido.cliente_telefone}
-                </p>
-              )}
-              {pedido.cliente_email && (
-                <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <Mail size={10} />{pedido.cliente_email}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Itens */}
           <div className="space-y-1">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Itens do Pedido</p>
             {pedido.itens.map(item => (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border">
+              <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/20 border border-border/40">
                 <Package size={12} className="text-muted-foreground/70 shrink-0" />
                 <span className="text-[12px] font-medium text-foreground flex-1 truncate">{item.device_model}</span>
-                <span className="text-[11px] font-bold text-foreground/90">{item.quantidade} un.</span>
+                <span className="text-[11px] font-bold">{item.quantidade} un.</span>
               </div>
             ))}
           </div>
-
-          {/* Chave de acesso SEFAZ */}
           {pedido.chave_acesso_nfe && (
-            <div className="rounded-xl p-3 space-y-2" className="rounded-xl p-3 space-y-2 bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800">
+            <div className="rounded-xl p-3 space-y-2 bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">Chave de Acesso NF-e</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">Chave de Acesso</p>
                 <button type="button" onClick={copyChave}
-                  className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg transition-colors"
-                  className={cn("flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 transition-colors", copied ? "bg-violet-200 dark:bg-violet-900/50" : "bg-violet-100 dark:bg-violet-900/30")}>
+                  className={cn("flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 transition-colors",
+                    copied ? "bg-violet-200 dark:bg-violet-900/50" : "bg-violet-100 dark:bg-violet-900/30")}>
                   <Copy size={10} />{copied ? "Copiado!" : "Copiar"}
                 </button>
               </div>
               <p className="text-[9px] font-mono break-all leading-relaxed text-muted-foreground">{pedido.chave_acesso_nfe}</p>
               {pedido.protocolo_sefaz && (
-                <p className="text-[10px] font-mono font-semibold text-violet-600 dark:text-violet-400">
-                  Protocolo: {pedido.protocolo_sefaz}
-                </p>
+                <p className="text-[10px] font-mono font-semibold text-violet-600 dark:text-violet-400">Protocolo: {pedido.protocolo_sefaz}</p>
               )}
             </div>
           )}
-
-          {/* Desconto */}
-          {(pedido.desconto_pct ?? 0) > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
-              <Percent size={12} color="#15803d" />
-              <span className="text-[11px] font-semibold text-green-700 dark:text-green-400">
-                {pedido.desconto_pct}% de desconto aplicado em todas as peças
-              </span>
-            </div>
-          )}
-
-          {/* Observações */}
-          {pedido.observacoes && (
-            <div className="flex items-start gap-2 px-3 py-2 rounded-xl" className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-              <FileText size={12} className="mt-0.5 shrink-0" color="#d97706" />
-              <p className="text-[11px] text-amber-800 italic">{pedido.observacoes}</p>
-            </div>
-          )}
-
-          {/* Ações */}
           <div className="flex gap-2 pt-1">
             {pedido.xml_nfe && (
               <button type="button" onClick={downloadXml}
-                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold transition-colors flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 transition-colors">
+                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 hover:bg-violet-200 transition-colors">
                 <Download size={13} />XML NF-e
               </button>
             )}
             {isPronto && (
               <button type="button" onClick={() => onEmitirNF(pedido)}
-                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[12px] font-bold text-white transition-colors"
+                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[12px] font-bold text-white hover:opacity-90 transition-all active:scale-95"
                 style={{ background: "#7c3aed", boxShadow: "0 2px 8px rgba(124,58,237,0.35)" }}>
                 <FileCheck2 size={14} />Emitir NF-e
               </button>
@@ -1078,7 +941,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
   );
 }
 
-// ─── Modal de Lançamento Financeiro ───────────────────────────────────────
+// ─── LancamentoModal ─────────────────────────────────────────────────────────
 
 interface LancModalProps {
   open: boolean; tipo: LancamentoFinanceiro["tipo"];
@@ -1159,12 +1022,13 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                   :                              "Custo Operacional";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
-
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4 text-violet-500" />
+            <div className="h-7 w-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
+              <ShoppingCart className="h-4 w-4 text-violet-500" />
+            </div>
             <span className="text-sm font-semibold">{inicial ? "Editar" : "Novo"} {tipoLabel}</span>
             <TestBadge modoTeste={modoTeste} />
           </div>
@@ -1173,10 +1037,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
             <X className="h-4 w-4" />
           </button>
         </div>
-
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-
-          {/* Categoria */}
           <div className="space-y-2">
             <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Categoria *</label>
             <div className="grid grid-cols-2 gap-1.5">
@@ -1195,8 +1056,6 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               })}
             </div>
           </div>
-
-          {/* Descrição + Fornecedor */}
           {[
             { label: "Descrição *", val: descricao, set: setDescricao, placeholder: "Ex: Compressor industrial, conta de luz..." },
             { label: "Fornecedor / Empresa", val: fornecedor, set: setFornecedor, placeholder: "Nome do fornecedor" },
@@ -1209,8 +1068,6 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               />
             </div>
           ))}
-
-          {/* Valor + Data */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Valor (R$) *</label>
@@ -1228,12 +1085,8 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               />
             </div>
           </div>
-
-          {/* Nota Fiscal */}
           <div className="space-y-2">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-              <FileText className="h-2.5 w-2.5" />Nota Fiscal
-            </label>
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Status da Nota Fiscal</label>
             <div className="flex gap-1.5">
               {(["sem_nf", "manual", "pendente"] as const).map(s => (
                 <button key={s} type="button" onClick={() => setStatusNf(s)}
@@ -1258,8 +1111,6 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               </div>
             )}
           </div>
-
-          {/* Recorrência — apenas custos */}
           {tipo === "custo_operacional" && (
             <div className="space-y-2">
               <div className="flex items-center gap-3">
@@ -1286,8 +1137,6 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               )}
             </div>
           )}
-
-          {/* Observações */}
           <div className="space-y-1">
             <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Observações</label>
             <textarea value={obs} onChange={e => setObs(e.target.value.slice(0,300))}
@@ -1296,7 +1145,6 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
             />
           </div>
         </div>
-
         <div className="px-5 pb-5 pt-3 border-t border-border/20 shrink-0 flex gap-2">
           <button type="button" onClick={onClose}
             className="h-10 px-4 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:bg-muted/40">
@@ -1313,19 +1161,18 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
   );
 }
 
-// ─── Painel de Lançamentos ─────────────────────────────────────────────────
+// ─── PainelLancamentos ───────────────────────────────────────────────────────
 
 function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["tipo"]; modoTeste: boolean }) {
-  const [itens,     setItens]     = useState<LancamentoFinanceiro[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editItem,  setEditItem]  = useState<LancamentoFinanceiro | null>(null);
-  const [delItem,   setDelItem]   = useState<LancamentoFinanceiro | null>(null);
-  const [deleting,  setDeleting]  = useState(false);
-  const [search,    setSearch]    = useState("");
-  const [filtroNF,  setFiltroNF]  = useState<"todos" | LancamentoFinanceiro["status_nf"]>("todos");
-  const [showRecorr,setShowRecorr]= useState(false);
-  const isDark = document.documentElement.classList.contains("dark");
+  const [itens,      setItens]      = useState<LancamentoFinanceiro[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [modalOpen,  setModalOpen]  = useState(false);
+  const [editItem,   setEditItem]   = useState<LancamentoFinanceiro | null>(null);
+  const [delItem,    setDelItem]    = useState<LancamentoFinanceiro | null>(null);
+  const [deleting,   setDeleting]   = useState(false);
+  const [search,     setSearch]     = useState("");
+  const [filtroNF,   setFiltroNF]   = useState<"todos" | LancamentoFinanceiro["status_nf"]>("todos");
+  const [showRecorr, setShowRecorr] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1348,13 +1195,11 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
 
   const now = new Date();
   const mesAtualStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-  const totalMes   = useMemo(() => itens.filter(i => i.data_lancamento.startsWith(mesAtualStr)).reduce((s, i) => s + i.valor, 0), [itens, mesAtualStr]);
-  const total      = itens.reduce((s, i) => s + i.valor, 0);
-  const totalRecorr= itens.filter(i => i.recorrente).reduce((s, i) => s + i.valor, 0);
-  const semNF      = itens.filter(i => i.status_nf === "sem_nf" || i.status_nf === "pendente").length;
-
-  const allCats = [...CATEGORIAS_PRODUCAO, ...CATEGORIAS_EMPRESA, ...CATEGORIAS_CUSTO];
+  const totalMes    = useMemo(() => itens.filter(i => i.data_lancamento.startsWith(mesAtualStr)).reduce((s, i) => s + i.valor, 0), [itens, mesAtualStr]);
+  const total       = itens.reduce((s, i) => s + i.valor, 0);
+  const totalRecorr = itens.filter(i => i.recorrente).reduce((s, i) => s + i.valor, 0);
+  const semNF       = itens.filter(i => i.status_nf === "sem_nf" || i.status_nf === "pendente").length;
+  const allCats     = [...CATEGORIAS_PRODUCAO, ...CATEGORIAS_EMPRESA, ...CATEGORIAS_CUSTO];
 
   const itensFiltrados = useMemo(() => itens.filter(i => {
     const matchSearch = !search.trim() ||
@@ -1365,81 +1210,75 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
     return matchSearch && matchNF && matchRecorr;
   }), [itens, search, filtroNF, showRecorr]);
 
-  const nfMeta: Record<LancamentoFinanceiro["status_nf"], { bg: string; color: string; border: string; label: string }> = {
-    sem_nf:     { bg: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", border: "hsl(var(--border))", label: "Sem NF"       },
-    manual:     { bg: isDark ? "rgba(109,40,217,0.15)" : "#f5f3ff", color: isDark ? "#a78bfa" : "#6d28d9", border: isDark ? "rgba(167,139,250,0.3)" : "#c4b5fd", label: "NF Manual"    },
-    pendente:   { bg: isDark ? "rgba(217,119,6,0.15)"  : "#fffbeb", color: isDark ? "#fbbf24" : "#d97706", border: isDark ? "rgba(251,191,36,0.3)"  : "#fde68a", label: "NF Pendente"  },
-    autorizada: { bg: isDark ? "rgba(21,128,61,0.15)"  : "#f0fdf4", color: isDark ? "#34d399" : "#15803d", border: isDark ? "rgba(52,211,153,0.3)"  : "#86efac", label: "NF Autorizada"},
+  const nfColors: Record<LancamentoFinanceiro["status_nf"], { label: string; cls: string }> = {
+    sem_nf:     { label: "Sem NF",        cls: "bg-muted/50 text-muted-foreground border-border/40" },
+    manual:     { label: "NF Manual",     cls: "bg-violet-500/10 text-violet-600 border-violet-500/20" },
+    pendente:   { label: "NF Pendente",   cls: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+    autorizada: { label: "NF Autorizada", cls: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
   };
 
   return (
     <div className="space-y-4">
-
-      {/* KPI strip */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Este Mês",   value: fmtCurrency(totalMes),   icon: <CalendarDays size={16} />, color: isDark ? "#fb923c" : "#c2410c" },
-          { label: "Total Geral",value: fmtCurrency(total),       icon: <BarChart3 size={16} />,   color: "hsl(var(--muted-foreground))" },
-          { label: "Recorrentes",value: fmtCurrency(totalRecorr), icon: <Repeat2 size={16} />,     color: isDark ? "#a78bfa" : "#6d28d9" },
-          { label: "Sem NF",     value: `${semNF} lançamentos`,   icon: <AlertTriangle size={16} />, color: semNF > 0 ? (isDark ? "#fbbf24" : "#d97706") : (isDark ? "#34d399" : "#15803d") },
-        ].map(k => (
-          <div key={k.label} className="rounded-xl p-3 flex items-center gap-3 bg-card border border-border">
-            <div className="h-8 w-8 rounded-lg bg-card flex items-center justify-center shrink-0 shadow-sm" style={{ color: k.color }}>
-              {k.icon}
+          { label: "Este Mês",    value: fmtCurrency(totalMes),   icon: CalendarDays,   color: "#f97316" },
+          { label: "Total Geral", value: fmtCurrency(total),       icon: BarChart3,      color: "#7c3aed" },
+          { label: "Recorrentes", value: fmtCurrency(totalRecorr), icon: Repeat2,        color: "#0ea5e9" },
+          { label: "Sem NF",      value: String(semNF),            icon: AlertTriangle,  color: semNF > 0 ? "#d97706" : "#10b981" },
+        ].map(k => {
+          const Icon = k.icon;
+          return (
+            <div key={k.label} className="rounded-xl p-3 flex items-center gap-3 bg-card border border-border/50 hover:border-border transition-colors">
+              <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${k.color}15`, color: k.color }}>
+                <Icon size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{k.label}</p>
+                <p className="text-[14px] font-black truncate tabular-nums" style={{ color: k.color }}>{k.value}</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: k.color }}>{k.label}</p>
-              <p className="text-[13px] font-black truncate" style={{ color: k.color }}>{k.value}</p>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         <button type="button" onClick={() => { setEditItem(null); setModalOpen(true); }}
-          className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[12px] font-bold text-white transition-colors"
-          style={{ background: "#7c3aed", boxShadow: "0 2px 8px rgba(124,58,237,0.3)" }}>
+          className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[12px] font-bold text-white transition-all hover:opacity-90 active:scale-95"
+          style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", boxShadow: "0 2px 8px rgba(124,58,237,0.3)" }}>
           <PlusCircle size={14} />Novo lançamento
         </button>
-
         <div className="relative flex-1 min-w-[160px]">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
           <input type="text" placeholder="Buscar descrição ou fornecedor…"
             value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full h-9 pl-8 pr-3 rounded-xl text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-400"
-            style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))" }} />
+            className="w-full h-9 pl-8 pr-3 rounded-xl text-[12px] bg-muted/30 border border-border focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
         </div>
-
         <select value={filtroNF} onChange={e => setFiltroNF(e.target.value as typeof filtroNF)}
-          className="h-9 rounded-xl px-3 text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-violet-400 h-9 rounded-xl px-3 text-[12px] font-medium bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-400">
+          className="h-9 rounded-xl px-3 text-[12px] font-medium bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-500/30">
           <option value="todos">Todas NFs</option>
           <option value="sem_nf">Sem NF</option>
           <option value="manual">NF Manual</option>
           <option value="pendente">NF Pendente</option>
           <option value="autorizada">NF Autorizada</option>
         </select>
-
         <button type="button" onClick={() => setShowRecorr(v => !v)}
-          className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold transition-colors"
-          style={showRecorr
-            ? { background: undefined, color: undefined, border: undefined }
-            : undefined}
-                    className={cn("h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5", filtroStatus !== f.id && "bg-muted/30 text-muted-foreground border-border")}>
+          className={cn("h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold border transition-all",
+            showRecorr
+              ? "bg-violet-500/15 border-violet-500/40 text-violet-600"
+              : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50")}>
           <Repeat2 size={13} />Recorrentes
         </button>
-
         <button type="button" onClick={load} disabled={loading}
-          className="h-9 w-9 flex items-center justify-center rounded-xl transition-colors bg-muted/30 border border-border">
-          <RefreshCw size={13} color="currentColor" className={loading ? "animate-spin" : ""} />
+          className="h-9 w-9 flex items-center justify-center rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors">
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
 
-      {/* Results count */}
       {!loading && itens.length > 0 && (
         <p className="text-[11px] text-muted-foreground/70">
-          {itensFiltrados.length} de {itens.length} lançamentos
-          {search && ` · "${search}"`}
+          {itensFiltrados.length} de {itens.length} lançamentos{search && ` · "${search}"`}
         </p>
       )}
 
@@ -1450,10 +1289,10 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
       ) : itensFiltrados.length === 0 ? (
         <div className="text-center py-14 space-y-3">
           <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted/30">
-            <ShoppingCart size={28} color="currentColor" />
+            <ShoppingCart size={28} className="text-muted-foreground/40" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground/90">
+            <p className="text-sm font-semibold">
               {itens.length === 0 ? "Nenhum lançamento registrado" : "Nenhum resultado para o filtro"}
             </p>
             <p className="text-[12px] text-muted-foreground/70 mt-0.5">
@@ -1464,86 +1303,59 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {itensFiltrados.map(item => {
-            const CatIcon = allCats.find(cat => cat.valor === item.categoria)?.icon ?? Package;
-            const catLabel = allCats.find(cat => cat.valor === item.categoria)?.label ?? item.categoria;
-            const nf = nfMeta[item.status_nf];
-            const isMesAtual = item.data_lancamento.startsWith(mesAtualStr);
+            const CatIcon  = allCats.find(c => c.valor === item.categoria)?.icon ?? Package;
+            const catLabel = allCats.find(c => c.valor === item.categoria)?.label ?? item.categoria;
+            const nf       = nfColors[item.status_nf];
+            const isMes    = item.data_lancamento.startsWith(mesAtualStr);
             return (
-              <div key={item.id} className="rounded-xl overflow-hidden flex flex-col transition-shadow hover:shadow-md bg-card border border-border rounded-xl overflow-hidden flex flex-col transition-shadow hover:shadow-md">
-
-                {/* Topo colorido: mês atual = laranja, antigo = cinza */}
-                <div style={{ height: 3, background: isMesAtual ? "#f97316" : "hsl(var(--border))" }} />
-
-                <div className="p-3 flex-1 space-y-2">
-                  {/* Ícone + valor */}
+              <div key={item.id} className="rounded-xl overflow-hidden flex flex-col bg-card border border-border/50 hover:border-border hover:shadow-md transition-all">
+                <div style={{ height: 3, background: isMes ? "#f97316" : "hsl(var(--border))" }} />
+                <div className="p-3 flex-1 space-y-2.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 h-8 w-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 dark:bg-violet-900/30">
-                        <CatIcon size={15} color="#7c3aed" />
+                      <div className="h-8 w-8 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                        <CatIcon size={15} className="text-violet-600" />
                       </div>
                       <div className="min-w-0">
                         <p className="text-[12px] font-bold text-foreground truncate">{item.descricao}</p>
                         <p className="text-[10px] text-muted-foreground/70">{catLabel}</p>
                       </div>
                     </div>
-                    <p className="text-[14px] font-black shrink-0" className="text-red-600 dark:text-red-400 font-mono">
+                    <p className="text-[14px] font-black shrink-0 text-red-600 dark:text-red-400 font-mono tabular-nums">
                       {fmtCurrency(item.valor)}
                     </p>
                   </div>
-
-                  {/* Metadados */}
                   <div className="flex flex-wrap gap-1.5">
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg"
-                      style={{ background: nf.bg, color: nf.color, border: `1px solid ${nf.border}` }}>
-                      {nf.label}
-                    </span>
+                    <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-lg border", nf.cls)}>{nf.label}</span>
                     {item.recorrente && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1 flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 transition-colors">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1 bg-sky-500/10 text-sky-600 border border-sky-500/20">
                         <Repeat2 size={9} />{item.periodicidade}
                       </span>
                     )}
-                    {isMesAtual && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30 rounded-lg px-1.5 py-0.5">
-                        mês atual
-                      </span>
+                    {isMes && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-600 border border-orange-500/20">mês atual</span>
                     )}
                   </div>
-
-                  {/* Fornecedor + data */}
                   <div className="flex items-center justify-between text-[10px] text-muted-foreground/70">
-                    <span>{item.fornecedor ?? "—"}</span>
-                    <span className="font-mono">
-                      {new Date(item.data_lancamento + "T12:00:00").toLocaleDateString("pt-BR")}
-                    </span>
+                    <span className="truncate">{item.fornecedor ?? "—"}</span>
+                    <span className="font-mono shrink-0 ml-2">{new Date(item.data_lancamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
                   </div>
-
-                  {/* NF info */}
                   {(item.nota_fiscal_manual || item.chave_nfe) && (
-                    <div className="rounded-lg px-2 py-1.5" className="bg-muted/30 border border-border">
-                      {item.nota_fiscal_manual && (
-                        <p className="text-[10px] font-mono text-muted-foreground">NF: {item.nota_fiscal_manual}</p>
-                      )}
-                      {item.chave_nfe && (
-                        <p className="text-[9px] font-mono text-muted-foreground/70 truncate">Chave: {item.chave_nfe.slice(0, 20)}…</p>
-                      )}
+                    <div className="rounded-lg px-2 py-1.5 bg-muted/30 border border-border/40">
+                      {item.nota_fiscal_manual && <p className="text-[10px] font-mono text-muted-foreground">NF: {item.nota_fiscal_manual}</p>}
+                      {item.chave_nfe && <p className="text-[9px] font-mono text-muted-foreground/70 truncate">Chave: {item.chave_nfe.slice(0, 20)}…</p>}
                     </div>
                   )}
-
-                  {/* Obs */}
-                  {item.observacoes && (
-                    <p className="text-[10px] text-muted-foreground italic line-clamp-2">{item.observacoes}</p>
-                  )}
+                  {item.observacoes && <p className="text-[10px] text-muted-foreground italic line-clamp-2">{item.observacoes}</p>}
                 </div>
-
-                {/* Footer de ações */}
                 <div className="flex" style={{ borderTop: "1px solid hsl(var(--border))" }}>
                   <button type="button" onClick={() => { setEditItem(item); setModalOpen(true); }}
-                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-violet-50 text-muted-foreground hover:text-violet-700">
+                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-violet-500/8 hover:text-violet-700 transition-colors">
                     <Edit3 size={11} />Editar
                   </button>
-                  <div style={{ width: 1, background: "hsl(var(--muted))" }} />
+                  <div style={{ width: 1, background: "hsl(var(--border))" }} />
                   <button type="button" onClick={() => setDelItem(item)}
-                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-colors hover:bg-red-50 text-muted-foreground/70 hover:text-red-600">
+                    className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground/70 hover:bg-red-500/8 hover:text-red-600 transition-colors">
                     <Trash2 size={11} />Excluir
                   </button>
                 </div>
@@ -1560,22 +1372,21 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
       />
 
       {delItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-5 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/40 p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-red-100 dark:bg-red-950/40">
-                <Trash2 size={18} color="#dc2626" />
+              <div className="h-10 w-10 rounded-xl bg-red-100 dark:bg-red-950/40 flex items-center justify-center shrink-0">
+                <Trash2 size={18} className="text-red-600" />
               </div>
               <div>
-                <p className="text-[14px] font-bold text-foreground">Excluir lançamento?</p>
+                <p className="text-[14px] font-bold">Excluir lançamento?</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5">{delItem.descricao}</p>
                 <p className="text-[13px] font-bold mt-1 text-red-500">{fmtCurrency(delItem.valor)}</p>
               </div>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => setDelItem(null)} disabled={deleting}
-                className="flex-1 h-9 rounded-xl text-sm font-semibold transition-colors"
-                style={{ border: "1px solid hsl(var(--border))" }} className="text-muted-foreground">
+                className="flex-1 h-9 rounded-xl border border-border/50 text-sm font-semibold text-muted-foreground hover:bg-muted/40 transition-colors">
                 Cancelar
               </button>
               <button type="button" onClick={handleDelete} disabled={deleting}
@@ -1592,7 +1403,137 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
   );
 }
 
-// ─── Painel Bancos & Integração ────────────────────────────────────────────
+// ─── PainelDashboard ─────────────────────────────────────────────────────────
+
+function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamentos: LancamentoFinanceiro[] }) {
+  const mesAtual = new Date().toISOString().slice(0, 7);
+
+  const vendas = pedidos.filter(p => p.status === "faturado" || p.status === "enviado");
+  const totalReceitaMes = vendas
+    .filter(p => (p.nf_criada_em ?? p.created_at).startsWith(mesAtual))
+    .reduce((s, p) => s + p.itens.reduce((si, i) => si + i.quantidade * (i.valor_unitario ?? 0), 0) + p.frete, 0);
+  const totalCustoMes = lancamentos
+    .filter(l => l.data_lancamento.startsWith(mesAtual))
+    .reduce((s, l) => s + l.valor, 0);
+  const totalCusto = lancamentos.reduce((s, l) => s + l.valor, 0);
+  const lucroMes   = totalReceitaMes - totalCustoMes;
+  const pendentesNF = pedidos.filter(p => p.status === "pronto").length;
+
+  const custoPorTipo = [
+    { label: "Produção",    valor: lancamentos.filter(l => l.tipo === "compra_producao").reduce((s, l) => s + l.valor, 0),    color: "#7c3aed" },
+    { label: "Empresa",     valor: lancamentos.filter(l => l.tipo === "compra_empresa").reduce((s, l) => s + l.valor, 0),     color: "#0ea5e9" },
+    { label: "Operacional", valor: lancamentos.filter(l => l.tipo === "custo_operacional").reduce((s, l) => s + l.valor, 0),  color: "#f97316" },
+  ];
+
+  const topFornecedores = Object.entries(
+    lancamentos.reduce((acc, l) => {
+      if (!l.fornecedor) return acc;
+      acc[l.fornecedor] = (acc[l.fornecedor] ?? 0) + l.valor;
+      return acc;
+    }, {} as Record<string, number>)
+  ).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const recorrentes = lancamentos.filter(l => l.recorrente);
+
+  return (
+    <div className="space-y-5">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: "Receita do Mês",   value: fmtCurrency(totalReceitaMes), sub: `${vendas.filter(p => (p.nf_criada_em ?? p.created_at).startsWith(mesAtual)).length} vendas`, icon: TrendingUp, color: "#10b981" },
+          { label: "Custos do Mês",    value: fmtCurrency(totalCustoMes),   sub: `${lancamentos.filter(l => l.data_lancamento.startsWith(mesAtual)).length} lançamentos`, icon: TrendingDown, color: "#ef4444" },
+          { label: "Resultado do Mês", value: fmtCurrency(lucroMes),        sub: lucroMes >= 0 ? "Lucro" : "Prejuízo", icon: BarChart2, color: lucroMes >= 0 ? "#7c3aed" : "#f97316" },
+          { label: "NFs Pendentes",    value: String(pendentesNF),           sub: "pedidos prontos", icon: FileText, color: "#0ea5e9" },
+        ].map(k => {
+          const Icon = k.icon;
+          return (
+            <div key={k.label} className="rounded-2xl p-4 flex flex-col gap-3 bg-card border border-border/50"
+              style={{ boxShadow: "0 1px 3px hsl(var(--border)/0.3)" }}>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{k.label}</p>
+                <div className="h-8 w-8 rounded-xl flex items-center justify-center" style={{ background: `${k.color}15`, color: k.color }}>
+                  <Icon size={16} />
+                </div>
+              </div>
+              <div>
+                <p className="text-2xl font-black tabular-nums" style={{ color: k.color }}>{k.value}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{k.sub}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Distribuição de custos + Fornecedores */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="rounded-2xl bg-card border border-border/50 p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <PieChart size={15} className="text-violet-500" />
+            <p className="text-sm font-bold">Distribuição de Custos</p>
+          </div>
+          {custoPorTipo.map(c => {
+            const pct = totalCusto > 0 ? (c.valor / totalCusto) * 100 : 0;
+            return (
+              <div key={c.label} className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold" style={{ color: c.color }}>{c.label}</span>
+                  <span className="font-mono font-bold">{fmtCurrency(c.valor)}</span>
+                </div>
+                <div className="h-2 rounded-full bg-muted/40 overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: c.color }} />
+                </div>
+                <p className="text-[10px] text-muted-foreground">{pct.toFixed(1)}% do total</p>
+              </div>
+            );
+          })}
+          <div className="pt-2 border-t border-border/40 flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-muted-foreground">Total custos</span>
+            <span className="text-[14px] font-black text-red-600 dark:text-red-400 font-mono">{fmtCurrency(totalCusto)}</span>
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-card border border-border/50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Layers size={15} className="text-violet-500" />
+            <p className="text-sm font-bold">Maiores Fornecedores</p>
+          </div>
+          {topFornecedores.length === 0 ? (
+            <p className="text-[12px] text-muted-foreground py-4 text-center">Nenhum fornecedor registrado ainda</p>
+          ) : (
+            topFornecedores.map(([nome, valor], idx) => (
+              <div key={nome} className="flex items-center gap-3">
+                <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                  <span className="text-[10px] font-black text-violet-600">{idx + 1}</span>
+                </div>
+                <p className="text-[12px] font-semibold truncate flex-1">{nome}</p>
+                <p className="text-[12px] font-bold font-mono shrink-0">{fmtCurrency(valor)}</p>
+              </div>
+            ))
+          )}
+
+          {recorrentes.length > 0 && (
+            <div className="pt-3 border-t border-border/40 space-y-2">
+              <p className="text-[11px] font-bold flex items-center gap-1.5">
+                <Repeat2 size={12} className="text-sky-500" />Custos Recorrentes ({recorrentes.length})
+              </p>
+              {recorrentes.slice(0, 3).map(l => (
+                <div key={l.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-sky-500/5 border border-sky-500/15">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold truncate">{l.descricao}</p>
+                    <p className="text-[10px] text-muted-foreground capitalize">{l.periodicidade}</p>
+                  </div>
+                  <p className="text-[12px] font-bold font-mono text-red-500 shrink-0">{fmtCurrency(l.valor)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PainelBancos ────────────────────────────────────────────────────────────
 
 function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; onToggleModoTeste: () => void }) {
   const [contas,    setContas]    = useState<ContaBancaria[]>([]);
@@ -1670,19 +1611,32 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
     } catch { toast.error("Falha ao conectar com o webhook."); }
   }
 
+  const saldoTotal = contas.reduce((s, c) => s + c.saldo_atual, 0);
+
   return (
     <div className="space-y-4">
+      {contas.length > 0 && (
+        <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-500/5 to-violet-500/10 p-4 flex items-center gap-4">
+          <div className="h-12 w-12 rounded-2xl bg-violet-500/15 flex items-center justify-center shrink-0">
+            <Wallet size={24} className="text-violet-600" />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Saldo Total em Caixa</p>
+            <p className="text-2xl font-black text-violet-600 font-mono tabular-nums">{fmtCurrency(saldoTotal)}</p>
+            <p className="text-[11px] text-muted-foreground">{contas.length} conta{contas.length > 1 ? "s" : ""} cadastrada{contas.length > 1 ? "s" : ""}</p>
+          </div>
+        </div>
+      )}
 
-      {/* Toggle Modo Teste */}
-      <div className={cn("rounded-xl border p-4 flex items-start gap-3",
+      <div className={cn("rounded-2xl border p-4 flex items-start gap-3",
         modoTeste ? "border-orange-500/30 bg-orange-500/5" : "border-green-500/30 bg-green-500/5")}>
-        <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0",
+        <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
           modoTeste ? "bg-orange-500/10" : "bg-green-500/10")}>
           <TestTube2 className={cn("h-5 w-5", modoTeste ? "text-orange-500" : "text-green-600")} />
         </div>
         <div className="flex-1">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">{modoTeste ? "Modo Homologação (Teste)" : "Modo Produção"}</p>
+            <p className="text-sm font-bold">{modoTeste ? "Modo Homologação (Teste)" : "Modo Produção"}</p>
             <button type="button" onClick={onToggleModoTeste}
               className={cn("h-5 w-10 rounded-full transition-colors relative shrink-0",
                 modoTeste ? "bg-orange-500" : "bg-green-500")}>
@@ -1692,96 +1646,86 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">
             {modoTeste
-              ? "Notas simuladas — sem valor fiscal. Ideal para testes e desenvolvimento."
-              : "Notas com valor fiscal real, transmitidas ao SEFAZ. Revise todas as configurações antes."}
+              ? "Notas simuladas — sem valor fiscal. Ideal para testes."
+              : "Notas com valor fiscal real, transmitidas ao SEFAZ."}
           </p>
-          {!modoTeste && (
-            <p className="text-[10px] text-green-600 font-semibold mt-1 flex items-center gap-1">
-              <CheckSquare className="h-3 w-3" />Configure SEFAZ_TP_AMB=1 nos secrets da Edge Function para produção.
-            </p>
-          )}
         </div>
       </div>
 
-      {/* Configuração SEFAZ */}
-      <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-2">
-        <div className="flex items-center gap-2">
+      <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-2">
+        <div className="flex items-center gap-2 mb-2">
           <Send className="h-4 w-4 text-violet-500" />
-          <p className="text-sm font-semibold">Configuração SEFAZ</p>
+          <p className="text-sm font-bold">Configuração SEFAZ</p>
         </div>
-        <div className="space-y-1 text-[11px] text-muted-foreground">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
           {[
             ["Edge Function", "sefaz-emitir (Supabase)"],
-            ["Ambiente",      "SEFAZ_TP_AMB=2 (homologação) ou 1 (produção)"],
+            ["Ambiente",      "SEFAZ_TP_AMB=2 (homolog) / 1 (produção)"],
             ["Certificado",   "SEFAZ_CERT_PFX (base64 do A1)"],
             ["CNPJ Emitente", "SEFAZ_CNPJ"],
-            ["Numeração",     "Sequencial automático via get_next_nf_number()"],
+            ["Numeração NF",  "Automática via get_next_nf_number()"],
+            ["Envio XML",     "Automático após autorização"],
           ].map(([k, v]) => (
-            <p key={k}>• <strong>{k}:</strong> <code className="text-violet-500">{v}</code></p>
+            <div key={k} className="flex items-start gap-1.5 py-0.5 text-muted-foreground">
+              <span className="shrink-0">•</span>
+              <span><strong className="text-foreground">{k}:</strong> <code className="text-violet-500 text-[10px]">{v}</code></span>
+            </div>
           ))}
         </div>
         <button type="button"
           onClick={async () => {
             toast.info("Testando conexão com SEFAZ…");
             await new Promise(r => setTimeout(r, 1200));
-            toast.success("[TESTE] Conexão com SEFAZ simulada com sucesso.");
+            toast.success("[TESTE] Conexão simulada com sucesso.");
           }}
-          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/30 text-violet-600 text-[11px] font-medium hover:bg-violet-500/10 transition-colors mt-1">
+          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/30 text-violet-600 text-[11px] font-medium hover:bg-violet-500/10 transition-colors mt-2">
           <TestTube2 className="h-3 w-3" />Testar Conexão SEFAZ
         </button>
       </div>
 
-      {/* Contas Bancárias */}
-      <div className="space-y-2">
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-[12px] font-semibold flex items-center gap-1.5">
-            <Wallet className="h-3.5 w-3.5 text-violet-500" />Contas Bancárias
+          <p className="text-[13px] font-bold flex items-center gap-1.5">
+            <Landmark className="h-4 w-4 text-violet-500" />Contas Bancárias
           </p>
           <button type="button" onClick={() => abrirModal()}
-            className="h-7 px-3 flex items-center gap-1 rounded-lg bg-violet-600 text-white text-[10px] font-semibold hover:bg-violet-500 transition-colors">
-            <PlusCircle className="h-3 w-3" />Nova conta
+            className="h-8 px-3 flex items-center gap-1 rounded-xl text-[11px] font-bold text-white hover:opacity-90 transition-all"
+            style={{ background: "#7c3aed" }}>
+            <PlusCircle className="h-3.5 w-3.5" />Nova conta
           </button>
         </div>
-
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full" />
-          </div>
+          <div className="flex items-center justify-center py-8"><div className="animate-spin h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full" /></div>
         ) : contas.length === 0 ? (
           <div className="text-center py-8 space-y-2">
-            <Landmark className="h-8 w-8 text-muted-foreground/30 mx-auto" />
+            <Landmark className="h-10 w-10 text-muted-foreground/20 mx-auto" />
             <p className="text-sm text-muted-foreground">Nenhuma conta cadastrada</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {contas.map(c => (
-              <div key={c.id} className="rounded-xl border border-border/30 bg-card p-3 space-y-2">
+              <div key={c.id} className="rounded-xl border border-border/50 bg-card p-4 space-y-3 hover:border-border hover:shadow-sm transition-all">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-[13px] font-semibold">{c.banco}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono">
-                      Ag {c.agencia} · {c.conta} · {c.tipo === "corrente" ? "C/C" : c.tipo === "poupanca" ? "Poupança" : "Pgtos"}
-                    </p>
+                    <p className="text-[14px] font-bold">{c.banco}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">Ag {c.agencia} · {c.conta}</p>
+                    <p className="text-[10px] text-muted-foreground capitalize">{c.tipo === "corrente" ? "Conta Corrente" : c.tipo === "poupanca" ? "Poupança" : "Pagamentos"}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-[13px] font-bold">{fmtCurrency(c.saldo_atual)}</p>
-                    <div className="flex items-center gap-1 mt-0.5 justify-end">
-                      {c.integracao_ativa && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">Integrado</span>
-                      )}
-                      {c.envio_automatico_nf && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 border border-violet-500/20">NF Auto</span>
-                      )}
+                    <p className="text-[16px] font-black font-mono tabular-nums">{fmtCurrency(c.saldo_atual)}</p>
+                    <div className="flex items-center gap-1 mt-1 justify-end">
+                      {c.integracao_ativa && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">Integrado</span>}
+                      {c.envio_automatico_nf && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 border border-violet-500/20">NF Auto</span>}
                     </div>
                   </div>
                 </div>
                 {c.webhook_url && (
-                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/20 rounded-lg px-2 py-1">
                     <Link className="h-2.5 w-2.5 shrink-0" />
                     <span className="truncate font-mono">{c.webhook_url}</span>
                   </div>
                 )}
-                <div className="flex gap-1">
+                <div className="flex gap-1.5">
                   <button type="button" onClick={() => abrirModal(c)}
                     className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-[10px] text-muted-foreground transition-colors">
                     <Edit3 className="h-2.5 w-2.5" />Editar
@@ -1797,10 +1741,9 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
         )}
       </div>
 
-      {/* Modal Conta */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
             <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 flex items-center justify-between">
               <p className="text-sm font-semibold flex items-center gap-2">
                 <Landmark className="h-4 w-4 text-violet-500" />{editConta ? "Editar" : "Nova"} Conta Bancária
@@ -1894,7 +1837,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
   );
 }
 
-// ─── Histórico NF Modal ────────────────────────────────────────────────────
+// ─── HistoricoModal ──────────────────────────────────────────────────────────
 
 function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -1915,7 +1858,6 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
       .or("status.eq.faturado,status.eq.enviado")
       .order("nf_criada_em", { ascending: false })
       .limit(50);
-
     if (!error && data) {
       setPedidos((data as Record<string, unknown>[]).map(p => {
         const cli = p.clientes as { nome: string; documento?: string };
@@ -1947,34 +1889,30 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
   }, []);
 
   useEffect(() => { if (open) load(); else setPedidos([]); }, [open, load]);
-
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="relative px-5 pt-5 pb-3 shrink-0 border-b border-border/20">
-          <div className="absolute inset-0 bg-gradient-to-b from-violet-500/5 to-transparent" />
-          <div className="relative flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold flex items-center gap-2">
-                <History className="h-4 w-4 text-violet-500" />Histórico SEFAZ
-              </p>
-              <p className="text-[12px] text-muted-foreground mt-0.5">Últimas {pedidos.length} notas</p>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button type="button" onClick={load} disabled={loading}
-                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
-                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-              </button>
-              <button type="button" onClick={onClose}
-                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="px-5 pt-5 pb-3 shrink-0 border-b border-border/20 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-bold flex items-center gap-2">
+              <History className="h-4 w-4 text-violet-500" />Histórico de Notas Fiscais
+            </p>
+            <p className="text-[12px] text-muted-foreground mt-0.5">Últimas {pedidos.length} notas emitidas</p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={load} disabled={loading}
+              className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
+              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+            </button>
+            <button type="button" onClick={onClose}
+              className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
-        <div className="px-3 pb-4 pt-2 overflow-y-auto flex-1 space-y-1">
+        <div className="px-3 pb-4 pt-2 overflow-y-auto flex-1 space-y-1.5">
           {loading
             ? <div className="flex items-center justify-center py-10"><div className="animate-spin h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full" /></div>
             : pedidos.length === 0
@@ -2007,9 +1945,9 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
-// ─── Página Principal ──────────────────────────────────────────────────────
+// ─── Página Principal ────────────────────────────────────────────────────────
 
-type FinTab = "nfe" | "compras_producao" | "compras_empresa" | "custos" | "bancos";
+type FinTab = "dashboard" | "nfe" | "compras_producao" | "compras_empresa" | "custos" | "bancos";
 
 export default function Financeiro() {
   const navigate = useNavigate();
@@ -2020,7 +1958,7 @@ export default function Financeiro() {
   const [filtroStatus,  setFiltroStatus]  = useState("pronto");
   const [sefazPedido,   setSefazPedido]   = useState<Pedido | null>(null);
   const [historicoOpen, setHistoricoOpen] = useState(false);
-  const [activeTab,     setActiveTab]     = useState<FinTab>("nfe");
+  const [activeTab,     setActiveTab]     = useState<FinTab>("dashboard");
   const [lancamentos,   setLancamentos]   = useState<LancamentoFinanceiro[]>([]);
   const [searchNF,      setSearchNF]      = useState("");
 
@@ -2042,10 +1980,7 @@ export default function Financeiro() {
     return t === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : t === "dark";
   });
 
-  // Aplica o tema salvo ao montar a página
-  useEffect(() => {
-    applyTheme(getStoredTheme());
-  }, []);
+  useEffect(() => { applyTheme(getStoredTheme()); }, []);
 
   const toggleTheme = useCallback(() => {
     setIsDark(v => { applyTheme(!v ? "dark" : "light"); return !v; });
@@ -2059,7 +1994,6 @@ export default function Financeiro() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setLoading(true);
-
     const { data, error } = await supabase
       .from("pedidos_comerciais")
       .select(`
@@ -2100,7 +2034,6 @@ export default function Financeiro() {
           itens: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
             id: i.id as string, stock_item_id: i.stock_item_id as string,
             lote: i.lote as string, quantidade: i.quantidade as number,
-            desconto_pct: (i.desconto_pct as number) ?? 0,
             device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
             device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
           })),
@@ -2121,40 +2054,24 @@ export default function Financeiro() {
 
   useEffect(() => { loadPedidos(); loadLancamentos(); }, [loadPedidos, loadLancamentos]);
 
-  // KPIs calculados
+  const prontos   = pedidos.filter(p => p.status === "pronto").length;
+  const faturados = pedidos.filter(p => p.status === "faturado").length;
+  const enviados  = pedidos.filter(p => p.status === "enviado").length;
+
   const filtrados = filtroStatus === "todos" ? pedidos : pedidos.filter(p => p.status === filtroStatus);
   const filtradosSearch = searchNF.trim()
     ? filtrados.filter(p =>
         p.cliente_nome.toLowerCase().includes(searchNF.toLowerCase()) ||
         (p.nota_fiscal ?? "").toLowerCase().includes(searchNF.toLowerCase()) ||
-        (p.vendedora_nome ?? "").toLowerCase().includes(searchNF.toLowerCase())
-      )
+        (p.vendedora_nome ?? "").toLowerCase().includes(searchNF.toLowerCase()))
     : filtrados;
-  const prontos   = pedidos.filter(p => p.status === "pronto").length;
-  const faturados = pedidos.filter(p => p.status === "faturado").length;
-  const enviados  = pedidos.filter(p => p.status === "enviado").length;
 
-  // Totais financeiros
-  const totalReceita = useMemo(() =>
-    pedidos.filter(p => p.status === "faturado" || p.status === "enviado")
-      .reduce((s, p) => s + p.itens.reduce((si, i) => si + i.quantidade, 0), 0),
-    [pedidos]
-  );
-  const totalCustos = useMemo(() =>
-    lancamentos.reduce((s, l) => s + l.valor, 0),
-    [lancamentos]
-  );
-  const receitaEstimada = useMemo(() =>
-    pedidos.filter(p => p.status === "faturado" || p.status === "enviado").length,
-    [pedidos]
-  );
-  const mesAtual = new Date().toISOString().slice(0, 7);
+  const mesAtual  = new Date().toISOString().slice(0, 7);
   const custosMes = useMemo(() =>
     lancamentos.filter(l => l.data_lancamento.startsWith(mesAtual)).reduce((s, l) => s + l.valor, 0),
     [lancamentos, mesAtual]
   );
 
-  // Loading skeleton — evita tela em branco na primeira carga
   if (loading && pedidos.length === 0) {
     return (
       <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
@@ -2180,76 +2097,72 @@ export default function Financeiro() {
   }
 
   const TABS: { id: FinTab; label: string; icon: typeof Receipt; badge?: number }[] = [
-    { id: "nfe",              label: "NF-e / SEFAZ",    icon: FileCheck2, badge: prontos },
-    { id: "compras_producao", label: "Compras Produção", icon: Factory      },
-    { id: "compras_empresa",  label: "Compras Empresa",  icon: Building2    },
-    { id: "custos",           label: "Custos",           icon: Zap          },
-    { id: "bancos",           label: "Bancos",           icon: Landmark     },
+    { id: "dashboard",        label: "Dashboard",        icon: BarChart2   },
+    { id: "nfe",              label: "NF-e / SEFAZ",     icon: FileCheck2, badge: prontos },
+    { id: "compras_producao", label: "Compras Produção",  icon: Factory     },
+    { id: "compras_empresa",  label: "Compras Empresa",   icon: Building2   },
+    { id: "custos",           label: "Custos",            icon: Zap         },
+    { id: "bancos",           label: "Bancos",            icon: Landmark    },
   ];
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 bg-background border-b"
-        style={{ borderColor: "hsl(var(--border))", boxShadow: "0 1px 0 hsl(var(--border) / 0.6)" }}>
+      <header className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/60"
+        style={{ boxShadow: "0 1px 0 hsl(var(--border)/0.5)" }}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => navigate("/")}
-              className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors"
-              style={{ border: "1px solid hsl(var(--border))" }}>
-              <ArrowLeft size={15} color="currentColor" />
+              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border/50 hover:bg-muted/40 transition-colors">
+              <ArrowLeft size={15} />
             </button>
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg flex items-center justify-center" className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 bg-violet-100 dark:bg-violet-900/30">
-                <Receipt size={15} color="#7c3aed" />
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-xl flex items-center justify-center bg-violet-500/15">
+                <Receipt size={16} className="text-violet-600" />
               </div>
               <div>
                 <h1 className="text-[13px] font-bold text-foreground leading-tight">Financeiro</h1>
-                <p className="text-[10px] text-muted-foreground/70 leading-tight">Sistema de gestão fiscal</p>
+                <p className="text-[10px] text-muted-foreground/70 leading-tight">Gestão fiscal · Zomini</p>
               </div>
               <TestBadge modoTeste={modoTeste} />
             </div>
             {prontos > 0 && (
-              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-500/30 rounded-full px-2 py-0.5">
-                {prontos} aguardando NF
+              <span className="hidden sm:flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                <Receipt size={10} />{prontos} aguardando NF
               </span>
             )}
           </div>
           <div className="flex items-center gap-1">
             <button type="button" onClick={toggleTheme}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors">
-              {isDark
-                ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-                : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>}
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground">
+              {isDark ? <Sun size={15} /> : <Moon size={15} />}
             </button>
             <button type="button" onClick={() => setHistoricoOpen(true)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors"
-              title="Histórico SEFAZ">
-              <History size={15} color="currentColor" />
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground"
+              title="Histórico de NFs">
+              <History size={15} />
             </button>
             <button type="button" onClick={() => { loadPedidos(); loadLancamentos(); }}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors"
-              title="Atualizar dados">
-              <RefreshCw size={15} color="currentColor" className={loading ? "animate-spin" : ""} />
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground"
+              title="Atualizar">
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
             </button>
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div className="max-w-7xl mx-auto px-4 pb-0">
-          <div className="flex items-center gap-0 overflow-x-auto border-t" style={{ scrollbarWidth: "none", borderColor: "hsl(var(--border))" }}>
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center gap-0 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
             {TABS.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-                  className="flex items-center gap-1.5 h-10 px-4 text-[11px] font-semibold whitespace-nowrap transition-all shrink-0 relative"
+                  className="flex items-center gap-1.5 h-10 px-3 sm:px-4 text-[11px] font-semibold whitespace-nowrap transition-all shrink-0 border-b-2"
                   style={{
                     color: isActive ? "#7c3aed" : "hsl(var(--muted-foreground))",
-                    borderBottom: isActive ? "2px solid #7c3aed" : "2px solid transparent",
-                    marginBottom: "-1px",
+                    borderBottomColor: isActive ? "#7c3aed" : "transparent",
                   }}>
                   <Icon size={13} />
-                  {tab.label}
+                  <span className="hidden sm:inline">{tab.label}</span>
                   {tab.badge && tab.badge > 0 ? (
                     <span className="min-w-[16px] h-4 rounded-full text-[9px] font-bold px-1 flex items-center justify-center"
                       style={isActive
@@ -2267,51 +2180,52 @@ export default function Financeiro() {
 
       <main className="max-w-7xl mx-auto px-4 py-5 space-y-5">
 
-        {/* ─── NF-e / SEFAZ ─────────────────────────────────── */}
+        {activeTab === "dashboard" && (
+          <PainelDashboard pedidos={pedidos} lancamentos={lancamentos} />
+        )}
+
         {activeTab === "nfe" && (
           <>
-            {/* KPI strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: "Aguardando NF", value: prontos,   icon: <Receipt size={18} />,      bg: "hsl(var(--card))", border: "hsl(var(--border))", color: "#15803d", darkColor: "#34d399" },
-                { label: "Faturados",     value: faturados, icon: <FileCheck2 size={18} />,   bg: "hsl(var(--card))", border: "hsl(var(--border))", color: "#6d28d9", darkColor: "#a78bfa" },
-                { label: "Enviados",      value: enviados,  icon: <Send size={18} />,          bg: "hsl(var(--card))", border: "hsl(var(--border))", color: "#0369a1", darkColor: "#38bdf8" },
-                { label: "Custos/mês",    value: fmtCurrency(custosMes), icon: <TrendingDown size={18} />, bg: "hsl(var(--card))", border: "hsl(var(--border))", color: "#c2410c", darkColor: "#fb923c", isText: true },
-              ].map(kpi => (
-                <div key={kpi.label} className="rounded-2xl p-4 flex items-start gap-3"
-                  style={{ background: kpi.bg, border: `1.5px solid ${kpi.border}` }}>
-                  <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: "hsl(var(--card))", color: isDark ? (kpi as any).darkColor ?? kpi.color : kpi.color, boxShadow: "0 1px 2px hsl(var(--border) / 0.3)" }}>
-                    {kpi.icon}
+                { label: "Aguardando NF", value: prontos,   icon: Receipt,     color: "#10b981" },
+                { label: "Faturados",     value: faturados, icon: FileCheck2,  color: "#7c3aed" },
+                { label: "Enviados",      value: enviados,  icon: Send,        color: "#0ea5e9" },
+                { label: "Custos/mês",    value: fmtCurrency(custosMes), icon: TrendingDown, color: "#f97316" },
+              ].map(kpi => {
+                const Icon = kpi.icon;
+                return (
+                  <div key={kpi.label} className="rounded-2xl p-4 flex items-start gap-3 bg-card border border-border/50"
+                    style={{ boxShadow: "0 1px 3px hsl(var(--border)/0.3)" }}>
+                    <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ background: `${kpi.color}15`, color: kpi.color }}>
+                      <Icon size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{kpi.label}</p>
+                      <p className="text-2xl font-black tabular-nums" style={{ color: kpi.color }}>{kpi.value}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: isDark ? (kpi as any).darkColor ?? kpi.color : kpi.color }}>{kpi.label}</p>
-                    <p className="text-2xl font-black tabular-nums" style={{ color: isDark ? (kpi as any).darkColor ?? kpi.color : kpi.color }}>{kpi.value}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* Filtros + busca */}
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1 flex-wrap">
                 {[
-                  { id: "pronto",  label: "Aguardando NF", count: prontos },
-                  { id: "faturado",label: "Faturados",      count: faturados },
-                  { id: "enviado", label: "Enviados",        count: enviados },
-                  { id: "todos",   label: "Todos",           count: pedidos.length },
+                  { id: "pronto",   label: "Aguardando NF", count: prontos   },
+                  { id: "faturado", label: "Faturados",      count: faturados },
+                  { id: "enviado",  label: "Enviados",        count: enviados  },
+                  { id: "todos",    label: "Todos",           count: pedidos.length },
                 ].map(f => (
                   <button key={f.id} type="button" onClick={() => setFiltroStatus(f.id)}
-                    className="h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5"
-                    style={filtroStatus === f.id
-                      ? { background: "#7c3aed", color: "white", border: "1px solid #7c3aed", borderRadius: "9999px" }
-                      : undefined}
-                    className={cn("h-8 px-3 rounded-xl text-[11px] font-semibold border transition-all flex items-center gap-1.5", filtroStatus !== f.id && "bg-muted/30 text-muted-foreground border-border")}>
+                    className={cn("h-8 px-3 rounded-full text-[11px] font-semibold border transition-all flex items-center gap-1.5",
+                      filtroStatus === f.id
+                        ? "bg-violet-600 text-white border-violet-600"
+                        : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50")}>
                     {f.label}
-                    <span className="text-[10px] px-1 rounded-md"
-                      style={filtroStatus === f.id
-                        ? { background: "rgba(255,255,255,0.2)" }
-                        : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", borderRadius: "9999px" }}>
+                    <span className={cn("text-[10px] px-1.5 rounded-full",
+                      filtroStatus === f.id ? "bg-white/20" : "bg-muted text-muted-foreground")}>
                       {f.count}
                     </span>
                   </button>
@@ -2324,8 +2238,7 @@ export default function Financeiro() {
                   placeholder="Buscar cliente, NF ou vendedora…"
                   value={searchNF}
                   onChange={e => setSearchNF(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 rounded-xl text-[12px] focus:outline-none focus:ring-2"
-                  style={{ background: "hsl(var(--muted))", border: "1px solid hsl(var(--border))", focusRingColor: "#7c3aed" }}
+                  className="w-full h-8 pl-8 pr-3 rounded-xl text-[12px] bg-muted/30 border border-border focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>
             </div>
@@ -2337,14 +2250,14 @@ export default function Financeiro() {
             ) : filtradosSearch.length === 0 ? (
               <div className="text-center py-16 space-y-3">
                 <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted/30">
-                  <Receipt size={28} color="currentColor" />
+                  <Receipt size={28} className="text-muted-foreground/40" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground/90">
+                  <p className="text-sm font-semibold">
                     {filtroStatus === "pronto" ? "Nenhum pedido aguardando nota fiscal" : "Nenhum pedido encontrado"}
                   </p>
                   <p className="text-[12px] text-muted-foreground/70 mt-0.5">
-                    {searchNF ? "Tente outra busca" : "Os pedidos aparecem aqui quando marcados como prontos no estoque"}
+                    {searchNF ? "Tente outra busca" : "Pedidos aparecem aqui quando marcados como prontos no estoque"}
                   </p>
                 </div>
               </div>
@@ -2356,61 +2269,59 @@ export default function Financeiro() {
           </>
         )}
 
-        {/* ─── Compras Produção ─────────────────────────────── */}
         {activeTab === "compras_producao" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+                <Factory size={20} className="text-violet-600" />
+              </div>
               <div>
-                <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <Factory size={18} color="#7c3aed" />Compras — Produção
-                </h2>
-                <p className="text-[12px] text-muted-foreground mt-0.5">
-                  Máquinas, matérias-primas, insumos e materiais de produção
-                </p>
+                <h2 className="text-base font-bold">Compras — Produção</h2>
+                <p className="text-[12px] text-muted-foreground">Máquinas, matérias-primas, insumos e manutenção</p>
               </div>
             </div>
             <PainelLancamentos tipo="compra_producao" modoTeste={modoTeste} />
           </div>
         )}
 
-        {/* ─── Compras Empresa ─────────────────────────────── */}
         {activeTab === "compras_empresa" && (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                <Building2 size={18} color="#7c3aed" />Compras — Empresa
-              </h2>
-              <p className="text-[12px] text-muted-foreground mt-0.5">
-                Computadores, mobiliário, materiais de escritório e ativos permanentes
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-sky-500/10 flex items-center justify-center shrink-0">
+                <Building2 size={20} className="text-sky-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold">Compras — Empresa</h2>
+                <p className="text-[12px] text-muted-foreground">Computadores, mobiliário, materiais de escritório e ativos</p>
+              </div>
             </div>
             <PainelLancamentos tipo="compra_empresa" modoTeste={modoTeste} />
           </div>
         )}
 
-        {/* ─── Custos Operacionais ─────────────────────────── */}
         {activeTab === "custos" && (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                <Zap size={18} color="#7c3aed" />Custos Operacionais
-              </h2>
-              <p className="text-[12px] text-muted-foreground mt-0.5">
-                Energia, aluguel, serviços recorrentes e custos fixos e variáveis
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0">
+                <Zap size={20} className="text-orange-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold">Custos Operacionais</h2>
+                <p className="text-[12px] text-muted-foreground">Energia, aluguel, serviços recorrentes e custos fixos e variáveis</p>
+              </div>
             </div>
-            {/* KPI de custos do mês */}
             <div className="grid grid-cols-3 gap-3">
-              {["compra_producao","compra_empresa","custo_operacional"].map((tipo, i) => {
-                const labels = ["Produção", "Empresa", "Operacional"];
-                const colors = ["#7c3aed","#0369a1","#c2410c"];
-                const bgs    = ["#f5f3ff","#f0f9ff","#fff7ed"];
-                const borders= ["#c4b5fd","#7dd3fc","#fdba74"];
-                const total  = lancamentos.filter(l => l.tipo === tipo).reduce((s, l) => s + l.valor, 0);
+              {[
+                { tipo: "compra_producao",   label: "Produção",    color: "#7c3aed" },
+                { tipo: "compra_empresa",    label: "Empresa",     color: "#0ea5e9" },
+                { tipo: "custo_operacional", label: "Operacional", color: "#f97316" },
+              ].map(({ tipo, label, color }) => {
+                const t = lancamentos.filter(l => l.tipo === tipo).reduce((s, l) => s + l.valor, 0);
                 return (
-                  <div key={tipo} className="rounded-xl p-3 text-center" style={{ background: bgs[i], border: `1px solid ${borders[i]}` }}>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-1 text-muted-foreground" style={{ color: colors[i] }}>{labels[i]}</p>
-                    <p className="text-[15px] font-black" style={{ color: colors[i] }}>{fmtCurrency(total)}</p>
+                  <div key={tipo} className="rounded-xl p-3 text-center"
+                    style={{ background: `${color}0d`, border: `1px solid ${color}30` }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color }}>{label}</p>
+                    <p className="text-[15px] font-black font-mono tabular-nums" style={{ color }}>{fmtCurrency(t)}</p>
                   </div>
                 );
               })}
@@ -2419,16 +2330,16 @@ export default function Financeiro() {
           </div>
         )}
 
-        {/* ─── Bancos & Integração ─────────────────────────── */}
         {activeTab === "bancos" && (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                <Landmark size={18} color="#7c3aed" />Bancos & Integração SEFAZ
-              </h2>
-              <p className="text-[12px] text-muted-foreground mt-0.5">
-                Contas bancárias, webhooks e configuração do ambiente SEFAZ
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+                <Landmark size={20} className="text-emerald-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold">Bancos &amp; Integração SEFAZ</h2>
+                <p className="text-[12px] text-muted-foreground">Contas bancárias, webhooks e ambiente de emissão fiscal</p>
+              </div>
             </div>
             <PainelBancos modoTeste={modoTeste} onToggleModoTeste={toggleModoTeste} />
           </div>
