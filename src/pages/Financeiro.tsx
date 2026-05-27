@@ -1849,7 +1849,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
       .from("pedidos_comerciais")
       .select(`
         id, vendedora_id, vendedora_nome, status, frete, observacoes,
-        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe, desconto_pct,
+        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, desconto_pct,
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes(nome, documento),
         pedido_itens(id, stock_item_id, lote, quantidade,
@@ -1871,7 +1871,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
           nota_fiscal: p.nota_fiscal as string | null,
           protocolo_sefaz: p.protocolo_sefaz as string | null,
           chave_acesso_nfe: p.chave_acesso_nfe as string | null,
-          xml_nfe: p.xml_nfe as string | null,
+          xml_nfe: null,
           desconto_pct: (p.desconto_pct as number) ?? 0,
           created_at: p.created_at as string,
           separado_em: p.separado_em as string | null,
@@ -2002,7 +2002,7 @@ export default function Financeiro() {
       .from("pedidos_comerciais")
       .select(`
         id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
-        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe, desconto_pct,
+        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, desconto_pct,
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes(nome, documento, telefone, email, endereco),
         pedido_itens(
@@ -2042,7 +2042,7 @@ export default function Financeiro() {
           nota_fiscal:    p.nota_fiscal as string | null,
           protocolo_sefaz:  p.protocolo_sefaz as string | null,
           chave_acesso_nfe: p.chave_acesso_nfe as string | null,
-          xml_nfe:          p.xml_nfe as string | null,
+          xml_nfe: null,
           desconto_pct:     (p.desconto_pct as number) ?? 0,
           created_at:   p.created_at as string,
           separado_em:  p.separado_em  as string | null,
