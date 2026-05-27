@@ -1851,19 +1851,19 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
         id, vendedora_id, vendedora_nome, status, frete, observacoes,
         nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe, desconto_pct,
         created_at, separado_em, nf_criada_em, enviado_em,
-        clientes!inner(nome, documento),
+        clientes(nome, documento),
         pedido_itens(id, stock_item_id, lote, quantidade,
-          stock_items!inner(devices!inner(model, reference)))
+          stock_items(devices(model, reference)))
       `)
       .or("status.eq.faturado,status.eq.enviado")
       .order("nf_criada_em", { ascending: false })
       .limit(50);
     if (!error && data) {
       setPedidos((data as Record<string, unknown>[]).map(p => {
-        const cli = p.clientes as { nome: string; documento?: string };
+        const cli = (p.clientes as { nome?: string; documento?: string } | null) ?? {};
         return {
           id: p.id as string,
-          cliente_nome: cli.nome, cliente_documento: cli.documento,
+          cliente_nome: cli.nome ?? "(cliente sem acesso)", cliente_documento: cli.documento,
           vendedora_nome: p.vendedora_nome as string | null,
           vendedora_id:   p.vendedora_id   as string | null,
           status: p.status as string, frete: (p.frete as number) ?? 0,
@@ -1879,8 +1879,8 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
           enviado_em: p.enviado_em as string | null,
           itens: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
             id: i.id as string, stock_item_id: i.stock_item_id as string,
-            lote: i.lote as string, quantidade: i.quantidade as number,
-            device_model: ((i.stock_items as { devices: { model: string } } | null)?.devices?.model),
+            lote: (i.lote as string) ?? "", quantidade: i.quantidade as number,
+            device_model: ((i.stock_items as { devices?: { model?: string } } | null)?.devices?.model),
           })),
         };
       }));
@@ -1994,16 +1994,20 @@ export default function Financeiro() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setLoading(true);
+
+    // Usamos left join (sem !inner) em clientes para não perder pedidos cujos
+    // clientes foram criados por vendedoras (RLS de clientes filtraria com !inner).
+    // pedido_itens e stock_items também sem !inner para não perder pedidos sem itens.
     const { data, error } = await supabase
       .from("pedidos_comerciais")
       .select(`
-        id, vendedora_id, vendedora_nome, status, frete, observacoes,
+        id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
         nota_fiscal, protocolo_sefaz, chave_acesso_nfe, xml_nfe, desconto_pct,
         created_at, separado_em, nf_criada_em, enviado_em,
-        clientes!inner(nome, documento, telefone, email, endereco),
+        clientes(nome, documento, telefone, email, endereco),
         pedido_itens(
           id, stock_item_id, lote, quantidade,
-          stock_items!inner(devices!inner(model, reference))
+          stock_items(devices(model, reference))
         )
       `)
       .or("status.eq.pronto,status.eq.faturado,status.eq.enviado")
@@ -2011,31 +2015,46 @@ export default function Financeiro() {
       .abortSignal(ctrl.signal);
 
     if (ctrl.signal.aborted) return;
-    if (!error && data) {
+
+    if (error) {
+      logger.error("loadPedidos:", error);
+      toast.error(`Erro ao carregar pedidos: ${error.message}`);
+      setLoading(false);
+      return;
+    }
+
+    if (data) {
       setPedidos((data as Record<string, unknown>[]).map(p => {
-        const cli = p.clientes as { nome: string; documento?: string; telefone?: string; email?: string; endereco?: string };
+        // clientes pode ser null se o RLS impediu — usamos fallback seguro
+        const cli = (p.clientes as { nome?: string; documento?: string; telefone?: string; email?: string; endereco?: string } | null) ?? {};
         return {
           id: p.id as string,
-          cliente_nome: cli.nome, cliente_documento: cli.documento,
-          cliente_telefone: cli.telefone, cliente_email: cli.email, cliente_endereco: cli.endereco,
+          cliente_nome:     cli.nome      ?? "(cliente sem acesso)",
+          cliente_documento: cli.documento,
+          cliente_telefone:  cli.telefone,
+          cliente_email:     cli.email,
+          cliente_endereco:  cli.endereco,
           vendedora_nome: p.vendedora_nome as string | null,
           vendedora_id:   p.vendedora_id   as string | null,
-          status: p.status as string, frete: (p.frete as number) ?? 0,
-          observacoes: p.observacoes as string | null,
-          nota_fiscal: p.nota_fiscal as string | null,
-          protocolo_sefaz: p.protocolo_sefaz as string | null,
+          status:         p.status as string,
+          frete:          (p.frete as number) ?? 0,
+          observacoes:    p.observacoes as string | null,
+          nota_fiscal:    p.nota_fiscal as string | null,
+          protocolo_sefaz:  p.protocolo_sefaz as string | null,
           chave_acesso_nfe: p.chave_acesso_nfe as string | null,
-          xml_nfe: p.xml_nfe as string | null,
-          desconto_pct: (p.desconto_pct as number) ?? 0,
-          created_at: p.created_at as string,
-          separado_em: p.separado_em as string | null,
+          xml_nfe:          p.xml_nfe as string | null,
+          desconto_pct:     (p.desconto_pct as number) ?? 0,
+          created_at:   p.created_at as string,
+          separado_em:  p.separado_em  as string | null,
           nf_criada_em: p.nf_criada_em as string | null,
-          enviado_em: p.enviado_em as string | null,
+          enviado_em:   p.enviado_em   as string | null,
           itens: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
-            id: i.id as string, stock_item_id: i.stock_item_id as string,
-            lote: i.lote as string, quantidade: i.quantidade as number,
-            device_model: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.model),
-            device_reference: ((i.stock_items as { devices: { model: string; reference: string } } | null)?.devices?.reference),
+            id:            i.id            as string,
+            stock_item_id: i.stock_item_id as string,
+            lote:          (i.lote as string) ?? "",
+            quantidade:    i.quantidade    as number,
+            device_model:     ((i.stock_items as { devices?: { model?: string; reference?: string } } | null)?.devices?.model),
+            device_reference: ((i.stock_items as { devices?: { model?: string; reference?: string } } | null)?.devices?.reference),
           })),
         };
       }));
