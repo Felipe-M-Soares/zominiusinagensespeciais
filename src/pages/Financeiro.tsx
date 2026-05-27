@@ -26,7 +26,7 @@ import {
   Link, TestTube2, CheckSquare, AlertTriangle, TrendingDown,
   Wallet, CalendarDays, BarChart3, Tag, Building,
   TrendingUp, Download, Search, Copy, Repeat2,
-  BarChart2, PieChart, Layers, Sun, Moon,
+  BarChart2, PieChart, Layers, Sun, Moon, FilePlus2, Plus, Minus,
 } from "lucide-react";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -295,6 +295,592 @@ function TestBadge({ modoTeste }: { modoTeste: boolean }) {
     )}>
       {modoTeste ? "Homologação" : "Produção"}
     </span>
+  );
+}
+
+
+// ─── Interfaces Nota Manual ───────────────────────────────────────────────────
+
+interface ItemNotaManual {
+  id: string;
+  descricao: string;
+  ncm: string;
+  cfop: string;
+  quantidade: number;
+  valorUnitario: string;
+}
+
+interface NotaManualDados {
+  tipo: "nfe" | "nfce";
+  numero: string;
+  serie: string;
+  naturezaOperacao: string;
+  emitente: string;
+  destinatario: string;
+  destDocumento: string;
+  destEmail: string;
+  destEndereco: string;
+  itens: ItemNotaManual[];
+  tipoPagamento: string;
+  valorFrete: string;
+  modFrete: string;
+  informacoesAdicionais: string;
+  dataEmissao: string;
+  // para salvar no financeiro_lancamentos também
+  salvarLancamento: boolean;
+  tipoLancamento: LancamentoFinanceiro["tipo"];
+  categoriaLancamento: CategoriaCompra;
+  fornecedorLancamento: string;
+}
+
+function novoItemNota(): ItemNotaManual {
+  return {
+    id: Math.random().toString(36).slice(2),
+    descricao: "", ncm: "90213990", cfop: "5102",
+    quantidade: 1, valorUnitario: "0.00",
+  };
+}
+
+// ─── NotaManualModal ──────────────────────────────────────────────────────────
+
+function NotaManualModal({
+  open, onClose, modoTeste,
+}: { open: boolean; onClose: () => void; modoTeste: boolean }) {
+  const { user } = useAuth();
+  const [step, setStep] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [loadingNum, setLoadingNum] = useState(false);
+
+  const initDadosManual = (): NotaManualDados => ({
+    tipo: "nfe", numero: "", serie: "1",
+    naturezaOperacao: "VENDA DE MERCADORIA",
+    emitente: "", destinatario: "", destDocumento: "",
+    destEmail: "", destEndereco: "",
+    itens: [novoItemNota()],
+    tipoPagamento: "01", valorFrete: "0.00", modFrete: "9",
+    informacoesAdicionais: "",
+    dataEmissao: new Date().toISOString().slice(0, 10),
+    salvarLancamento: false,
+    tipoLancamento: "compra_producao",
+    categoriaLancamento: "materia_prima",
+    fornecedorLancamento: "",
+  });
+
+  const [dados, setDados] = useState<NotaManualDados>(initDadosManual);
+
+  useEffect(() => {
+    if (!open) return;
+    setStep(1);
+    setLoadingNum(true);
+    supabase.rpc("get_next_nf_number", { p_serie: "1", p_tipo: "nfe" })
+      .then(({ data, error }) => {
+        const num = error ? "" : String(data ?? "").padStart(9, "0");
+        setDados(prev => ({ ...prev, numero: num }));
+        setLoadingNum(false);
+      });
+  }, [open]);
+
+  if (!open) return null;
+
+  function upd<K extends keyof NotaManualDados>(k: K, v: NotaManualDados[K]) {
+    setDados(prev => ({ ...prev, [k]: v }));
+  }
+  function updItem(id: string, k: keyof ItemNotaManual, v: string | number) {
+    setDados(prev => ({
+      ...prev,
+      itens: prev.itens.map(it => it.id === id ? { ...it, [k]: v } : it),
+    }));
+  }
+  function addItem() {
+    setDados(prev => ({ ...prev, itens: [...prev.itens, novoItemNota()] }));
+  }
+  function removeItem(id: string) {
+    if (dados.itens.length <= 1) return;
+    setDados(prev => ({ ...prev, itens: prev.itens.filter(it => it.id !== id) }));
+  }
+
+  const totalItens = dados.itens.reduce((s, it) =>
+    s + it.quantidade * (parseFloat(it.valorUnitario) || 0), 0);
+  const totalGeral  = totalItens + (parseFloat(dados.valorFrete) || 0);
+
+  function canAdvance(): boolean {
+    if (step === 1) return dados.numero.trim().length > 0 && dados.naturezaOperacao.trim().length > 0;
+    if (step === 2) return dados.destinatario.trim().length > 0;
+    if (step === 3) return dados.itens.every(it =>
+      it.descricao.trim().length > 0 &&
+      it.ncm.replace(/\D/g,"").length >= 8 &&
+      it.cfop.replace(/\D/g,"").length >= 4 &&
+      parseFloat(it.valorUnitario) > 0 &&
+      it.quantidade > 0
+    );
+    return true;
+  }
+
+  const STEPS_MANUAL = ["Identificação", "Destinatário", "Itens", "Pagamento", "Revisar"];
+
+  async function handleSalvar() {
+    if (!user) return;
+    setSaving(true);
+    try {
+      // 1. Salvar no financeiro_lancamentos se solicitado
+      if (dados.salvarLancamento) {
+        const { error: lErr } = await supabase.from("financeiro_lancamentos").insert({
+          tipo: dados.tipoLancamento,
+          categoria: dados.categoriaLancamento,
+          descricao: `NF Manual ${dados.tipo.toUpperCase()}-${dados.numero} — ${dados.destinatario}`,
+          fornecedor: dados.fornecedorLancamento || dados.destinatario,
+          valor: totalGeral,
+          data_lancamento: dados.dataEmissao,
+          nota_fiscal_manual: `${dados.tipo.toUpperCase()}-${dados.numero}`,
+          status_nf: "manual",
+          observacoes: dados.informacoesAdicionais || null,
+          recorrente: false,
+          created_by: user.id,
+          modo_teste: modoTeste,
+        });
+        if (lErr) throw lErr;
+      }
+
+      // 2. Log no histórico de NFs manuais (tabela de notificações como log)
+      await supabase.from("notificacoes").insert({
+        user_id: user.id,
+        tipo: "nota_manual",
+        titulo: `Nota Manual ${dados.tipo.toUpperCase()}-${dados.numero}`,
+        mensagem: `Destinatário: ${dados.destinatario} · Total: R$ ${totalGeral.toFixed(2)} · ${modoTeste ? "[TESTE]" : "[PRODUÇÃO]"}`,
+      }).maybeSingle();
+
+      toast.success(
+        `Nota ${dados.tipo.toUpperCase()}-${dados.numero} registrada!${dados.salvarLancamento ? " Lançamento criado." : ""}`,
+        { duration: 5000 }
+      );
+      onClose();
+    } catch (e) {
+      toast.error("Erro ao salvar a nota manual.");
+      logger.error("NotaManualModal:", e);
+    } finally { setSaving(false); }
+  }
+
+  const allCats = [...CATEGORIAS_PRODUCAO, ...CATEGORIAS_EMPRESA, ...CATEGORIAS_CUSTO];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[94vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
+                <FilePlus2 className="h-4 w-4 text-violet-500" />
+              </div>
+              <span className="text-sm font-semibold">Nova Nota Manual</span>
+              <TestBadge modoTeste={modoTeste} />
+            </div>
+            <button type="button" onClick={onClose} disabled={saving}
+              className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground disabled:opacity-40">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>Nota fiscal avulsa — não vinculada a pedido</span>
+            <span className="font-mono font-bold text-violet-500">R$ {totalGeral.toFixed(2)}</span>
+          </div>
+          <StepBar step={step} total={5} labels={STEPS_MANUAL} />
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+
+          {/* STEP 1 — Identificação */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tipo e Identificação</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(["nfe", "nfce"] as const).map(tipo => (
+                  <button key={tipo} type="button" onClick={() => upd("tipo", tipo)}
+                    className={cn("rounded-xl border p-3 text-left transition-all",
+                      dados.tipo === tipo
+                        ? "border-violet-500/50 bg-violet-500/10 ring-1 ring-violet-500/30"
+                        : "border-border/40 bg-muted/15 hover:bg-muted/35")}>
+                    <p className="text-[13px] font-bold">{tipo === "nfe" ? "NF-e" : "NFC-e"}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {tipo === "nfe" ? "Modelo 55 · B2B" : "Modelo 65 · Consumidor"}
+                    </p>
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2 space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    Número *{loadingNum && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+                  </label>
+                  <div className="relative">
+                    <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    <input autoFocus type="text" inputMode="numeric"
+                      value={dados.numero}
+                      onChange={e => upd("numero", e.target.value.replace(/\D/g,"").slice(0,9))}
+                      placeholder="000000001"
+                      className="w-full h-9 rounded-xl border border-border/50 bg-background pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Série</label>
+                  <input type="text" inputMode="numeric"
+                    value={dados.serie}
+                    onChange={e => upd("serie", e.target.value.replace(/\D/g,"").slice(0,3))}
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Natureza da Operação *</label>
+                <input type="text"
+                  value={dados.naturezaOperacao}
+                  onChange={e => upd("naturezaOperacao", e.target.value.slice(0,60).toUpperCase())}
+                  placeholder="VENDA DE MERCADORIA"
+                  className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Data de Emissão</label>
+                  <input type="date" value={dados.dataEmissao}
+                    onChange={e => upd("dataEmissao", e.target.value)}
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Emitente / Empresa</label>
+                  <input type="text" value={dados.emitente}
+                    onChange={e => upd("emitente", e.target.value.slice(0,80))}
+                    placeholder="Nome da empresa emitente"
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  />
+                </div>
+              </div>
+
+              {/* Toggle: salvar como lançamento financeiro */}
+              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-3">
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => upd("salvarLancamento", !dados.salvarLancamento)}
+                    className={cn("h-5 w-9 rounded-full transition-colors relative shrink-0",
+                      dados.salvarLancamento ? "bg-violet-500" : "bg-muted/50")}>
+                    <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-background shadow transition-all",
+                      dados.salvarLancamento ? "left-[calc(100%-18px)]" : "left-0.5")} />
+                  </button>
+                  <div>
+                    <p className="text-[11px] font-semibold">Registrar como lançamento financeiro</p>
+                    <p className="text-[10px] text-muted-foreground">Aparecerá nas abas de compras e custos</p>
+                  </div>
+                </div>
+                {dados.salvarLancamento && (
+                  <div className="space-y-2 pt-1">
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([
+                        { v: "compra_producao",  l: "Produção"    },
+                        { v: "compra_empresa",   l: "Empresa"     },
+                        { v: "custo_operacional",l: "Operacional" },
+                      ] as { v: LancamentoFinanceiro["tipo"]; l: string }[]).map(t => (
+                        <button key={t.v} type="button" onClick={() => upd("tipoLancamento", t.v)}
+                          className={cn("h-7 rounded-lg border text-[10px] font-medium transition-all",
+                            dados.tipoLancamento === t.v
+                              ? "border-violet-500/50 bg-violet-500/10 text-violet-600"
+                              : "border-border/30 bg-muted/10 text-muted-foreground")}>
+                          {t.l}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {allCats.filter(c =>
+                        dados.tipoLancamento === "compra_producao" ? CATEGORIAS_PRODUCAO.some(p => p.valor === c.valor) :
+                        dados.tipoLancamento === "compra_empresa"  ? CATEGORIAS_EMPRESA.some(p => p.valor === c.valor) :
+                        CATEGORIAS_CUSTO.some(p => p.valor === c.valor)
+                      ).map(cat => {
+                        const Icon = cat.icon;
+                        return (
+                          <button key={cat.valor} type="button"
+                            onClick={() => upd("categoriaLancamento", cat.valor)}
+                            className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-left transition-all",
+                              dados.categoriaLancamento === cat.valor
+                                ? "border-violet-500/50 bg-violet-500/10"
+                                : "border-border/20 bg-muted/10 hover:bg-muted/30")}>
+                            <Icon className={cn("h-3 w-3 shrink-0", dados.categoriaLancamento === cat.valor ? "text-violet-500" : "text-muted-foreground")} />
+                            <span className="text-[10px] font-medium leading-tight">{cat.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <input type="text" value={dados.fornecedorLancamento}
+                      onChange={e => upd("fornecedorLancamento", e.target.value.slice(0,80))}
+                      placeholder="Fornecedor (opcional — usa destinatário se vazio)"
+                      className="w-full h-8 rounded-xl border border-border/50 bg-background px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2 — Destinatário */}
+          {step === 2 && (
+            <div className="space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dados do Destinatário</p>
+              {[
+                { key: "destinatario" as const,  label: "Nome / Razão Social *", icon: Building2, ph: "RAZÃO SOCIAL OU NOME",   upper: true  },
+                { key: "destDocumento" as const, label: "CPF / CNPJ",             icon: Hash,     ph: "000.000.000-00",          upper: false },
+                { key: "destEmail" as const,     label: "E-mail",                 icon: Mail,     ph: "cliente@email.com",       upper: false },
+                { key: "destEndereco" as const,  label: "Endereço",               icon: MapPin,   ph: "Rua, nº, bairro, cidade", upper: false },
+              ].map(f => (
+                <div key={f.key} className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    <f.icon className="h-2.5 w-2.5" />{f.label}
+                  </label>
+                  <input type="text"
+                    value={dados[f.key] as string}
+                    onChange={e => upd(f.key, f.upper ? e.target.value.toUpperCase().slice(0,80) : e.target.value.slice(0,80))}
+                    placeholder={f.ph}
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  />
+                  {f.key === "destDocumento" && dados.destDocumento.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground pl-1">{mascararDoc(dados.destDocumento)}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* STEP 3 — Itens */}
+          {step === 3 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Itens da Nota ({dados.itens.length})
+                </p>
+                <button type="button" onClick={addItem}
+                  className="h-7 px-3 flex items-center gap-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 text-[11px] font-semibold transition-colors">
+                  <Plus size={12} />Adicionar item
+                </button>
+              </div>
+              {dados.itens.map((item) => {
+                const vlrOk  = parseFloat(item.valorUnitario) > 0;
+                const ncmOk  = item.ncm.replace(/\D/g,"").length >= 8;
+                const cfopOk = item.cfop.replace(/\D/g,"").length >= 4;
+                const descOk = item.descricao.trim().length > 0;
+                const allOk  = vlrOk && ncmOk && cfopOk && descOk;
+                return (
+                  <div key={item.id}
+                    className={cn("rounded-xl border p-3 space-y-2.5",
+                      allOk ? "border-border/30 bg-muted/10" : "border-amber-500/30 bg-amber-500/4")}>
+                    <div className="flex items-center gap-2">
+                      <Package size={13} className="text-violet-500 shrink-0" />
+                      <input type="text" value={item.descricao}
+                        onChange={e => updItem(item.id, "descricao", e.target.value.slice(0,100))}
+                        placeholder="Descrição do produto / serviço *"
+                        className={cn("flex-1 h-8 rounded-lg border bg-background px-2 text-[12px] focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                          descOk ? "border-border/50" : "border-amber-500/60")}
+                      />
+                      {dados.itens.length > 1 && (
+                        <button type="button" onClick={() => removeItem(item.id)}
+                          className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground/60 hover:text-red-500 transition-colors shrink-0">
+                          <Minus size={12} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { key: "ncm"  as const, label: "NCM (8 díg.) *", ph: "90213990", maxLen: 8, ok: ncmOk  },
+                        { key: "cfop" as const, label: "CFOP (4 díg.) *", ph: "5102",    maxLen: 4, ok: cfopOk },
+                      ].map(f => (
+                        <div key={f.key} className="space-y-1">
+                          <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">{f.label}</label>
+                          <input type="text" inputMode="numeric"
+                            value={item[f.key]}
+                            onChange={e => updItem(item.id, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
+                            placeholder={f.ph}
+                            className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                              f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">Quantidade *</label>
+                        <input type="number" min="1" step="1"
+                          value={item.quantidade}
+                          onChange={e => updItem(item.id, "quantidade", parseInt(e.target.value) || 1)}
+                          className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">Vlr. Unit. (R$) *</label>
+                        <input type="number" min="0" step="0.01"
+                          value={item.valorUnitario}
+                          onChange={e => updItem(item.id, "valorUnitario", e.target.value)}
+                          className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                            vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                        />
+                      </div>
+                    </div>
+                    {vlrOk && item.quantidade > 0 && (
+                      <p className="text-right text-[10px] font-mono font-semibold text-violet-500">
+                        = R$ {(item.quantidade * parseFloat(item.valorUnitario)).toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background/60 px-3 py-2">
+                <span className="text-[11px] text-muted-foreground">Frete (R$)</span>
+                <input type="number" min="0" step="0.01"
+                  value={dados.valorFrete}
+                  onChange={e => upd("valorFrete", e.target.value)}
+                  className="w-24 h-7 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-violet-500/25 bg-violet-500/8 px-3 py-2.5">
+                <span className="text-[13px] font-semibold">Total da Nota</span>
+                <span className="text-[15px] font-bold text-violet-600 font-mono">R$ {totalGeral.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4 — Pagamento */}
+          {step === 4 && (
+            <div className="space-y-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pagamento e Transporte</p>
+              <div className="space-y-2">
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Forma de Pagamento *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {TIPOS_PAGAMENTO.map(tp => {
+                    const Icon = tp.icon;
+                    return (
+                      <button key={tp.valor} type="button" onClick={() => upd("tipoPagamento", tp.valor)}
+                        className={cn("flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all",
+                          dados.tipoPagamento === tp.valor
+                            ? "border-violet-500/50 bg-violet-500/10 ring-1 ring-violet-500/20"
+                            : "border-border/40 bg-muted/15 hover:bg-muted/35")}>
+                        <Icon className={cn("h-3.5 w-3.5 shrink-0", dados.tipoPagamento === tp.valor ? "text-violet-500" : "text-muted-foreground")} />
+                        <span className="text-[11px] font-medium">{tp.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Modalidade do Frete</label>
+                <div className="space-y-1.5">
+                  {MOD_FRETE.map(mf => (
+                    <button key={mf.valor} type="button" onClick={() => upd("modFrete", mf.valor)}
+                      className={cn("w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all",
+                        dados.modFrete === mf.valor
+                          ? "border-violet-500/50 bg-violet-500/10"
+                          : "border-border/30 bg-muted/10 hover:bg-muted/30")}>
+                      <Truck className={cn("h-3 w-3 shrink-0", dados.modFrete === mf.valor ? "text-violet-500" : "text-muted-foreground")} />
+                      <span className="text-[11px]">{mf.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Informações Adicionais</label>
+                <textarea
+                  value={dados.informacoesAdicionais}
+                  onChange={e => upd("informacoesAdicionais", e.target.value.slice(0,500))}
+                  placeholder="Referência, observações, condições..."
+                  rows={3}
+                  className="w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* STEP 5 — Revisar */}
+          {step === 5 && (
+            <div className="space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Revisão</p>
+              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-bold">
+                    {dados.tipo.toUpperCase()} — Série {dados.serie} — Nº {dados.numero.padStart(9,"0")}
+                  </span>
+                  <TestBadge modoTeste={modoTeste} />
+                </div>
+                <p className="text-[10px] text-muted-foreground">{dados.naturezaOperacao}</p>
+                <p className="text-[10px] text-muted-foreground">Data: {new Date(dados.dataEmissao + "T12:00:00").toLocaleDateString("pt-BR")}</p>
+              </div>
+              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-1">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Destinatário</p>
+                <p className="text-[13px] font-semibold">{dados.destinatario}</p>
+                {dados.destDocumento && <p className="text-[10px] text-muted-foreground font-mono">{mascararDoc(dados.destDocumento)}</p>}
+              </div>
+              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Itens ({dados.itens.length})</p>
+                {dados.itens.map(item => (
+                  <div key={item.id} className="flex items-center justify-between text-[11px]">
+                    <span className="truncate flex-1 mr-2">{item.descricao}</span>
+                    <span className="font-mono text-muted-foreground shrink-0">
+                      {item.quantidade}× R$ {parseFloat(item.valorUnitario).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+                <div className="border-t border-border/30 pt-1 flex items-center justify-between">
+                  <span className="text-[13px] font-bold">Total</span>
+                  <span className="text-[15px] font-bold text-violet-600 font-mono">R$ {totalGeral.toFixed(2)}</span>
+                </div>
+              </div>
+              {dados.salvarLancamento && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-500/8 border border-violet-500/20">
+                  <CheckCircle2 size={14} className="text-violet-500 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-muted-foreground">
+                    Será salva como lançamento em <strong className="text-foreground">
+                      {dados.tipoLancamento === "compra_producao" ? "Compras Produção" :
+                       dados.tipoLancamento === "compra_empresa"  ? "Compras Empresa"  : "Custos Operacionais"}
+                    </strong>
+                  </p>
+                </div>
+              )}
+              <div className={cn("flex items-start gap-2 px-3 py-2.5 rounded-xl border",
+                modoTeste ? "border-orange-500/20 bg-orange-500/5" : "border-green-500/20 bg-green-500/5")}>
+                {modoTeste
+                  ? <AlertTriangle size={14} className="text-orange-500 shrink-0 mt-0.5" />
+                  : <CheckSquare  size={14} className="text-green-600 shrink-0 mt-0.5" />}
+                <p className="text-[11px] text-muted-foreground">
+                  {modoTeste
+                    ? "Nota em modo Homologação — sem valor fiscal."
+                    : "Nota em Produção — será registrada com valor fiscal."}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-5 pt-3 border-t border-border/20 shrink-0">
+          <div className="flex items-center gap-2">
+            {step > 1 && (
+              <button type="button" onClick={() => setStep(s => s - 1)} disabled={saving}
+                className="h-10 px-4 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-40">
+                Voltar
+              </button>
+            )}
+            {step < 5 ? (
+              <button type="button" onClick={() => setStep(s => s + 1)} disabled={!canAdvance()}
+                className="flex-1 h-10 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-35 flex items-center justify-center gap-1.5">
+                Próximo <ChevronRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button type="button" onClick={handleSalvar} disabled={saving}
+                className="flex-1 h-10 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
+                {saving
+                  ? <><Loader2 className="h-4 w-4 animate-spin" />Salvando…</>
+                  : <><FilePlus2 className="h-4 w-4" />Registrar Nota Manual</>}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1958,6 +2544,7 @@ export default function Financeiro() {
   const [filtroStatus,  setFiltroStatus]  = useState("pronto");
   const [sefazPedido,   setSefazPedido]   = useState<Pedido | null>(null);
   const [historicoOpen, setHistoricoOpen] = useState(false);
+  const [notaManualOpen, setNotaManualOpen] = useState(false);
   const [activeTab,     setActiveTab]     = useState<FinTab>("dashboard");
   const [lancamentos,   setLancamentos]   = useState<LancamentoFinanceiro[]>([]);
   const [searchNF,      setSearchNF]      = useState("");
@@ -2155,6 +2742,12 @@ export default function Financeiro() {
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground">
               {isDark ? <Sun size={15} /> : <Moon size={15} />}
             </button>
+            <button type="button" onClick={() => setNotaManualOpen(true)}
+              className="h-8 px-3 flex items-center gap-1.5 rounded-lg hover:bg-violet-500/10 transition-colors text-violet-600 border border-violet-500/20 font-semibold text-[11px]"
+              title="Nova Nota Manual">
+              <FilePlus2 size={14} />
+              <span className="hidden sm:inline">Nova Nota</span>
+            </button>
             <button type="button" onClick={() => setHistoricoOpen(true)}
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground"
               title="Histórico de NFs">
@@ -2200,7 +2793,20 @@ export default function Financeiro() {
       <main className="max-w-7xl mx-auto px-4 py-5 space-y-5">
 
         {activeTab === "dashboard" && (
-          <PainelDashboard pedidos={pedidos} lancamentos={lancamentos} />
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold">Visão Geral Financeira</h2>
+                <p className="text-[12px] text-muted-foreground">Resumo consolidado de receitas, custos e resultados</p>
+              </div>
+              <button type="button" onClick={() => setNotaManualOpen(true)}
+                className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[12px] font-bold text-white transition-all hover:opacity-90 active:scale-95"
+                style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", boxShadow: "0 2px 8px rgba(124,58,237,0.3)" }}>
+                <FilePlus2 size={14} />Nova Nota Manual
+              </button>
+            </div>
+            <PainelDashboard pedidos={pedidos} lancamentos={lancamentos} />
+          </div>
         )}
 
         {activeTab === "nfe" && (
@@ -2365,6 +2971,11 @@ export default function Financeiro() {
         )}
       </main>
 
+      <NotaManualModal
+        open={notaManualOpen}
+        onClose={() => setNotaManualOpen(false)}
+        modoTeste={modoTeste}
+      />
       <SefazModal
         pedido={sefazPedido}
         onClose={() => setSefazPedido(null)}
