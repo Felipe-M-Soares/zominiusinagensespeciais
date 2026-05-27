@@ -28,139 +28,117 @@ interface Props {
 
 // ─── Impressão de etiqueta 50×45 mm ──────────────────────────────────────────
 
-function printLabel(model: string, reference: string, lote: string) {
-  const win = window.open("", "_blank", "width=600,height=340");
-  if (!win) {
-    alert("Popup bloqueado. Permita popups para este site e tente novamente.");
-    return;
-  }
+// ─── Geração ZPL para Zebra ZD220 ─────────────────────────────────────────────
+// Etiqueta 50mm × 45mm @ 203 dpi
+// 203 dpi → 1mm = 8 dots
+// 50mm = 400 dots largura | 45mm = 360 dots altura
 
-  const e = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function mmToDots(mm: number) { return Math.round(mm * 8); }
 
-  win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <title>Etiqueta</title>
-  <style>
-    @page {
-      size: 100mm 45mm;
-      margin: 0;
-    }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      width: 100mm;
-      height: 45mm;
-      overflow: hidden;
-      background: #fff;
-      display: flex;
-      flex-direction: row;
-    }
-
-    .label {
-      width: 50mm;
-      height: 45mm;
-      border: 0.4mm solid #000;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-    .label + .label { border-left: none; }
-
-    /* Modelo: 9mm de altura */
-    .row-model {
-      height: 9mm;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 2mm;
-      border-bottom: 0.3mm solid #ccc;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 6.5pt;
-      font-weight: 600;
-      color: #111;
-      text-align: center;
-      line-height: 1.2;
-      word-break: break-word;
-      overflow: hidden;
-    }
-
-    /* Referência: 21mm de altura — font-size via JS */
-    .row-ref {
-      height: 21mm;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 1.5mm;
-      font-family: Arial, Helvetica, sans-serif;
-      font-weight: 900;
-      color: #000;
-      text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-    }
-
-    /* Lote: 15mm de altura — font-size via JS */
-    .row-lote {
-      height: 15mm;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 1.5mm;
-      border-top: 0.3mm solid #ccc;
-      font-family: Arial, Helvetica, sans-serif;
-      font-weight: 700;
-      color: #000;
-      text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-    }
-  </style>
-  <script>
-    var MM = 3.7795; // px por mm a 96 dpi
-
-    function fitText(el, availW, blockH) {
-      if (!el) return;
-      // target: preencher ~82% da altura do bloco
-      var fs = blockH * 0.82;
-      el.style.fontSize = fs + "px";
-      // se texto ultrapassa a largura, reduz font-size proporcionalmente
-      var tw = el.scrollWidth;
-      if (tw > availW) {
-        fs = fs * (availW / tw) * 0.96;
-        el.style.fontSize = fs + "px";
-      }
-    }
-
-    window.onload = function () {
-      var availW = (50 - 3) * MM; // 50mm - 2x1.5mm padding
-      document.querySelectorAll(".label").forEach(function (lbl) {
-        fitText(lbl.querySelector(".row-ref"),  availW, 21 * MM);
-        fitText(lbl.querySelector(".row-lote"), availW, 15 * MM);
-      });
-      setTimeout(function () { window.print(); window.close(); }, 350);
-    };
-  </script>
-</head>
-<body>
-  <div class="label">
-    <div class="row-model">${e(model)}</div>
-    <div class="row-ref">${e(reference)}</div>
-    <div class="row-lote">${e(lote)}</div>
-  </div>
-  <div class="label">
-    <div class="row-model">${e(model)}</div>
-    <div class="row-ref">${e(reference)}</div>
-    <div class="row-lote">${e(lote)}</div>
-  </div>
-</body>
-</html>`);
-
-  win.document.close();
-  win.focus();
+// Trunca string para caber em N dots usando fonte A (largura ~12 dots/char @ h=30)
+function truncateZpl(text: string, maxDots: number, charWidthDots: number) {
+  const maxChars = Math.floor(maxDots / charWidthDots);
+  return text.length > maxChars ? text.slice(0, maxChars) : text;
 }
+
+function buildZpl(model: string, reference: string, lote: string): string {
+  // Layout (dots):
+  //   Linha modelo:     Y=10,  fonte A 20×12,  wrapping manual
+  //   Linha referência: Y=80,  fonte 0 (scalable) 120×60 bold
+  //   Linha lote:       Y=250, fonte 0 (scalable) 80×45
+  //
+  // ^FO x,y  = Field Origin
+  // ^A0N,h,w = Fonte scalable, normal, altura, largura
+  // ^AN,h,w  = Fonte A built-in
+  // ^FD      = Field Data
+  // ^FS      = Field Separator
+
+  const labelW = 400; // dots
+  const labelH = 360; // dots
+
+  // Calcula largura de fonte para referência — preenche ~90% da largura
+  const refText = reference;
+  const refMaxW = Math.round(labelW * 0.90);
+  // Zebra ^A0: largura de cada char ≈ altura * 0.6 para fonte proporcional
+  const refH = 110;
+  const refCharW = Math.round(refH * 0.6);
+  const refFitsChars = Math.floor(refMaxW / refCharW);
+  const refW = refText.length <= refFitsChars
+    ? refCharW
+    : Math.floor(refMaxW / refText.length);
+  const refFontH = Math.round(refW / 0.6);
+  const refX = Math.round((labelW - refText.length * refW) / 2);
+
+  // Lote — menor
+  const loteText = lote;
+  const loteH = 70;
+  const loteCharW = Math.round(loteH * 0.6);
+  const loteFitsChars = Math.floor(refMaxW / loteCharW);
+  const loteW = loteText.length <= loteFitsChars
+    ? loteCharW
+    : Math.floor(refMaxW / loteText.length);
+  const loteFontH = Math.round(loteW / 0.6);
+  const loteX = Math.round((labelW - loteText.length * loteW) / 2);
+
+  return [
+    "^XA",
+    `^PW${labelW}`,          // largura da etiqueta
+    `^LL${labelH}`,          // comprimento da etiqueta
+    "^CI28",                 // UTF-8
+    "^LH0,0",                // Label Home
+
+    // ── Modelo (fonte A pequena, centralizado) ──
+    `^FO10,8^A0N,22,13^FB${labelW - 20},2,,C^FD${model}^FS`,
+
+    // ── Separador horizontal superior ──
+    `^FO0,38^GB${labelW},2,2^FS`,
+
+    // ── Referência (grande, centralizada) ──
+    `^FO${refX},55^A0N,${refFontH},${refW}^FD${refText}^FS`,
+
+    // ── Separador horizontal inferior ──
+    `^FO0,${labelH - 88},${labelW},2,2^GB${labelW},2,2^FS`,
+
+    // ── Lote ──
+    `^FO${loteX},${labelH - 80}^A0N,${loteFontH},${loteW}^FD${loteText}^FS`,
+
+    // Imprimir 2 cópias
+    "^PQ2",
+    "^XZ",
+  ].join("\n");
+}
+
+function printLabel(model: string, reference: string, lote: string) {
+  const zpl = buildZpl(model, reference, lote);
+
+  // Tenta enviar direto via TCP para impressora local (porta padrão Zebra: 9100)
+  // Como browser não tem acesso TCP direto, oferece duas opções:
+  // 1. Download do .zpl para enviar manualmente
+  // 2. Envio via Zebra Browser Print (se instalado)
+
+  // Opção primária: Zebra Browser Print (app local que expõe API HTTP)
+  fetch("http://127.0.0.1:9100", {
+    method: "POST",
+    body: zpl,
+  }).catch(() => {
+    // Browser Print não disponível — faz download do arquivo ZPL
+    downloadZpl(zpl, lote);
+  });
+
+  // Também oferece download como fallback sempre visível
+  downloadZpl(zpl, lote);
+}
+
+function downloadZpl(zpl: string, lote: string) {
+  const blob = new Blob([zpl], { type: "text/plain" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `etiqueta-${lote.replace(/\//g, "-")}.zpl`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
@@ -285,7 +263,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
                 onClick={() => printLabel(row.model, row.reference, row.lote)}
               >
                 <Printer className="h-3.5 w-3.5" />
-                Imprimir
+                Imprimir ZPL
               </Button>
             </div>
           ))}
@@ -294,7 +272,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
         {/* Rodapé */}
         <div className="px-5 py-3 border-t border-border/40 shrink-0">
           <p className="text-[11px] text-muted-foreground">
-            {rows.length} lote{rows.length !== 1 ? "s" : ""} com saldo positivo · Etiqueta 50×45 mm
+            {rows.length} lote{rows.length !== 1 ? "s" : ""} com saldo positivo · Etiqueta 50×45 mm · Zebra ZD220 · 2 cópias por impressão
           </p>
         </div>
 
