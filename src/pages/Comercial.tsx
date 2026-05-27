@@ -781,6 +781,58 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
   );
 }
 
+// ─── Modal: Adicionar Peça ao Pedido Pendente ─────────────────────────────────
+
+interface AdicionarPecaModalProps {
+  pedido: PedidoCompleto | null;
+  expedicaoItems: ReturnType<typeof useStock>["items"];
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: AdicionarPecaModalProps) {
+  const [search, setSearch] = useState("");
+  const [autocomplete, setAutocomplete] = useState<ReturnType<typeof useStock>["items"]>([]);
+  const [showAutocomp, setShowAutocomp] = useState(false);
+  const [selectedPeca, setSelectedPeca] = useState<ReturnType<typeof useStock>["items"][0] | null>(null);
+  const [qtd, setQtd] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (pedido) { setSearch(""); setSelectedPeca(null); setQtd(1); setTimeout(() => inputRef.current?.focus(), 100); }
+  }, [pedido]);
+
+  // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
+  useClickOutside(dropRef, () => setShowAutocomp(false));
+
+  // Calcula quantas unidades de cada stock_item já estão no pedido atual (ainda não reservadas)
+  const jaNosPedido = (pedido?.itens ?? []).reduce<Record<string, number>>((acc, it) => {
+    acc[it.stock_item_id] = (acc[it.stock_item_id] ?? 0) + it.quantidade;
+    return acc;
+  }, {});
+
+  // Retorna o disponível real descontando o que já está no pedido pendente
+  function dispReal(item: ReturnType<typeof useStock>["items"][0]) {
+    const bruto = Math.max(0, item.quantity_available);
+    const jaAdicionado = jaNosPedido[item.id] ?? 0;
+    return Math.max(0, bruto - jaAdicionado);
+  }
+
+  // CODE-01 FIX: useDebounce substitui debounceRef inline
+  const debouncedInput = useDebounce((v: string) => {
+    const q = v.trim().toLowerCase();
+    const vistos = new Set<string>();
+    const deduped = expedicaoItems.filter(i => {
+      if (!i.device?.model?.toLowerCase().includes(q) && q) return false;
+      if (vistos.has(i.device_id)) return false;
+      if (dispReal(i) <= 0) return false;
+      vistos.add(i.device_id); return true;
+    }).slice(0, 15);
+    setAutocomplete(deduped); setShowAutocomp(deduped.length > 0);
+  }, 80);
+
   function handleInput(v: string) {
     setSearch(v); setSelectedPeca(null);
     debouncedInput(v);
