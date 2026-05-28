@@ -232,7 +232,7 @@ export default function Manuals() {
   const hasQueue = queue.length > 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-transparent to-accent/10">
+    <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
       <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -250,7 +250,7 @@ export default function Manuals() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <header className="border-b border-border/50 bg-card/80 backdrop-blur-md sticky top-0 z-10">
+      <header className="border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-10">
         <div className="container mx-auto px-4 py-2.5 flex items-center gap-3">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
@@ -284,7 +284,7 @@ export default function Manuals() {
           </div>
         ) : manuals.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
-            <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+            <div className="h-16 w-16 rounded-xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
               <BookOpen className="h-8 w-8 opacity-30" />
             </div>
             <p className="font-medium">Nenhum manual disponível</p>
@@ -295,7 +295,7 @@ export default function Manuals() {
             {manuals.map(m => (
               <div
                 key={m.id}
-                className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1"
+                className="group relative rounded-xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1"
                 style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}
               >
                 {/* Top accent bar */}
@@ -316,13 +316,13 @@ export default function Manuals() {
 
                 {/* Description */}
                 {m.description && (
-                  <div className="px-4 py-2.5 border-t border-border/30">
+                  <div className="px-4 py-2.5 border-t border-border">
                     <p className="text-[11px] text-muted-foreground line-clamp-2">{m.description}</p>
                   </div>
                 )}
 
                 {/* Actions footer */}
-                <div className={`px-3 pb-3 flex items-center gap-2 ${m.description ? "pt-1" : "pt-2 border-t border-border/30"}`}>
+                <div className={`px-3 pb-3 flex items-center gap-2 ${m.description ? "pt-1" : "pt-2 border-t border-border"}`}>
                   <Button
                     size="sm"
                     className="flex-1 h-8 gap-1.5 text-xs rounded-xl shadow-none"

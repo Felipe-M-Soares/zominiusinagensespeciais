@@ -88,7 +88,7 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
+      <DialogContent className="max-w-md p-0 rounded-xl overflow-hidden border-border">
         <div className="relative px-5 pt-5 pb-3">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
           <div className="relative">
@@ -136,7 +136,7 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
           {results.map((device) => (
             <div
               key={device.id}
-              className="flex items-start gap-3 p-3 rounded-xl border border-border/30 bg-card hover:bg-accent/30 transition-colors"
+              className="flex items-start gap-3 p-3 rounded-xl border border-border bg-card hover:bg-accent/30 transition-colors"
             >
               <div className="min-w-0 flex-1 space-y-0.5">
                 <p className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">

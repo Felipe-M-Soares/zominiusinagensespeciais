@@ -96,9 +96,9 @@ function statusColor(status: string) {
   if (status === "pendente") return "bg-amber-500/10 text-amber-600 border-amber-500/20";
   if (status === "separando") return "bg-blue-500/10 text-blue-600 border-blue-500/20";
   if (status === "pronto") return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
-  if (status === "faturado") return "bg-violet-500/10 text-violet-600 border-violet-500/20";
+  if (status === "faturado") return "bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))] border-[hsl(var(--primary)/0.20)]";
   if (status === "enviado") return "bg-success/10 text-success border-success/20";
-  return "bg-muted/30 text-muted-foreground border-border/30";
+  return "bg-muted/30 text-muted-foreground border-border";
 }
 
 function statusLabel(status: string) {
@@ -501,11 +501,11 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className={cn(
-      "rounded-2xl border overflow-hidden transition-all",
+      "rounded-xl border overflow-hidden transition-all",
       isPendente   ? "border-amber-500/25 bg-amber-500/3" :
       isSeparando  ? "border-blue-500/25 bg-blue-500/3" :
       pedido.status === "pronto" ? "border-emerald-500/25 bg-emerald-500/3" :
-      "border-border/30 bg-card"
+      "border-border bg-card"
     )}>
       {/* Header */}
       <button type="button" onClick={() => setExpanded(v => !v)}
@@ -556,7 +556,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                 const groupTotalPedido = groupItems.reduce((s, i) => s + i.quantidade, 0);
 
                 return (
-                  <div key={groupKey} className="rounded-xl border border-border/30 bg-background/50 overflow-hidden">
+                  <div key={groupKey} className="rounded-xl border border-border bg-background/50 overflow-hidden">
                     {/* Cabeçalho do grupo — nome e referência aparecem UMA VEZ */}
                     <div className="flex items-center gap-2 px-3 py-2 bg-muted/20 border-b border-border/20">
                       <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -678,7 +678,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                                               max={l.quantity}
                                               value={qtySel}
                                               onChange={(e) => setQtyLote(item.id, l.lote, parseInt(e.target.value) || 0, l.quantity)}
-                                              className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                              className="w-10 text-center text-[12px] font-bold bg-transparent border border-border rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                             />
                                             <button
                                               type="button"
@@ -980,7 +980,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-md rounded-xl bg-card border border-border shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="px-5 pt-5 pb-3 border-b border-border/20">
           <div className="flex items-center justify-between">
             <div>
@@ -1013,7 +1013,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
                 "rounded-xl border p-3 space-y-2.5",
                 semEstoque ? "border-destructive/30 bg-destructive/5"
                   : ok ? "border-success/30 bg-success/5"
-                  : "border-border/30 bg-background/60"
+                  : "border-border bg-background/60"
               )}>
                 {/* Cabeçalho do item */}
                 <div className="flex items-start gap-2">
@@ -1080,7 +1080,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
                                 max={l.quantity}
                                 value={qtySelected}
                                 onChange={e => setQtyLote(item.id, l.lote, parseInt(e.target.value) || 0, l.quantity)}
-                                className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="w-10 text-center text-[12px] font-bold bg-transparent border border-border rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                               <button
                                 type="button"
@@ -1168,9 +1168,9 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-sm rounded-xl bg-card border border-border shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-amber-500" />
             <p className="text-sm font-semibold">Editar Quantidade</p>
@@ -1204,7 +1204,7 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
                 min={1}
                 value={qtd}
                 onChange={e => setQtd(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-20 text-center text-[22px] font-bold bg-transparent border border-border/40 rounded-xl h-12 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="w-20 text-center text-[22px] font-bold bg-transparent border border-border rounded-xl h-12 focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
               <button
                 type="button"
@@ -1223,7 +1223,7 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
 
           {/* Botões */}
           <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 h-10 rounded-xl border border-border/30 text-[12px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
+            <button type="button" onClick={onClose} className="flex-1 h-10 rounded-xl border border-border text-[12px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
               Cancelar
             </button>
             <button
@@ -1778,7 +1778,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         <button
           type="button"
           onClick={loadPedidos}
-          className="h-9 w-9 flex items-center justify-center rounded-full bg-muted/30 border border-border/40 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0"
+          className="h-9 w-9 flex items-center justify-center rounded-full bg-muted/30 border border-border text-muted-foreground hover:bg-muted/60 transition-colors shrink-0"
           title="Atualizar"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
@@ -1786,7 +1786,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         <button
           type="button"
           onClick={handleImprimirTodos}
-          className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-border/40 bg-muted/30 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0 text-sm no-print"
+          className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-border bg-muted/30 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0 text-sm no-print"
           title="Imprimir todos os pedidos do mês"
         >
           <Printer className="h-3.5 w-3.5" />
@@ -1798,7 +1798,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       {loading ? (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="rounded-2xl border p-4 space-y-3">
+            <div key={i} className="rounded-xl border p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="h-9 w-9 rounded-xl bg-muted/40 animate-pulse" />
                 <div className="flex-1 space-y-2">
@@ -1844,7 +1844,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       {/* Cancelar pedido */}
       {cancelarPedido && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
                 <Ban className="h-4 w-4 text-destructive" />

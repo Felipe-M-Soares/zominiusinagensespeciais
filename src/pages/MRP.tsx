@@ -95,7 +95,7 @@ function MRPMenu({ isAdmin, onSelect }: {
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      <div className="rounded-2xl border bg-card/60 p-4">
+      <div className="rounded-xl border bg-card/60 p-4">
         <div className="flex items-center gap-3 mb-1">
           <Factory className="h-5 w-5 text-primary" />
           <h2 className="font-semibold">Planejamento de Recursos (MRP)</h2>
@@ -110,11 +110,11 @@ function MRPMenu({ isAdmin, onSelect }: {
         {visible.map(m => (
           <button key={m.id} onClick={() => onSelect(m.id)}
             className={cn(
-              "rounded-2xl border p-4 text-left flex items-center gap-4 transition-all",
+              "rounded-xl border p-4 text-left flex items-center gap-4 transition-all",
               "hover:shadow-sm active:scale-[0.99]",
               m.bg, m.border
             )}>
-            <div className={cn("h-12 w-12 rounded-2xl flex items-center justify-center shrink-0", m.bg)}>
+            <div className={cn("h-12 w-12 rounded-xl flex items-center justify-center shrink-0", m.bg)}>
               <m.Icon className={cn("h-6 w-6", m.color)} />
             </div>
             <div className="flex-1 min-w-0">
@@ -150,7 +150,7 @@ export default function MRP() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/95 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b" style={{ background: "hsl(var(--card) / 0.96)", borderColor: "hsl(var(--border))", backdropFilter: "blur(12px)" }}>
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
           <button onClick={goBack}
             className="h-8 w-8 rounded-xl flex items-center justify-center hover:bg-muted/40 transition-colors shrink-0">

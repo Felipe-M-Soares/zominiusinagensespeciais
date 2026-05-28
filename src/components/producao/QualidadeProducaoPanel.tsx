@@ -89,7 +89,7 @@ function NovoRefugoModal({open,onClose,onSaved,maquinas,produtos}:{
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-md bg-card rounded-xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between"><h3 className="font-semibold">Registrar Refugo</h3><button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button></div>
         <div className="space-y-3">
           <div>
@@ -205,13 +205,13 @@ export function QualidadeProducaoPanel() {
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-2xl border bg-red-500/5 border-red-500/20 p-4 text-center"><p className="text-2xl font-bold text-red-600">{totalPerdas}</p><p className="text-[11px] text-muted-foreground">Peças refugadas</p></div>
-        <div className="rounded-2xl border bg-amber-500/5 border-amber-500/20 p-4 text-center"><p className="text-2xl font-bold text-amber-600">{refugos.filter(r=>r.destinacao==="retrabalho").reduce((s,r)=>s+r.quantidade,0)}</p><p className="text-[11px] text-muted-foreground">Retrabalho</p></div>
-        <div className="rounded-2xl border bg-card/60 p-4 text-center"><p className="text-2xl font-bold">{refugos.filter(r=>r.destinacao==="sucata").reduce((s,r)=>s+r.quantidade,0)}</p><p className="text-[11px] text-muted-foreground">Sucata</p></div>
+        <div className="rounded-xl border bg-red-500/5 border-red-500/20 p-4 text-center"><p className="text-2xl font-bold text-red-600">{totalPerdas}</p><p className="text-[11px] text-muted-foreground">Peças refugadas</p></div>
+        <div className="rounded-xl border bg-amber-500/5 border-amber-500/20 p-4 text-center"><p className="text-2xl font-bold text-amber-600">{refugos.filter(r=>r.destinacao==="retrabalho").reduce((s,r)=>s+r.quantidade,0)}</p><p className="text-[11px] text-muted-foreground">Retrabalho</p></div>
+        <div className="rounded-xl border bg-card/60 p-4 text-center"><p className="text-2xl font-bold">{refugos.filter(r=>r.destinacao==="sucata").reduce((s,r)=>s+r.quantidade,0)}</p><p className="text-[11px] text-muted-foreground">Sucata</p></div>
       </div>
 
       {chartData.length>0 && (
-        <div className="rounded-2xl border bg-card/60 p-4">
+        <div className="rounded-xl border bg-card/60 p-4">
           <p className="text-sm font-medium mb-3">Peças refugadas por tipo de defeito</p>
           <ResponsiveContainer width="100%" height={140}>
             <BarChart data={chartData} margin={{top:0,right:0,left:-20,bottom:0}}>
@@ -242,7 +242,7 @@ export function QualidadeProducaoPanel() {
       ) : (
         <div className="space-y-3">
           {filtered.map(r=>(
-            <div key={r.id} className="rounded-2xl border bg-card/60 p-4 space-y-2">
+            <div key={r.id} className="rounded-xl border bg-card/60 p-4 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold text-sm truncate">{r.produto}</p>

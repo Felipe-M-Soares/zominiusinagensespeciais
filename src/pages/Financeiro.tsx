@@ -275,13 +275,13 @@ function StepBar({ step, total, labels }: { step: number; total: number; labels:
           <div className={cn(
             "h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold border shrink-0 transition-all duration-200",
             i + 1 < step  ? "bg-violet-600 border-violet-600 text-white" :
-            i + 1 === step ? "bg-violet-500/15 border-violet-500 text-violet-600" :
-                             "bg-muted/30 border-border/40 text-muted-foreground"
+            i + 1 === step ? "bg-[hsl(var(--primary)/0.12)] border-violet-500 text-[hsl(var(--primary))]" :
+                             "bg-muted/30 border-border text-muted-foreground"
           )}>
             {i + 1 < step ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span>{i + 1}</span>}
           </div>
           <span className={cn("text-[9px] ml-1 font-medium hidden sm:block shrink-0",
-            i + 1 === step ? "text-violet-600" : "text-muted-foreground/60")}>
+            i + 1 === step ? "text-[hsl(var(--primary))]" : "text-muted-foreground/60")}>
             {labels[i]}
           </span>
           {i < total - 1 && (
@@ -475,14 +475,14 @@ function NotaManualModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[94vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-lg rounded-xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col max-h-[94vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
 
         {/* Header */}
         <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
-                <FilePlus2 className="h-4 w-4 text-violet-500" />
+              <div className="h-7 w-7 rounded-lg bg-[hsl(var(--primary)/0.12)] flex items-center justify-center">
+                <FilePlus2 className="h-4 w-4 text-[hsl(var(--primary))]" />
               </div>
               <span className="text-sm font-semibold">Nova Nota Manual</span>
               <TestBadge modoTeste={modoTeste} />
@@ -494,7 +494,7 @@ function NotaManualModal({
           </div>
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <span>Nota fiscal avulsa — não vinculada a pedido</span>
-            <span className="font-mono font-bold text-violet-500">R$ {totalGeral.toFixed(2)}</span>
+            <span className="font-mono font-bold text-[hsl(var(--primary))]">R$ {totalGeral.toFixed(2)}</span>
           </div>
           <StepBar step={step} total={5} labels={STEPS_MANUAL} />
         </div>
@@ -510,8 +510,8 @@ function NotaManualModal({
                   <button key={tipo} type="button" onClick={() => upd("tipo", tipo)}
                     className={cn("rounded-xl border p-3 text-left transition-all",
                       dados.tipo === tipo
-                        ? "border-violet-500/50 bg-violet-500/10 ring-1 ring-violet-500/30"
-                        : "border-border/40 bg-muted/15 hover:bg-muted/35")}>
+                        ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)] ring-1 ring-violet-500/30"
+                        : "border-border bg-muted/15 hover:bg-muted/35")}>
                     <p className="text-[13px] font-bold">{tipo === "nfe" ? "NF-e" : "NFC-e"}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
                       {tipo === "nfe" ? "Modelo 55 · B2B" : "Modelo 65 · Consumidor"}
@@ -530,7 +530,7 @@ function NotaManualModal({
                       value={dados.numero}
                       onChange={e => upd("numero", e.target.value.replace(/\D/g,"").slice(0,9))}
                       placeholder="000000001"
-                      className="w-full h-9 rounded-xl border border-border/50 bg-background pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                      className="w-full h-9 rounded-xl border border-border bg-background pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                     />
                   </div>
                 </div>
@@ -539,7 +539,7 @@ function NotaManualModal({
                   <input type="text" inputMode="numeric"
                     value={dados.serie}
                     onChange={e => upd("serie", e.target.value.replace(/\D/g,"").slice(0,3))}
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                   />
                 </div>
               </div>
@@ -549,7 +549,7 @@ function NotaManualModal({
                   value={dados.naturezaOperacao}
                   onChange={e => upd("naturezaOperacao", e.target.value.slice(0,60).toUpperCase())}
                   placeholder="VENDA DE MERCADORIA"
-                  className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -557,7 +557,7 @@ function NotaManualModal({
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Data de Emissão</label>
                   <input type="date" value={dados.dataEmissao}
                     onChange={e => upd("dataEmissao", e.target.value)}
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                   />
                 </div>
                 <div className="space-y-1">
@@ -565,13 +565,13 @@ function NotaManualModal({
                   <input type="text" value={dados.emitente}
                     onChange={e => upd("emitente", e.target.value.slice(0,80))}
                     placeholder="Nome da empresa emitente"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                   />
                 </div>
               </div>
 
               {/* Toggle: salvar como lançamento financeiro */}
-              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-3">
+              <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-3">
                 <div className="flex items-center gap-3">
                   <button type="button" onClick={() => upd("salvarLancamento", !dados.salvarLancamento)}
                     className={cn("h-5 w-9 rounded-full transition-colors relative shrink-0",
@@ -595,8 +595,8 @@ function NotaManualModal({
                         <button key={t.v} type="button" onClick={() => upd("tipoLancamento", t.v)}
                           className={cn("h-7 rounded-lg border text-[10px] font-medium transition-all",
                             dados.tipoLancamento === t.v
-                              ? "border-violet-500/50 bg-violet-500/10 text-violet-600"
-                              : "border-border/30 bg-muted/10 text-muted-foreground")}>
+                              ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))]"
+                              : "border-border bg-muted/10 text-muted-foreground")}>
                           {t.l}
                         </button>
                       ))}
@@ -613,9 +613,9 @@ function NotaManualModal({
                             onClick={() => upd("categoriaLancamento", cat.valor)}
                             className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-left transition-all",
                               dados.categoriaLancamento === cat.valor
-                                ? "border-violet-500/50 bg-violet-500/10"
+                                ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)]"
                                 : "border-border/20 bg-muted/10 hover:bg-muted/30")}>
-                            <Icon className={cn("h-3 w-3 shrink-0", dados.categoriaLancamento === cat.valor ? "text-violet-500" : "text-muted-foreground")} />
+                            <Icon className={cn("h-3 w-3 shrink-0", dados.categoriaLancamento === cat.valor ? "text-[hsl(var(--primary))]" : "text-muted-foreground")} />
                             <span className="text-[10px] font-medium leading-tight">{cat.label}</span>
                           </button>
                         );
@@ -624,7 +624,7 @@ function NotaManualModal({
                     <input type="text" value={dados.fornecedorLancamento}
                       onChange={e => upd("fornecedorLancamento", e.target.value.slice(0,80))}
                       placeholder="Fornecedor (opcional — usa destinatário se vazio)"
-                      className="w-full h-8 rounded-xl border border-border/50 bg-background px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                      className="w-full h-8 rounded-xl border border-border bg-background px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                     />
                   </div>
                 )}
@@ -650,7 +650,7 @@ function NotaManualModal({
                     value={dados[f.key] as string}
                     onChange={e => upd(f.key, f.upper ? e.target.value.toUpperCase().slice(0,80) : e.target.value.slice(0,80))}
                     placeholder={f.ph}
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                   />
                   {f.key === "destDocumento" && dados.destDocumento.length > 0 && (
                     <p className="text-[10px] text-muted-foreground pl-1">{mascararDoc(dados.destDocumento)}</p>
@@ -668,7 +668,7 @@ function NotaManualModal({
                   Itens da Nota ({dados.itens.length})
                 </p>
                 <button type="button" onClick={addItem}
-                  className="h-7 px-3 flex items-center gap-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 text-[11px] font-semibold transition-colors">
+                  className="h-7 px-3 flex items-center gap-1 rounded-lg bg-[hsl(var(--primary)/0.10)] hover:bg-violet-500/20 text-[hsl(var(--primary))] text-[11px] font-semibold transition-colors">
                   <Plus size={12} />Adicionar item
                 </button>
               </div>
@@ -681,14 +681,14 @@ function NotaManualModal({
                 return (
                   <div key={item.id}
                     className={cn("rounded-xl border p-3 space-y-2.5",
-                      allOk ? "border-border/30 bg-muted/10" : "border-amber-500/30 bg-amber-500/4")}>
+                      allOk ? "border-border bg-muted/10" : "border-amber-500/30 bg-amber-500/4")}>
                     <div className="flex items-center gap-2">
-                      <Package size={13} className="text-violet-500 shrink-0" />
+                      <Package size={13} className="text-[hsl(var(--primary))] shrink-0" />
                       <input type="text" value={item.descricao}
                         onChange={e => updItem(item.id, "descricao", e.target.value.slice(0,100))}
                         placeholder="Descrição do produto / serviço *"
-                        className={cn("flex-1 h-8 rounded-lg border bg-background px-2 text-[12px] focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                          descOk ? "border-border/50" : "border-amber-500/60")}
+                        className={cn("flex-1 h-8 rounded-lg border bg-background px-2 text-[12px] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]",
+                          descOk ? "border-border" : "border-amber-500/60")}
                       />
                       {dados.itens.length > 1 && (
                         <button type="button" onClick={() => removeItem(item.id)}
@@ -708,8 +708,8 @@ function NotaManualModal({
                             value={item[f.key]}
                             onChange={e => updItem(item.id, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
                             placeholder={f.ph}
-                            className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                              f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                            className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]",
+                              f.ok ? "border-border" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
                       ))}
@@ -720,7 +720,7 @@ function NotaManualModal({
                         <input type="number" min="1" step="1"
                           value={item.quantidade}
                           onChange={e => updItem(item.id, "quantidade", parseInt(e.target.value) || 1)}
-                          className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                          className="w-full h-8 rounded-lg border border-border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                         />
                       </div>
                       <div className="space-y-1">
@@ -728,30 +728,30 @@ function NotaManualModal({
                         <input type="number" min="0" step="0.01"
                           value={item.valorUnitario}
                           onChange={e => updItem(item.id, "valorUnitario", e.target.value)}
-                          className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                            vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                          className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]",
+                            vlrOk ? "border-border" : "border-amber-500/60 bg-amber-500/4")}
                         />
                       </div>
                     </div>
                     {vlrOk && item.quantidade > 0 && (
-                      <p className="text-right text-[10px] font-mono font-semibold text-violet-500">
+                      <p className="text-right text-[10px] font-mono font-semibold text-[hsl(var(--primary))]">
                         = R$ {(item.quantidade * parseFloat(item.valorUnitario)).toFixed(2)}
                       </p>
                     )}
                   </div>
                 );
               })}
-              <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background/60 px-3 py-2">
+              <div className="flex items-center justify-between rounded-xl border border-border bg-background/60 px-3 py-2">
                 <span className="text-[11px] text-muted-foreground">Frete (R$)</span>
                 <input type="number" min="0" step="0.01"
                   value={dados.valorFrete}
                   onChange={e => upd("valorFrete", e.target.value)}
-                  className="w-24 h-7 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                  className="w-24 h-7 rounded-lg border border-border bg-background px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                 />
               </div>
               <div className="flex items-center justify-between rounded-xl border border-violet-500/25 bg-violet-500/8 px-3 py-2.5">
                 <span className="text-[13px] font-semibold">Total da Nota</span>
-                <span className="text-[15px] font-bold text-violet-600 font-mono">R$ {totalGeral.toFixed(2)}</span>
+                <span className="text-[15px] font-bold text-[hsl(var(--primary))] font-mono">R$ {totalGeral.toFixed(2)}</span>
               </div>
             </div>
           )}
@@ -769,9 +769,9 @@ function NotaManualModal({
                       <button key={tp.valor} type="button" onClick={() => upd("tipoPagamento", tp.valor)}
                         className={cn("flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all",
                           dados.tipoPagamento === tp.valor
-                            ? "border-violet-500/50 bg-violet-500/10 ring-1 ring-violet-500/20"
-                            : "border-border/40 bg-muted/15 hover:bg-muted/35")}>
-                        <Icon className={cn("h-3.5 w-3.5 shrink-0", dados.tipoPagamento === tp.valor ? "text-violet-500" : "text-muted-foreground")} />
+                            ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)] ring-1 ring-violet-500/20"
+                            : "border-border bg-muted/15 hover:bg-muted/35")}>
+                        <Icon className={cn("h-3.5 w-3.5 shrink-0", dados.tipoPagamento === tp.valor ? "text-[hsl(var(--primary))]" : "text-muted-foreground")} />
                         <span className="text-[11px] font-medium">{tp.label}</span>
                       </button>
                     );
@@ -785,9 +785,9 @@ function NotaManualModal({
                     <button key={mf.valor} type="button" onClick={() => upd("modFrete", mf.valor)}
                       className={cn("w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all",
                         dados.modFrete === mf.valor
-                          ? "border-violet-500/50 bg-violet-500/10"
-                          : "border-border/30 bg-muted/10 hover:bg-muted/30")}>
-                      <Truck className={cn("h-3 w-3 shrink-0", dados.modFrete === mf.valor ? "text-violet-500" : "text-muted-foreground")} />
+                          ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)]"
+                          : "border-border bg-muted/10 hover:bg-muted/30")}>
+                      <Truck className={cn("h-3 w-3 shrink-0", dados.modFrete === mf.valor ? "text-[hsl(var(--primary))]" : "text-muted-foreground")} />
                       <span className="text-[11px]">{mf.label}</span>
                     </button>
                   ))}
@@ -800,7 +800,7 @@ function NotaManualModal({
                   onChange={e => upd("informacoesAdicionais", e.target.value.slice(0,500))}
                   placeholder="Referência, observações, condições..."
                   rows={3}
-                  className="w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                 />
               </div>
             </div>
@@ -810,7 +810,7 @@ function NotaManualModal({
           {step === 5 && (
             <div className="space-y-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Revisão</p>
-              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-1">
+              <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[12px] font-bold">
                     {dados.tipo.toUpperCase()} — Série {dados.serie} — Nº {dados.numero.padStart(9,"0")}
@@ -820,12 +820,12 @@ function NotaManualModal({
                 <p className="text-[10px] text-muted-foreground">{dados.naturezaOperacao}</p>
                 <p className="text-[10px] text-muted-foreground">Data: {new Date(dados.dataEmissao + "T12:00:00").toLocaleDateString("pt-BR")}</p>
               </div>
-              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-1">
+              <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-1">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Destinatário</p>
                 <p className="text-[13px] font-semibold">{dados.destinatario}</p>
                 {dados.destDocumento && <p className="text-[10px] text-muted-foreground font-mono">{mascararDoc(dados.destDocumento)}</p>}
               </div>
-              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-2">
+              <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-2">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Itens ({dados.itens.length})</p>
                 {dados.itens.map(item => (
                   <div key={item.id} className="flex items-center justify-between text-[11px]">
@@ -835,14 +835,14 @@ function NotaManualModal({
                     </span>
                   </div>
                 ))}
-                <div className="border-t border-border/30 pt-1 flex items-center justify-between">
+                <div className="border-t border-border pt-1 flex items-center justify-between">
                   <span className="text-[13px] font-bold">Total</span>
-                  <span className="text-[15px] font-bold text-violet-600 font-mono">R$ {totalGeral.toFixed(2)}</span>
+                  <span className="text-[15px] font-bold text-[hsl(var(--primary))] font-mono">R$ {totalGeral.toFixed(2)}</span>
                 </div>
               </div>
               {dados.salvarLancamento && (
-                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-500/8 border border-violet-500/20">
-                  <CheckCircle2 size={14} className="text-violet-500 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-500/8 border border-[hsl(var(--primary)/0.20)]">
+                  <CheckCircle2 size={14} className="text-[hsl(var(--primary))] shrink-0 mt-0.5" />
                   <p className="text-[11px] text-muted-foreground">
                     Será salva como lançamento em <strong className="text-foreground">
                       {dados.tipoLancamento === "compra_producao" ? "Compras Produção" :
@@ -871,7 +871,7 @@ function NotaManualModal({
           <div className="flex items-center gap-2">
             {step > 1 && (
               <button type="button" onClick={() => setStep(s => s - 1)} disabled={saving}
-                className="h-10 px-4 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-40">
+                className="h-10 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-40">
                 Voltar
               </button>
             )}
@@ -1018,12 +1018,12 @@ function SefazModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-lg rounded-xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
-                <FileCheck2 className="h-4 w-4 text-violet-500" />
+              <div className="h-7 w-7 rounded-lg bg-[hsl(var(--primary)/0.12)] flex items-center justify-center">
+                <FileCheck2 className="h-4 w-4 text-[hsl(var(--primary))]" />
               </div>
               <span className="text-sm font-semibold">
                 Emissão {dados.tipoNota === "nfce" ? "NFC-e" : "NF-e"} — SEFAZ
@@ -1035,15 +1035,15 @@ function SefazModal({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-border/30 bg-muted/15 px-3 py-2">
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/15 px-3 py-2">
             <div className="min-w-0 flex-1">
               <p className="text-[12px] font-semibold truncate">{pedido.cliente_nome}</p>
               <p className="text-[10px] text-muted-foreground">{totalItens} un. · Frete R$ {pedido.frete.toFixed(2)}</p>
             </div>
             <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border",
               pedido.status === "pronto"   ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" :
-              pedido.status === "faturado" ? "bg-violet-500/10 text-violet-600 border-violet-500/20" :
-              "bg-muted/30 text-muted-foreground border-border/30")}>
+              pedido.status === "faturado" ? "bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))] border-[hsl(var(--primary)/0.20)]" :
+              "bg-muted/30 text-muted-foreground border-border")}>
               {statusLabel(pedido.status)}
             </span>
           </div>
@@ -1060,8 +1060,8 @@ function SefazModal({
                   <button key={tipo} type="button" onClick={() => upd("tipoNota", tipo)}
                     className={cn("rounded-xl border p-3 text-left transition-all",
                       dados.tipoNota === tipo
-                        ? "border-violet-500/50 bg-violet-500/10 ring-1 ring-violet-500/30"
-                        : "border-border/40 bg-muted/15 hover:bg-muted/35")}>
+                        ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)] ring-1 ring-violet-500/30"
+                        : "border-border bg-muted/15 hover:bg-muted/35")}>
                     <p className="text-[13px] font-bold">{tipo === "nfe" ? "NF-e" : "NFC-e"}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
                       {tipo === "nfe" ? "Modelo 55 · B2B" : "Modelo 65 · Consumidor"}
@@ -1080,7 +1080,7 @@ function SefazModal({
                       value={dados.numero}
                       onChange={e => upd("numero", e.target.value.replace(/\D/g,"").slice(0,9))}
                       placeholder="000000001"
-                      className="w-full h-9 rounded-xl border border-border/50 bg-background pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+                      className="w-full h-9 rounded-xl border border-border bg-background pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)] focus:border-[hsl(var(--primary)/0.40)]"
                     />
                   </div>
                   <p className="text-[9px] text-muted-foreground/60 pl-1">Preenchido automaticamente (sequencial)</p>
@@ -1091,7 +1091,7 @@ function SefazModal({
                     value={dados.serie}
                     onChange={e => upd("serie", e.target.value.replace(/\D/g,"").slice(0,3))}
                     placeholder="1"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                   />
                 </div>
               </div>
@@ -1101,7 +1101,7 @@ function SefazModal({
                   value={dados.naturezaOperacao}
                   onChange={e => upd("naturezaOperacao", e.target.value.slice(0,60).toUpperCase())}
                   placeholder="VENDA DE MERCADORIA"
-                  className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                 />
               </div>
               <div className={cn("rounded-xl border p-3 flex items-start gap-2",
@@ -1136,7 +1136,7 @@ function SefazModal({
                     value={dados[f.key] as string}
                     onChange={e => upd(f.key, f.upper ? e.target.value.toUpperCase().slice(0,60) : e.target.value.slice(0,60))}
                     placeholder={f.placeholder}
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                   />
                   {f.key === "destDocumento" && dados.destDocumento.length > 0 && (
                     <p className="text-[10px] text-muted-foreground pl-1">{mascararDoc(dados.destDocumento)}</p>
@@ -1191,10 +1191,10 @@ function SefazModal({
                 return (
                   <div key={item.pedido_item_id}
                     className={cn("rounded-xl border p-3 space-y-2.5",
-                      ncmOk && cfopOk && vlrOk ? "border-border/30 bg-muted/10" : "border-amber-500/30 bg-amber-500/4")}>
+                      ncmOk && cfopOk && vlrOk ? "border-border bg-muted/10" : "border-amber-500/30 bg-amber-500/4")}>
                     <div className="flex items-center gap-2">
-                      <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                        <Package className="h-3 w-3 text-violet-500" />
+                      <div className="h-6 w-6 rounded-lg bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
+                        <Package className="h-3 w-3 text-[hsl(var(--primary))]" />
                       </div>
                       <p className="text-[11px] font-semibold truncate flex-1">{item.descricao}</p>
                       <span className="text-[10px] text-muted-foreground shrink-0">{item.quantidade} un.</span>
@@ -1210,8 +1210,8 @@ function SefazModal({
                             value={item[f.key]}
                             onChange={e => updItem(idx, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
                             placeholder={f.ph}
-                            className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                              f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                            className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]",
+                              f.ok ? "border-border" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
                       ))}
@@ -1224,8 +1224,8 @@ function SefazModal({
                           <input type="number" min="0" step="0.01"
                             value={item.valorUnitario}
                             onChange={e => updItem(idx, "valorUnitario", e.target.value)}
-                            className={cn("w-full h-8 rounded-lg border bg-background pl-5 pr-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                              vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                            className={cn("w-full h-8 rounded-lg border bg-background pl-5 pr-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]",
+                              vlrOk ? "border-border" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
                       </div>
@@ -1234,13 +1234,13 @@ function SefazModal({
                         <input type="number" min="0" max="100" step="0.01"
                           value={item.aliqICMS}
                           onChange={e => updItem(idx, "aliqICMS", e.target.value)}
-                          className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                          className="w-full h-8 rounded-lg border border-border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">CST</label>
                         <select value={item.cst} onChange={e => updItem(idx, "cst", e.target.value)}
-                          className="w-full h-8 rounded-lg border border-border/50 bg-background px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500/40">
+                          className="w-full h-8 rounded-lg border border-border bg-background px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]">
                           <option value="00">00 — Tributado</option>
                           <option value="20">20 — Red. BC</option>
                           <option value="40">40 — Isento</option>
@@ -1250,23 +1250,23 @@ function SefazModal({
                       </div>
                     </div>
                     {vOrig > 0 && (
-                      <div className="text-right text-[10px] font-mono font-semibold text-violet-500">
+                      <div className="text-right text-[10px] font-mono font-semibold text-[hsl(var(--primary))]">
                         = R$ {(item.quantidade * vOrig).toFixed(2)}
                       </div>
                     )}
                   </div>
                 );
               })}
-              <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background/60 px-3 py-2">
+              <div className="flex items-center justify-between rounded-xl border border-border bg-background/60 px-3 py-2">
                 <span className="text-[11px] text-muted-foreground">Frete (R$)</span>
                 <input type="number" min="0" step="0.01"
                   value={dados.valorFrete} onChange={e => upd("valorFrete", e.target.value)}
-                  className="w-24 h-7 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                  className="w-24 h-7 rounded-lg border border-border bg-background px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                 />
               </div>
               <div className="flex items-center justify-between rounded-xl border border-violet-500/25 bg-violet-500/8 px-3 py-2.5">
                 <span className="text-[13px] font-semibold">Total NF</span>
-                <span className="text-[15px] font-bold text-violet-600 font-mono">R$ {dados.valorTotal}</span>
+                <span className="text-[15px] font-bold text-[hsl(var(--primary))] font-mono">R$ {dados.valorTotal}</span>
               </div>
             </div>
           )}
@@ -1284,9 +1284,9 @@ function SefazModal({
                       <button key={tp.valor} type="button" onClick={() => upd("tipoPagamento", tp.valor)}
                         className={cn("flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all",
                           dados.tipoPagamento === tp.valor
-                            ? "border-violet-500/50 bg-violet-500/10 ring-1 ring-violet-500/20"
-                            : "border-border/40 bg-muted/15 hover:bg-muted/35")}>
-                        <Icon className={cn("h-3.5 w-3.5 shrink-0", dados.tipoPagamento === tp.valor ? "text-violet-500" : "text-muted-foreground")} />
+                            ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)] ring-1 ring-violet-500/20"
+                            : "border-border bg-muted/15 hover:bg-muted/35")}>
+                        <Icon className={cn("h-3.5 w-3.5 shrink-0", dados.tipoPagamento === tp.valor ? "text-[hsl(var(--primary))]" : "text-muted-foreground")} />
                         <span className="text-[11px] font-medium">{tp.label}</span>
                       </button>
                     );
@@ -1300,9 +1300,9 @@ function SefazModal({
                     <button key={mf.valor} type="button" onClick={() => upd("modFrete", mf.valor)}
                       className={cn("w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all",
                         dados.modFrete === mf.valor
-                          ? "border-violet-500/50 bg-violet-500/10"
-                          : "border-border/30 bg-muted/10 hover:bg-muted/30")}>
-                      <Truck className={cn("h-3 w-3 shrink-0", dados.modFrete === mf.valor ? "text-violet-500" : "text-muted-foreground")} />
+                          ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)]"
+                          : "border-border bg-muted/10 hover:bg-muted/30")}>
+                      <Truck className={cn("h-3 w-3 shrink-0", dados.modFrete === mf.valor ? "text-[hsl(var(--primary))]" : "text-muted-foreground")} />
                       <span className="text-[11px]">{mf.label}</span>
                     </button>
                   ))}
@@ -1315,7 +1315,7 @@ function SefazModal({
                   onChange={e => upd("informacoesAdicionais", e.target.value.slice(0,500))}
                   placeholder="Pedido nº ..., referência ..., prazo de entrega ..."
                   rows={3}
-                  className="w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)] resize-none"
                 />
                 <p className="text-[9px] text-muted-foreground text-right">{dados.informacoesAdicionais.length}/500</p>
               </div>
@@ -1326,7 +1326,7 @@ function SefazModal({
           {step === 5 && (
             <div className="space-y-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Revisão — confirme antes de emitir</p>
-              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-1">
+              <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[12px] font-bold">
                     {dados.tipoNota === "nfe" ? "NF-e" : "NFC-e"} — Série {dados.serie} — Nº {dados.numero.padStart(9,"0")}
@@ -1335,12 +1335,12 @@ function SefazModal({
                 </div>
                 <p className="text-[10px] text-muted-foreground">{dados.naturezaOperacao}</p>
               </div>
-              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-1">
+              <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-1">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Destinatário</p>
                 <p className="text-[13px] font-semibold">{dados.destNome}</p>
                 {dados.destDocumento && <p className="text-[10px] text-muted-foreground font-mono">{mascararDoc(dados.destDocumento)}</p>}
               </div>
-              <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-2">
+              <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-2">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Itens ({dados.itens.length})</p>
                 {dados.itens.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between text-[11px]">
@@ -1350,9 +1350,9 @@ function SefazModal({
                     </span>
                   </div>
                 ))}
-                <div className="border-t border-border/30 pt-1 flex items-center justify-between">
+                <div className="border-t border-border pt-1 flex items-center justify-between">
                   <span className="text-[13px] font-bold">Total</span>
-                  <span className="text-[15px] font-bold text-violet-600 font-mono">R$ {dados.valorTotal}</span>
+                  <span className="text-[15px] font-bold text-[hsl(var(--primary))] font-mono">R$ {dados.valorTotal}</span>
                 </div>
               </div>
               {lastResult && !lastResult.sucesso && (
@@ -1372,7 +1372,7 @@ function SefazModal({
           <div className="flex items-center gap-2">
             {step > 1 && (
               <button type="button" onClick={() => setStep(s => s - 1)} disabled={saving}
-                className="h-10 px-4 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-40">
+                className="h-10 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-40">
                 Voltar
               </button>
             )}
@@ -1423,7 +1423,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
   const isPronto   = pedido.status === "pronto";
   const isFaturado = pedido.status === "faturado";
   const isEnviado  = pedido.status === "enviado";
-  const accentColor = isPronto ? "#10b981" : isFaturado ? "#7c3aed" : isEnviado ? "#22c55e" : "hsl(var(--muted-foreground))";
+  const accentColor = isPronto ? "#10b981" : isFaturado ? "hsl(var(--primary))" : isEnviado ? "#22c55e" : "hsl(var(--muted-foreground))";
   const borderColor = isPronto ? "#34d399" : isFaturado ? "#a78bfa" : isEnviado ? "#4ade80" : "hsl(var(--border))";
 
   return (
@@ -1438,7 +1438,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
           background: isPronto ? "rgba(16,185,129,0.12)" : isFaturado ? "rgba(124,58,237,0.12)" : isEnviado ? "rgba(34,197,94,0.12)" : "hsl(var(--muted))"
         }}>
           {isEnviado  ? <BadgeCheck size={18} color="#22c55e" /> :
-           isFaturado ? <FileCheck2 size={18} color="#7c3aed" /> :
+           isFaturado ? <FileCheck2 size={18} color="hsl(var(--primary))" /> :
                         <Receipt    size={18} color="#10b981" />}
         </div>
         <div className="flex-1 min-w-0">
@@ -1464,7 +1464,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
               <Package size={10} />{totalItens} un.
             </span>
             {pedido.nota_fiscal && (
-              <span className="flex items-center gap-1 text-[11px] font-mono text-violet-600 dark:text-violet-400">
+              <span className="flex items-center gap-1 text-[11px] font-mono text-[hsl(var(--primary))] dark:text-violet-400">
                 <FileText size={10} />{pedido.nota_fiscal}
               </span>
             )}
@@ -1482,9 +1482,9 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             {[
               { label: "Criado",     value: pedido.created_at,   color: "hsl(var(--muted-foreground))" },
               { label: "Separado",   value: pedido.separado_em,  color: "#10b981" },
-              { label: "NF emitida", value: pedido.nf_criada_em, color: "#7c3aed" },
+              { label: "NF emitida", value: pedido.nf_criada_em, color: "hsl(var(--primary))" },
             ].map(({ label, value, color }) => (
-              <div key={label} className="rounded-xl p-2 text-center bg-muted/20 border border-border/50">
+              <div key={label} className="rounded-xl p-2 text-center bg-muted/20 border border-border">
                 <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color }}>{label}</p>
                 <p className="text-[10px] font-mono text-muted-foreground">{value ? fmtDate(value) : "—"}</p>
               </div>
@@ -1492,7 +1492,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
           </div>
           <div className="space-y-1">
             {pedido.itens.map(item => (
-              <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/20 border border-border/40">
+              <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/20 border border-border">
                 <Package size={12} className="text-muted-foreground/70 shrink-0" />
                 <span className="text-[12px] font-medium text-foreground flex-1 truncate">{item.device_model}</span>
                 <span className="text-[11px] font-bold">{item.quantidade} un.</span>
@@ -1502,7 +1502,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
           {pedido.chave_acesso_nfe && (
             <div className="rounded-xl p-3 space-y-2 bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">Chave de Acesso</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--primary))] dark:text-violet-400">Chave de Acesso</p>
                 <button type="button" onClick={copyChave}
                   className={cn("flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 transition-colors",
                     copied ? "bg-violet-200 dark:bg-violet-900/50" : "bg-violet-100 dark:bg-violet-900/30")}>
@@ -1511,7 +1511,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
               </div>
               <p className="text-[9px] font-mono break-all leading-relaxed text-muted-foreground">{pedido.chave_acesso_nfe}</p>
               {pedido.protocolo_sefaz && (
-                <p className="text-[10px] font-mono font-semibold text-violet-600 dark:text-violet-400">Protocolo: {pedido.protocolo_sefaz}</p>
+                <p className="text-[10px] font-mono font-semibold text-[hsl(var(--primary))] dark:text-violet-400">Protocolo: {pedido.protocolo_sefaz}</p>
               )}
             </div>
           )}
@@ -1525,7 +1525,7 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             {isPronto && (
               <button type="button" onClick={() => onEmitirNF(pedido)}
                 className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[12px] font-bold text-white hover:opacity-90 transition-all active:scale-95"
-                style={{ background: "#7c3aed", boxShadow: "0 2px 8px rgba(124,58,237,0.35)" }}>
+                style={{ background: "hsl(var(--primary))", boxShadow: "0 2px 8px rgba(124,58,237,0.35)" }}>
                 <FileCheck2 size={14} />Emitir NF-e
               </button>
             )}
@@ -1623,11 +1623,11 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-md rounded-xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
-              <ShoppingCart className="h-4 w-4 text-violet-500" />
+            <div className="h-7 w-7 rounded-lg bg-[hsl(var(--primary)/0.12)] flex items-center justify-center">
+              <ShoppingCart className="h-4 w-4 text-[hsl(var(--primary))]" />
             </div>
             <span className="text-sm font-semibold">{inicial ? "Editar" : "Novo"} {tipoLabel}</span>
             <TestBadge modoTeste={modoTeste} />
@@ -1647,9 +1647,9 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                   <button key={cat.valor} type="button" onClick={() => setCategoria(cat.valor)}
                     className={cn("flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition-all",
                       categoria === cat.valor
-                        ? "border-violet-500/50 bg-violet-500/10"
-                        : "border-border/30 bg-muted/10 hover:bg-muted/30")}>
-                    <Icon className={cn("h-3.5 w-3.5 shrink-0", categoria === cat.valor ? "text-violet-500" : "text-muted-foreground")} />
+                        ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)]"
+                        : "border-border bg-muted/10 hover:bg-muted/30")}>
+                    <Icon className={cn("h-3.5 w-3.5 shrink-0", categoria === cat.valor ? "text-[hsl(var(--primary))]" : "text-muted-foreground")} />
                     <span className="text-[10px] font-medium leading-tight">{cat.label}</span>
                   </button>
                 );
@@ -1664,7 +1664,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{f.label}</label>
               <input type="text" value={f.val} onChange={e => f.set(e.target.value.slice(0,120))}
                 placeholder={f.placeholder}
-                className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
               />
             </div>
           ))}
@@ -1673,7 +1673,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Valor (R$) *</label>
               <input type="number" min="0" step="0.01" value={valor} onChange={e => setValor(e.target.value)}
                 placeholder="0,00"
-                className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
               />
             </div>
             <div className="space-y-1">
@@ -1681,7 +1681,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                 <CalendarDays className="h-2.5 w-2.5" />Data
               </label>
               <input type="date" value={data} onChange={e => setData(e.target.value)}
-                className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
               />
             </div>
           </div>
@@ -1692,8 +1692,8 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                 <button key={s} type="button" onClick={() => setStatusNf(s)}
                   className={cn("flex-1 h-8 rounded-lg border text-[10px] font-medium transition-all",
                     statusNf === s
-                      ? "border-violet-500/50 bg-violet-500/10 text-violet-600"
-                      : "border-border/30 bg-muted/10 text-muted-foreground")}>
+                      ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))]"
+                      : "border-border bg-muted/10 text-muted-foreground")}>
                   {s === "sem_nf" ? "Sem NF" : s === "manual" ? "Manual" : "Pendente"}
                 </button>
               ))}
@@ -1702,11 +1702,11 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               <div className="space-y-2">
                 <input type="text" value={nfManual} onChange={e => setNfManual(e.target.value.slice(0,60))}
                   placeholder="Número da NF (ex: NF-0001)"
-                  className="w-full h-8 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full h-8 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                 />
                 <input type="text" value={chaveNfe} onChange={e => setChaveNfe(e.target.value.replace(/\D/g,"").slice(0,44))}
                   placeholder="Chave de acesso NF-e 44 dígitos (opcional)"
-                  className="w-full h-8 rounded-xl border border-border/50 bg-background px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full h-8 rounded-xl border border-border bg-background px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                 />
               </div>
             )}
@@ -1728,8 +1728,8 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                     <button key={p} type="button" onClick={() => setPeriodicidade(p)}
                       className={cn("h-7 rounded-lg border text-[9px] font-medium transition-all",
                         periodicidade === p
-                          ? "border-violet-500/50 bg-violet-500/10 text-violet-600"
-                          : "border-border/30 bg-muted/10 text-muted-foreground")}>
+                          ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))]"
+                          : "border-border bg-muted/10 text-muted-foreground")}>
                       {p.charAt(0).toUpperCase() + p.slice(1)}
                     </button>
                   ))}
@@ -1741,13 +1741,13 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
             <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Observações</label>
             <textarea value={obs} onChange={e => setObs(e.target.value.slice(0,300))}
               placeholder="Informações adicionais..." rows={2}
-              className="w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
             />
           </div>
         </div>
         <div className="px-5 pb-5 pt-3 border-t border-border/20 shrink-0 flex gap-2">
           <button type="button" onClick={onClose}
-            className="h-10 px-4 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:bg-muted/40">
+            className="h-10 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/40">
             Cancelar
           </button>
           <button type="button" onClick={handleSave} disabled={saving}
@@ -1811,8 +1811,8 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
   }), [itens, search, filtroNF, showRecorr]);
 
   const nfColors: Record<LancamentoFinanceiro["status_nf"], { label: string; cls: string }> = {
-    sem_nf:     { label: "Sem NF",        cls: "bg-muted/50 text-muted-foreground border-border/40" },
-    manual:     { label: "NF Manual",     cls: "bg-violet-500/10 text-violet-600 border-violet-500/20" },
+    sem_nf:     { label: "Sem NF",        cls: "bg-muted/50 text-muted-foreground border-border" },
+    manual:     { label: "NF Manual",     cls: "bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))] border-[hsl(var(--primary)/0.20)]" },
     pendente:   { label: "NF Pendente",   cls: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
     autorizada: { label: "NF Autorizada", cls: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
   };
@@ -1823,13 +1823,13 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: "Este Mês",    value: fmtCurrency(totalMes),   icon: CalendarDays,   color: "#f97316" },
-          { label: "Total Geral", value: fmtCurrency(total),       icon: BarChart3,      color: "#7c3aed" },
+          { label: "Total Geral", value: fmtCurrency(total),       icon: BarChart3,      color: "hsl(var(--primary))" },
           { label: "Recorrentes", value: fmtCurrency(totalRecorr), icon: Repeat2,        color: "#0ea5e9" },
           { label: "Sem NF",      value: String(semNF),            icon: AlertTriangle,  color: semNF > 0 ? "#d97706" : "#10b981" },
         ].map(k => {
           const Icon = k.icon;
           return (
-            <div key={k.label} className="rounded-xl p-3 flex items-center gap-3 bg-card border border-border/50 hover:border-border transition-colors">
+            <div key={k.label} className="rounded-xl p-3 flex items-center gap-3 bg-card border border-border hover:border-border transition-colors">
               <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${k.color}15`, color: k.color }}>
                 <Icon size={18} />
               </div>
@@ -1859,7 +1859,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
           showSearchIcon
         />
         <select value={filtroNF} onChange={e => setFiltroNF(e.target.value as typeof filtroNF)}
-          className="h-9 rounded-xl px-3 text-[12px] font-medium bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-500/30">
+          className="h-9 rounded-xl px-3 text-[12px] font-medium bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]">
           <option value="todos">Todas NFs</option>
           <option value="sem_nf">Sem NF</option>
           <option value="manual">NF Manual</option>
@@ -1869,7 +1869,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         <button type="button" onClick={() => setShowRecorr(v => !v)}
           className={cn("h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold border transition-all",
             showRecorr
-              ? "bg-violet-500/15 border-violet-500/40 text-violet-600"
+              ? "bg-[hsl(var(--primary)/0.12)] border-violet-500/40 text-[hsl(var(--primary))]"
               : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50")}>
           <Repeat2 size={13} />Recorrentes
         </button>
@@ -1891,7 +1891,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         </div>
       ) : itensFiltrados.length === 0 ? (
         <div className="text-center py-14 space-y-3">
-          <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted/30">
+          <div className="h-16 w-16 rounded-xl mx-auto flex items-center justify-center bg-muted/30">
             <ShoppingCart size={28} className="text-muted-foreground/40" />
           </div>
           <div>
@@ -1911,13 +1911,13 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
             const nf       = nfColors[item.status_nf];
             const isMes    = item.data_lancamento.startsWith(mesAtualStr);
             return (
-              <div key={item.id} className="rounded-xl overflow-hidden flex flex-col bg-card border border-border/50 hover:border-border hover:shadow-md transition-all">
+              <div key={item.id} className="rounded-xl overflow-hidden flex flex-col bg-card border border-border hover:border-border hover:shadow-md transition-all">
                 <div style={{ height: 3, background: isMes ? "#f97316" : "hsl(var(--border))" }} />
                 <div className="p-3 flex-1 space-y-2.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="h-8 w-8 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                        <CatIcon size={15} className="text-violet-600" />
+                      <div className="h-8 w-8 rounded-lg bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
+                        <CatIcon size={15} className="text-[hsl(var(--primary))]" />
                       </div>
                       <div className="min-w-0">
                         <p className="text-[12px] font-bold text-foreground truncate">{item.descricao}</p>
@@ -1944,7 +1944,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                     <span className="font-mono shrink-0 ml-2">{new Date(item.data_lancamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
                   </div>
                   {(item.nota_fiscal_manual || item.chave_nfe) && (
-                    <div className="rounded-lg px-2 py-1.5 bg-muted/30 border border-border/40">
+                    <div className="rounded-lg px-2 py-1.5 bg-muted/30 border border-border">
                       {item.nota_fiscal_manual && <p className="text-[10px] font-mono text-muted-foreground">NF: {item.nota_fiscal_manual}</p>}
                       {item.chave_nfe && <p className="text-[9px] font-mono text-muted-foreground/70 truncate">Chave: {item.chave_nfe.slice(0, 20)}…</p>}
                     </div>
@@ -1976,7 +1976,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
 
       {delItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/40 p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3">
               <div className="h-10 w-10 rounded-xl bg-red-100 dark:bg-red-950/40 flex items-center justify-center shrink-0">
                 <Trash2 size={18} className="text-red-600" />
@@ -1989,7 +1989,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => setDelItem(null)} disabled={deleting}
-                className="flex-1 h-9 rounded-xl border border-border/50 text-sm font-semibold text-muted-foreground hover:bg-muted/40 transition-colors">
+                className="flex-1 h-9 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-muted/40 transition-colors">
                 Cancelar
               </button>
               <button type="button" onClick={handleDelete} disabled={deleting}
@@ -2023,7 +2023,7 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
   const pendentesNF = pedidos.filter(p => p.status === "pronto").length;
 
   const custoPorTipo = [
-    { label: "Produção",    valor: lancamentos.filter(l => l.tipo === "compra_producao").reduce((s, l) => s + l.valor, 0),    color: "#7c3aed" },
+    { label: "Produção",    valor: lancamentos.filter(l => l.tipo === "compra_producao").reduce((s, l) => s + l.valor, 0),    color: "hsl(var(--primary))" },
     { label: "Empresa",     valor: lancamentos.filter(l => l.tipo === "compra_empresa").reduce((s, l) => s + l.valor, 0),     color: "#0ea5e9" },
     { label: "Operacional", valor: lancamentos.filter(l => l.tipo === "custo_operacional").reduce((s, l) => s + l.valor, 0),  color: "#f97316" },
   ];
@@ -2045,12 +2045,12 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
         {[
           { label: "Receita do Mês",   value: fmtCurrency(totalReceitaMes), sub: `${vendas.filter(p => (p.nf_criada_em ?? p.created_at).startsWith(mesAtual)).length} vendas`, icon: TrendingUp, color: "#10b981" },
           { label: "Custos do Mês",    value: fmtCurrency(totalCustoMes),   sub: `${lancamentos.filter(l => l.data_lancamento.startsWith(mesAtual)).length} lançamentos`, icon: TrendingDown, color: "#ef4444" },
-          { label: "Resultado do Mês", value: fmtCurrency(lucroMes),        sub: lucroMes >= 0 ? "Lucro" : "Prejuízo", icon: BarChart2, color: lucroMes >= 0 ? "#7c3aed" : "#f97316" },
+          { label: "Resultado do Mês", value: fmtCurrency(lucroMes),        sub: lucroMes >= 0 ? "Lucro" : "Prejuízo", icon: BarChart2, color: lucroMes >= 0 ? "hsl(var(--primary))" : "#f97316" },
           { label: "NFs Pendentes",    value: String(pendentesNF),           sub: "pedidos prontos", icon: FileText, color: "#0ea5e9" },
         ].map(k => {
           const Icon = k.icon;
           return (
-            <div key={k.label} className="rounded-2xl p-4 flex flex-col gap-3 bg-card border border-border/50"
+            <div key={k.label} className="rounded-xl p-4 flex flex-col gap-3 bg-card border border-border"
               style={{ boxShadow: "0 1px 3px hsl(var(--border)/0.3)" }}>
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{k.label}</p>
@@ -2069,9 +2069,9 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
 
       {/* Distribuição de custos + Fornecedores */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded-2xl bg-card border border-border/50 p-4 space-y-4">
+        <div className="rounded-xl bg-card border border-border p-4 space-y-4">
           <div className="flex items-center gap-2">
-            <PieChart size={15} className="text-violet-500" />
+            <PieChart size={15} className="text-[hsl(var(--primary))]" />
             <p className="text-sm font-bold">Distribuição de Custos</p>
           </div>
           {custoPorTipo.map(c => {
@@ -2089,15 +2089,15 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
               </div>
             );
           })}
-          <div className="pt-2 border-t border-border/40 flex items-center justify-between">
+          <div className="pt-2 border-t border-border flex items-center justify-between">
             <span className="text-[11px] font-semibold text-muted-foreground">Total custos</span>
             <span className="text-[14px] font-black text-red-600 dark:text-red-400 font-mono">{fmtCurrency(totalCusto)}</span>
           </div>
         </div>
 
-        <div className="rounded-2xl bg-card border border-border/50 p-4 space-y-3">
+        <div className="rounded-xl bg-card border border-border p-4 space-y-3">
           <div className="flex items-center gap-2">
-            <Layers size={15} className="text-violet-500" />
+            <Layers size={15} className="text-[hsl(var(--primary))]" />
             <p className="text-sm font-bold">Maiores Fornecedores</p>
           </div>
           {topFornecedores.length === 0 ? (
@@ -2105,8 +2105,8 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
           ) : (
             topFornecedores.map(([nome, valor], idx) => (
               <div key={nome} className="flex items-center gap-3">
-                <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                  <span className="text-[10px] font-black text-violet-600">{idx + 1}</span>
+                <div className="h-6 w-6 rounded-lg bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
+                  <span className="text-[10px] font-black text-[hsl(var(--primary))]">{idx + 1}</span>
                 </div>
                 <p className="text-[12px] font-semibold truncate flex-1">{nome}</p>
                 <p className="text-[12px] font-bold font-mono shrink-0">{fmtCurrency(valor)}</p>
@@ -2115,7 +2115,7 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
           )}
 
           {recorrentes.length > 0 && (
-            <div className="pt-3 border-t border-border/40 space-y-2">
+            <div className="pt-3 border-t border-border space-y-2">
               <p className="text-[11px] font-bold flex items-center gap-1.5">
                 <Repeat2 size={12} className="text-sky-500" />Custos Recorrentes ({recorrentes.length})
               </p>
@@ -2219,19 +2219,19 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
   return (
     <div className="space-y-4">
       {contas.length > 0 && (
-        <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-500/5 to-violet-500/10 p-4 flex items-center gap-4">
-          <div className="h-12 w-12 rounded-2xl bg-violet-500/15 flex items-center justify-center shrink-0">
-            <Wallet size={24} className="text-violet-600" />
+        <div className="rounded-xl border border-[hsl(var(--primary)/0.20)] bg-gradient-to-br from-violet-500/5 to-violet-500/10 p-4 flex items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-[hsl(var(--primary)/0.12)] flex items-center justify-center shrink-0">
+            <Wallet size={24} className="text-[hsl(var(--primary))]" />
           </div>
           <div>
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Saldo Total em Caixa</p>
-            <p className="text-2xl font-black text-violet-600 font-mono tabular-nums">{fmtCurrency(saldoTotal)}</p>
+            <p className="text-2xl font-black text-[hsl(var(--primary))] font-mono tabular-nums">{fmtCurrency(saldoTotal)}</p>
             <p className="text-[11px] text-muted-foreground">{contas.length} conta{contas.length > 1 ? "s" : ""} cadastrada{contas.length > 1 ? "s" : ""}</p>
           </div>
         </div>
       )}
 
-      <div className={cn("rounded-2xl border p-4 flex items-start gap-3",
+      <div className={cn("rounded-xl border p-4 flex items-start gap-3",
         modoTeste ? "border-orange-500/30 bg-orange-500/5" : "border-green-500/30 bg-green-500/5")}>
         <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
           modoTeste ? "bg-orange-500/10" : "bg-green-500/10")}>
@@ -2255,9 +2255,9 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
         </div>
       </div>
 
-      <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-2">
+      <div className="rounded-xl border border-[hsl(var(--primary)/0.20)] bg-violet-500/5 p-4 space-y-2">
         <div className="flex items-center gap-2 mb-2">
-          <Send className="h-4 w-4 text-violet-500" />
+          <Send className="h-4 w-4 text-[hsl(var(--primary))]" />
           <p className="text-sm font-bold">Configuração SEFAZ</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
@@ -2271,7 +2271,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
           ].map(([k, v]) => (
             <div key={k} className="flex items-start gap-1.5 py-0.5 text-muted-foreground">
               <span className="shrink-0">•</span>
-              <span><strong className="text-foreground">{k}:</strong> <code className="text-violet-500 text-[10px]">{v}</code></span>
+              <span><strong className="text-foreground">{k}:</strong> <code className="text-[hsl(var(--primary))] text-[10px]">{v}</code></span>
             </div>
           ))}
         </div>
@@ -2281,7 +2281,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
             await new Promise(r => setTimeout(r, 1200));
             toast.success("[TESTE] Conexão simulada com sucesso.");
           }}
-          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/30 text-violet-600 text-[11px] font-medium hover:bg-violet-500/10 transition-colors mt-2">
+          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-xl border border-[hsl(var(--primary)/0.25)] text-[hsl(var(--primary))] text-[11px] font-medium hover:bg-[hsl(var(--primary)/0.10)] transition-colors mt-2">
           <TestTube2 className="h-3 w-3" />Testar Conexão SEFAZ
         </button>
       </div>
@@ -2289,11 +2289,11 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[13px] font-bold flex items-center gap-1.5">
-            <Landmark className="h-4 w-4 text-violet-500" />Contas Bancárias
+            <Landmark className="h-4 w-4 text-[hsl(var(--primary))]" />Contas Bancárias
           </p>
           <button type="button" onClick={() => abrirModal()}
             className="h-8 px-3 flex items-center gap-1 rounded-xl text-[11px] font-bold text-white hover:opacity-90 transition-all"
-            style={{ background: "#7c3aed" }}>
+            style={{ background: "hsl(var(--primary))" }}>
             <PlusCircle className="h-3.5 w-3.5" />Nova conta
           </button>
         </div>
@@ -2307,7 +2307,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {contas.map(c => (
-              <div key={c.id} className="rounded-xl border border-border/50 bg-card p-4 space-y-3 hover:border-border hover:shadow-sm transition-all">
+              <div key={c.id} className="rounded-xl border border-border bg-card p-4 space-y-3 hover:border-border hover:shadow-sm transition-all">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-[14px] font-bold">{c.banco}</p>
@@ -2318,7 +2318,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
                     <p className="text-[16px] font-black font-mono tabular-nums">{fmtCurrency(c.saldo_atual)}</p>
                     <div className="flex items-center gap-1 mt-1 justify-end">
                       {c.integracao_ativa && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">Integrado</span>}
-                      {c.envio_automatico_nf && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 border border-violet-500/20">NF Auto</span>}
+                      {c.envio_automatico_nf && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))] border border-[hsl(var(--primary)/0.20)]">NF Auto</span>}
                     </div>
                   </div>
                 </div>
@@ -2334,7 +2334,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
                     <Edit3 className="h-2.5 w-2.5" />Editar
                   </button>
                   <button type="button" onClick={() => testarWebhook(c)}
-                    className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-[10px] text-violet-600 transition-colors">
+                    className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-[hsl(var(--primary)/0.10)] hover:bg-violet-500/20 text-[10px] text-[hsl(var(--primary))] transition-colors">
                     <TestTube2 className="h-2.5 w-2.5" />Testar Webhook
                   </button>
                 </div>
@@ -2346,10 +2346,10 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="w-full max-w-md rounded-xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
             <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 flex items-center justify-between">
               <p className="text-sm font-semibold flex items-center gap-2">
-                <Landmark className="h-4 w-4 text-violet-500" />{editConta ? "Editar" : "Nova"} Conta Bancária
+                <Landmark className="h-4 w-4 text-[hsl(var(--primary))]" />{editConta ? "Editar" : "Nova"} Conta Bancária
               </p>
               <button type="button" onClick={() => setModalOpen(false)}
                 className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
@@ -2360,7 +2360,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
               <div className="space-y-1">
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Banco *</label>
                 <select value={banco} onChange={e => setBanco(e.target.value)}
-                  className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30">
+                  className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]">
                   {BANCOS_BR.map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
@@ -2368,19 +2368,19 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Agência *</label>
                   <input type="text" value={agencia} onChange={e => setAgencia(e.target.value.slice(0,10))} placeholder="0000-0"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Conta *</label>
                   <input type="text" value={contaNum} onChange={e => setContaNum(e.target.value.slice(0,20))} placeholder="00000-0"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
                 {(["corrente", "poupanca", "pagamentos"] as const).map(t => (
                   <button key={t} type="button" onClick={() => setTipoConta(t)}
                     className={cn("h-8 rounded-xl border text-[10px] font-medium transition-all",
-                      tipoConta === t ? "border-violet-500/50 bg-violet-500/10 text-violet-600" : "border-border/30 bg-muted/10 text-muted-foreground")}>
+                      tipoConta === t ? "border-violet-500/50 bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))]" : "border-border bg-muted/10 text-muted-foreground")}>
                     {t === "corrente" ? "Corrente" : t === "poupanca" ? "Poupança" : "Pagamentos"}
                   </button>
                 ))}
@@ -2388,7 +2388,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
               <div className="space-y-1">
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Saldo Atual (R$)</label>
                 <input type="number" step="0.01" value={saldo} onChange={e => setSaldo(e.target.value)} placeholder="0,00"
-                  className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                  className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]" />
               </div>
               <div className="border-t border-border/20 pt-3 space-y-3">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
@@ -2398,13 +2398,13 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Webhook URL</label>
                   <input type="url" value={webhook} onChange={e => setWebhook(e.target.value.slice(0,300))}
                     placeholder="https://api.banco.com.br/webhooks/nf"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Token / Bearer API</label>
                   <input type="password" value={token} onChange={e => setToken(e.target.value.slice(0,300))}
                     placeholder="Bearer token ou chave API"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]" />
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
                   {[
@@ -2426,7 +2426,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
             </div>
             <div className="px-5 pb-5 pt-3 border-t border-border/20 shrink-0 flex gap-2">
               <button type="button" onClick={() => setModalOpen(false)}
-                className="h-10 px-4 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:bg-muted/40">Cancelar</button>
+                className="h-10 px-4 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/40">Cancelar</button>
               <button type="button" onClick={handleSaveConta} disabled={saving}
                 className="flex-1 h-10 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -2496,11 +2496,11 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-lg rounded-xl bg-card border border-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="px-5 pt-5 pb-3 shrink-0 border-b border-border/20 flex items-center justify-between">
           <div>
             <p className="text-sm font-bold flex items-center gap-2">
-              <History className="h-4 w-4 text-violet-500" />Histórico de Notas Fiscais
+              <History className="h-4 w-4 text-[hsl(var(--primary))]" />Histórico de Notas Fiscais
             </p>
             <p className="text-[12px] text-muted-foreground mt-0.5">Últimas {pedidos.length} notas emitidas</p>
           </div>
@@ -2525,16 +2525,16 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
             return (
               <div key={p.id} className={cn("flex items-start gap-3 px-3 py-2.5 rounded-xl border",
                 enviado ? "bg-green-500/4 border-green-500/15" : "bg-violet-500/4 border-violet-500/15")}>
-                {enviado ? <Send className="h-4 w-4 mt-0.5 text-green-500 shrink-0" /> : <FileCheck2 className="h-4 w-4 mt-0.5 text-violet-500 shrink-0" />}
+                {enviado ? <Send className="h-4 w-4 mt-0.5 text-green-500 shrink-0" /> : <FileCheck2 className="h-4 w-4 mt-0.5 text-[hsl(var(--primary))] shrink-0" />}
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="text-[12px] font-semibold truncate">{p.cliente_nome}</p>
-                  {p.nota_fiscal && <p className="text-[11px] font-mono text-violet-500 flex items-center gap-1"><Tag className="h-2.5 w-2.5" />{p.nota_fiscal}</p>}
+                  {p.nota_fiscal && <p className="text-[11px] font-mono text-[hsl(var(--primary))] flex items-center gap-1"><Tag className="h-2.5 w-2.5" />{p.nota_fiscal}</p>}
                   {p.protocolo_sefaz && <p className="text-[9px] font-mono text-muted-foreground/60">Prot: {p.protocolo_sefaz}</p>}
                   {p.vendedora_nome && <p className="text-[10px] text-muted-foreground flex items-center gap-1"><User className="h-2.5 w-2.5" />{p.vendedora_nome}</p>}
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
-                    enviado ? "bg-green-500/10 text-green-600 border-green-500/30" : "bg-violet-500/10 text-violet-500 border-violet-500/30")}>
+                    enviado ? "bg-green-500/10 text-green-600 border-green-500/30" : "bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))] border-[hsl(var(--primary)/0.25)]")}>
                     {enviado ? "Enviado" : "Faturado"}
                   </span>
                   <span className="text-[10px] text-muted-foreground">{fmtDate(p.nf_criada_em ?? p.created_at)}</span>
@@ -2711,7 +2711,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
     return (
       <button type="button" onClick={() => toggleSort(col)}
         className={cn("flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide transition-colors whitespace-nowrap",
-          active ? "text-violet-600" : "text-muted-foreground hover:text-foreground")}>
+          active ? "text-[hsl(var(--primary))]" : "text-muted-foreground hover:text-foreground")}>
         {label}
         {active ? (sortAsc ? <ChevronUp size={10} /> : <ChevronDown size={10} />) : null}
       </button>
@@ -2723,14 +2723,14 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "Preço Médio Venda", value: filtered.length > 0 ? fmtCurrency(totalVenda / filtered.length) : "—", icon: Tag,          color: "#7c3aed" },
+          { label: "Preço Médio Venda", value: filtered.length > 0 ? fmtCurrency(totalVenda / filtered.length) : "—", icon: Tag,          color: "hsl(var(--primary))" },
           { label: "Custo Médio",       value: filtered.length > 0 ? fmtCurrency(totalCusto / filtered.length) : "—", icon: TrendingDown,  color: "#ef4444" },
           { label: "Margem Média",      value: `${margemMedia.toFixed(1)}%`,                                             icon: Percent,       color: margemMedia >= 20 ? "#10b981" : "#f97316" },
           { label: "Sem Preço",         value: String(semPreco),                                                          icon: AlertTriangle, color: semPreco > 0 ? "#d97706" : "#10b981" },
         ].map(k => {
           const Icon = k.icon;
           return (
-            <div key={k.label} className="rounded-2xl p-4 flex items-center gap-3 bg-card border border-border/50">
+            <div key={k.label} className="rounded-xl p-4 flex items-center gap-3 bg-card border border-border">
               <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
                 style={{ background: `${k.color}15`, color: k.color }}>
                 <Icon size={18} />
@@ -2757,7 +2757,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
         />
         <button type="button" onClick={() => setShowInativ(v => !v)}
           className={cn("h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold border transition-all",
-            showInativ ? "bg-violet-500/15 border-violet-500/40 text-violet-600" : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50")}>
+            showInativ ? "bg-[hsl(var(--primary)/0.12)] border-violet-500/40 text-[hsl(var(--primary))]" : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50")}>
           <Package size={13} />Inativos
         </button>
         <button type="button" onClick={load} disabled={loading}
@@ -2782,9 +2782,9 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
           <p className="text-sm text-muted-foreground">Nenhuma peça encontrada</p>
         </div>
       ) : (
-        <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           {/* Cabeçalho */}
-          <div className="grid gap-2 px-4 py-2.5 bg-muted/30 border-b border-border/40"
+          <div className="grid gap-2 px-4 py-2.5 bg-muted/30 border-b border-border"
             style={{ gridTemplateColumns: "1fr 100px 100px 80px 70px 70px 90px 50px 100px" }}>
             <SortBtn col="model"           label="Modelo / Referência" />
             <SortBtn col="preco_custo"     label="Custo (R$)" />
@@ -2823,7 +2823,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                         value={editData.observacoes_preco ?? ""}
                         onChange={e => setEditData(prev => ({ ...prev, observacoes_preco: e.target.value.slice(0,120) }))}
                         placeholder="Observação (opcional)"
-                        className="mt-1 w-full h-6 rounded-lg border border-border/50 bg-background px-2 text-[10px] focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="mt-1 w-full h-6 rounded-lg border border-border bg-background px-2 text-[10px] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                       />
                     )}
                   </div>
@@ -2835,7 +2835,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" step="0.01"
                         value={editData.preco_custo ?? ""}
                         onChange={e => setEditData(prev => ({ ...prev, preco_custo: parseFloat(e.target.value) || 0 }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="w-full h-8 rounded-lg border border-border bg-background pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                       />
                     </div>
                   ) : (
@@ -2849,13 +2849,13 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" step="0.01"
                         value={editData.preco_venda ?? ""}
                         onChange={e => setEditData(prev => ({ ...prev, preco_venda: parseFloat(e.target.value) || 0 }))}
-                        className={cn("w-full h-8 rounded-lg border bg-background pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                          (editData.preco_venda ?? 0) > 0 ? "border-border/50" : "border-amber-500/60")}
+                        className={cn("w-full h-8 rounded-lg border bg-background pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]",
+                          (editData.preco_venda ?? 0) > 0 ? "border-border" : "border-amber-500/60")}
                       />
                     </div>
                   ) : (
                     <p className={cn("text-[12px] font-bold font-mono tabular-nums",
-                      d.preco_venda > 0 ? "text-violet-600" : "text-amber-500")}>
+                      d.preco_venda > 0 ? "text-[hsl(var(--primary))]" : "text-amber-500")}>
                       {d.preco_venda > 0 ? fmtCurrency(d.preco_venda) : "—"}
                     </p>
                   )}
@@ -2866,7 +2866,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" max="100" step="1"
                         value={editData.desconto_max_pct ?? 0}
                         onChange={e => setEditData(prev => ({ ...prev, desconto_max_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="w-full h-8 rounded-lg border border-border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                       />
                       <span className="text-[10px] text-muted-foreground shrink-0">%</span>
                     </div>
@@ -2874,7 +2874,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                     <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-lg border",
                       d.desconto_max_pct > 0
                         ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                        : "bg-muted/30 text-muted-foreground border-border/30")}>
+                        : "bg-muted/30 text-muted-foreground border-border")}>
                       {d.desconto_max_pct}%
                     </span>
                   )}
@@ -2884,7 +2884,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                     <input type="text" inputMode="numeric"
                       value={editData.ncm ?? ""}
                       onChange={e => setEditData(prev => ({ ...prev, ncm: e.target.value.replace(/\D/g,"").slice(0,8) }))}
-                      className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                      className="w-full h-8 rounded-lg border border-border bg-background px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                     />
                   ) : (
                     <p className="text-[10px] font-mono text-muted-foreground">{d.ncm || "—"}</p>
@@ -2895,7 +2895,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                     <input type="text" inputMode="numeric"
                       value={editData.cfop_padrao ?? ""}
                       onChange={e => setEditData(prev => ({ ...prev, cfop_padrao: e.target.value.replace(/\D/g,"").slice(0,4) }))}
-                      className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                      className="w-full h-8 rounded-lg border border-border bg-background px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                     />
                   ) : (
                     <p className="text-[10px] font-mono text-muted-foreground">{d.cfop_padrao || "—"}</p>
@@ -2907,7 +2907,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" max="100" step="1"
                         value={editData.margem_minima_pct ?? 0}
                         onChange={e => setEditData(prev => ({ ...prev, margem_minima_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="w-full h-8 rounded-lg border border-border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary)/0.25)]"
                       />
                       <span className="text-[10px] text-muted-foreground shrink-0">%</span>
                     </div>
@@ -2933,7 +2933,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                     <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
                       d.ativo
                         ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                        : "bg-muted/30 text-muted-foreground border-border/30")}>
+                        : "bg-muted/30 text-muted-foreground border-border")}>
                       {d.ativo ? "Sim" : "Não"}
                     </span>
                   )}
@@ -2952,7 +2952,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                     </div>
                   ) : (
                     <button type="button" onClick={() => startEdit(d)}
-                      className="h-7 px-2.5 flex items-center gap-1 rounded-lg bg-muted/30 hover:bg-violet-500/10 hover:text-violet-600 text-muted-foreground text-[10px] font-semibold transition-colors">
+                      className="h-7 px-2.5 flex items-center gap-1 rounded-lg bg-muted/30 hover:bg-[hsl(var(--primary)/0.10)] hover:text-[hsl(var(--primary))] text-muted-foreground text-[10px] font-semibold transition-colors">
                       <Edit3 size={11} />Editar
                     </button>
                   )}
@@ -2962,11 +2962,11 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
           </div>
 
           {/* Rodapé totais */}
-          <div className="grid gap-2 px-4 py-2.5 bg-muted/20 border-t border-border/40 font-bold"
+          <div className="grid gap-2 px-4 py-2.5 bg-muted/20 border-t border-border font-bold"
             style={{ gridTemplateColumns: "1fr 100px 100px 80px 70px 70px 90px 50px 100px" }}>
             <p className="text-[11px] text-muted-foreground">{filtered.length} peças</p>
             <p className="text-[11px] font-mono text-muted-foreground">{fmtCurrency(totalCusto / (filtered.length || 1))}</p>
-            <p className="text-[11px] font-mono text-violet-600">{fmtCurrency(totalVenda / (filtered.length || 1))}</p>
+            <p className="text-[11px] font-mono text-[hsl(var(--primary))]">{fmtCurrency(totalVenda / (filtered.length || 1))}</p>
             <p className="text-[11px] text-muted-foreground col-span-6">← médias por peça</p>
           </div>
         </div>
@@ -3168,18 +3168,18 @@ export default function Financeiro() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/60"
+    <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
+      <header className="sticky top-0 z-30 border-b" style={{ background: "hsl(var(--card) / 0.96)", borderColor: "hsl(var(--border))", backdropFilter: "blur(12px)" }}
         style={{ boxShadow: "0 1px 0 hsl(var(--border)/0.5)" }}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => navigate("/")}
-              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border/50 hover:bg-muted/40 transition-colors">
+              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border hover:bg-muted/40 transition-colors">
               <ArrowLeft size={15} />
             </button>
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-xl flex items-center justify-center bg-violet-500/15">
-                <Receipt size={16} className="text-violet-600" />
+              <div className="h-8 w-8 rounded-xl flex items-center justify-center bg-[hsl(var(--primary)/0.12)]">
+                <Receipt size={16} className="text-[hsl(var(--primary))]" />
               </div>
               <div>
                 <h1 className="text-[13px] font-bold text-foreground leading-tight">Financeiro</h1>
@@ -3220,15 +3220,15 @@ export default function Financeiro() {
                 <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
                   className="flex items-center gap-1.5 h-10 px-3 sm:px-4 text-[11px] font-semibold whitespace-nowrap transition-all shrink-0 border-b-2"
                   style={{
-                    color: isActive ? "#7c3aed" : "hsl(var(--muted-foreground))",
-                    borderBottomColor: isActive ? "#7c3aed" : "transparent",
+                    color: isActive ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+                    borderBottomColor: isActive ? "hsl(var(--primary))" : "transparent",
                   }}>
                   <Icon size={13} />
                   <span className="hidden sm:inline">{tab.label}</span>
                   {tab.badge && tab.badge > 0 ? (
                     <span className="min-w-[16px] h-4 rounded-full text-[9px] font-bold px-1 flex items-center justify-center"
                       style={isActive
-                        ? { background: "#ede9fe", color: "#7c3aed" }
+                        ? { background: "hsl(var(--primary)/0.12)", color: "hsl(var(--primary))" }
                         : { background: "#dcfce7", color: "#15803d" }}>
                       {tab.badge}
                     </span>
@@ -3257,13 +3257,13 @@ export default function Financeiro() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { label: "Aguardando NF", value: prontos,   icon: Receipt,     color: "#10b981" },
-                { label: "Faturados",     value: faturados, icon: FileCheck2,  color: "#7c3aed" },
+                { label: "Faturados",     value: faturados, icon: FileCheck2,  color: "hsl(var(--primary))" },
                 { label: "Enviados",      value: enviados,  icon: Send,        color: "#0ea5e9" },
                 { label: "Custos/mês",    value: fmtCurrency(custosMes), icon: TrendingDown, color: "#f97316" },
               ].map(kpi => {
                 const Icon = kpi.icon;
                 return (
-                  <div key={kpi.label} className="rounded-2xl p-4 flex items-start gap-3 bg-card border border-border/50"
+                  <div key={kpi.label} className="rounded-xl p-4 flex items-start gap-3 bg-card border border-border"
                     style={{ boxShadow: "0 1px 3px hsl(var(--border)/0.3)" }}>
                     <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
                       style={{ background: `${kpi.color}15`, color: kpi.color }}>
@@ -3316,7 +3316,7 @@ export default function Financeiro() {
               </div>
             ) : filtradosSearch.length === 0 ? (
               <div className="text-center py-16 space-y-3">
-                <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted/30">
+                <div className="h-16 w-16 rounded-xl mx-auto flex items-center justify-center bg-muted/30">
                   <Receipt size={28} className="text-muted-foreground/40" />
                 </div>
                 <div>
@@ -3339,8 +3339,8 @@ export default function Financeiro() {
         {activeTab === "compras_producao" && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
-                <Factory size={20} className="text-violet-600" />
+              <div className="h-10 w-10 rounded-xl bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
+                <Factory size={20} className="text-[hsl(var(--primary))]" />
               </div>
               <div>
                 <h2 className="text-base font-bold">Compras — Produção</h2>
@@ -3394,7 +3394,7 @@ export default function Financeiro() {
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { tipo: "compra_producao",   label: "Produção",    color: "#7c3aed" },
+                { tipo: "compra_producao",   label: "Produção",    color: "hsl(var(--primary))" },
                 { tipo: "compra_empresa",    label: "Empresa",     color: "#0ea5e9" },
                 { tipo: "custo_operacional", label: "Operacional", color: "#f97316" },
               ].map(({ tipo, label, color }) => {
@@ -3438,8 +3438,8 @@ export default function Financeiro() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
-                  <Tag size={20} className="text-violet-600" />
+                <div className="h-10 w-10 rounded-xl bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
+                  <Tag size={20} className="text-[hsl(var(--primary))]" />
                 </div>
                 <div>
                   <h2 className="text-base font-bold">Tabela de Preços</h2>

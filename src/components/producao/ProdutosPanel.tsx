@@ -81,7 +81,7 @@ function ProdutoModal({ open, produto, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-md bg-card rounded-xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">{isEdit?"Editar Produto":"Novo Produto"}</h3>
           <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>
@@ -170,7 +170,7 @@ export function ProdutosPanel({ isAdmin }: { isAdmin: boolean }) {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {filtered.map(p=>(
-            <div key={p.id} className={cn("rounded-2xl border p-4 space-y-2 transition-all", p.ativo?"bg-card/60":"bg-muted/30 opacity-60")}>
+            <div key={p.id} className={cn("rounded-xl border p-4 space-y-2 transition-all", p.ativo?"bg-card/60":"bg-muted/30 opacity-60")}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold text-sm">{p.codigo}</p>
@@ -187,7 +187,7 @@ export function ProdutosPanel({ isAdmin }: { isAdmin: boolean }) {
                 <span>Lead: <b className="text-foreground">{p.lead_time_dias}d</b></span>
               </div>
               {isAdmin && (
-                <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                <div className="flex items-center gap-2 pt-1 border-t border-border">
                   <button onClick={()=>handleToggleAtivo(p)} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">{p.ativo?"Desativar":"Ativar"}</button>
                   <div className="flex-1"/>
                   <button onClick={()=>{setEditTarget(p);setModalOpen(true);}} aria-label="Editar produto" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>

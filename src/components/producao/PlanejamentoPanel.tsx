@@ -87,7 +87,7 @@ function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-md bg-card rounded-xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">{isEdit?"Editar OP":"Nova Ordem de Produção"}</h3>
           <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>
@@ -195,7 +195,7 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       {cargaData.length>0 && (
-        <div className="rounded-2xl border bg-card/60 p-4">
+        <div className="rounded-xl border bg-card/60 p-4">
           <p className="text-sm font-medium mb-3">Carga por Máquina (%)</p>
           <ResponsiveContainer width="100%" height={120}>
             <BarChart data={cargaData} margin={{top:0,right:0,left:-20,bottom:0}}>
@@ -231,7 +231,7 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
             const sc=STATUS_CFG[op.status];
             const pc=PRIO_CFG[op.prioridade];
             return (
-              <div key={op.id} className="rounded-2xl border bg-card/60 p-4 space-y-3">
+              <div key={op.id} className="rounded-xl border bg-card/60 p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -252,7 +252,7 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
                   <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Capacidade utilizada</span><span>{op.capacidade}%</span></div>
                   <div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className={cn("h-full rounded-full",op.capacidade>=90?"bg-red-500":op.capacidade>=70?"bg-amber-500":"bg-green-500")} style={{width:`${op.capacidade}%`}}/></div>
                 </div>
-                <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                <div className="flex items-center gap-2 pt-1 border-t border-border">
                   <select value={op.status} onChange={e=>handleStatusChange(op.id,e.target.value as OPStatus)}
                     className="flex-1 h-7 rounded-lg border border-input bg-background px-2 text-[11px]">
                     {(Object.keys(STATUS_CFG) as OPStatus[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}

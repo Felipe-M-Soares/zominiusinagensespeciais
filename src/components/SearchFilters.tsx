@@ -79,7 +79,7 @@ const SearchBar = memo(function SearchBar({
           {suggestions.map(s => (
             <button key={s} type="button"
               onMouseDown={e => { e.preventDefault(); if (inputRef.current) inputRef.current.value = s; onSelectSuggestion(s); }}
-              className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border/30 last:border-0"
+              className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border last:border-0"
             >{s}</button>
           ))}
         </div>

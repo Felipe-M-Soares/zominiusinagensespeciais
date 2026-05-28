@@ -1,23 +1,22 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eye, EyeOff, ShieldX, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import logoZomini from "@/assets/logo_zomini.png";
+import logoZominiDark from "@/assets/logo_zomini_dark.png";
 
 export default function Login() {
-  const [login, setLogin]               = useState("");
-  const [password, setPassword]         = useState("");
+  const [login, setLogin]             = useState("");
+  const [password, setPassword]       = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading]           = useState(false);
+  const [loading, setLoading]         = useState(false);
   const { signIn } = useAuth();
-  const navigate  = useNavigate();
-  const location  = useLocation();
-
+  const navigate   = useNavigate();
+  const location   = useLocation();
   const wasBlocked = (location.state as { blocked?: boolean } | null)?.blocked === true;
   const canSubmit  = login.trim() && password.trim() && !loading;
 
@@ -28,286 +27,97 @@ export default function Login() {
     try {
       const { error } = await signIn(login.trim(), password);
       if (error) { toast.error(error); return; }
-
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("must_change_password")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
+        const { data: profile } = await supabase.from("profiles").select("must_change_password").eq("user_id", session.user.id).maybeSingle();
         if (profile?.must_change_password === true) { navigate("/set-password"); return; }
       }
       navigate("/");
-    } catch (err) {
-      logger.error("Login error:", err);
-      toast.error("Erro inesperado. Tente novamente.");
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { logger.error("Login error:", err); toast.error("Erro inesperado. Tente novamente."); }
+    finally { setLoading(false); }
   }
 
   return (
-    <div className="min-h-screen flex overflow-hidden" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-
-      {/* ── Painel esquerdo — identidade visual ─────────────────────────────── */}
-      <div
-        className="hidden lg:flex flex-col justify-between w-[52%] relative overflow-hidden p-12"
-        style={{
-          background: "linear-gradient(160deg, #0a1628 0%, #0d1f3c 40%, #0b2240 70%, #061525 100%)",
-        }}
-      >
-        {/* Textura de grade fina */}
-        <svg className="absolute inset-0 w-full h-full opacity-[0.06]" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="hsl(197,100%,60%)" strokeWidth="0.8"/>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid)" />
+    <div className="min-h-screen flex overflow-hidden" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      {/* ── Left brand panel ── */}
+      <div className="hidden lg:flex flex-col justify-between w-[48%] relative overflow-hidden p-12" style={{ background: "hsl(222 32% 9%)" }}>
+        {/* Grid */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.036 }}>
+          <defs><pattern id="g" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M30 0L0 0 0 30" fill="none" stroke="hsl(38 92% 52%)" strokeWidth="0.5"/></pattern></defs>
+          <rect width="100%" height="100%" fill="url(#g)"/>
         </svg>
-
-        {/* Círculo de luz primário */}
-        <div
-          className="absolute top-[-10%] left-[-15%] w-[700px] h-[700px] rounded-full pointer-events-none"
-          style={{
-            background: "radial-gradient(circle, hsla(197,100%,47%,0.18) 0%, transparent 65%)",
-          }}
-        />
-        {/* Segundo ponto de luz */}
-        <div
-          className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full pointer-events-none"
-          style={{
-            background: "radial-gradient(circle, hsla(197,100%,47%,0.10) 0%, transparent 65%)",
-          }}
-        />
-
-        {/* Linha decorativa vertical */}
-        <div
-          className="absolute left-0 top-0 bottom-0 w-[3px]"
-          style={{ background: "linear-gradient(to bottom, transparent, hsl(197,100%,47%), transparent)" }}
-        />
-
-        {/* Logo no topo */}
-        <div className="relative z-10">
-          <img
-            src={logoZomini}
-            alt="Zomini Usinagens Especiais"
-            className="h-10 w-auto object-contain brightness-0 invert opacity-90"
-          />
-        </div>
-
-        {/* Conteúdo central */}
-        <div className="relative z-10 space-y-6">
-          {/* Ícone decorativo */}
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, hsla(197,100%,47%,0.25) 0%, hsla(197,100%,47%,0.08) 100%)",
-              border: "1px solid hsla(197,100%,47%,0.3)",
-              boxShadow: "0 0 40px hsla(197,100%,47%,0.15)",
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="14" cy="14" r="4" fill="hsl(197,100%,47%)" />
-              <circle cx="14" cy="14" r="8" fill="none" stroke="hsl(197,100%,47%)" strokeWidth="1.5" strokeDasharray="3 3" />
-              <circle cx="14" cy="14" r="12" fill="none" stroke="hsla(197,100%,47%,0.4)" strokeWidth="1" />
-              <line x1="2" y1="14" x2="26" y2="14" stroke="hsla(197,100%,47%,0.3)" strokeWidth="0.8" />
-              <line x1="14" y1="2" x2="14" y2="26" stroke="hsla(197,100%,47%,0.3)" strokeWidth="0.8" />
-            </svg>
+        {/* Glows */}
+        <div className="absolute top-[-18%] left-[-12%] w-[560px] h-[560px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, hsl(38 92% 46% / 0.14) 0%, transparent 65%)" }}/>
+        <div className="absolute bottom-[-18%] right-[-12%] w-[380px] h-[380px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, hsl(197 82% 46% / 0.08) 0%, transparent 65%)" }}/>
+        <div className="absolute left-0 top-0 bottom-0 w-[2px]" style={{ background: "linear-gradient(to bottom, transparent, hsl(38 92% 46%), transparent)" }}/>
+        <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: "linear-gradient(90deg, hsl(38 92% 46%), transparent)" }}/>
+        {/* Logo */}
+        <div className="relative z-10"><img src={logoZominiDark} alt="Zomini" className="h-9 w-auto object-contain opacity-90"/></div>
+        {/* Content */}
+        <div className="relative z-10 space-y-8">
+          <div className="w-13 h-13 rounded-xl flex items-center justify-center" style={{ width:52, height:52, background:"hsl(38 92% 46% / 0.10)", border:"1px solid hsl(38 92% 46% / 0.22)", boxShadow:"0 0 28px hsl(38 92% 46% / 0.10)" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="2.8" fill="hsl(38 92% 54%)"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="hsl(38 92% 46%)" strokeWidth="1.2" strokeDasharray="2 2.5"/><circle cx="12" cy="12" r="10.5" fill="none" stroke="hsl(38 92% 46% / 0.3)" strokeWidth="0.7"/><line x1="1" y1="12" x2="23" y2="12" stroke="hsl(38 92% 46% / 0.22)" strokeWidth="0.7"/><line x1="12" y1="1" x2="12" y2="23" stroke="hsl(38 92% 46% / 0.22)" strokeWidth="0.7"/></svg>
           </div>
-
           <div>
-            <h2 className="text-4xl font-bold leading-tight" style={{ color: "#f0f8ff", letterSpacing: "-0.02em" }}>
-              Sistema de<br />
-              <span style={{ color: "hsl(197,100%,60%)" }}>Gestão Integrada</span>
-            </h2>
-            <p className="mt-4 text-base leading-relaxed" style={{ color: "hsla(197,20%,75%,0.8)" }}>
-              Controle completo de estoque, produção e comercial — tudo em um único lugar.
-            </p>
+            <h2 className="text-[2.35rem] font-bold leading-[1.15]" style={{ fontFamily:"'Syne',sans-serif", color:"#eef2ff", letterSpacing:"-0.03em" }}>Sistema de<br/><span style={{ color:"hsl(38 92% 58%)" }}>Gestão Integrada</span></h2>
+            <p className="mt-4 text-[14.5px] leading-relaxed" style={{ color:"hsl(220 18% 62%)" }}>Controle de estoque, produção e comercial com precisão industrial.</p>
           </div>
-
-          {/* Métricas decorativas */}
-          <div className="grid grid-cols-3 gap-4 pt-4">
-            {[
-              { label: "Módulos", value: "5" },
-              { label: "Integrado", value: "100%" },
-              { label: "Tempo Real", value: "∞" },
-            ].map((m) => (
-              <div
-                key={m.label}
-                className="rounded-xl p-4 space-y-1"
-                style={{
-                  background: "hsla(197,100%,47%,0.06)",
-                  border: "1px solid hsla(197,100%,47%,0.15)",
-                }}
-              >
-                <div className="text-2xl font-bold" style={{ color: "hsl(197,100%,60%)" }}>{m.value}</div>
-                <div className="text-xs" style={{ color: "hsla(197,20%,70%,0.7)" }}>{m.label}</div>
+          <div className="grid grid-cols-3 gap-3">
+            {[{ label:"Módulos", value:"5" }, { label:"Integrado", value:"100%" }, { label:"Tempo Real", value:"∞" }].map(m => (
+              <div key={m.label} className="rounded-lg p-3.5" style={{ background:"hsl(38 92% 46% / 0.05)", border:"1px solid hsl(38 92% 46% / 0.10)" }}>
+                <div className="text-[1.5rem] font-bold" style={{ fontFamily:"'Syne',sans-serif", color:"hsl(38 92% 58%)" }}>{m.value}</div>
+                <div className="text-[10px] tracking-widest uppercase mt-0.5" style={{ color:"hsl(220 15% 48%)" }}>{m.label}</div>
               </div>
             ))}
           </div>
         </div>
-
-        {/* Rodapé */}
-        <div className="relative z-10">
-          <p className="text-xs" style={{ color: "hsla(197,20%,60%,0.5)" }}>
-            © {new Date().getFullYear()} Zomini Usinagens Especiais
-          </p>
-        </div>
+        <div className="relative z-10"><p className="text-[11px]" style={{ color:"hsl(220 15% 32%)" }}>© {new Date().getFullYear()} Zomini Usinagens Especiais</p></div>
       </div>
 
-      {/* ── Painel direito — formulário ──────────────────────────────────────── */}
-      <div
-        className="flex-1 flex flex-col items-center justify-center px-6 py-10 relative"
-        style={{ background: "hsl(0,0%,96%)" }}
-      >
-        {/* Logo mobile */}
-        <div className="lg:hidden mb-10">
-          <img
-            src={logoZomini}
-            alt="Zomini Usinagens Especiais"
-            className="h-9 w-auto object-contain"
-          />
-        </div>
-
-        <div className="w-full max-w-[380px] animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-          {/* Cabeçalho */}
+      {/* ── Right form panel ── */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12" style={{ background:"hsl(220 18% 97%)" }}>
+        <div className="lg:hidden mb-10"><img src={logoZomini} alt="Zomini" className="h-9 w-auto object-contain"/></div>
+        <div className="w-full max-w-[360px] animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="mb-8">
-            <p
-              className="text-xs font-semibold uppercase tracking-[0.15em] mb-2"
-              style={{ color: "hsl(197,100%,40%)" }}
-            >
-              Bem-vindo de volta
-            </p>
-            <h1
-              className="text-3xl font-bold"
-              style={{ color: "hsl(0,0%,9%)", letterSpacing: "-0.02em" }}
-            >
-              Acesse sua conta
-            </h1>
-            <p className="mt-2 text-sm" style={{ color: "hsl(0,0%,45%)" }}>
-              Digite suas credenciais para continuar
-            </p>
+            <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] mb-2" style={{ fontFamily:"'Syne',sans-serif", color:"hsl(38 92% 40%)" }}>Bem-vindo de volta</p>
+            <h1 className="text-[1.9rem] font-bold" style={{ fontFamily:"'Syne',sans-serif", color:"hsl(222 30% 10%)", letterSpacing:"-0.03em" }}>Acesse sua conta</h1>
+            <p className="mt-1.5 text-[13.5px]" style={{ color:"hsl(220 12% 48%)" }}>Digite suas credenciais para continuar</p>
           </div>
 
-          {/* Banner de bloqueio */}
           {wasBlocked && (
-            <div
-              className="mb-6 px-4 py-3 rounded-2xl flex items-start gap-3"
-              style={{
-                background: "hsl(0,60%,97%)",
-                border: "1px solid hsl(0,72%,88%)",
-              }}
-            >
-              <ShieldX className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "hsl(0,72%,50%)" }} />
-              <div>
-                <p className="text-sm font-semibold" style={{ color: "hsl(0,72%,38%)" }}>Acesso Bloqueado</p>
-                <p className="text-xs mt-0.5" style={{ color: "hsl(0,50%,50%)" }}>
-                  Seu acesso foi bloqueado. Entre em contato com o administrador.
-                </p>
-              </div>
+            <div className="mb-6 px-4 py-3 rounded-xl flex items-start gap-3" style={{ background:"hsl(4 80% 97%)", border:"1px solid hsl(4 80% 88%)" }}>
+              <ShieldX className="h-4 w-4 mt-0.5 shrink-0" style={{ color:"hsl(4 80% 50%)" }}/>
+              <div><p className="text-[12.5px] font-semibold" style={{ color:"hsl(4 80% 36%)" }}>Acesso Bloqueado</p><p className="text-[11.5px] mt-0.5" style={{ color:"hsl(4 60% 48%)" }}>Entre em contato com o administrador.</p></div>
             </div>
           )}
 
-          {/* Formulário */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Campo Login */}
             <div className="space-y-1.5">
-              <label
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "hsl(0,0%,30%)" }}
-              >
-                Login
-              </label>
-              <Input
-                type="text"
-                placeholder="Seu login"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
-                required
-                autoComplete="username"
-                autoFocus
-                className="h-12 rounded-xl text-sm font-medium transition-all border-2 focus-visible:ring-0 focus-visible:border-[hsl(197,100%,47%)] placeholder:text-[hsl(0,0%,65%)]"
-                style={{
-                  background: "hsl(0,0%,99%)",
-                  borderColor: login ? "hsl(197,100%,47%)" : "hsl(0,0%,88%)",
-                  color: "hsl(0,0%,9%)",
-                } as React.CSSProperties}
-              />
+              <label className="text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color:"hsl(222 25% 28%)" }}>Login</label>
+              <Input type="text" placeholder="Seu login" value={login} onChange={e => setLogin(e.target.value)} required autoComplete="username" autoFocus
+                className="h-11 rounded-lg text-[13.5px] font-medium border-2 transition-all focus-visible:ring-0 placeholder:opacity-40"
+                style={{ background:"hsl(0 0% 100%)", borderColor:login ? "hsl(38 92% 46%)" : "hsl(220 14% 84%)", color:"hsl(222 30% 10%)", boxShadow:login ? "0 0 0 3px hsl(38 92% 46% / 0.10)" : "none" } as React.CSSProperties}/>
             </div>
-
-            {/* Campo Senha */}
             <div className="space-y-1.5">
-              <label
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "hsl(0,0%,30%)" }}
-              >
-                Senha
-              </label>
+              <label className="text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color:"hsl(222 25% 28%)" }}>Senha</label>
               <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                  className="h-12 pr-12 rounded-xl text-sm font-medium transition-all border-2 focus-visible:ring-0 focus-visible:border-[hsl(197,100%,47%)] placeholder:text-[hsl(0,0%,65%)] [&::-ms-reveal]:hidden"
-                  style={{
-                    background: "hsl(0,0%,99%)",
-                    borderColor: password ? "hsl(197,100%,47%)" : "hsl(0,0%,88%)",
-                    color: "hsl(0,0%,9%)",
-                  } as React.CSSProperties}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors hover:opacity-70"
-                  style={{ color: "hsl(0,0%,50%)" }}
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                <Input type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"
+                  className="h-11 pr-12 rounded-lg text-[13.5px] font-medium border-2 transition-all focus-visible:ring-0 placeholder:opacity-40 [&::-ms-reveal]:hidden"
+                  style={{ background:"hsl(0 0% 100%)", borderColor:password ? "hsl(38 92% 46%)" : "hsl(220 14% 84%)", color:"hsl(222 30% 10%)", boxShadow:password ? "0 0 0 3px hsl(38 92% 46% / 0.10)" : "none" } as React.CSSProperties}/>
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-55" style={{ color:"hsl(220 12% 50%)" }} tabIndex={-1}>
+                  {showPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
                 </button>
               </div>
             </div>
-
-            {/* Botão Entrar */}
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className="relative w-full h-12 rounded-xl font-semibold text-sm tracking-wide transition-all duration-200 overflow-hidden group mt-2"
-              style={{
-                background: canSubmit
-                  ? "linear-gradient(135deg, hsl(197,100%,42%) 0%, hsl(197,100%,35%) 100%)"
-                  : "hsl(197,30%,80%)",
-                color: "white",
-                boxShadow: canSubmit ? "0 4px 24px hsla(197,100%,47%,0.35)" : "none",
-                cursor: canSubmit ? "pointer" : "not-allowed",
-              } as React.CSSProperties}
-            >
-              {/* Brilho hover */}
-              <span
-                className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                style={{ background: "linear-gradient(135deg, hsl(197,100%,50%) 0%, hsl(197,100%,40%) 100%)" }}
-              />
+            <button type="submit" disabled={!canSubmit}
+              className="relative w-full h-11 rounded-lg font-bold text-[13.5px] tracking-wide transition-all duration-200 overflow-hidden group mt-2"
+              style={{ fontFamily:"'Syne',sans-serif", background:canSubmit ? "hsl(38 92% 46%)" : "hsl(38 50% 82%)", color:canSubmit ? "hsl(222 30% 8%)" : "hsl(220 12% 58%)", boxShadow:canSubmit ? "0 4px 20px hsl(38 92% 46% / 0.28)" : "none", cursor:canSubmit ? "pointer" : "not-allowed" } as React.CSSProperties}>
+              <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200" style={{ background:"hsl(38 92% 52%)" }}/>
               <span className="relative flex items-center justify-center gap-2">
-                {loading ? (
-                  <>
-                    <div className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    Entrando...
-                  </>
-                ) : (
-                  <>
-                    Entrar
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 duration-200" />
-                  </>
-                )}
+                {loading ? <><div className="h-4 w-4 border-2 border-current/40 border-t-current rounded-full animate-spin"/>Entrando...</> : <>Entrar<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 duration-200"/></>}
               </span>
             </button>
           </form>
-
         </div>
       </div>
     </div>

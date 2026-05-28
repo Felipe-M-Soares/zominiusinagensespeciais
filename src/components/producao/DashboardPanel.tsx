@@ -20,7 +20,7 @@ interface KpiProps {
 
 function KpiCard({ icon: Icon, label, value, sub, color, bg }: KpiProps) {
   return (
-    <div className={cn("rounded-2xl border p-4 space-y-2", bg)}>
+    <div className={cn("rounded-xl border p-4 space-y-2", bg)}>
       <div className="flex items-center gap-2">
         <Icon className={cn("h-4 w-4", color)} />
         <span className="text-xs text-muted-foreground font-medium">{label}</span>
@@ -173,7 +173,7 @@ export function DashboardPanel() {
       </div>
 
       {/* Disponibilidade máquinas */}
-      <div className="rounded-2xl border bg-card/60 p-4">
+      <div className="rounded-xl border bg-card/60 p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-medium">Disponibilidade de Máquinas</p>
           <span className={cn("text-sm font-bold",oeeSimulado>=80?"text-green-600":oeeSimulado>=60?"text-amber-600":"text-red-600")}>{oeeSimulado}%</span>
@@ -186,7 +186,7 @@ export function DashboardPanel() {
 
       {/* Produção por turno */}
       {d.turnoData.some(t=>t.realizado>0) && (
-        <div className="rounded-2xl border bg-card/60 p-4">
+        <div className="rounded-xl border bg-card/60 p-4">
           <p className="text-sm font-medium mb-3">Produção por Turno (hoje)</p>
           <ResponsiveContainer width="100%" height={120}>
             <BarChart data={d.turnoData} margin={{top:0,right:0,left:-20,bottom:0}}>
@@ -202,7 +202,7 @@ export function DashboardPanel() {
 
       {/* Paradas por hora */}
       {d.paradasPorHora.length > 0 && (
-        <div className="rounded-2xl border bg-card/60 p-4">
+        <div className="rounded-xl border bg-card/60 p-4">
           <p className="text-sm font-medium mb-3">Minutos parados por hora (hoje)</p>
           <ResponsiveContainer width="100%" height={100}>
             <LineChart data={d.paradasPorHora} margin={{top:0,right:0,left:-20,bottom:0}}>
@@ -218,7 +218,7 @@ export function DashboardPanel() {
 
       {/* Estado vazio */}
       {d.emAndamento===0 && d.totalHoje===0 && d.maquinasTotal===0 && (
-        <div className="rounded-2xl border bg-muted/30 p-6 text-center">
+        <div className="rounded-xl border bg-muted/30 p-6 text-center">
           <Award className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40"/>
           <p className="text-sm text-muted-foreground">Nenhum dado ainda</p>
           <p className="text-[11px] text-muted-foreground mt-1">Cadastre máquinas e registre apontamentos para ver o dashboard em tempo real</p>

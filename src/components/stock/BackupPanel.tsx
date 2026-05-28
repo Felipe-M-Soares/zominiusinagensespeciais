@@ -258,7 +258,7 @@ export function BackupPanel({ open, onClose }: Props) {
   return (
     <>
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
+      <DialogContent className="max-w-md p-0 rounded-xl overflow-hidden border-border">
         {/* Header */}
         <div className="relative px-5 pt-5 pb-3">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
@@ -288,7 +288,7 @@ export function BackupPanel({ open, onClose }: Props) {
           {!loading && (
             <>
               {/* ── Exportar Excel ────────────────────────────────────────── */}
-              <div className="rounded-xl border border-border/40 bg-muted/10 p-3 space-y-2">
+              <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-2">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[12px] font-semibold text-foreground flex items-center gap-1.5">
@@ -391,7 +391,7 @@ export function BackupPanel({ open, onClose }: Props) {
                   <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
                     {backups.map((b) => (
                       <div key={b.id}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border/40 bg-card hover:bg-accent/20 transition-colors">
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border bg-card hover:bg-accent/20 transition-colors">
                         <DatabaseBackup className="h-4 w-4 text-primary/60 shrink-0" />
                         <div className="min-w-0 flex-1">
                           <p className="text-[12px] font-medium">{fmtDate(b.created_at)}</p>
@@ -427,7 +427,7 @@ export function BackupPanel({ open, onClose }: Props) {
     {/* Modal de confirmação — apagar histórico */}
     {clearConfirm && createPortal(
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-        <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
+        <div className="w-full max-w-sm rounded-xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
               <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -472,7 +472,7 @@ export function BackupPanel({ open, onClose }: Props) {
     {/* Modal de confirmação — apagar backups */}
     {deleteBackupsConfirm && createPortal(
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-        <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
+        <div className="w-full max-w-sm rounded-xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
               <AlertTriangle className="h-5 w-5 text-destructive" />

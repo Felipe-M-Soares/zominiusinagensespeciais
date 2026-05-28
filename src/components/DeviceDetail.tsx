@@ -30,8 +30,8 @@ function InfoRow({ icon: Icon, label, value, copyable }: { icon: React.ElementTy
 
   return (
   <div className="flex items-start gap-3 py-2 px-2 rounded-xl hover:bg-muted/10 transition-colors group/row">
-    <div className="h-7 w-7 rounded-lg bg-primary/8 flex items-center justify-center shrink-0 group-hover/row:bg-primary/15 transition-colors">
-      <Icon className="h-3.5 w-3.5 text-primary/70" />
+    <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background:"hsl(var(--primary)/0.08)" }}>
+      <Icon className="h-3.5 w-3.5" style={{ color:"hsl(var(--primary)/0.7)" }} />
     </div>
     <div className="min-w-0 pt-0.5 flex-1">
       <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium">{label}</p>
@@ -58,7 +58,7 @@ function CountryRow({ country }: { country: string }) {
   const flag = countryFlag(country);
   return (
     <div className="flex items-start gap-3 py-2 px-2 rounded-xl hover:bg-muted/10 transition-colors group/row">
-      <div className="h-7 w-7 rounded-lg bg-primary/8 flex items-center justify-center shrink-0 group-hover/row:bg-primary/15 transition-colors">
+      <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background:"hsl(var(--primary)/0.08)" }}>
         <span className="text-base">{flag}</span>
       </div>
       <div className="min-w-0 pt-0.5">
@@ -74,10 +74,10 @@ if (!device) return null;
 
 return (
   <Dialog open={open} onOpenChange={onClose}>
-    <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto p-0 rounded-2xl border-border/30">
+    <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto p-0 rounded-xl border-border">
       {/* Header */}
       <div className="relative p-6 pb-4">
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent rounded-t-2xl" />
+        <div className="absolute inset-0 rounded-t-xl" style={{ background:"linear-gradient(to bottom, hsl(var(--primary)/0.05), transparent)" }} />
         <div className="relative">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold leading-tight">

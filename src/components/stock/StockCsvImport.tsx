@@ -385,7 +385,7 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
+      <DialogContent className="max-w-md p-0 rounded-xl overflow-hidden border-border">
         {/* Header */}
         <div className="relative px-5 pt-5 pb-3">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
@@ -405,7 +405,7 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
         <div className="px-5 pb-5 space-y-4">
           {/* Colunas aceitas */}
           {!done && (
-            <div className="rounded-xl bg-muted/20 border border-border/30 p-3 space-y-2">
+            <div className="rounded-xl bg-muted/20 border border-border p-3 space-y-2">
               <p className="text-[11px] font-semibold text-foreground">Colunas aceitas no CSV:</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {[
@@ -440,7 +440,7 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
                 </div>
                 <div className={cn(
                   "rounded-xl border px-3 py-2.5 text-center",
-                  errCount > 0 ? "bg-destructive/8 border-destructive/25" : "bg-muted/20 border-border/30"
+                  errCount > 0 ? "bg-destructive/8 border-destructive/25" : "bg-muted/20 border-border"
                 )}>
                   <p className={cn("text-[10px] font-medium", errCount > 0 ? "text-destructive/70" : "text-muted-foreground")}>
                     Com problema
@@ -464,7 +464,7 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
               )}
 
               {showDetails && (
-                <div className="max-h-[220px] overflow-y-auto space-y-1 rounded-xl border border-border/30 p-2">
+                <div className="max-h-[220px] overflow-y-auto space-y-1 rounded-xl border border-border p-2">
                   {results.map((r) => (
                     <div key={r.line} className={cn(
                       "flex items-start gap-2 px-2 py-1.5 rounded-lg text-[11px]",

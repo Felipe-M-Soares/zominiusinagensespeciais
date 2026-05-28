@@ -108,7 +108,7 @@ const IntermediaryCard = memo(function IntermediaryCard({
 
   return (
     <div
-      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
+      className="group relative rounded-xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
       style={{
         boxShadow:
           "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
@@ -254,7 +254,7 @@ const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistor
 
   return (
     <div
-      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
+      className="group relative rounded-xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
       style={{
         boxShadow:
           "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
@@ -367,7 +367,7 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
 
   return (
     <div
-      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
+      className="group relative rounded-xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
       style={{
         boxShadow:
           "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
@@ -595,7 +595,7 @@ const SearchBar = memo(function SearchBar({
           {suggestions.map(s => (
             <button key={s} type="button"
               onMouseDown={e => { e.preventDefault(); if (inputRef.current) inputRef.current.value = s; onSelectSuggestion(s); }}
-              className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border/30 last:border-0"
+              className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border last:border-0"
             >{s}</button>
           ))}
         </div>
@@ -950,9 +950,9 @@ export default function Estoque() {
 
   return (
     <>
-    <div className="min-h-screen bg-transparent">
+    <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
       {/* Header simplificado — navegação via AppShell sidebar */}
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
+      <header className="sticky top-0 z-30 border-b" style={{ background: "hsl(var(--card) / 0.96)", borderColor: "hsl(var(--border))", backdropFilter: "blur(12px)" }}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
@@ -1014,7 +1014,7 @@ export default function Estoque() {
                           key={label}
                           type="button"
                           className={cn(
-                            "w-full flex items-center gap-2 px-3 py-2.5 text-[13px] hover:bg-accent/50 transition-colors border-b border-border/30 last:border-0",
+                            "w-full flex items-center gap-2 px-3 py-2.5 text-[13px] hover:bg-accent/50 transition-colors border-b border-border last:border-0",
                             danger ? "text-destructive" : "text-foreground"
                           )}
                           onClick={() => { action(); setAdminMenuOpen(false); }}
@@ -1104,7 +1104,7 @@ export default function Estoque() {
 
             {/* Painel de filtros */}
             {showFilters && (
-              <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
+              <div className="rounded-xl border border-border bg-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filtros</p>
                   {hasActiveFilters && (
@@ -1136,7 +1136,7 @@ export default function Estoque() {
                           "h-7 px-3 rounded-full text-[11px] font-medium border transition-colors",
                           filterStatus === opt.value
                             ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/60"
+                            : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/60"
                         )}
                       >
                         {opt.label}
@@ -1398,7 +1398,7 @@ export default function Estoque() {
           .sort((a, b) => a.quantity - b.quantity);
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setBaixoOpen(false)}>
-            <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="w-full max-w-sm rounded-xl bg-card border border-border shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200" onClick={e => e.stopPropagation()}>
               <div className="px-5 pt-5 pb-3 border-b border-border/20 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold flex items-center gap-2">
@@ -1516,7 +1516,7 @@ export default function Estoque() {
       {/* Zerar quantidade e histórico de uma peça */}
       {resetItem && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
+          <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-warning/10 flex items-center justify-center shrink-0">
                 <PackageCheck className="h-4 w-4 text-warning" />
@@ -1558,7 +1558,7 @@ export default function Estoque() {
       {/* Confirmação de exclusão de peça */}
       {deleteItem && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
+          <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
                 <Trash2 className="h-4 w-4 text-destructive" />
@@ -1616,7 +1616,7 @@ export default function Estoque() {
     {/* Modal confirmar apagar histórico */}
     {clearHistConfirm && createPortal(
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-        <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
+        <div className="w-full max-w-sm rounded-xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
           <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
               <AlertTriangle className="h-5 w-5 text-destructive" />

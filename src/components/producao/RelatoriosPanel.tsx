@@ -107,7 +107,7 @@ export function RelatoriosPanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       {/* Filtro de período */}
-      <div className="rounded-2xl border bg-card/60 p-4">
+      <div className="rounded-xl border bg-card/60 p-4">
         <p className="text-sm font-medium mb-3">Período</p>
         <div className="flex gap-3">
           <div className="flex-1"><label className="text-xs text-muted-foreground mb-1 block">De</label><Input type="date" value={dataInicio} onChange={e=>setDataInicio(e.target.value)}/></div>
@@ -119,7 +119,7 @@ export function RelatoriosPanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
       <div className="grid grid-cols-2 gap-3">
         {RELATORIOS.map(r=>(
           <button key={r.id} onClick={()=>gerarRelatorio(r.id)}
-            className={cn("rounded-2xl border p-4 text-left transition-all hover:shadow-sm active:scale-[0.99]",
+            className={cn("rounded-xl border p-4 text-left transition-all hover:shadow-sm active:scale-[0.99]",
               relatorio===r.id?`${r.bg} ${r.color} border-current/30`:"bg-card/60 hover:bg-muted/20")}>
             <r.Icon className={cn("h-5 w-5 mb-2",relatorio===r.id?r.color:"text-muted-foreground")}/>
             <p className={cn("font-semibold text-sm",relatorio===r.id?r.color:"")}>{r.label}</p>
@@ -136,7 +136,7 @@ export function RelatoriosPanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
       )}
 
       {relData && !loading && (
-        <div className="rounded-2xl border bg-card/60 p-4 space-y-4">
+        <div className="rounded-xl border bg-card/60 p-4 space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">{RELATORIOS.find(r=>r.id===relatorio)?.label}</p>
             <Button size="sm" variant="outline" className="gap-1 h-8 text-xs" onClick={exportarCSV}>

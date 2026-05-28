@@ -104,9 +104,9 @@ const ROADMAP: ItemRoadmap[] = [
     status: "planejado",
     previsao: "2026",
     icon: Brain,
-    color: "text-violet-600 dark:text-violet-400",
-    bg: "bg-violet-500/10",
-    border: "border-violet-500/20",
+    color: "text-[hsl(var(--primary))] dark:text-violet-400",
+    bg: "bg-[hsl(var(--primary)/0.10)]",
+    border: "border-[hsl(var(--primary)/0.20)]",
     tags: ["Machine Learning", "Anomaly Detection", "Manutenção Preditiva"],
     beneficios: [
       "Redução de paradas não planejadas em ~40%",
@@ -181,7 +181,7 @@ function RoadmapCard({ item }: { item: ItemRoadmap }) {
   const sc = STATUS_ROADMAP[item.status];
 
   return (
-    <div className={cn("rounded-2xl border transition-all duration-200", item.bg, item.border)}>
+    <div className={cn("rounded-xl border transition-all duration-200", item.bg, item.border)}>
       <button className="w-full p-4 text-left" onClick={() => setExpandido(v => !v)}>
         <div className="flex items-start gap-3">
           <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0", item.bg)}>
@@ -249,7 +249,7 @@ function StatusOffline() {
 
   return (
     <div className={cn(
-      "rounded-2xl border p-4 flex items-start gap-3",
+      "rounded-xl border p-4 flex items-start gap-3",
       online ? "bg-green-500/5 border-green-500/20" : "bg-amber-500/5 border-amber-500/20"
     )}>
       <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
@@ -294,10 +294,10 @@ export function FuturasPanel() {
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       {/* Header */}
-      <div className="rounded-2xl border bg-violet-500/5 border-violet-500/20 p-4">
+      <div className="rounded-xl border bg-violet-500/5 border-[hsl(var(--primary)/0.20)] p-4">
         <div className="flex items-center gap-2 mb-1">
-          <Sparkles className="h-5 w-5 text-violet-500" />
-          <h2 className="font-semibold text-sm text-violet-600 dark:text-violet-400">Roadmap Tecnológico</h2>
+          <Sparkles className="h-5 w-5 text-[hsl(var(--primary))]" />
+          <h2 className="font-semibold text-sm text-[hsl(var(--primary))] dark:text-violet-400">Roadmap Tecnológico</h2>
         </div>
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           Expansão contínua do sistema industrial. As funcionalidades abaixo estão no pipeline de desenvolvimento,
@@ -313,9 +313,9 @@ export function FuturasPanel() {
         {[
           { label: "Total no Roadmap", value: counts.total, color: "text-primary", bg: "bg-primary/10", border: "border-primary/20" },
           { label: "Em Desenvolvimento", value: counts.em_desenvolvimento, color: "text-blue-500", bg: "bg-blue-500/10", border: "border-blue-500/20" },
-          { label: "Planejados", value: counts.planejado, color: "text-muted-foreground", bg: "bg-muted/30", border: "border-border/40" },
+          { label: "Planejados", value: counts.planejado, color: "text-muted-foreground", bg: "bg-muted/30", border: "border-border" },
         ].map(item => (
-          <div key={item.label} className={cn("rounded-2xl border p-3 text-center", item.bg, item.border)}>
+          <div key={item.label} className={cn("rounded-xl border p-3 text-center", item.bg, item.border)}>
             <p className={cn("text-2xl font-bold tabular-nums", item.color)}>{item.value}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">{item.label}</p>
           </div>
@@ -353,7 +353,7 @@ export function FuturasPanel() {
       </div>
 
       {/* Rodapé */}
-      <div className="rounded-2xl border bg-card/60 p-4 text-center space-y-1">
+      <div className="rounded-xl border bg-card/60 p-4 text-center space-y-1">
         <p className="text-xs font-medium">Tem uma sugestão de funcionalidade?</p>
         <p className="text-[11px] text-muted-foreground">
           Entre em contato com o time de TI ou use o canal de sugestões no sistema.

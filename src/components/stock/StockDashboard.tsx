@@ -29,19 +29,14 @@ interface KpiCardProps {
 function KpiCard({ icon: Icon, label, value, color, bg, border, description, onClick }: KpiCardProps) {
   return (
     <div
-      className={cn(
-        "rounded-2xl border p-4 flex items-start gap-3",
-        bg,
-        border,
-        onClick && "cursor-pointer hover:brightness-110 transition-all active:scale-[0.98]"
-      )}
+      className={cn("rounded-xl border p-4 flex items-start gap-3 transition-all", bg, border, onClick && "cursor-pointer hover:shadow-md active:scale-[0.98]")}
       onClick={onClick}
     >
-      <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0", bg)}>
+      <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", bg)}>
         <Icon className={cn("h-5 w-5", color)} />
       </div>
       <div>
-        <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
+        <p className="text-[10.5px] font-semibold uppercase tracking-[0.10em]" style={{ color:"hsl(var(--muted-foreground))" }}>{label}</p>
         <p className={cn("text-2xl font-bold tabular-nums", color)}>{value}</p>
         {description && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{description}</p>}
       </div>
@@ -70,10 +65,10 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
       onClick={onClose}
     >
       <div
-        className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+        className="rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border" style={{ background:"hsl(var(--card))", borderColor:"hsl(var(--border))" }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             <TrendingDown className="h-4 w-4 text-warning" />
             <p className="text-sm font-semibold">Lotes com Estoque Baixo na Expedição</p>
@@ -106,7 +101,7 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-border/40 bg-muted/10">
+        <div className="px-5 py-3 border-t border-border bg-muted/10">
           <p className="text-[11px] text-muted-foreground/60">
             {lotes.length} {lotes.length === 1 ? "lote abaixo" : "lotes abaixo"} de 100 unidades na expedição (incluindo zerados)
           </p>
@@ -308,11 +303,11 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
       <div className="space-y-3">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="rounded-2xl border bg-muted/20 p-4 h-24 animate-pulse" />
+            <div key={i} className="rounded-xl border bg-muted/20 p-4 h-24 animate-pulse" />
           ))}
         </div>
-        <div className="rounded-2xl border bg-muted/20 h-48 animate-pulse" />
-        <div className="rounded-2xl border bg-muted/20 h-36 animate-pulse" />
+        <div className="rounded-xl border bg-muted/20 h-48 animate-pulse" />
+        <div className="rounded-xl border bg-muted/20 h-36 animate-pulse" />
       </div>
     );
   }
@@ -320,8 +315,8 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
   return (
     <div className="space-y-4">
       {/* ── Pesquisa Global de Estoque ── */}
-      <div className="rounded-2xl border border-border/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
           <Package className="h-4 w-4 text-muted-foreground" />
           <p className="text-sm font-semibold">Pesquisa Geral do Estoque</p>
           <span className="text-[10px] text-muted-foreground/50 ml-auto">Localização · Lotes · Reservas · Retrabalho</span>
@@ -386,8 +381,8 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
 
       {/* Giro de Estoque — Distribuição por Produto (Expedição) */}
       {giroData.length > 0 && (
-        <div className="rounded-2xl border border-border/40 overflow-hidden">
-          <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
+        <div className="rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-muted-foreground" />
               <p className="text-sm font-semibold">Distribuição de Estoque por Produto</p>
@@ -422,8 +417,8 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
       )}
 
       {/* Últimas Movimentações */}
-      <div className="rounded-2xl border border-border/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
           <Activity className="h-4 w-4 text-muted-foreground" />
           <p className="text-sm font-semibold">Últimas Movimentações</p>
         </div>

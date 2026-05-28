@@ -16,15 +16,15 @@ export default {
   	extend: {
   		fontFamily: {
   			display: [
-  				'Space Grotesk',
+  				'Syne',
   				'sans-serif'
   			],
   			body: [
-  				'Inter',
+  				'DM Sans',
   				'sans-serif'
   			],
   			sans: [
-  				'Lato',
+  				'DM Sans',
   				'ui-sans-serif',
   				'system-ui',
   				'-apple-system',
@@ -46,7 +46,7 @@ export default {
   				'serif'
   			],
   			mono: [
-  				'Fira Code',
+  				'JetBrains Mono',
   				'ui-monospace',
   				'SFMono-Regular',
   				'Menlo',

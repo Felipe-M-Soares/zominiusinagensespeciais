@@ -77,7 +77,7 @@ function MaquinaModal({ open, maquina, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-md bg-card rounded-xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">{isEdit?"Editar Máquina":"Nova Máquina"}</h3>
           <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>
@@ -192,7 +192,7 @@ export function MaquinasPanel({ isAdmin }: { isAdmin: boolean }) {
           {filtered.map(m => {
             const cfg = STATUS_CFG[m.status];
             return (
-              <div key={m.id} className={cn("rounded-2xl border p-4 space-y-3 transition-all", cfg.bg, "border-border/40")}>
+              <div key={m.id} className={cn("rounded-xl border p-4 space-y-3 transition-all", cfg.bg, "border-border")}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold text-sm">{m.codigo}</p>
@@ -209,7 +209,7 @@ export function MaquinasPanel({ isAdmin }: { isAdmin: boolean }) {
                   <span>{SETOR_LABEL[m.setor]}</span>
                 </div>
                 {isAdmin && (
-                  <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                  <div className="flex items-center gap-2 pt-1 border-t border-border">
                     <select value={m.status} onChange={e=>handleStatusChange(m.id,e.target.value as StatusMaquina)}
                       className="flex-1 h-7 rounded-lg border border-input bg-background px-2 text-[11px]">
                       {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}

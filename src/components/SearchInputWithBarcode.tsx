@@ -111,10 +111,10 @@ export function SearchInputWithBarcode({
           placeholder={placeholder}
           autoFocus={autoFocus}
           className={cn(
-            "w-full rounded-xl border border-border bg-background text-sm",
+            "w-full rounded-lg border-2 bg-background text-[13px]",
             "pl-9 pr-16",
             "placeholder:text-muted-foreground/60",
-            "focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/40",
+            "focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)] focus:border-violet-500/40",
             "transition-all",
             height,
             inputClass,
@@ -140,7 +140,7 @@ export function SearchInputWithBarcode({
             title="Abrir câmera para escanear código de barras"
             className={cn(
               "h-7 w-7 flex items-center justify-center rounded-lg transition-all",
-              "text-violet-600 hover:bg-violet-500/10 border border-violet-500/20",
+              "text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)/0.10)] border border-[hsl(var(--primary)/0.20)]",
               "active:scale-95",
             )}
           >

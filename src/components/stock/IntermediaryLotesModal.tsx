@@ -191,10 +191,10 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[80vh] flex flex-col gap-0 p-0 overflow-hidden rounded-2xl">
+      <DialogContent className="max-w-lg max-h-[80vh] flex flex-col gap-0 p-0 overflow-hidden rounded-xl">
 
         {/* Cabeçalho */}
-        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/40 shrink-0">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
               <Tag className="h-4 w-4 text-primary" />
@@ -244,7 +244,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
           {!loading && !erro && rows.map((row) => (
             <div
               key={`${row.stock_item_id}|${row.lote}`}
-              className="flex items-center justify-between gap-3 rounded-xl border border-border/40
+              className="flex items-center justify-between gap-3 rounded-xl border border-border
                          bg-card px-4 py-2.5 hover:bg-accent/30 transition-colors"
             >
               <div className="min-w-0 flex-1 space-y-0.5">
@@ -270,7 +270,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
         </div>
 
         {/* Rodapé */}
-        <div className="px-5 py-3 border-t border-border/40 shrink-0">
+        <div className="px-5 py-3 border-t border-border shrink-0">
           <p className="text-[11px] text-muted-foreground">
             {rows.length} lote{rows.length !== 1 ? "s" : ""} com saldo positivo · Etiqueta 50×45 mm · Zebra ZD220 · 2 cópias por impressão
           </p>

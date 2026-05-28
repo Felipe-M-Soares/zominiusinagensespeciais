@@ -185,10 +185,10 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
+      <div className="w-full max-w-md rounded-xl bg-card border border-border shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <User className="h-4 w-4 text-violet-500" />
+            <User className="h-4 w-4 text-[hsl(var(--primary))]" />
             <p className="text-sm font-semibold">{inicial ? "Editar Cliente" : "Novo Cliente"}</p>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
@@ -420,11 +420,11 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/30 shrink-0 bg-gradient-to-r from-violet-500/5 to-transparent">
+      <div className="w-full max-w-lg rounded-xl bg-card border border-border shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0 bg-gradient-to-r from-violet-500/5 to-transparent">
           <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-xl bg-violet-500/10 flex items-center justify-center">
-              <ShoppingCart className="h-4 w-4 text-violet-500" />
+            <div className="h-8 w-8 rounded-xl bg-[hsl(var(--primary)/0.10)] flex items-center justify-center">
+              <ShoppingCart className="h-4 w-4 text-[hsl(var(--primary))]" />
             </div>
             <div>
               <p className="text-[13px] font-bold">Novo Pedido</p>
@@ -449,7 +449,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 onChange={e => { setClienteSearch(e.target.value); setClienteId(""); setShowClienteDrop(true); }}
                 onFocus={() => setShowClienteDrop(true)}
                 placeholder="Buscar cliente..."
-                className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+                className="w-full h-10 pl-9 pr-4 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)] focus:border-[hsl(var(--primary)/0.40)]"
               />
               {showClienteDrop && clientesFiltrados.length > 0 && (
                 <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-40 overflow-y-auto">
@@ -462,7 +462,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 </div>
               )}
             </div>
-            <button type="button" onClick={() => setNovoClienteModal(true)} className="flex items-center gap-1.5 text-[11px] text-violet-500 hover:text-violet-400 transition-colors">
+            <button type="button" onClick={() => setNovoClienteModal(true)} className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--primary))] hover:text-violet-400 transition-colors">
               <Plus className="h-3 w-3" /> Cadastrar novo cliente
             </button>
           </div>
@@ -480,7 +480,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                   onChange={e => handlePecaInput(e.target.value)}
                   onFocus={handlePecaFocus}
                   placeholder="Buscar por nome da peça..."
-                  className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+                  className="w-full h-10 pl-9 pr-4 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)] focus:border-[hsl(var(--primary)/0.40)]"
                 />
                 {showAutocomp && autocomplete.length > 0 && (
                   <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-48 overflow-y-auto">
@@ -502,7 +502,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                   const v = Math.max(1, parseInt(e.target.value) || 1);
                   setQtd(maxDisponivel > 0 ? Math.min(v, maxDisponivel) : v);
                 }}
-                className="w-14 h-10 rounded-xl border border-border/50 bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="w-14 h-10 rounded-xl border border-border bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
               />
               <button
                 type="button"
@@ -514,9 +514,9 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               </button>
             </div>
             {selectedPeca && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/8 border border-violet-500/20 text-[11px]">
-                <Package className="h-3 w-3 text-violet-500 shrink-0" />
-                <span className="text-violet-600 dark:text-violet-400 font-medium truncate">{selectedPeca.device?.model}</span>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/8 border border-[hsl(var(--primary)/0.20)] text-[11px]">
+                <Package className="h-3 w-3 text-[hsl(var(--primary))] shrink-0" />
+                <span className="text-[hsl(var(--primary))] dark:text-violet-400 font-medium truncate">{selectedPeca.device?.model}</span>
                 <span className={cn("ml-auto shrink-0 font-mono font-semibold", maxDisponivel === 0 ? "text-destructive" : "text-muted-foreground/60")}>
                   {maxDisponivel === 0 ? "sem estoque" : `máx. ${maxDisponivel} un.`}
                 </span>
@@ -532,7 +532,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               </label>
               <div className="space-y-1">
                 {itens.map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/20 border border-border/30">
+                  <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/20 border border-border">
                     <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-[12px] font-medium truncate">{item.device_model}</p>
@@ -566,7 +566,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               step={1}
               value={desconto}
               onChange={e => setDesconto(Number(e.target.value))}
-              className="w-full h-2 rounded-full appearance-none cursor-pointer"
+              className="w-full h-2 rounded-full appearance-none cursor-pointer zomini-range"
               style={{
                 background: desconto === 0
                   ? "hsl(var(--border))"
@@ -596,12 +596,12 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               onChange={e => setObs(e.target.value)}
               placeholder="Informações adicionais para o estoque..."
               rows={2}
-              className="w-full rounded-xl border border-border/50 bg-background text-sm px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+              className="w-full rounded-xl border border-border bg-background text-sm px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)] focus:border-[hsl(var(--primary)/0.40)]"
             />
           </div>
         </div>
 
-        <div className="flex gap-2 p-5 border-t border-border/30 shrink-0">
+        <div className="flex gap-2 p-5 border-t border-border shrink-0">
           <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
           <button type="button" onClick={handleSave} disabled={saving || !clienteId || itens.length === 0} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
@@ -647,7 +647,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
   const meta = statusMeta[pedido.status] ?? statusMeta["cancelado"];
 
   return (
-    <div className="rounded-2xl bg-card border border-border/40 overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+    <div className="rounded-xl bg-card border border-border overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
       style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
 
       {/* Barra de status — sólida, visível */}
@@ -660,7 +660,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <div className="h-7 w-7 rounded-lg bg-violet-100 dark:bg-violet-500/20 flex items-center justify-center shrink-0">
-                <User className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                <User className="h-3.5 w-3.5 text-[hsl(var(--primary))] dark:text-violet-400" />
               </div>
               <h3 className="text-[14px] font-bold text-foreground truncate">{pedido.cliente_nome}</h3>
             </div>
@@ -677,7 +677,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
         <div className="flex items-center gap-2">
           <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5 rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
             <div className="flex items-center gap-2">
-              <ShoppingBag className="h-3.5 w-3.5 text-violet-500" />
+              <ShoppingBag className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
               <span className="text-[12px] text-muted-foreground">
                 {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça
               </span>
@@ -900,11 +900,11 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-2xl flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-200" style={{ minHeight: 480 }}>
+      <div className="w-full max-w-lg rounded-xl bg-card border border-border shadow-2xl flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-200" style={{ minHeight: 480 }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
-            <Plus className="h-4 w-4 text-violet-500" />
+            <Plus className="h-4 w-4 text-[hsl(var(--primary))]" />
             <p className="text-sm font-semibold">Adicionar Peça</p>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
@@ -914,7 +914,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
 
         <div className="p-5 space-y-4 flex-1 flex flex-col">
           {/* Info */}
-          <div className="rounded-xl bg-violet-500/8 border border-violet-500/20 px-3 py-2.5 text-[12px] text-violet-700 dark:text-violet-400">
+          <div className="rounded-xl bg-violet-500/8 border border-[hsl(var(--primary)/0.20)] px-3 py-2.5 text-[12px] text-violet-700 dark:text-violet-400">
             Pedido de <strong>{pedido.cliente_nome}</strong> — ainda pendente, pode adicionar peças
           </div>
 
@@ -933,7 +933,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
 
             {/* Lista de resultados inline — sempre visível */}
             {showAutocomp && autocomplete.length > 0 && !selectedPeca && (
-              <div className="mt-2 rounded-xl border border-border/30 bg-muted/10 overflow-hidden flex-1" style={{ maxHeight: 260, overflowY: 'auto' }}>
+              <div className="mt-2 rounded-xl border border-border bg-muted/10 overflow-hidden flex-1" style={{ maxHeight: 260, overflowY: 'auto' }}>
                 {autocomplete.map((item, idx) => (
                   <button
                     key={item.id}
@@ -985,7 +985,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
                     max={maxDisponivel}
                     value={qtd}
                     onChange={e => setQtd(Math.max(1, Math.min(maxDisponivel, parseInt(e.target.value) || 1)))}
-                    className="w-20 text-center text-[22px] font-bold bg-transparent border border-border/40 rounded-xl h-12 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-20 text-center text-[22px] font-bold bg-transparent border border-border rounded-xl h-12 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)]"
                   />
                   <button type="button" onClick={() => setQtd(q => Math.min(maxDisponivel, q + 1))} className="h-11 w-11 rounded-xl bg-muted/40 hover:bg-muted/70 flex items-center justify-center transition-colors">
                     <Plus className="h-5 w-5" />
@@ -998,7 +998,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
 
         {/* Footer */}
         <div className="px-5 pb-5 pt-3 shrink-0 border-t border-border/20 flex gap-3">
-          <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border border-border/30 text-[13px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
+          <button type="button" onClick={onClose} className="flex-1 h-11 rounded-xl border border-border text-[13px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
             Cancelar
           </button>
           <button
@@ -1055,17 +1055,17 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="flex items-start gap-3">
-          <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="h-4 w-4 text-violet-500" />
+          <div className="h-9 w-9 rounded-xl bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
+            <CheckCircle2 className="h-4 w-4 text-[hsl(var(--primary))]" />
           </div>
           <div>
             <p className="text-sm font-semibold">Confirmar Pedido?</p>
             <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
           </div>
         </div>
-        <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2.5 space-y-1">
+        <div className="rounded-xl bg-muted/20 border border-border px-3 py-2.5 space-y-1">
           <p className="text-[12px] text-muted-foreground">
             <strong className="text-foreground">{total} unidade{total !== 1 ? "s" : ""}</strong> serão encaminhadas ao estoque para separação.
           </p>
@@ -1095,7 +1095,7 @@ interface ClienteCardProps {
 
 function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir }: ClienteCardProps) {
   return (
-    <div className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5" style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
+    <div className="group relative rounded-xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5" style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
       <div className="h-0.5 bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
       <div className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
@@ -1103,8 +1103,8 @@ function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir }: Cli
             <h3 className="text-[13px] font-semibold truncate">{c.nome}</h3>
             {c.documento && <p className="text-[11px] text-muted-foreground/70 font-mono">{c.documento}</p>}
           </div>
-          <div className="h-8 w-8 rounded-full bg-violet-500/10 flex items-center justify-center shrink-0">
-            <User className="h-4 w-4 text-violet-500" />
+          <div className="h-8 w-8 rounded-full bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
+            <User className="h-4 w-4 text-[hsl(var(--primary))]" />
           </div>
         </div>
         <div className="space-y-1">
@@ -1113,7 +1113,7 @@ function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir }: Cli
           {c.endereco && <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70"><MapPin className="h-3 w-3 shrink-0" /><span className="truncate">{c.endereco}</span></div>}
         </div>
         <div className="flex gap-1.5 pt-1 border-t border-border/20">
-          <button type="button" onClick={() => onPedido(c)} className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[10px] font-medium transition-colors">
+          <button type="button" onClick={() => onPedido(c)} className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-[hsl(var(--primary)/0.10)] hover:bg-violet-500/20 text-[hsl(var(--primary))] dark:text-violet-400 text-[10px] font-medium transition-colors">
             <ShoppingCart className="h-3 w-3" /> Pedido
           </button>
           <button type="button" onClick={() => onEditar(c)} className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors">
@@ -1184,10 +1184,10 @@ function NotificacoesBell({ userId }: { userId: string }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-72 rounded-2xl border border-border bg-card shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
-          <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
+        <div className="absolute right-0 top-full mt-1 w-72 rounded-xl border border-border bg-card shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <span className="text-[12px] font-semibold">Notificações</span>
-            {naoLidas > 0 && <span className="text-[10px] text-violet-500">{naoLidas} nova{naoLidas > 1 ? "s" : ""}</span>}
+            {naoLidas > 0 && <span className="text-[10px] text-[hsl(var(--primary))]">{naoLidas} nova{naoLidas > 1 ? "s" : ""}</span>}
           </div>
           <div className="max-h-64 overflow-y-auto divide-y divide-border/20">
             {notifs.length === 0 ? (
@@ -1285,14 +1285,14 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-lg rounded-xl bg-card border border-border shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         {/* Header */}
         <div className="relative px-5 pt-5 pb-3 shrink-0">
           <div className="absolute inset-0 bg-gradient-to-b from-violet-500/5 to-transparent" />
           <div className="relative flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-violet-500" />
+                <History className="h-4 w-4 text-[hsl(var(--primary))]" />
                 <p className="text-sm font-semibold">Histórico Geral — Comercial</p>
               </div>
               <p className="text-[12px] text-muted-foreground mt-0.5">
@@ -1377,7 +1377,7 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
                 >
                   {isEntrada
                     ? <ArrowDownCircle className="h-4 w-4 text-success shrink-0" />
-                    : <ArrowUpCircle className="h-4 w-4 text-violet-500 shrink-0" />}
+                    : <ArrowUpCircle className="h-4 w-4 text-[hsl(var(--primary))] shrink-0" />}
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <p className="text-[12px] font-semibold text-foreground leading-snug line-clamp-1">{g.device_model}</p>
                     <p className="text-[10px] text-muted-foreground font-mono">{g.device_reference}</p>
@@ -1388,7 +1388,7 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-violet-500")}>
+                    <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-[hsl(var(--primary))]")}>
                       {isEntrada ? "+" : "-"}{g.quantity}
                       <span className="text-[10px] font-normal ml-0.5 opacity-70">un.</span>
                     </span>
@@ -1523,7 +1523,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
     return (
       <div className="grid grid-cols-2 gap-3">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-2xl border bg-muted/20 p-4 h-24 animate-pulse" />
+          <div key={i} className="rounded-xl border bg-muted/20 p-4 h-24 animate-pulse" />
         ))}
       </div>
     );
@@ -1536,17 +1536,17 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
     <div className="space-y-4">
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 flex items-start gap-3">
-          <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
-            <Package className="h-5 w-5 text-violet-500" />
+        <div className="rounded-xl border border-[hsl(var(--primary)/0.20)] bg-violet-500/5 p-4 flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
+            <Package className="h-5 w-5 text-[hsl(var(--primary))]" />
           </div>
           <div>
             <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Pedidos Efetuados</p>
-            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPedidosConfirmados.toLocaleString("pt-BR")}</p>
+            <p className="text-2xl font-bold tabular-nums text-[hsl(var(--primary))] dark:text-violet-400">{totalPedidosConfirmados.toLocaleString("pt-BR")}</p>
             <p className="text-[10px] text-muted-foreground/60 mt-0.5">confirmados pela vendedora</p>
           </div>
         </div>
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-start gap-3">
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-start gap-3">
           <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
             <Boxes className="h-5 w-5 text-emerald-500" />
           </div>
@@ -1560,8 +1560,8 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
 
       {/* Ranking Vendedoras — só admin vê */}
       {isAdmin && (
-      <div className="rounded-2xl border border-border/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
           <Trophy className="h-4 w-4 text-amber-500" />
           <p className="text-sm font-semibold">Ranking de Vendedoras</p>
           <span className="text-[11px] text-muted-foreground/60">(peças em pedidos confirmados)</span>
@@ -1582,7 +1582,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5">
                     <span className="text-[12px] font-medium truncate">{nome}</span>
-                    <span className="text-[12px] font-bold text-violet-600 dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
+                    <span className="text-[12px] font-bold text-[hsl(var(--primary))] dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
                     <div
@@ -1599,9 +1599,9 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
       )}
 
       {/* Ranking Clientes */}
-      <div className="rounded-2xl border border-border/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-violet-500" />
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-[hsl(var(--primary))]" />
           <p className="text-sm font-semibold">Clientes que Mais Compraram</p>
           <span className="text-[11px] text-muted-foreground/60">(peças em pedidos confirmados)</span>
         </div>
@@ -1613,12 +1613,12 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
               <div key={nome} className="flex items-center gap-3 px-4 py-2.5">
                 <span className={cn(
                   "h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
-                  idx === 0 ? "bg-violet-500/20 text-violet-600" : "bg-muted/40 text-muted-foreground"
+                  idx === 0 ? "bg-violet-500/20 text-[hsl(var(--primary))]" : "bg-muted/40 text-muted-foreground"
                 )}>{idx + 1}º</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5">
                     <span className="text-[12px] font-medium truncate">{nome}</span>
-                    <span className="text-[12px] font-bold text-violet-600 dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
+                    <span className="text-[12px] font-bold text-[hsl(var(--primary))] dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
                     <div
@@ -1637,7 +1637,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
       <button
         type="button"
         onClick={downloadPdfVendedora}
-        className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-violet-500/30 text-violet-600 dark:text-violet-400 text-sm font-medium hover:bg-violet-500/10 transition-colors"
+        className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-[hsl(var(--primary)/0.25)] text-[hsl(var(--primary))] dark:text-violet-400 text-sm font-medium hover:bg-[hsl(var(--primary)/0.10)] transition-colors"
       >
         <Download className="h-4 w-4" />
         Baixar meu relatório em PDF
@@ -1828,14 +1828,14 @@ export default function Comercial() {
   );
 
   return (
-    <div className="min-h-screen bg-transparent">
+    <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
+      <header className="sticky top-0 z-30 border-b" style={{ background: "hsl(var(--card) / 0.96)", borderColor: "hsl(var(--border))", backdropFilter: "blur(12px)" }}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
 
             <div className="flex items-center gap-2">
-              <ShoppingBag className="h-4 w-4 text-violet-500" />
+              <ShoppingBag className="h-4 w-4 text-[hsl(var(--primary))]" />
               <h1 className="text-sm font-semibold">Comercial</h1>
               {!loadingPedidos && pedidosPendentes > 0 && (
                 <span className="flex items-center gap-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
@@ -1872,7 +1872,7 @@ export default function Comercial() {
         ) : (
           <>
             {/* Info */}
-            <div className="rounded-xl border bg-violet-500/5 border-violet-500/20 text-violet-700 dark:text-violet-300 px-4 py-3 text-[12px]">
+            <div className="rounded-xl border bg-violet-500/5 border-[hsl(var(--primary)/0.20)] text-violet-700 dark:text-violet-300 px-4 py-3 text-[12px]">
               Cadastre clientes, visualize peças disponíveis na expedição e crie pedidos de venda. O estoque fatura e as peças saem automaticamente.
             </div>
 
@@ -1890,7 +1890,7 @@ export default function Comercial() {
                   className={cn(
                     "flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-medium transition-all",
                     subTab === tab.id
-                      ? "bg-card text-violet-600 dark:text-violet-400 shadow-sm border border-border/40"
+                      ? "bg-card text-[hsl(var(--primary))] dark:text-violet-400 shadow-sm border border-border"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
@@ -2046,7 +2046,7 @@ export default function Comercial() {
       {/* Cancelar pedido */}
       {cancelarPedido && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0"><Ban className="h-4 w-4 text-destructive" /></div>
               <div>
@@ -2069,7 +2069,7 @@ export default function Comercial() {
       {/* Excluir cliente */}
       {deleteCliente && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0"><Trash2 className="h-4 w-4 text-destructive" /></div>
               <div>

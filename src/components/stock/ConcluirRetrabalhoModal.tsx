@@ -104,7 +104,7 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-sm p-0 rounded-2xl overflow-hidden border-border/30">
+      <DialogContent className="max-w-sm p-0 rounded-xl overflow-hidden border-border">
         {/* Header */}
         <div className="relative px-5 pt-5 pb-4">
           <div className="absolute inset-0 bg-gradient-to-b from-orange-500/5 to-transparent" />
@@ -115,7 +115,7 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
                 Concluir Retrabalho
               </DialogTitle>
             </DialogHeader>
-            <div className="mt-3 rounded-xl bg-muted/20 border border-border/30 p-3 space-y-1">
+            <div className="mt-3 rounded-xl bg-muted/20 border border-border p-3 space-y-1">
               <p className="text-[13px] font-semibold leading-snug line-clamp-2">{d.model}</p>
               <p className="text-[11px] text-muted-foreground font-mono">{d.reference}</p>
               <div className="flex items-center gap-2 pt-0.5">
@@ -196,7 +196,7 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
                           type="button"
                           onClick={() => selectLote(l)}
                           className={cn(
-                            "w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-accent/50 transition-colors border-b border-border/30 last:border-0",
+                            "w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-accent/50 transition-colors border-b border-border last:border-0",
                             lote === l.lote && "bg-orange-500/10"
                           )}
                         >

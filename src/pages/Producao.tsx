@@ -76,7 +76,7 @@ function ProdMenu({ isAdmin, onSelect }: { isAdmin:boolean; onSelect:(v:ProdView
   const visible = MODULES.filter(m => !m.adminOnly || isAdmin);
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      <div className="rounded-2xl border bg-card/60 p-4">
+      <div className="rounded-xl border bg-card/60 p-4">
         <div className="flex items-center gap-3 mb-1">
           <Factory className="h-5 w-5 text-primary" />
           <h2 className="font-semibold">Controle Industrial de Produção</h2>
@@ -89,7 +89,7 @@ function ProdMenu({ isAdmin, onSelect }: { isAdmin:boolean; onSelect:(v:ProdView
       <div className="grid gap-3 sm:grid-cols-2">
         {visible.map(m => (
           <button key={m.id} onClick={() => onSelect(m.id)}
-            className={cn("rounded-2xl border p-4 text-left flex items-center gap-4 transition-all hover:shadow-sm active:scale-[0.99]", m.bg, m.border)}>
+            className={cn("rounded-xl border p-4 text-left flex items-center gap-4 transition-all hover:shadow-sm active:scale-[0.99]", m.bg, m.border)}>
             <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center shrink-0", m.bg)}>
               <m.Icon className={cn("h-5 w-5", m.color)} />
             </div>
@@ -123,16 +123,16 @@ export default function Producao() {
   function goBack() { if (view !== "menu") setView("menu"); else navigate(-1); }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/95 backdrop-blur">
+    <div className="min-h-full flex flex-col" style={{ background:"hsl(var(--background))" }}>
+      <header className="sticky top-0 z-40 border-b" style={{ background: "hsl(var(--card) / 0.96)", borderColor: "hsl(var(--border))", backdropFilter: "blur(12px)" }}>
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
           <button onClick={goBack}
-            className="h-8 w-8 rounded-xl flex items-center justify-center hover:bg-muted/40 transition-colors shrink-0">
+            className="h-8 w-8 rounded-lg flex items-center justify-center transition-colors shrink-0" style={{ color:"hsl(var(--muted-foreground))" }} onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background="hsl(var(--muted)/0.45)"} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="transparent"}>
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <div className="h-5 w-px bg-border/50" />
+          <div className="h-4 w-px" style={{ background:"hsl(var(--border))" }} />
           <div className="flex items-center gap-2 min-w-0">
-            <Factory className="h-4 w-4 text-primary shrink-0" />
+            <Factory className="h-4 w-4 shrink-0" style={{ color:"hsl(var(--primary))" }} />
             <span className="font-semibold text-sm truncate">
               {view === "menu" ? "Produção" : currentModule?.label ?? "Produção"}
             </span>
