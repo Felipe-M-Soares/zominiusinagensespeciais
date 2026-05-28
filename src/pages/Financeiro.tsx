@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import {
   ArrowLeft, Receipt, CheckCircle2, Package, User, Clock,
   Truck, ChevronDown, ChevronUp, Send, X, RefreshCw,
@@ -1848,12 +1849,15 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
           style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", boxShadow: "0 2px 8px rgba(124,58,237,0.3)" }}>
           <PlusCircle size={14} />Novo lançamento
         </button>
-        <div className="relative flex-1 min-w-[160px]">
-          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
-          <input type="text" placeholder="Buscar descrição ou fornecedor…"
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full h-9 pl-8 pr-3 rounded-xl text-[12px] bg-muted/30 border border-border focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
-        </div>
+        <SearchInputWithBarcode
+          className="flex-1 min-w-[160px]"
+          value={search}
+          onChange={v => setSearch(v)}
+          onSearch={v => setSearch(v)}
+          placeholder="Buscar descrição, fornecedor ou bipe o código..."
+          height="h-9"
+          showSearchIcon
+        />
         <select value={filtroNF} onChange={e => setFiltroNF(e.target.value as typeof filtroNF)}
           className="h-9 rounded-xl px-3 text-[12px] font-medium bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-500/30">
           <option value="todos">Todas NFs</option>
@@ -2742,12 +2746,15 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
-          <input type="text" placeholder="Buscar por modelo, referência, código ou NCM…"
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full h-9 pl-8 pr-3 rounded-xl text-[12px] bg-muted/30 border border-border focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
-        </div>
+        <SearchInputWithBarcode
+          className="flex-1 min-w-[180px]"
+          value={search}
+          onChange={v => setSearch(v)}
+          onSearch={v => setSearch(v)}
+          placeholder="Buscar por modelo, referência, NCM ou bipe o código..."
+          height="h-9"
+          showSearchIcon
+        />
         <button type="button" onClick={() => setShowInativ(v => !v)}
           className={cn("h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold border transition-all",
             showInativ ? "bg-violet-500/15 border-violet-500/40 text-violet-600" : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50")}>
@@ -3292,16 +3299,15 @@ export default function Financeiro() {
                   </button>
                 ))}
               </div>
-              <div className="flex-1 min-w-[180px] relative">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
-                <input
-                  type="text"
-                  placeholder="Buscar cliente, NF ou vendedora…"
-                  value={searchNF}
-                  onChange={e => setSearchNF(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 rounded-xl text-[12px] bg-muted/30 border border-border focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-                />
-              </div>
+              <SearchInputWithBarcode
+                className="flex-1 min-w-[180px]"
+                value={searchNF}
+                onChange={v => setSearchNF(v)}
+                onSearch={v => setSearchNF(v)}
+                placeholder="Buscar cliente, NF, vendedora ou bipe o código..."
+                height="h-8"
+                showSearchIcon
+              />
             </div>
 
             {loading ? (

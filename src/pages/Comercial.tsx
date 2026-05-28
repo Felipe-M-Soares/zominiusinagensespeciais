@@ -65,6 +65,7 @@ import {
   Minus,
 } from "lucide-react";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { Logo } from "@/components/Logo";
 
 import { formatLote, loteValido, displayLote } from "@/lib/lote";
@@ -549,29 +550,40 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
           {/* ── Desconto do Pedido ── */}
           <div className="space-y-2">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto no Pedido</label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[0, 5, 10, 15, 20, 25, 30, 40].map(pct => (
-                <button
-                  key={pct}
-                  type="button"
-                  onClick={() => setDesconto(pct)}
-                  className={cn(
-                    "h-9 rounded-xl text-[12px] font-semibold border transition-all duration-150",
-                    desconto === pct
-                      ? pct === 0
-                        ? "bg-muted/60 border-border text-foreground"
-                        : "bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
-                      : "bg-muted/20 border-border/30 text-muted-foreground hover:bg-muted/40"
-                  )}
-                >
-                  {pct === 0 ? "Sem" : `${pct}%`}
-                </button>
-              ))}
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto no Pedido</label>
+              <span className={cn(
+                "text-[13px] font-black tabular-nums px-2 py-0.5 rounded-lg",
+                desconto > 0 ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted/30 text-muted-foreground"
+              )}>
+                {desconto === 0 ? "Sem desconto" : `${desconto}%`}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={desconto}
+              onChange={e => setDesconto(Number(e.target.value))}
+              className="w-full h-2 rounded-full appearance-none cursor-pointer"
+              style={{
+                background: desconto === 0
+                  ? "hsl(var(--border))"
+                  : `linear-gradient(to right, #059669 ${desconto}%, hsl(var(--border)) ${desconto}%)`,
+                accentColor: "#059669",
+              }}
+            />
+            <div className="flex justify-between text-[9px] text-muted-foreground/60 font-mono px-0.5">
+              <span>0%</span>
+              <span>25%</span>
+              <span>50%</span>
+              <span>75%</span>
+              <span>100%</span>
             </div>
             {desconto > 0 && (
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 bg-emerald-500/8 border border-emerald-500/20 rounded-xl px-3 py-2">
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> Desconto de {desconto}% aplicado a todas as peças deste pedido
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <span className="font-bold">✓</span> Desconto de {desconto}% aplicado a todas as peças deste pedido
               </p>
             )}
           </div>
@@ -635,10 +647,11 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
   const meta = statusMeta[pedido.status] ?? statusMeta["cancelado"];
 
   return (
-    <div className="rounded-2xl bg-card border border-border/30 overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+    <div className="rounded-2xl bg-card border border-border/40 overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+      style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
 
-      {/* Barra de status */}
-      <div className={cn("h-[3px] w-full", meta.bar)} />
+      {/* Barra de status — sólida, visível */}
+      <div className={cn("h-1 w-full", meta.bar)} />
 
       <div className="p-4 space-y-3">
 
@@ -646,85 +659,84 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
-                <User className="h-3.5 w-3.5 text-violet-500" />
+              <div className="h-7 w-7 rounded-lg bg-violet-100 dark:bg-violet-500/20 flex items-center justify-center shrink-0">
+                <User className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
               </div>
-              <h3 className="text-[13px] font-bold text-foreground truncate">{pedido.cliente_nome}</h3>
+              <h3 className="text-[14px] font-bold text-foreground truncate">{pedido.cliente_nome}</h3>
             </div>
             {pedido.vendedora_nome && (
-              <p className="text-[11px] text-muted-foreground/60 mt-1 ml-10 truncate">{pedido.vendedora_nome}</p>
+              <p className="text-[11px] text-muted-foreground mt-1 ml-9">{pedido.vendedora_nome}</p>
             )}
           </div>
-          <span className={cn("shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 border leading-none", meta.badge)}>
+          <span className={cn("shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1.5 border", meta.badge)}>
             {meta.icon} {meta.label}
           </span>
         </div>
 
-        {/* ── Resumo: qtd + desconto inline ── */}
-        <div className="rounded-xl bg-muted/20 border border-border/20 px-3 py-2.5 flex items-center gap-3">
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <ShoppingBag className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
-            <span className="text-[11px] text-muted-foreground/70 truncate">
-              {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça
-            </span>
-          </div>
-          <div className="flex items-baseline gap-1 shrink-0">
-            <span className="text-[22px] font-black text-foreground tabular-nums leading-none">{totalItens}</span>
-            <span className="text-[10px] text-muted-foreground/50">un.</span>
+        {/* ── Resumo: qtd + desconto ── */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5 rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
+            <div className="flex items-center gap-2">
+              <ShoppingBag className="h-3.5 w-3.5 text-violet-500" />
+              <span className="text-[12px] text-muted-foreground">
+                {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-[18px] font-black text-foreground tabular-nums">{totalItens}</span>
+              <span className="text-[11px] text-muted-foreground">un.</span>
+            </div>
           </div>
           {temDesconto && (
-            <>
-              <div className="w-px h-6 bg-border/30 shrink-0" />
-              <span className="shrink-0 text-[13px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                -{pedido.desconto_pct}%
-              </span>
-            </>
+            <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2 flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
+              <span className="text-[14px] font-black text-green-700">{pedido.desconto_pct}%</span>
+              <span className="text-[9px] font-semibold text-green-600 uppercase tracking-wide">desc.</span>
+            </div>
           )}
         </div>
 
         {/* ── Data/hora ── */}
         <div className="flex items-center gap-1.5">
-          <Clock className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-          <span className="text-[11px] text-muted-foreground/60">{data} às {hora}</span>
+          <Clock className="h-3 w-3 text-muted-foreground/70" />
+          <span className="text-[11px] text-muted-foreground">{data} às {hora}</span>
         </div>
 
         {/* ── Itens expandidos ── */}
         {expanded && (
-          <div className="space-y-1.5 pt-2 border-t border-border/15 animate-in fade-in slide-in-from-top-1 duration-150">
-            <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Peças do pedido</p>
+          <div className="space-y-1.5 pt-2" className="border-t border-border">
             {pedido.itens.map(it => (
-              <div key={it.id} className="flex items-center gap-2.5 rounded-xl bg-muted/20 border border-border/15 px-3 py-2">
-                <Package className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+              <div key={it.id} className="flex items-center gap-2 rounded-xl px-3 py-2 rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
+                <Package className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-semibold text-foreground truncate">{it.device_model}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     {displayLote(it.lote) && (
                       <>
-                        <Tag className="h-2.5 w-2.5 text-muted-foreground/50 shrink-0" />
-                        <span className="text-[10px] font-mono text-muted-foreground/60">{displayLote(it.lote)}</span>
-                        <span className="text-muted-foreground/30">·</span>
+                        <Tag className="h-2.5 w-2.5 text-muted-foreground/70" />
+                        <span className="text-[10px] font-mono text-muted-foreground">{displayLote(it.lote)}</span>
+                        <span className="text-muted-foreground/40">·</span>
                       </>
                     )}
-                    <span className="text-[10px] text-muted-foreground/60">{it.quantidade} un.</span>
+                    <span className="text-[11px] text-muted-foreground">{it.quantidade} un.</span>
                   </div>
                 </div>
               </div>
             ))}
             {pedido.observacoes && (
-              <div className="flex items-start gap-1.5 px-3 py-2 bg-violet-500/5 border border-violet-500/15 rounded-xl">
-                <FileText className="h-3 w-3 mt-0.5 text-muted-foreground/50 shrink-0" />
-                <span className="text-[11px] text-muted-foreground/70 italic">{pedido.observacoes}</span>
+              <div className="flex items-start gap-1.5 px-1 pt-1">
+                <FileText className="h-3 w-3 mt-0.5 text-muted-foreground/70 shrink-0" />
+                <span className="text-[11px] text-muted-foreground italic">{pedido.observacoes}</span>
               </div>
             )}
           </div>
         )}
 
         {/* ── Ações ── */}
-        <div className="space-y-1.5 pt-0.5 border-t border-border/15">
+        <div className="space-y-2 pt-2" className="border-t border-border">
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground bg-muted/20 hover:bg-muted/40 border border-border/20 transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted/50 transition-colors w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground bg-muted/30 border border-border"
           >
             {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             {expanded ? "Ocultar peças" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
@@ -734,25 +746,26 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
             <button
               type="button"
               onClick={() => onAdicionarPeca(pedido)}
-              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-violet-700 dark:text-violet-300 transition-colors bg-violet-100 dark:bg-violet-900/30 border border-violet-300 dark:border-violet-700"
             >
               <Plus className="h-3.5 w-3.5" /> Adicionar peça
             </button>
           )}
 
           {pedido.status === "pendente" && isAdmin && (
-            <div className="flex gap-1.5">
+            <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => onFaturar(pedido)}
-                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5"
+                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-bold transition-colors flex items-center justify-center gap-1.5"
+                style={{ boxShadow: "0 2px 8px rgba(124,58,237,0.35)" }}
               >
                 <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar Pedido
               </button>
               <button
                 type="button"
                 onClick={() => onCancelar(pedido)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/15 hover:text-destructive border border-border/20 transition-colors"
+                className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-red-500/10 dark:hover:bg-red-950 hover:text-red-500 transition-colors border border-border"
                 title="Cancelar pedido"
               >
                 <Ban className="h-3.5 w-3.5" />
@@ -761,18 +774,18 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
           )}
 
           {pedido.status === "separando" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-500/10 border border-blue-500/20">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 dark:text-blue-300 text-[11px] font-semibold bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700">
               <PackageCheck className="h-3.5 w-3.5" /> Estoque separando...
             </div>
           )}
           {pedido.status === "pronto" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
               <CheckCircle2 className="h-3.5 w-3.5" /> Pronto — aguardando NF
             </div>
           )}
           {pedido.status === "enviado" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-teal-600 dark:text-teal-400 bg-teal-500/10 border border-teal-500/20">
-              <Truck className="h-3.5 w-3.5" /> Enviado ao cliente!
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 dark:text-teal-300 text-[11px] font-semibold bg-teal-100 dark:bg-teal-900/30 border border-teal-300 dark:border-teal-700">
+              <Truck className="h-3.5 w-3.5" /> Enviado ao cliente! 🎉
             </div>
           )}
         </div>
@@ -908,14 +921,13 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
           {/* Busca com autocomplete — lista inline, não dropdown flutuante */}
           <div className="flex flex-col flex-1" ref={dropRef}>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <input
-                ref={inputRef}
+              <SearchInputWithBarcode
                 value={search}
-                onChange={e => handleInput(e.target.value)}
-                onFocus={handleFocus}
-                placeholder="Buscar peça por modelo..."
-                className="w-full h-11 pl-10 pr-3 rounded-xl border border-border/40 bg-muted/20 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/40"
+                onChange={v => handleInput(v)}
+                onSearch={v => { handleInput(v); }}
+                placeholder="Buscar peça por modelo ou bipe o código..."
+                height="h-11"
+                inputClass="bg-muted/20 text-[13px]"
               />
             </div>
 

@@ -6,7 +6,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, X, SlidersHorizontal, ScanBarcode } from "lucide-react";
+import { X, SlidersHorizontal } from "lucide-react";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -131,14 +132,11 @@ export function SearchFilters({
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        <SearchBar
+        <SearchInputWithBarcode
+          className="flex-1"
+          onChange={v => onSearchChange(v)}
           onSearch={v => { onSearchChange(v); onSearchSubmit(v); }}
-          onClear={onClear}
-          hasValue={hasValue}
-          suggestions={suggestions}
-          showSuggestions={showSuggestions}
-          onSelectSuggestion={onSelectSuggestion ?? (() => {})}
-          onCloseSuggestions={onCloseSuggestions ?? (() => {})}
+          height="h-10 sm:h-11"
         />
 
         <Button variant={open ? "default" : "outline"} size="icon"

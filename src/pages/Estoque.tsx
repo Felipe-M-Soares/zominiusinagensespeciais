@@ -79,6 +79,7 @@ const PedidosEstoquePanel = lazy(() => import("@/components/stock/PedidosEstoque
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { countryFlag } from "@/components/DeviceCard";
 import { toast } from "sonner";
@@ -1068,14 +1069,13 @@ export default function Estoque() {
         {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && (
           <div className="space-y-2">
             <div className="flex gap-2">
-              <SearchBar
+              <SearchInputWithBarcode
+                className="flex-1"
+                value={search}
+                onChange={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); }}
                 onSearch={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
-                onClear={() => { setSearch(""); setQuerySearch(""); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
-                hasValue={!!search}
-                suggestions={autocompleteItems}
-                showSuggestions={showAutocomplete}
-                onSelectSuggestion={handleSelectSuggestion}
-                onCloseSuggestions={() => setShowAutocomplete(false)}
+                placeholder="Buscar por modelo, referência, UDI ou lote..."
+                height="h-11"
               />
               <Button
                 type="button"
