@@ -26,7 +26,7 @@ import {
   Link, TestTube2, CheckSquare, AlertTriangle, TrendingDown,
   Wallet, CalendarDays, BarChart3, Tag, Building,
   TrendingUp, Download, Search, Copy, Repeat2,
-  BarChart2, PieChart, Layers, Sun, Moon, FilePlus2, Plus, Minus,
+  BarChart2, PieChart, Layers, Sun, Moon, FilePlus2, Plus, Minus, FileSpreadsheet,
 } from "lucide-react";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -38,9 +38,13 @@ interface PedidoItem {
   quantidade: number;
   device_model?: string;
   device_reference?: string;
+  device_id?: string;
   ncm?: string;
   cfop?: string;
+  cfop_padrao?: string;
   valor_unitario?: number;
+  preco_venda?: number;
+  desconto_max_pct?: number;
 }
 
 interface Pedido {
@@ -235,17 +239,23 @@ function initDados(pedido: Pedido, numero: string): DadosFiscais {
     destNome:      pedido.cliente_nome ?? "",
     destEmail:     pedido.cliente_email ?? "",
     destEndereco:  pedido.cliente_endereco ?? "",
-    itens: pedido.itens.map(item => ({
-      pedido_item_id: item.id,
-      descricao:      item.device_model ?? "Produto",
-      ncm:            item.ncm  ?? "90213990",
-      cfop:           item.cfop ?? "5102",
-      unidade: "UN",
-      quantidade:     item.quantidade,
-      valorUnitario:  (item.valor_unitario ?? 0).toFixed(2),
-      aliqICMS: "12.00",
-      cst: "00",
-    })),
+    itens: pedido.itens.map(item => {
+      // Prioridade: preco_venda da tabela de preços > valor_unitario do pedido > 0
+      const precoBase = (item.preco_venda ?? 0) > 0
+        ? item.preco_venda!
+        : (item.valor_unitario ?? 0);
+      return {
+        pedido_item_id: item.id,
+        descricao:      item.device_model ?? "Produto",
+        ncm:            item.ncm ?? item.ncm ?? "90213990",
+        cfop:           item.cfop_padrao ?? item.cfop ?? "5102",
+        unidade: "UN",
+        quantidade:     item.quantidade,
+        valorUnitario:  precoBase.toFixed(2),
+        aliqICMS: "12.00",
+        cst: "00",
+      };
+    }),
     tipoPagamento: "01",
     valorTotal:    "0.00",
     modFrete:      "9",
@@ -2566,15 +2576,63 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("devices")
-      .select("id, model, reference, internal_code, ncm, cfop_padrao, unidade, preco_custo, preco_venda, desconto_max_pct, margem_minima_pct, ativo, observacoes_preco")
-      .order("model");
-    if (!error && data) setDevices(data as DevicePreco[]);
+    // Busca todas as peças com paginação (sem limite padrão do Supabase de 1000)
+    const PAGE = 1000;
+    let all: DevicePreco[] = [];
+    let from = 0;
+    let keepGoing = true;
+    while (keepGoing) {
+      const { data, error } = await supabase
+        .from("devices")
+        .select("id, model, reference, internal_code, ncm, cfop_padrao, unidade, preco_custo, preco_venda, desconto_max_pct, margem_minima_pct, ativo, observacoes_preco")
+        .order("model")
+        .range(from, from + PAGE - 1);
+      if (error) { toast.error("Erro ao carregar peças: " + error.message); break; }
+      all = all.concat((data ?? []) as DevicePreco[]);
+      keepGoing = (data?.length ?? 0) === PAGE;
+      from += PAGE;
+    }
+    setDevices(all);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  function exportExcel() {
+    // Gera CSV detalhado e dispara download (funciona sem lib externa)
+    const headers = [
+      "Modelo", "Referência", "Cód. Interno", "NCM", "CFOP",
+      "Unidade", "Preço Custo (R$)", "Preço Venda (R$)",
+      "Margem Real (%)", "Desconto Máx (%)", "Margem Mín (%)",
+      "Ativo", "Observações"
+    ];
+    const BOM = "\uFEFF"; // UTF-8 BOM para Excel reconhecer acentos
+    const rows = filtered.map(d => {
+      const margem = d.preco_venda > 0
+        ? ((d.preco_venda - d.preco_custo) / d.preco_venda * 100).toFixed(2)
+        : "0.00";
+      return [
+        d.model, d.reference, d.internal_code, d.ncm, d.cfop_padrao,
+        d.unidade,
+        d.preco_custo.toFixed(2).replace(".", ","),
+        d.preco_venda.toFixed(2).replace(".", ","),
+        margem.replace(".", ","),
+        String(d.desconto_max_pct),
+        String(d.margem_minima_pct),
+        d.ativo ? "Sim" : "Não",
+        d.observacoes_preco ?? "",
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(";");
+    });
+    const csv = BOM + [headers.map(h => `"${h}"`).join(";"), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `tabela-precos-zomini-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Planilha exportada! ${filtered.length} peças.`);
+  }
 
   function startEdit(d: DevicePreco) {
     setEditRow(d.id);
@@ -2700,6 +2758,10 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
           <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
         </button>
         <span className="text-[11px] text-muted-foreground/70">{filtered.length} peças</span>
+        <button type="button" onClick={exportExcel} disabled={filtered.length === 0}
+          className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/8 hover:bg-emerald-500/15 transition-colors disabled:opacity-40">
+          <FileSpreadsheet size={14} />Exportar Excel
+        </button>
       </div>
 
       {/* Tabela */}
@@ -2980,7 +3042,7 @@ export default function Financeiro() {
         clientes(nome, documento, telefone, email, endereco),
         pedido_itens(
           id, stock_item_id, lote, quantidade,
-          stock_items(devices(model, reference))
+          stock_items(devices(id, model, reference, ncm, cfop_padrao, preco_venda, desconto_max_pct))
         )
       `)
       .or("status.eq.pronto,status.eq.faturado,status.eq.enviado")
@@ -3129,13 +3191,7 @@ export default function Financeiro() {
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground">
               {isDark ? <Sun size={15} /> : <Moon size={15} />}
             </button>
-            <button type="button" onClick={() => setNotaManualOpen(true)}
-              className="h-8 px-3 flex items-center gap-1.5 rounded-lg hover:bg-violet-500/10 transition-colors text-violet-600 border border-violet-500/20 font-semibold text-[11px]"
-              title="Nova Nota Manual">
-              <FilePlus2 size={14} />
-              <span className="hidden sm:inline">Nova Nota</span>
-            </button>
-            <button type="button" onClick={() => setHistoricoOpen(true)}
+<button type="button" onClick={() => setHistoricoOpen(true)}
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground"
               title="Histórico de NFs">
               <History size={15} />
@@ -3181,16 +3237,9 @@ export default function Financeiro() {
 
         {activeTab === "dashboard" && (
           <div className="space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold">Visão Geral Financeira</h2>
-                <p className="text-[12px] text-muted-foreground">Resumo consolidado de receitas, custos e resultados</p>
-              </div>
-              <button type="button" onClick={() => setNotaManualOpen(true)}
-                className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[12px] font-bold text-white transition-all hover:opacity-90 active:scale-95"
-                style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", boxShadow: "0 2px 8px rgba(124,58,237,0.3)" }}>
-                <FilePlus2 size={14} />Nova Nota Manual
-              </button>
+            <div>
+              <h2 className="text-base font-bold">Visão Geral Financeira</h2>
+              <p className="text-[12px] text-muted-foreground">Resumo consolidado de receitas, custos e resultados</p>
             </div>
             <PainelDashboard pedidos={pedidos} lancamentos={lancamentos} />
           </div>
@@ -3291,6 +3340,11 @@ export default function Financeiro() {
                 <h2 className="text-base font-bold">Compras — Produção</h2>
                 <p className="text-[12px] text-muted-foreground">Máquinas, matérias-primas, insumos e manutenção</p>
               </div>
+              <button type="button" onClick={() => setNotaManualOpen(true)}
+                className="ml-auto h-8 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold text-white shrink-0 hover:opacity-90 transition-all active:scale-95"
+                style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
+                <FilePlus2 size={13} />Nova Nota Manual
+              </button>
             </div>
             <PainelLancamentos tipo="compra_producao" modoTeste={modoTeste} />
           </div>
@@ -3306,6 +3360,11 @@ export default function Financeiro() {
                 <h2 className="text-base font-bold">Compras — Empresa</h2>
                 <p className="text-[12px] text-muted-foreground">Computadores, mobiliário, materiais de escritório e ativos</p>
               </div>
+              <button type="button" onClick={() => setNotaManualOpen(true)}
+                className="ml-auto h-8 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold text-white shrink-0 hover:opacity-90 transition-all active:scale-95"
+                style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
+                <FilePlus2 size={13} />Nova Nota Manual
+              </button>
             </div>
             <PainelLancamentos tipo="compra_empresa" modoTeste={modoTeste} />
           </div>
@@ -3321,6 +3380,11 @@ export default function Financeiro() {
                 <h2 className="text-base font-bold">Custos Operacionais</h2>
                 <p className="text-[12px] text-muted-foreground">Energia, aluguel, serviços recorrentes e custos fixos e variáveis</p>
               </div>
+              <button type="button" onClick={() => setNotaManualOpen(true)}
+                className="ml-auto h-8 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold text-white shrink-0 hover:opacity-90 transition-all active:scale-95"
+                style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
+                <FilePlus2 size={13} />Nova Nota Manual
+              </button>
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[
@@ -3376,11 +3440,6 @@ export default function Financeiro() {
                   <p className="text-[12px] text-muted-foreground">Preços, custos, descontos máximos e NCM/CFOP por peça</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setNotaManualOpen(true)}
-                className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[12px] font-bold text-white transition-all hover:opacity-90 active:scale-95"
-                style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", boxShadow: "0 2px 8px rgba(124,58,237,0.3)" }}>
-                <FilePlus2 size={14} />Nova Nota Manual
-              </button>
             </div>
             <PainelTabelaPrecos modoTeste={modoTeste} />
           </div>
