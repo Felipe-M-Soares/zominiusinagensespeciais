@@ -182,10 +182,10 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl bg-card border border-border shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2">
-            <User className="h-4 w-4 text-[hsl(var(--primary))]" />
+            <User className="h-4 w-4 text-violet-500" />
             <p className="text-sm font-semibold">{inicial ? "Editar Cliente" : "Novo Cliente"}</p>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
@@ -382,11 +382,11 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-xl bg-card border border-border shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
           <div className="flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4 text-[hsl(var(--primary))]" />
+            <ShoppingCart className="h-4 w-4 text-violet-500" />
             <p className="text-sm font-semibold">Novo Pedido</p>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
@@ -413,7 +413,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 <button
                   type="button"
                   onClick={() => setClienteModal(true)}
-                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-[hsl(var(--primary)/0.10)] hover:bg-violet-500/20 text-[hsl(var(--primary))] transition-colors shrink-0"
+                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-500 transition-colors shrink-0"
                   title="Novo cliente"
                 >
                   <UserPlus className="h-3.5 w-3.5" />
@@ -436,7 +436,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               )}
             </div>
             {clienteId && (
-              <p className="text-[11px] text-[hsl(var(--primary))] flex items-center gap-1">
+              <p className="text-[11px] text-violet-500 flex items-center gap-1">
                 <CheckCircle2 className="h-3 w-3" /> Cliente selecionado
               </p>
             )}
@@ -445,7 +445,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           {/* Seleção de peças */}
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Adicionar Peça</label>
-            <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-2">
+            <div className="rounded-xl border border-border/50 bg-muted/10 p-3 space-y-2">
               {/* Busca de peça */}
               <div className="relative" ref={pecaDropRef}>
                 <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -521,7 +521,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 type="button"
                 onClick={addItem}
                 disabled={!selectedPeca || qtd < 1}
-                className="w-full h-8 rounded-lg bg-[hsl(var(--primary)/0.10)] hover:bg-violet-500/20 text-[hsl(var(--primary))] dark:text-violet-400 text-xs font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+                className="w-full h-8 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-xs font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
               >
                 <Plus className="h-3.5 w-3.5" /> Adicionar ao pedido
               </button>
@@ -533,7 +533,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 <p className="text-[11px] text-muted-foreground font-medium">{itens.length} item{itens.length > 1 ? "s" : ""} no pedido</p>
                 <div className="space-y-1">
                   {itens.map((it, idx) => (
-                    <div key={idx} className="flex items-center gap-2 rounded-lg bg-muted/20 border border-border px-3 py-2">
+                    <div key={idx} className="flex items-center gap-2 rounded-lg bg-muted/20 border border-border/30 px-3 py-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-medium truncate">{it.device_model}</p>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
@@ -569,7 +569,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         </div>
 
         {/* Footer */}
-        <div className="flex gap-2 p-5 border-t border-border shrink-0">
+        <div className="flex gap-2 p-5 border-t border-border/30 shrink-0">
           <button type="button" onClick={onClose} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors" disabled={saving}>
             Cancelar
           </button>
@@ -614,9 +614,9 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
   const statusConfig = {
     pendente:  { badge: "bg-amber-500/12 text-amber-500 border-amber-500/25",  accent: "from-amber-500",   icon: <Clock className="h-3 w-3" />,        label: "Pendente"  },
     faturado:  { badge: "bg-emerald-500/12 text-emerald-500 border-emerald-500/25", accent: "from-emerald-500", icon: <CheckCircle2 className="h-3 w-3" />, label: "Faturado"  },
-    cancelado: { badge: "bg-muted/30 text-muted-foreground border-border",  accent: "from-border/60",  icon: <Ban className="h-3 w-3" />,          label: "Cancelado" },
+    cancelado: { badge: "bg-muted/30 text-muted-foreground border-border/30",  accent: "from-border/60",  icon: <Ban className="h-3 w-3" />,          label: "Cancelado" },
   }[pedido.status] ?? {
-    badge: "bg-muted/30 text-muted-foreground border-border", accent: "from-border/60", icon: null, label: pedido.status,
+    badge: "bg-muted/30 text-muted-foreground border-border/30", accent: "from-border/60", icon: null, label: pedido.status,
   };
 
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
@@ -625,11 +625,11 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
 
   return (
     <div className={cn(
-      "relative rounded-xl bg-card border overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5",
+      "relative rounded-2xl bg-card border overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5",
       pedido.status === "pendente"  ? "border-amber-500/20"   :
       pedido.status === "faturado"  ? "border-emerald-500/20" :
       pedido.status === "cancelado" ? "border-border/20 opacity-60" :
-      "border-border"
+      "border-border/30"
     )}>
       {/* Accent bar */}
       <div className={cn("h-[3px] bg-gradient-to-r to-transparent", statusConfig.accent)} />
@@ -668,7 +668,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
             <span className="text-[11px] text-muted-foreground/70">{pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça</span>
           </div>
           <div className="flex items-baseline gap-1 shrink-0">
-            <span className="text-[22px] font-bold tabular-nums leading-none text-[hsl(var(--primary))] dark:text-violet-400">{totalItens}</span>
+            <span className="text-[22px] font-bold tabular-nums leading-none text-violet-600 dark:text-violet-400">{totalItens}</span>
             <span className="text-[10px] text-muted-foreground/50">un.</span>
           </div>
         </div>
@@ -685,8 +685,8 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
             <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Peças do pedido</p>
             {pedido.itens.map(it => (
               <div key={it.id} className="flex items-center gap-2.5 rounded-xl bg-muted/20 border border-border/15 px-3 py-2">
-                <div className="h-6 w-6 rounded-lg bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
-                  <Package className="h-3 w-3 text-[hsl(var(--primary))]/70" />
+                <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                  <Package className="h-3 w-3 text-violet-500/70" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-semibold truncate leading-tight">{it.device_model}</p>
@@ -700,7 +700,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
             ))}
             {pedido.observacoes && (
               <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground/70 bg-violet-500/5 border border-violet-500/15 rounded-xl px-3 py-2">
-                <FileText className="h-3 w-3 mt-0.5 shrink-0 text-[hsl(var(--primary))]/50" />
+                <FileText className="h-3 w-3 mt-0.5 shrink-0 text-violet-500/50" />
                 <span className="italic">{pedido.observacoes}</span>
               </div>
             )}
@@ -786,7 +786,7 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl">
+      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
         <div className="flex items-start gap-3">
           <div className="h-9 w-9 rounded-xl bg-success/10 flex items-center justify-center shrink-0">
             <Receipt className="h-4 w-4 text-success" />
@@ -796,7 +796,7 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
             <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
           </div>
         </div>
-        <div className="rounded-xl bg-muted/20 border border-border px-3 py-2.5 space-y-1">
+        <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2.5 space-y-1">
           <p className="text-[12px] text-muted-foreground">
             <strong className="text-foreground">{totalItens} unidade{totalItens !== 1 ? "s" : ""}</strong> serão retiradas da expedição e o pedido será marcado como <strong>faturado</strong>.
           </p>
@@ -887,7 +887,7 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
 
   if (loading) return (
     <div className="grid grid-cols-2 gap-3">
-      {[...Array(4)].map((_, i) => <div key={i} className="rounded-xl border bg-muted/20 p-4 h-24 animate-pulse" />)}
+      {[...Array(4)].map((_, i) => <div key={i} className="rounded-2xl border bg-muted/20 p-4 h-24 animate-pulse" />)}
     </div>
   );
 
@@ -897,17 +897,17 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-[hsl(var(--primary)/0.20)] bg-violet-500/5 p-4 flex items-start gap-3">
-          <div className="h-9 w-9 rounded-xl bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
-            <Package className="h-5 w-5 text-[hsl(var(--primary))]" />
+        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+            <Package className="h-5 w-5 text-violet-500" />
           </div>
           <div>
             <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Peças Faturadas</p>
-            <p className="text-2xl font-bold tabular-nums text-[hsl(var(--primary))] dark:text-violet-400">{totalPecas.toLocaleString("pt-BR")}</p>
+            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPecas.toLocaleString("pt-BR")}</p>
             <p className="text-[10px] text-muted-foreground/60 mt-0.5">{faturados.length} pedido(s)</p>
           </div>
         </div>
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-start gap-3">
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-start gap-3">
           <div className="h-9 w-9 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
             <Clock className="h-5 w-5 text-amber-500" />
           </div>
@@ -920,8 +920,8 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
       </div>
 
       {/* Ranking Vendedoras */}
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+      <div className="rounded-2xl border border-border/40 overflow-hidden">
+        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
           <Trophy className="h-4 w-4 text-amber-500" />
           <p className="text-sm font-semibold">Ranking de Vendedoras</p>
           <span className="text-[11px] text-muted-foreground/60">(peças faturadas)</span>
@@ -937,7 +937,7 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-[12px] font-medium truncate">{nome}</span>
-                      <span className="text-[12px] font-bold text-[hsl(var(--primary))] dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
+                      <span className="text-[12px] font-bold text-violet-600 dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
                     </div>
                     <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
                       <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-violet-400 transition-all" style={{ width: `${Math.round((total / maxVend) * 100)}%` }} />
@@ -950,9 +950,9 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
       </div>
 
       {/* Ranking Clientes */}
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-[hsl(var(--primary))]" />
+      <div className="rounded-2xl border border-border/40 overflow-hidden">
+        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-violet-500" />
           <p className="text-sm font-semibold">Clientes que Mais Compraram</p>
           <span className="text-[11px] text-muted-foreground/60">(peças)</span>
         </div>
@@ -962,12 +962,12 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
               {rankingCliList.map(([nome, total], idx) => (
                 <div key={nome} className="flex items-center gap-3 px-4 py-2.5">
                   <span className={cn("h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
-                    idx === 0 ? "bg-violet-500/20 text-[hsl(var(--primary))]" : "bg-muted/40 text-muted-foreground"
+                    idx === 0 ? "bg-violet-500/20 text-violet-600" : "bg-muted/40 text-muted-foreground"
                   )}>{idx + 1}º</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-[12px] font-medium truncate">{nome}</span>
-                      <span className="text-[12px] font-bold text-[hsl(var(--primary))] dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
+                      <span className="text-[12px] font-bold text-violet-600 dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
                     </div>
                     <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
                       <div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-violet-300 transition-all" style={{ width: `${Math.round((total / maxCli) * 100)}%` }} />
@@ -983,7 +983,7 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
       <button
         type="button"
         onClick={downloadPdfVendedora}
-        className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-[hsl(var(--primary)/0.25)] text-[hsl(var(--primary))] dark:text-violet-400 text-sm font-medium hover:bg-[hsl(var(--primary)/0.10)] transition-colors"
+        className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-violet-500/30 text-violet-600 dark:text-violet-400 text-sm font-medium hover:bg-violet-500/10 transition-colors"
       >
         <Download className="h-4 w-4" />
         Baixar meu relatório em PDF
@@ -1032,13 +1032,13 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-xl bg-card border border-border shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="relative px-5 pt-5 pb-3 shrink-0">
           <div className="absolute inset-0 bg-gradient-to-b from-violet-500/5 to-transparent" />
           <div className="relative flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-[hsl(var(--primary))]" />
+                <History className="h-4 w-4 text-violet-500" />
                 <p className="text-sm font-semibold">Histórico Geral — Expedição</p>
               </div>
               <p className="text-[12px] text-muted-foreground mt-0.5">Últimas {movements.length} movimentações</p>
@@ -1061,16 +1061,16 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
             const isEntrada = mv.type === "entrada";
             return (
               <div key={mv.id} className={cn("flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors", isEntrada ? "bg-success/4 border-success/15" : "bg-violet-500/4 border-violet-500/15")}>
-                {isEntrada ? <ArrowDownCircle className="h-4 w-4 mt-0.5 text-success shrink-0" /> : <ArrowUpCircle className="h-4 w-4 mt-0.5 text-[hsl(var(--primary))] shrink-0" />}
+                {isEntrada ? <ArrowDownCircle className="h-4 w-4 mt-0.5 text-success shrink-0" /> : <ArrowUpCircle className="h-4 w-4 mt-0.5 text-violet-500 shrink-0" />}
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="text-[12px] font-semibold leading-snug line-clamp-1">{mv.device_model}</p>
                   <p className="text-[10px] text-muted-foreground font-mono">{mv.device_reference}</p>
-                  {displayLote(mv.lote) && <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-[hsl(var(--primary))]/80"><Tag className="h-2.5 w-2.5" />Lote {displayLote(mv.lote)}</p>}
+                  {displayLote(mv.lote) && <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-violet-500/80"><Tag className="h-2.5 w-2.5" />Lote {displayLote(mv.lote)}</p>}
                   {mv.reason && <p className="text-[11px] text-muted-foreground line-clamp-1">{mv.reason}</p>}
                   {mv.user_display_name && <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60"><User className="h-2.5 w-2.5" />{mv.user_display_name}</p>}
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-[hsl(var(--primary))]")}>{isEntrada ? "+" : "-"}{mv.quantity}<span className="text-[10px] font-normal ml-0.5 opacity-70">un.</span></span>
+                  <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-violet-500")}>{isEntrada ? "+" : "-"}{mv.quantity}<span className="text-[10px] font-normal ml-0.5 opacity-70">un.</span></span>
                   <span className="text-[10px] text-muted-foreground">{date}</span>
                   <span className="text-[10px] text-muted-foreground/60">{time}</span>
                 </div>
@@ -1613,17 +1613,17 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
   return (
     <div className="space-y-4">
       {/* Info banner */}
-      <div className="rounded-xl border border-[hsl(var(--primary)/0.20)] bg-violet-500/5 px-4 py-3 flex items-center gap-3">
-        <div className="h-8 w-8 rounded-xl bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
-          <ShoppingBag className="h-4 w-4 text-[hsl(var(--primary))]" />
+      <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 flex items-center gap-3">
+        <div className="h-8 w-8 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+          <ShoppingBag className="h-4 w-4 text-violet-500" />
         </div>
-        <p className="text-[12px] text-[hsl(var(--primary))] dark:text-violet-400 leading-relaxed">
+        <p className="text-[12px] text-violet-600 dark:text-violet-400 leading-relaxed">
           Cadastre clientes, visualize peças disponíveis na expedição e registre pedidos. O estoque fatura e as peças saem automaticamente.
         </p>
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card/80 backdrop-blur-sm p-1.5">
+      <div className="flex items-center gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5">
         {([
           { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, badge: 0 },
           { id: "pedidos",   label: "Pedidos",   icon: ShoppingBag,    badge: pedidosPendentes },
@@ -1636,7 +1636,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
             className={cn(
               "relative flex flex-1 flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border transition-all duration-200",
               subTab === tab.id
-                ? "bg-[hsl(var(--primary)/0.10)] border-violet-500/40"
+                ? "bg-violet-500/10 border-violet-500/40"
                 : "border-transparent hover:bg-muted/30"
             )}
           >
@@ -1649,10 +1649,10 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
               </span>
             )}
             <tab.icon className={cn("h-[18px] w-[18px] transition-colors",
-              subTab === tab.id ? "text-[hsl(var(--primary))] scale-110" : "text-muted-foreground"
+              subTab === tab.id ? "text-violet-500 scale-110" : "text-muted-foreground"
             )} />
             <span className={cn("text-[9px] font-medium leading-tight hidden sm:block",
-              subTab === tab.id ? "text-[hsl(var(--primary))]" : "text-muted-foreground"
+              subTab === tab.id ? "text-violet-500" : "text-muted-foreground"
             )}>
               {tab.label}
             </span>
@@ -1709,7 +1709,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                     "h-7 px-3 rounded-lg text-[11px] font-medium border transition-colors",
                     filtroStatus === opt.value
                       ? "bg-violet-600 text-white border-violet-600"
-                      : "bg-muted/20 text-muted-foreground border-border hover:bg-muted/50"
+                      : "bg-muted/20 text-muted-foreground border-border/40 hover:bg-muted/50"
                   )}
                 >
                   {opt.label}
@@ -1720,7 +1720,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
               <button
                 type="button"
                 onClick={() => exportExcelComercial()}
-                className="h-8 px-3 flex items-center gap-1.5 rounded-xl border border-border text-muted-foreground text-[11px] font-medium hover:bg-muted/30 transition-colors"
+                className="h-8 px-3 flex items-center gap-1.5 rounded-xl border border-border/40 text-muted-foreground text-[11px] font-medium hover:bg-muted/30 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" /> Excel
               </button>
@@ -1785,7 +1785,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                   const v = e.target.value;
                   clienteSearchDebounce.current = setTimeout(() => setClienteSearchFilter(v), 300);
                 }}
-                className="pl-9 pr-8 h-9 w-full text-sm rounded-xl border border-border bg-muted/20 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.25)] focus:border-violet-500/40 transition-colors"
+                className="pl-9 pr-8 h-9 w-full text-sm rounded-xl border border-border/40 bg-muted/20 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/40 transition-colors"
               />
               {clienteSearchFilter && (
                 <button type="button" onClick={() => { if (clienteSearchRef.current) clienteSearchRef.current.value = ""; setClienteSearchFilter(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -1825,14 +1825,14 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
               {clientesFiltrados.map(c => (
                 <div
                   key={c.id}
-                  className="relative rounded-xl bg-card border border-border/20 overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-[hsl(var(--primary)/0.25)]"
+                  className="relative rounded-2xl bg-card border border-border/20 overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-violet-500/30"
                 >
                   <div className="h-[3px] bg-gradient-to-r from-violet-500 to-transparent opacity-60" />
                   <div className="p-4 space-y-3">
                     {/* Header */}
                     <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-xl bg-[hsl(var(--primary)/0.10)] flex items-center justify-center shrink-0">
-                        <User className="h-5 w-5 text-[hsl(var(--primary))]" />
+                      <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+                        <User className="h-5 w-5 text-violet-500" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <h3 className="text-[13px] font-bold truncate leading-tight">{c.nome}</h3>
@@ -1866,7 +1866,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                       <button
                         type="button"
                         onClick={() => { setPedidoComCliente(c); setNovoPedidoOpen(true); setSubTab("pedidos"); }}
-                        className="flex-1 h-8 flex items-center justify-center gap-1.5 rounded-xl bg-[hsl(var(--primary)/0.10)] hover:bg-violet-500/20 text-[hsl(var(--primary))] dark:text-violet-400 text-[11px] font-semibold transition-colors"
+                        className="flex-1 h-8 flex items-center justify-center gap-1.5 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[11px] font-semibold transition-colors"
                       >
                         <ShoppingCart className="h-3 w-3" /> Pedido
                       </button>
@@ -1920,7 +1920,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       {/* Cancelar pedido */}
       {cancelarPedido && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl">
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
                 <Ban className="h-4 w-4 text-destructive" />
@@ -1952,7 +1952,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       {/* Excluir cliente */}
       {deleteCliente && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl">
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
                 <Trash2 className="h-4 w-4 text-destructive" />

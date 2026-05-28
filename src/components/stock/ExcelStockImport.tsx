@@ -435,10 +435,10 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-xl bg-card border border-border shadow-2xl flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200 overflow-hidden">
+      <div className="w-full max-w-2xl rounded-2xl bg-card border border-border/30 shadow-2xl flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200 overflow-hidden">
 
         {/* Cabeçalho */}
-        <div className="px-5 py-4 border-b border-border shrink-0 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-border/30 shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-xl bg-emerald-500/10 flex items-center justify-center">
               <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
@@ -463,7 +463,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
 
           {/* ─ IDLE ─ */}
           {step === "idle" && (<>
-            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/30">
               <div>
                 <p className="text-xs font-semibold">Baixar modelo Excel</p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">Colunas: Peça · Lote · Quantidade · Fase</p>
@@ -497,12 +497,12 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
             </div>
 
             <label
-              className={cn("flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-10 cursor-pointer transition-all",
+              className={cn("flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 cursor-pointer transition-all",
                 isDragging ? "border-emerald-500 bg-emerald-500/5" : "border-border/60 hover:border-emerald-500/60 hover:bg-muted/20")}
               onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}>
-              <div className={cn("h-14 w-14 rounded-xl flex items-center justify-center",
+              <div className={cn("h-14 w-14 rounded-2xl flex items-center justify-center",
                 isDragging ? "bg-emerald-500/15" : "bg-muted/40")}>
                 <Upload className={cn("h-7 w-7", isDragging ? "text-emerald-500" : "text-muted-foreground")} />
               </div>
@@ -519,7 +519,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             </label>
 
-            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+            <div className="rounded-xl border border-border/30 bg-muted/20 p-4 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Formato Excel (se não usar PDF)</p>
               <div className="grid grid-cols-5 gap-2">
                 {[
@@ -529,7 +529,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                   { col: "D", label: "Quantidade",  desc: "Número inteiro" },
                   { col: "E", label: "Fase",        desc: '"intermediario" / "expedicao"' },
                 ].map(({ col, label, desc }) => (
-                  <div key={col} className="rounded-lg bg-card border border-border p-2.5 text-center">
+                  <div key={col} className="rounded-lg bg-card border border-border/30 p-2.5 text-center">
                     <div className="text-[10px] font-bold text-primary/70 mb-1">Col. {col}</div>
                     <div className="text-xs font-semibold">{label}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5 break-words">{desc}</div>
@@ -542,7 +542,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
           {/* ─ PARSING PDF ─ */}
           {step === "parsing-pdf" && (
             <div className="flex flex-col items-center justify-center py-16 gap-6">
-              <div className="h-16 w-16 rounded-xl bg-blue-500/10 flex items-center justify-center">
+              <div className="h-16 w-16 rounded-2xl bg-blue-500/10 flex items-center justify-center">
                 <FileText className="h-8 w-8 text-blue-500" />
               </div>
               <div className="text-center space-y-1">
@@ -574,9 +574,9 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                 { label: "Total lotes",    value: validRows.length,   color: "text-foreground" },
                 { label: "C/ erro",        value: parseErrors.length, color: parseErrors.length ? "text-amber-600" : "text-muted-foreground" },
                 { label: "Intermediário",  value: interRows.length,   color: "text-blue-600 dark:text-blue-400" },
-                { label: "Expedição",      value: expRows.length,     color: "text-[hsl(var(--primary))] dark:text-violet-400" },
+                { label: "Expedição",      value: expRows.length,     color: "text-violet-600 dark:text-violet-400" },
               ].map(({ label, value, color }) => (
-                <div key={label} className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+                <div key={label} className="rounded-xl border border-border/30 bg-muted/20 p-3 text-center">
                   <div className={cn("text-xl font-bold tabular-nums", color)}>{value}</div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
                 </div>
@@ -615,7 +615,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
               </div>
             )}
 
-            <div className="rounded-xl border border-border overflow-hidden">
+            <div className="rounded-xl border border-border/30 overflow-hidden">
               <div className="bg-muted/30 px-3 py-2 flex items-center gap-1.5 border-b border-border/20">
                 <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs font-semibold text-muted-foreground">
@@ -642,7 +642,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
                           <span className={cn("inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold",
                             r.fase === "intermediaria"
                               ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                              : "bg-[hsl(var(--primary)/0.10)] text-[hsl(var(--primary))] dark:text-violet-400")}>
+                              : "bg-violet-500/10 text-violet-600 dark:text-violet-400")}>
                             {r.fase === "intermediaria" ? "Inter." : "Exp."}
                           </span>
                         </td>
@@ -702,7 +702,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
               </div>
             )}
 
-            <div className="rounded-xl border border-border overflow-hidden">
+            <div className="rounded-xl border border-border/30 overflow-hidden">
               <div className="bg-muted/30 px-3 py-2 border-b border-border/20 text-xs font-semibold text-muted-foreground">
                 Resultado por lote
               </div>
@@ -736,7 +736,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
         </div>
 
         {/* Rodapé */}
-        <div className="px-5 py-4 border-t border-border shrink-0 flex items-center justify-between gap-3">
+        <div className="px-5 py-4 border-t border-border/30 shrink-0 flex items-center justify-between gap-3">
           {(step === "idle" || step === "parsing-pdf") && (
             <button type="button" onClick={handleClose} disabled={step === "parsing-pdf"}
               className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted/30 transition-colors disabled:opacity-50">

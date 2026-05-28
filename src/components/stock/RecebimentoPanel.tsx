@@ -60,7 +60,7 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
   return (
     <div
       className={cn(
-        "group relative rounded-xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5",
+        "group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5",
       )}
       style={{
         boxShadow:
@@ -89,7 +89,7 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
               "shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-lg",
               isAtivo
                 ? "border-cyan-500/25 text-cyan-600 bg-cyan-500/5 dark:text-cyan-400"
-                : "border-border text-muted-foreground bg-muted/20"
+                : "border-border/40 text-muted-foreground bg-muted/20"
             )}
           >
             {isAtivo ? "Ativo" : "Retirado"}
@@ -109,7 +109,7 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
         {/* Quantidade */}
         <div className={cn(
           "flex items-center justify-between rounded-xl px-3 py-2 border",
-          isAtivo ? "bg-cyan-500/8 border-cyan-500/25" : "bg-muted/20 border-border"
+          isAtivo ? "bg-cyan-500/8 border-cyan-500/25" : "bg-muted/20 border-border/30"
         )}>
           <div className="flex items-center gap-1.5">
             <Package className={cn("h-3.5 w-3.5", isAtivo ? "text-cyan-500" : "text-muted-foreground/50")} />
@@ -212,7 +212,7 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-xl bg-card border border-border p-5 space-y-4 shadow-xl">
+      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
         <div className="flex items-start gap-3">
           <div className="h-9 w-9 rounded-xl bg-cyan-500/10 flex items-center justify-center shrink-0">
             <CheckCircle2 className="h-4 w-4 text-cyan-500" />

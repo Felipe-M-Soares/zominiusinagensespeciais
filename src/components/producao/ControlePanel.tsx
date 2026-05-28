@@ -76,7 +76,7 @@ function NovoApontamentoModal({ open, onClose, onSaved, maquinas, produtos }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-xl border shadow-xl p-5 space-y-4">
+      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">Novo Apontamento</h3>
           <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4" /></button>
@@ -142,8 +142,8 @@ function NovoApontamentoModal({ open, onClose, onSaved, maquinas, produtos }: {
 function ApontamentoCard({ ap, onConcluir }: { ap: Apontamento; onConcluir: (id:string)=>void }) {
   const isAtivo = ap.status === "em_andamento";
   return (
-    <div className={cn("rounded-xl border p-4 space-y-3 transition-all",
-      isAtivo ? "bg-green-500/5 border-green-500/20" : "bg-card/60 border-border opacity-75")}>
+    <div className={cn("rounded-2xl border p-4 space-y-3 transition-all",
+      isAtivo ? "bg-green-500/5 border-green-500/20" : "bg-card/60 border-border/40 opacity-75")}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-semibold text-sm truncate">{ap.produto}</p>
@@ -227,11 +227,11 @@ export function ControlePanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
     <div className="space-y-4 animate-in fade-in duration-200">
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl border bg-green-500/5 border-green-500/20 p-4">
+        <div className="rounded-2xl border bg-green-500/5 border-green-500/20 p-4">
           <div className="flex items-center gap-2 mb-1"><PlayCircle className="h-4 w-4 text-green-500"/><span className="text-xs text-muted-foreground">Em andamento</span></div>
           <p className="text-2xl font-bold text-green-600 dark:text-green-400">{emAndamento}</p>
         </div>
-        <div className="rounded-xl border bg-blue-500/5 border-blue-500/20 p-4">
+        <div className="rounded-2xl border bg-blue-500/5 border-blue-500/20 p-4">
           <div className="flex items-center gap-2 mb-1"><Package className="h-4 w-4 text-blue-500"/><span className="text-xs text-muted-foreground">Peças em produção</span></div>
           <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalPecas.toLocaleString("pt-BR")}</p>
         </div>

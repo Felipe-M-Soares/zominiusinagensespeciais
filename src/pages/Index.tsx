@@ -75,7 +75,7 @@ const SearchBar = memo(function SearchBar({
           {suggestions.map(s => (
             <button key={s} type="button"
               onMouseDown={e => { e.preventDefault(); if (inputRef.current) inputRef.current.value = s; onSelectSuggestion(s); }}
-              className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border last:border-0"
+              className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border/30 last:border-0"
             >{s}</button>
           ))}
         </div>
@@ -133,11 +133,11 @@ const Index = () => {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-border bg-card/40 backdrop-blur-sm shrink-0">
+      <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-border/50 bg-card/40 backdrop-blur-sm shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-lg font-bold font-[Syne] text-foreground">Base ANVISA</h1>
-            <p className="text-[12px] mt-0.5" style={{ color:"hsl(var(--muted-foreground))" }}>Componentes médicos cadastrados</p>
+            <h1 className="text-lg font-bold font-display text-foreground">Base ANVISA</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Componentes médicos cadastrados</p>
           </div>
           <div className="flex items-center gap-2">
             <ManuaisButton />
@@ -172,7 +172,7 @@ const Index = () => {
       </div>
 
       {showFilters && (
-        <div className="border-b border-border bg-card/60 px-4 sm:px-6 py-4 space-y-4 animate-in slide-in-from-top-2 duration-200 shrink-0">
+        <div className="border-b border-border/50 bg-card/60 px-4 sm:px-6 py-4 space-y-4 animate-in slide-in-from-top-2 duration-200 shrink-0">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             <Select value={filters.material || "all"} onValueChange={v => handleFilterChange("material", v === "all" ? "" : v)}>
               <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder="Material" /></SelectTrigger>
@@ -231,8 +231,8 @@ const Index = () => {
         </div>
       )}
 
-      <div className="px-4 sm:px-6 py-2 bg-background/50 border-b border-border shrink-0">
-        <p className="text-[12px]" style={{ color:"hsl(var(--muted-foreground))" }}>
+      <div className="px-4 sm:px-6 py-2 bg-background/50 border-b border-border/30 shrink-0">
+        <p className="text-xs text-muted-foreground">
           {loading ? "Buscando..." : devices.length === totalCount
             ? `${totalCount.toLocaleString("pt-BR")} componentes`
             : `${devices.length.toLocaleString("pt-BR")} de ${totalCount.toLocaleString("pt-BR")} componentes`}
@@ -249,8 +249,8 @@ const Index = () => {
           <div className="text-center py-20 text-destructive text-sm">{error}</div>
         ) : devices.length === 0 ? (
           <div className="text-center py-16 space-y-2">
-            <p className="text-muted-foreground text-lg font-[Syne]">Nenhum dispositivo encontrado</p>
-            <p className="text-[13px]" style={{ color:"hsl(var(--muted-foreground)/0.65)" }}>Tente ajustar os filtros ou a pesquisa</p>
+            <p className="text-muted-foreground text-lg font-display">Nenhum dispositivo encontrado</p>
+            <p className="text-muted-foreground text-sm">Tente ajustar os filtros ou a pesquisa</p>
           </div>
         ) : (
           <>

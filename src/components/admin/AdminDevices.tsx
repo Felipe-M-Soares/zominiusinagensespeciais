@@ -661,8 +661,8 @@ export function AdminDevices() {
               <div className="flex items-center gap-3"><Switch checked={editDevice.implantable !== false} onCheckedChange={v => updateField("implantable", v)} /><Label>Implantável</Label></div>
 
               {/* Campos fiscais: preenchidos automaticamente pelo banco */}
-              <div className="sm:col-span-2 rounded-xl border border-[hsl(var(--primary)/0.20)] bg-violet-500/5 p-3 space-y-2">
-                <p style={{fontSize:"11px",fontWeight:700,color:"hsl(var(--primary))",textTransform:"uppercase",letterSpacing:"0.05em"}}>
+              <div className="sm:col-span-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3 space-y-2">
+                <p style={{fontSize:"11px",fontWeight:700,color:"#7c3aed",textTransform:"uppercase",letterSpacing:"0.05em"}}>
                   🧾 Dados Fiscais — preenchidos automaticamente ao salvar
                 </p>
                 <p style={{fontSize:"10px",color:"var(--muted-foreground)",lineHeight:1.5}}>
@@ -693,7 +693,7 @@ export function AdminDevices() {
                     ].map(f => (
                       <div key={f.label} style={{borderRadius:10,border:"1px solid hsl(var(--border))",background:"hsl(var(--background))",padding:"8px",textAlign:"center"}}>
                         <p style={{fontSize:"9px",color:"var(--muted-foreground)",textTransform:"uppercase",letterSpacing:"0.05em"}}>{f.label}</p>
-                        <p style={{fontSize:"15px",fontWeight:900,color:"hsl(var(--primary))",fontFamily:"monospace"}}>{f.value}</p>
+                        <p style={{fontSize:"15px",fontWeight:900,color:"#7c3aed",fontFamily:"monospace"}}>{f.value}</p>
                         <p style={{fontSize:"9px",color:"var(--muted-foreground)",opacity:0.7,marginTop:2}}>{f.desc}</p>
                       </div>
                     ));

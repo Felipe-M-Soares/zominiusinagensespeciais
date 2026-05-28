@@ -144,7 +144,7 @@ export function StockNav({
   return (
     <div className="space-y-2">
       {/* ── Barra de ícones ── */}
-      <div className="flex items-stretch gap-1.5 rounded-xl border border-border bg-card/80 backdrop-blur-sm p-1.5">
+      <div className="flex items-stretch gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5">
         {TABS.map((tab) => {
           const isActive = tab.id === activeView;
           const count = counts[tab.id];

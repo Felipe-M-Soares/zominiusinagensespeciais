@@ -134,7 +134,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
     return (
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-        <DialogContent className="max-w-md p-0 rounded-xl overflow-hidden border-border">
+        <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
           {/* Header */}
           <div className="relative px-5 pt-5 pb-3">
             <div className="absolute inset-0 bg-gradient-to-b from-success/5 to-transparent" />
@@ -163,7 +163,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
           {/* Quantidade disponível */}
           <div className="px-5 pb-3 space-y-3">
             <div className={cn(
-              "rounded-xl border px-5 py-4 flex items-center justify-between",
+              "rounded-2xl border px-5 py-4 flex items-center justify-between",
               isEmpty ? "bg-destructive/8 border-destructive/25"
               : isLow  ? "bg-warning/8 border-warning/25"
                        : "bg-success/8 border-success/25"
@@ -198,7 +198,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
             )}
 
             {qty !== available && (
-              <div className="rounded-xl border border-border bg-muted/10 px-4 py-3 flex items-center justify-between">
+              <div className="rounded-xl border border-border/30 bg-muted/10 px-4 py-3 flex items-center justify-between">
                 <p className="text-[11px] text-muted-foreground">Total em expedição</p>
                 <div className="flex items-center gap-1">
                   <span className="text-[15px] font-bold text-foreground tabular-nums">{liveQty !== null ? liveQty : item.quantity}</span>
@@ -225,7 +225,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
             {!loading && activeLotesExp.map((l) => (
               <div key={l.lote}
-                className="rounded-xl border border-border bg-card px-3 py-2.5"
+                className="rounded-xl border border-border/40 bg-card px-3 py-2.5"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -263,7 +263,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
     return (
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-        <DialogContent className="max-w-md p-0 rounded-xl overflow-hidden border-border">
+        <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
           {/* Header */}
           <div className="relative px-5 pt-5 pb-3">
             <div className="absolute inset-0 bg-gradient-to-b from-orange-500/5 to-transparent" />
@@ -300,7 +300,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
           {/* Quantidade em retrabalho */}
           <div className="px-5 pb-3 space-y-3">
             <div className={cn(
-              "rounded-xl border px-5 py-4 flex items-center justify-between",
+              "rounded-2xl border px-5 py-4 flex items-center justify-between",
               isEmpty ? "bg-destructive/8 border-destructive/25" : "bg-orange-500/8 border-orange-500/25"
             )}>
               <div className="space-y-0.5">
@@ -340,7 +340,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
             {!loading && activeLotesRet.map((l) => (
               <div key={l.lote}
-                className="rounded-xl border border-border bg-card px-3 py-2.5"
+                className="rounded-xl border border-border/40 bg-card px-3 py-2.5"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -373,7 +373,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-md p-0 rounded-xl overflow-hidden border-border">
+      <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
         {/* Header */}
         <div className="relative px-5 pt-5 pb-3">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
@@ -403,7 +403,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
         {!loading && lotes.length > 0 && (
           <div className="px-5 pb-3">
             <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-xl bg-muted/20 border border-border px-3 py-2 text-center">
+              <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2 text-center">
                 <p className="text-[10px] text-muted-foreground">Lotes</p>
                 <p className="text-[15px] font-bold text-foreground">{activeLotesCount}</p>
               </div>
@@ -444,7 +444,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
               <div key={l.lote}
                 className={cn(
                   "rounded-xl border px-3 py-2.5 transition-colors",
-                  isActive ? "bg-card border-border" : "bg-muted/10 border-border/20 opacity-70"
+                  isActive ? "bg-card border-border/40" : "bg-muted/10 border-border/20 opacity-70"
                 )}
               >
                 <div className="flex items-center justify-between gap-3">

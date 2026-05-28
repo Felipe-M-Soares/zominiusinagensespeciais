@@ -1,10 +1,10 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   ZOMINI USINAGENS ESPECIAIS — Design System v3.0
-   Aesthetic: Industrial Precision · Deep Navy Sidebar · Amber Gold Accents
-   Fonts: Syne (headings/display) · DM Sans (body) · JetBrains Mono (code)
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* PERF-004 FIX: Consolidado de 13 imports separados para 1 único request ao Google Fonts.
+   Fontes removidas (nunca usadas no CSS/componentes): Roboto, Libre Caslon, Roboto Mono,
+   Lora, Space Mono, Source Sans Pro, Source Serif Pro, Source Code Pro.
+   Fontes mantidas: Inter (body), Space Grotesk (display/headings), Lato (font-sans),
+   EB Garamond (font-serif), Fira Code (font-mono). */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Lato:wght@400;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Fira+Code:wght@400;700&display=swap');
 
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -12,207 +12,259 @@
 
 @layer base {
   :root {
-    --background:         220 18% 96%;
-    --foreground:         222 30% 10%;
-    --card:               0 0% 100%;
-    --card-foreground:    222 30% 10%;
-    --popover:            0 0% 100%;
-    --popover-foreground: 222 30% 10%;
+    --background: 0 0% 96%;
+    --foreground: 0 0% 9%;
 
-    /* Amber/Gold primary — precision & quality */
-    --primary:            38 92% 46%;
-    --primary-foreground: 222 30% 8%;
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 9%;
 
-    --secondary:          220 14% 90%;
-    --secondary-foreground: 222 25% 20%;
-    --muted:              220 14% 92%;
-    --muted-foreground:   220 12% 46%;
-    --accent:             38 92% 46%;
-    --accent-foreground:  222 30% 8%;
-    --destructive:        4 80% 52%;
-    --destructive-foreground: 0 0% 100%;
+    --popover: 0 0% 89%;
+    --popover-foreground: 0 0% 9%;
 
-    --border:  220 14% 87%;
-    --input:   220 14% 87%;
-    --ring:    38 92% 46%;
-    --radius:  0.5rem;
+    --primary: 197 100% 47%;
+    --primary-foreground: 0 0% 100%;
 
-    /* Sidebar — Deep Navy */
-    --sidebar-background:         222 32% 11%;
-    --sidebar-foreground:         220 18% 78%;
-    --sidebar-primary:            38 92% 52%;
-    --sidebar-primary-foreground: 222 32% 7%;
-    --sidebar-accent:             222 28% 17%;
-    --sidebar-accent-foreground:  220 18% 92%;
-    --sidebar-border:             222 28% 19%;
-    --sidebar-ring:               38 92% 52%;
-    --sidebar:                    222 32% 11%;
+    --secondary: 0 0% 32%;
+    --secondary-foreground: 0 0% 98%;
 
-    /* Status */
-    --success:            152 52% 38%;
+    --muted: 0 0% 90%;
+    --muted-foreground: 0 0% 40%;
+
+    --accent: 197 100% 97%;
+    --accent-foreground: 197 100% 35%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 85% 97%;
+
+    --border: 0 0% 83%;
+    --input: 0 0% 83%;
+    --ring: 197 100% 47%;
+
+    --radius: 0.625rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 197 100% 47%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 32%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 83%;
+    --sidebar-ring: 197 100% 47%;
+
+    --success: 152 60% 40%;
     --success-foreground: 0 0% 100%;
-    --warning:            38 92% 46%;
-    --warning-foreground: 222 30% 8%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --brand: 197 100% 47%;
+    --brand-foreground: 0 0% 100%;
 
-    /* Typography */
-    --font-display: 'Syne', sans-serif;
-    --font-body:    'DM Sans', sans-serif;
-    --font-sans:    'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    --font-mono:    'JetBrains Mono', ui-monospace, monospace;
-
-    /* Charts */
-    --chart-1: 38 92% 50%;
-    --chart-2: 197 82% 46%;
-    --chart-3: 152 52% 40%;
-    --chart-4: 270 68% 56%;
-    --chart-5: 0 0% 52%;
-
-    /* Shadows */
-    --shadow-2xs: 0 1px 2px 0 hsl(220 25% 10% / 0.04);
-    --shadow-xs:  0 1px 3px 0 hsl(220 25% 10% / 0.06);
-    --shadow-sm:  0 1px 3px 0 hsl(220 25% 10% / 0.08), 0 1px 2px -1px hsl(220 25% 10% / 0.06);
-    --shadow:     0 2px 8px -1px hsl(220 25% 10% / 0.10), 0 1px 3px -1px hsl(220 25% 10% / 0.07);
-    --shadow-md:  0 4px 14px -2px hsl(220 25% 10% / 0.12), 0 2px 4px -2px hsl(220 25% 10% / 0.07);
-    --shadow-lg:  0 8px 28px -4px hsl(220 25% 10% / 0.15), 0 4px 8px -4px hsl(220 25% 10% / 0.09);
-    --shadow-xl:  0 16px 40px -8px hsl(220 25% 10% / 0.18), 0 8px 16px -8px hsl(220 25% 10% / 0.10);
-    --shadow-2xl: 0 24px 60px -12px hsl(220 25% 10% / 0.24);
-
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --chart-1: 197 100% 55%;
+    --chart-2: 197 80% 65%;
+    --chart-3: 197 60% 45%;
+    --chart-4: 197 100% 47%;
+    --chart-5: 0 0% 45%;
+    --sidebar: 0 0% 98%;
+    --font-sans: 'Lato', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+    --font-serif: 'EB Garamond', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+    --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
+    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
+    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
+    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
     --tracking-normal: 0em;
     --spacing: 0.25rem;
   }
 
   .dark {
-    --background:         222 28% 8%;
-    --foreground:         220 18% 92%;
-    --card:               222 26% 11%;
-    --card-foreground:    220 18% 92%;
-    --popover:            222 26% 13%;
-    --popover-foreground: 220 18% 92%;
-    --primary:            38 88% 52%;
-    --primary-foreground: 222 28% 6%;
-    --secondary:          222 22% 18%;
-    --secondary-foreground: 220 18% 82%;
-    --muted:              222 22% 16%;
-    --muted-foreground:   220 14% 54%;
-    --accent:             38 84% 50%;
-    --accent-foreground:  222 28% 6%;
-    --destructive:        4 76% 58%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 222 22% 20%;
-    --input:  222 22% 20%;
-    --ring:   38 88% 52%;
-
-    --sidebar-background:         222 32% 7%;
-    --sidebar-foreground:         220 16% 70%;
-    --sidebar-primary:            38 88% 54%;
-    --sidebar-primary-foreground: 222 32% 5%;
-    --sidebar-accent:             222 28% 13%;
-    --sidebar-accent-foreground:  220 18% 88%;
-    --sidebar-border:             222 28% 14%;
-    --sidebar-ring:               38 88% 54%;
-    --sidebar:                    222 32% 7%;
-
-    --chart-1: 38 88% 56%;
-    --chart-2: 197 78% 52%;
-    --chart-3: 152 50% 44%;
-    --chart-4: 270 62% 60%;
-    --chart-5: 0 0% 58%;
-
-    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.14);
-    --shadow-xs:  0 1px 3px 0 hsl(0 0% 0% / 0.20);
-    --shadow-sm:  0 1px 3px 0 hsl(0 0% 0% / 0.24), 0 1px 2px -1px hsl(0 0% 0% / 0.18);
-    --shadow:     0 2px 8px -1px hsl(0 0% 0% / 0.28), 0 1px 3px -1px hsl(0 0% 0% / 0.22);
-    --shadow-md:  0 4px 14px -2px hsl(0 0% 0% / 0.34), 0 2px 4px -2px hsl(0 0% 0% / 0.24);
-    --shadow-lg:  0 8px 28px -4px hsl(0 0% 0% / 0.40), 0 4px 8px -4px hsl(0 0% 0% / 0.28);
-    --shadow-xl:  0 16px 40px -8px hsl(0 0% 0% / 0.44), 0 8px 16px -8px hsl(0 0% 0% / 0.32);
-    --shadow-2xl: 0 24px 60px -12px hsl(0 0% 0% / 0.52);
+    --background: 0 0% 9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 14%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 25%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 197 100% 55%;
+    --primary-foreground: 197 100% 10%;
+    --secondary: 0 0% 45%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 45%;
+    --muted-foreground: 0 0% 98%;
+    --accent: 197 80% 15%;
+    --accent-foreground: 197 100% 65%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 85% 97%;
+    --border: 0 0% 32%;
+    --input: 0 0% 32%;
+    --ring: 197 100% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 197 100% 55%;
+    --sidebar-primary-foreground: 197 100% 10%;
+    --sidebar-accent: 197 100% 65%;
+    --sidebar-accent-foreground: 197 80% 15%;
+    --sidebar-border: 0 0% 32%;
+    --sidebar-ring: 197 100% 55%;
+    --chart-1: 197 100% 65%;
+    --chart-2: 197 80% 75%;
+    --chart-3: 197 60% 55%;
+    --chart-4: 197 100% 55%;
+    --chart-5: 0 0% 45%;
+    --sidebar: 0 0% 14%;
+    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
+    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
+    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
+    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
   }
 }
 
 @layer base {
-  * { @apply border-border; }
+  * {
+    @apply border-border;
+  }
+
   body {
+    @apply text-foreground;
     font-family: var(--font-body);
-    @apply bg-background text-foreground antialiased;
+
+    /* Mesh gradient — light mode
+       Base neutra do tema + 4 orbs ciano (cor primária do projeto) nos cantos.
+       background-attachment: fixed cria efeito parallax: o padrão não rola com a página. */
     background-color: hsl(var(--background));
     background-image:
-      radial-gradient(ellipse 65% 45% at 12% 8%,  hsl(38 92% 46% / 0.055) 0%, transparent 60%),
-      radial-gradient(ellipse 50% 38% at 88% 92%, hsl(197 82% 46% / 0.040) 0%, transparent 55%);
+      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 47% / 0.10) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 47% / 0.08) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(197 80%  65% / 0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(197 60%  45% / 0.05) 0%, transparent 55%);
     background-attachment: fixed;
+    background-size: 100% 100%;
     min-height: 100vh;
   }
+
+  /* Dark mode — orbs um pouco mais vivos sobre fundo escuro */
   .dark body {
     background-color: hsl(var(--background));
     background-image:
-      radial-gradient(ellipse 65% 45% at 12% 8%,  hsl(38 88% 52% / 0.07) 0%, transparent 60%),
-      radial-gradient(ellipse 50% 38% at 88% 92%, hsl(197 78% 52% / 0.05) 0%, transparent 55%);
+      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 55% / 0.13) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 55% / 0.10) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(197 80%  65% / 0.07) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(197 60%  45% / 0.06) 0%, transparent 55%);
     background-attachment: fixed;
+    background-size: 100% 100%;
   }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
-    letter-spacing: -0.02em;
   }
 }
 
-/* Hide browser password reveal */
+/* Oculta o botão nativo de revelar senha do browser (Edge/Chrome/IE) */
 input[type="password"]::-ms-reveal,
 input[type="password"]::-ms-clear,
 input[type="password"]::-webkit-contacts-auto-fill-button,
-input[type="password"]::-webkit-credentials-auto-fill-button { display: none !important; }
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+}
 
-/* Print */
+/* ═══════════════════════════════════════════════════════════════════
+   MODO DE IMPRESSÃO — Pedidos, NF-e, Ordens de Produção
+   ═══════════════════════════════════════════════════════════════════ */
+
 @media print {
-  header, nav, [data-no-print], .no-print, button:not([data-print-show]), .toast-container { display: none !important; }
-  body { background: white !important; color: black !important; font-size: 11pt; line-height: 1.4; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #ccc; padding: 4pt 8pt; text-align: left; }
-  th { background: #f5f5f5 !important; font-weight: bold; }
-  .print-page-break { page-break-after: always; }
+  /* Oculta elementos de navegação e UI */
+  header,
+  nav,
+  [data-no-print],
+  .no-print,
+  button:not([data-print-show]),
+  .toast-container {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+    line-height: 1.4;
+  }
+
+  /* Remove backgrounds coloridos */
+  .bg-background,
+  .bg-card,
+  [class*="bg-primary"],
+  [class*="bg-muted"],
+  [class*="bg-secondary"] {
+    background: white !important;
+  }
+
+  /* Garante que borders apareçam na impressão */
+  .border,
+  [class*="border-"] {
+    border-color: #ccc !important;
+  }
+
+  /* Textos ficam pretos na impressão */
+  [class*="text-primary"],
+  [class*="text-muted"],
+  [class*="text-foreground"] {
+    color: black !important;
+  }
+
+  /* Quebra de página automática para OP e pedidos */
+  .print-page-break {
+    page-break-after: always;
+  }
+
+  /* Área de impressão ocupa folha inteira */
+  .print-container {
+    max-width: 100% !important;
+    padding: 1cm !important;
+    margin: 0 !important;
+  }
+
+  /* Tabelas na impressão */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th, td {
+    border: 1px solid #ccc;
+    padding: 4pt 8pt;
+    text-align: left;
+  }
+
+  th {
+    background: #f5f5f5 !important;
+    font-weight: bold;
+  }
 }
 
-/* App shell full height */
-html, body, #root { height: 100%; overflow: hidden; }
+/* App shell: full-height layout */
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
 
-/* Minimal scrollbar */
-* { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
-::-webkit-scrollbar { width: 4px; height: 4px; }
+/* Subtle scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.35); }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted)); }
 
-/* Tooltip helper */
-.sidebar-tooltip { pointer-events: none; }
-
-/* Gold accent bar */
-.accent-bar {
-  height: 2px;
-  background: linear-gradient(90deg, hsl(var(--primary)), hsl(38 92% 65% / 0.4), transparent);
-}
-
-/* SearchInputWithBarcode custom range */
-input[type="range"].zomini-range {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 6px;
-  border-radius: 9999px;
-  outline: none;
-  cursor: pointer;
-}
-input[type="range"].zomini-range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: hsl(var(--primary));
-  border: 2px solid hsl(var(--card));
-  box-shadow: 0 1px 4px hsl(var(--primary) / 0.4);
-  cursor: pointer;
-}
-input[type="range"].zomini-range::-moz-range-thumb {
-  width: 16px; height: 16px;
-  border-radius: 50%;
-  background: hsl(var(--primary));
-  border: 2px solid hsl(var(--card));
-  cursor: pointer;
+/* Sidebar nav tooltip fix */
+.sidebar-tooltip {
+  pointer-events: none;
 }

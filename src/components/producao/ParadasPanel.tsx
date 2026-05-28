@@ -49,9 +49,9 @@ function ParadaCard({parada,maquinas,onConcluir}:{parada:Parada;maquinas:string[
   const isAtiva = !parada.fim;
   const elapsed = useCronometro(isAtiva ? parada.inicio : undefined);
   return (
-    <div className={cn("rounded-xl border p-4 space-y-3 transition-all",
+    <div className={cn("rounded-2xl border p-4 space-y-3 transition-all",
       isAtiva&&parada.tipo==="nao_planejada"?"bg-red-500/5 border-red-500/20":
-      isAtiva?"bg-amber-500/5 border-amber-500/20":"bg-card/60 border-border opacity-75")}>
+      isAtiva?"bg-amber-500/5 border-amber-500/20":"bg-card/60 border-border/40 opacity-75")}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-semibold text-sm">{parada.maquina}</p>
@@ -105,7 +105,7 @@ function NovaParadaModal({open,onClose,onSaved,maquinas}:{open:boolean;onClose:(
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-xl border shadow-xl p-5 space-y-4">
+      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4">
         <div className="flex items-center justify-between"><h3 className="font-semibold">Registrar Parada</h3><button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button></div>
         <div className="space-y-3">
           <div>
@@ -190,13 +190,13 @@ export function ParadasPanel() {
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border bg-red-500/5 border-red-500/20 p-4 text-center"><p className="text-2xl font-bold text-red-600">{ativas.filter(p=>p.tipo==="nao_planejada").length}</p><p className="text-[11px] text-muted-foreground">Não planejadas ativas</p></div>
-        <div className="rounded-xl border bg-amber-500/5 border-amber-500/20 p-4 text-center"><p className="text-2xl font-bold text-amber-600">{ativas.length}</p><p className="text-[11px] text-muted-foreground">Total ativas</p></div>
-        <div className="rounded-xl border bg-card/60 p-4 text-center"><p className="text-2xl font-bold">{paradas.filter(p=>p.duracao_min).reduce((s,p)=>s+(p.duracao_min||0),0)}</p><p className="text-[11px] text-muted-foreground">Min parados hoje</p></div>
+        <div className="rounded-2xl border bg-red-500/5 border-red-500/20 p-4 text-center"><p className="text-2xl font-bold text-red-600">{ativas.filter(p=>p.tipo==="nao_planejada").length}</p><p className="text-[11px] text-muted-foreground">Não planejadas ativas</p></div>
+        <div className="rounded-2xl border bg-amber-500/5 border-amber-500/20 p-4 text-center"><p className="text-2xl font-bold text-amber-600">{ativas.length}</p><p className="text-[11px] text-muted-foreground">Total ativas</p></div>
+        <div className="rounded-2xl border bg-card/60 p-4 text-center"><p className="text-2xl font-bold">{paradas.filter(p=>p.duracao_min).reduce((s,p)=>s+(p.duracao_min||0),0)}</p><p className="text-[11px] text-muted-foreground">Min parados hoje</p></div>
       </div>
 
       {pieData.length>0 && (
-        <div className="rounded-xl border bg-card/60 p-4">
+        <div className="rounded-2xl border bg-card/60 p-4">
           <p className="text-sm font-medium mb-3">Paradas por motivo</p>
           <ResponsiveContainer width="100%" height={160}>
             <PieChart><Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={65} dataKey="value">

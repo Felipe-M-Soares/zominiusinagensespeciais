@@ -94,7 +94,7 @@ export function StockListModal({ open, onClose, items }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-md p-0 rounded-xl overflow-hidden border-border">
+      <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
         {/* Header */}
         <div className="relative px-5 pt-5 pb-3">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />

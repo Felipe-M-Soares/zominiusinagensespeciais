@@ -294,7 +294,7 @@ export function ManuaisButton() {
       {/* Dialog de upload múltiplo — menor, com scroll */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) handleCloseDialog(); }}>
         <DialogContent className="max-w-sm max-h-[78vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
+          <DialogHeader className="px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
             <DialogTitle className="flex items-center gap-2 text-sm">
               <BookOpen className="h-4 w-4" />
               Adicionar Manuais
@@ -393,7 +393,7 @@ export function ManuaisButton() {
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end gap-2 px-4 py-3 border-t border-border shrink-0">
+          <div className="flex justify-end gap-2 px-4 py-3 border-t border-border/40 shrink-0">
             <Button variant="outline" size="sm" onClick={handleCloseDialog} disabled={isUploadingAll}>
               {hasQueue && queue.some(q => q.status === "done") ? "Fechar" : "Cancelar"}
             </Button>

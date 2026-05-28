@@ -25,11 +25,11 @@ const toggleTheme = useCallback(() => {
 }, [isDark]);
 
 return (
-  <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
-    <header className="sticky top-0 z-10 border-b" style={{ background: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}>
+  <div className="min-h-screen bg-transparent">
+    <header className="border-b border-border bg-card sticky top-0 z-10">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ fontFamily:"'Syne',sans-serif", color:"hsl(var(--primary))" }}>Admin</span>
+          <span className="text-sm font-bold tracking-widest text-primary">ADMIN</span>
         </div>
         <div className="flex items-center gap-2">
           <button

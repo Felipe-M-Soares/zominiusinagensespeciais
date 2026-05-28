@@ -135,7 +135,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
             const cfg=ROLE_CFG[u.role]||ROLE_CFG.funcionario;
             const nome=u.display_name||u.username||"Usuário";
             return (
-              <div key={u.user_id} className={cn("rounded-xl border p-4 space-y-3 transition-all", u.blocked?"bg-red-500/5 border-red-500/20":"bg-card/60")}>
+              <div key={u.user_id} className={cn("rounded-2xl border p-4 space-y-3 transition-all", u.blocked?"bg-red-500/5 border-red-500/20":"bg-card/60")}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex items-center gap-3">
                     <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold",cfg.bg,cfg.color)}>
@@ -155,7 +155,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 {isAdmin && (
-                  <div className="flex items-center gap-2 pt-1 border-t border-border">
+                  <div className="flex items-center gap-2 pt-1 border-t border-border/30">
                     <select value={u.role} onChange={e=>handleRoleChange(u.user_id,e.target.value as AppRole)}
                       className="flex-1 h-7 rounded-lg border border-input bg-background px-2 text-[11px]">
                       {(Object.keys(ROLE_CFG) as AppRole[]).map(r=><option key={r} value={r}>{ROLE_CFG[r].label}</option>)}
@@ -174,7 +174,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {!isAdmin && (
-        <div className="rounded-xl border bg-amber-500/5 border-amber-500/20 p-3 text-center text-sm text-amber-700 dark:text-amber-400">
+        <div className="rounded-2xl border bg-amber-500/5 border-amber-500/20 p-3 text-center text-sm text-amber-700 dark:text-amber-400">
           Apenas administradores podem alterar papéis e bloquear usuários
         </div>
       )}

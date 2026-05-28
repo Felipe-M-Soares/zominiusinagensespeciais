@@ -69,7 +69,7 @@ function MovimentoModal({open,materias,onClose,onSaved}:{open:boolean;materias:M
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-xl border shadow-xl p-5 space-y-4">
+      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4">
         <div className="flex items-center justify-between"><h3 className="font-semibold">Movimentação de MP</h3><button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button></div>
         <div className="space-y-3">
           <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Matéria-Prima *</label>
@@ -134,7 +134,7 @@ export function MateriaPrimaPanel() {
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       {alerta.length>0 && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 flex items-center gap-2">
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0"/>
           <p className="text-sm text-amber-700 dark:text-amber-400"><b>{alerta.length}</b> matéria{alerta.length>1?"s-primas":"-prima"} abaixo do estoque mínimo</p>
         </div>
@@ -168,7 +168,7 @@ export function MateriaPrimaPanel() {
               const pct=Math.min(100,(m.estoque_atual/Math.max(m.estoque_maximo,1))*100);
               const abaixo=m.estoque_atual<=m.estoque_minimo;
               return (
-                <div key={m.id} className={cn("rounded-xl border p-4 space-y-3",abaixo?"bg-amber-500/5 border-amber-500/20":"bg-card/60")}>
+                <div key={m.id} className={cn("rounded-2xl border p-4 space-y-3",abaixo?"bg-amber-500/5 border-amber-500/20":"bg-card/60")}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-semibold text-sm">{m.codigo}</p>

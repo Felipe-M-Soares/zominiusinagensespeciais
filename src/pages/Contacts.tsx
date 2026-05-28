@@ -145,7 +145,7 @@ export default function Contacts() {
   const ACCENT_COLORS = [
     { bg: "from-blue-500/20 to-blue-400/5", icon: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
     { bg: "from-emerald-500/20 to-emerald-400/5", icon: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
-    { bg: "from-violet-500/20 to-violet-400/5", icon: "bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))] dark:text-violet-400" },
+    { bg: "from-violet-500/20 to-violet-400/5", icon: "bg-violet-500/15 text-violet-600 dark:text-violet-400" },
     { bg: "from-amber-500/20 to-amber-400/5", icon: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
     { bg: "from-rose-500/20 to-rose-400/5", icon: "bg-rose-500/15 text-rose-600 dark:text-rose-400" },
     { bg: "from-cyan-500/20 to-cyan-400/5", icon: "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400" },
@@ -153,7 +153,7 @@ export default function Contacts() {
   const getAccent = (n: string) => ACCENT_COLORS[(n.charCodeAt(0) || 0) % ACCENT_COLORS.length];
 
   return (
-    <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
+    <div className="min-h-screen bg-gradient-to-br from-transparent to-accent/10">
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -171,7 +171,7 @@ export default function Contacts() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <header className="border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-10">
+      <header className="border-b border-border/50 bg-card/80 backdrop-blur-md sticky top-0 z-10">
         <div className="container mx-auto px-4 py-2.5 flex items-center gap-3">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
@@ -206,7 +206,7 @@ export default function Contacts() {
           </div>
         ) : contacts.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
-            <div className="h-16 w-16 rounded-xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+            <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
               <User className="h-8 w-8 opacity-30" />
             </div>
             <p className="font-medium">Nenhum contato cadastrado</p>
@@ -220,7 +220,7 @@ export default function Contacts() {
               return (
                 <div
                   key={c.id}
-                  className="group relative rounded-xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1"
+                  className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1"
                   style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}
                 >
                   {/* Top accent bar */}
@@ -245,7 +245,7 @@ export default function Contacts() {
                   </div>
 
                   {/* Phone row */}
-                  <div className="px-4 py-2.5 border-t border-border flex items-center gap-2">
+                  <div className="px-4 py-2.5 border-t border-border/30 flex items-center gap-2">
                     <Phone className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                     <span className="text-[11px] text-muted-foreground truncate">{c.contact}</span>
                   </div>
