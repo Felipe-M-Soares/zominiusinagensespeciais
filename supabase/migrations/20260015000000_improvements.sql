@@ -20,9 +20,17 @@ CREATE INDEX IF NOT EXISTS idx_pedido_itens_pedido_stock
   ON public.pedido_itens (pedido_id, stock_item_id);
 
 -- ── 3. CHECK constraint: quantity_reserved não pode ser negativo ──────────────
-ALTER TABLE public.stock_items
-  ADD CONSTRAINT IF NOT EXISTS stock_items_quantity_reserved_non_negative
-  CHECK (quantity_reserved >= 0);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'stock_items_quantity_reserved_non_negative'
+      AND conrelid = 'public.stock_items'::regclass
+  ) THEN
+    ALTER TABLE public.stock_items
+      ADD CONSTRAINT stock_items_quantity_reserved_non_negative
+      CHECK (quantity_reserved >= 0);
+  END IF;
+END $$;
 
 -- ── 4. Tabela de auditoria de ações críticas ──────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.audit_log (
@@ -42,14 +50,17 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_entity     ON public.audit_log (entity_
 CREATE INDEX IF NOT EXISTS idx_audit_log_created    ON public.audit_log (created_at DESC);
 
 -- Admins vêem tudo; usuários vêem suas próprias ações
-CREATE POLICY IF NOT EXISTS "audit_log_admin_select" ON public.audit_log
+DROP POLICY IF EXISTS "audit_log_admin_select" ON public.audit_log;
+CREATE POLICY "audit_log_admin_select" ON public.audit_log
   FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')
-  );
-CREATE POLICY IF NOT EXISTS "audit_log_self_select" ON public.audit_log
-  FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY IF NOT EXISTS "audit_log_insert" ON public.audit_log
-  FOR INSERT WITH CHECK (true);
+  )
+DROP POLICY IF EXISTS "audit_log_self_select" ON public.audit_log;
+CREATE POLICY "audit_log_self_select" ON public.audit_log
+  FOR SELECT USING (user_id = auth.uid())
+DROP POLICY IF EXISTS "audit_log_insert" ON public.audit_log;
+CREATE POLICY "audit_log_insert" ON public.audit_log
+  FOR INSERT WITH CHECK (true)
 
 -- ── 5. Guard no faturar_pedido_sefaz: idempotência ────────────────────────────
 CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(

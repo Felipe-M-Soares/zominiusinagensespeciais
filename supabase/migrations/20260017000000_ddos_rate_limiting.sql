@@ -30,10 +30,12 @@ CREATE TRIGGER trg_cleanup_rate_limit
 
 -- RLS: usuário só lê seus próprios registros; INSERT aberto para authenticated
 ALTER TABLE public.rate_limit_log ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "rate_limit_self" ON public.rate_limit_log
-  FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY IF NOT EXISTS "rate_limit_insert" ON public.rate_limit_log
-  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+DROP POLICY IF EXISTS "rate_limit_self" ON public.rate_limit_log;
+CREATE POLICY "rate_limit_self" ON public.rate_limit_log
+  FOR SELECT USING (user_id = auth.uid())
+DROP POLICY IF EXISTS "rate_limit_insert" ON public.rate_limit_log;
+CREATE POLICY "rate_limit_insert" ON public.rate_limit_log
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid())
 
 -- ── Função check_rate_limit ───────────────────────────────────────────────────
 -- Retorna TRUE se dentro do limite, FALSE se excedeu.
