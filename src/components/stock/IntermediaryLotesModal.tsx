@@ -6,9 +6,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Tag, Printer, RefreshCw, Package, AlertCircle, X, Eye } from "lucide-react";
+import { Tag, Printer, RefreshCw, Package, AlertCircle, X, Eye, CheckCircle2, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -71,24 +72,18 @@ function buildZpl(model: string, reference: string, lote: string): string {
   ].join("\n");
 }
 
-function sendToPrinter(zpl: string) {
-  // Tenta Zebra Browser Print (porta padrão 9100)
-  fetch("http://127.0.0.1:9100", {
-    method: "POST",
-    body: zpl,
-  }).catch(() => {
-    // Browser Print não disponível — faz download do arquivo ZPL
-  });
-}
-
-function downloadZpl(zpl: string, lote: string) {
-  const blob = new Blob([zpl], { type: "text/plain" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = `etiqueta-${lote.replace(/\//g, "-")}.zpl`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+// Envia ZPL direto para a ZD220 via Zebra Browser Print (localhost:9100)
+// Retorna true se imprimiu com sucesso, false caso contrário
+async function sendToPrinter(zpl: string): Promise<boolean> {
+  try {
+    const res = await fetch("http://127.0.0.1:9100", {
+      method: "POST",
+      body: zpl,
+    });
+    return res.ok || res.status === 0; // status 0 = opaque response (CORS), ainda enviou
+  } catch {
+    return false;
+  }
 }
 
 // ─── Preview da Etiqueta (canvas SVG) ─────────────────────────────────────────
@@ -163,13 +158,25 @@ interface PrintPreviewModalProps {
 }
 
 function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
+  const [printing, setPrinting] = useState(false);
+
   if (!row) return null;
 
-  function handlePrint() {
+  async function handlePrint() {
+    if (printing) return;
+    setPrinting(true);
     const zpl = buildZpl(row!.model, row!.reference, row!.lote);
-    sendToPrinter(zpl);
-    downloadZpl(zpl, row!.lote);
-    onClose();
+    const ok = await sendToPrinter(zpl);
+    setPrinting(false);
+    if (ok) {
+      toast.success(`Etiqueta enviada para a ZD220 — 2 cópias`);
+      onClose();
+    } else {
+      toast.error(
+        "Impressora não encontrada. Verifique se o Zebra Browser Print está aberto e a ZD220 está ligada.",
+        { duration: 6000 }
+      );
+    }
   }
 
   return (
@@ -209,6 +216,12 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
               <span className="ml-auto text-muted-foreground/60">{row.saldo} un.</span>
             </div>
           </div>
+
+          {/* Instrução ZD220 */}
+          <div className="w-full flex items-start gap-2 rounded-xl bg-blue-500/8 border border-blue-500/20 px-3 py-2.5 text-[11px] text-blue-600 dark:text-blue-400">
+            <Printer className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span>Clique em <strong>Imprimir</strong> para enviar direto para a ZD220. O Zebra Browser Print precisa estar aberto no computador.</span>
+          </div>
         </div>
 
         {/* Actions */}
@@ -216,17 +229,22 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
+            disabled={printing}
+            className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={handlePrint}
-            className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-1.5"
+            disabled={printing}
+            className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
           >
-            <Printer className="h-3.5 w-3.5" />
-            Imprimir (2 cópias)
+            {printing
+              ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : <Printer className="h-3.5 w-3.5" />
+            }
+            {printing ? "Enviando..." : "Imprimir (2 cópias)"}
           </button>
         </div>
       </div>
