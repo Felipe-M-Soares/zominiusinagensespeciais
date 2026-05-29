@@ -51,6 +51,7 @@ import {
   Inbox,
   ShoppingBag,
   Archive,
+  FileSpreadsheet,
 } from "lucide-react";
 import { MovementModal } from "@/components/stock/MovementModal";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -58,7 +59,9 @@ import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
 import { AddToStockModal } from "@/components/stock/AddToStockModal";
 import { StockListModal } from "@/components/stock/StockListModal";
 import { LotesPanel } from "@/components/stock/LotesPanel";
+import { IntermediaryLotesModal } from "@/components/stock/IntermediaryLotesModal";
 import { StockCsvImport } from "@/components/stock/StockCsvImport";
+import { ExcelStockImport } from "@/components/stock/ExcelStockImport";
 import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
 import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicaoModal";
 import { RetrabalhoModal } from "@/components/stock/RetrabalhoModal";
@@ -76,6 +79,7 @@ const PedidosEstoquePanel = lazy(() => import("@/components/stock/PedidosEstoque
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { countryFlag } from "@/components/DeviceCard";
 import { toast } from "sonner";
@@ -542,55 +546,24 @@ interface SearchBarProps {
 }
 
 const SearchBar = memo(function SearchBar({
-  onSearch, onClear, hasValue: _hasValue, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
+  onSearch, onClear, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
 }: SearchBarProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [localHasValue, setLocalHasValue] = useState(false);
-  const debouncedSearch = useDebounce((v: string) => onSearch(v), 400);
   useClickOutside(containerRef, onCloseSuggestions);
-
-  function handleChange(v: string) {
-    setLocalHasValue(!!v.trim());
-    if (!v.trim()) { onClear(); return; }
-    debouncedSearch(v.trim());
-  }
-
-  function handleClear() {
-    if (inputRef.current) inputRef.current.value = "";
-    setLocalHasValue(false);
-    onClear();
-  }
 
   return (
     <div className="relative flex-1" ref={containerRef}>
-      <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-      <input
-        ref={inputRef}
-        type="text"
-        placeholder="Buscar por modelo, referência, UDI ou lote..."
-        onChange={e => handleChange(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === "Enter") {
-            const v = (e.target as HTMLInputElement).value.trim();
-                    onSearch(v);
-            onCloseSuggestions();
-            requestAnimationFrame(() => inputRef.current?.select());
-          }
-          if (e.key === "Escape") onCloseSuggestions();
-        }}
-        className="flex h-11 w-full rounded-md border border-input bg-card px-3 py-2 pl-10 pr-10 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      <SearchInputWithBarcode
+        onChange={v => { if (!v.trim()) { onClear(); return; } onSearch(v.trim()); }}
+        onSearch={v => { onSearch(v.trim()); onCloseSuggestions(); }}
+        placeholder="Bipe o código ou busque por modelo, referência, UDI ou lote..."
+        height="h-11"
       />
-      {localHasValue && (
-        <button type="button" onClick={handleClear} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      )}
       {showSuggestions && suggestions.length > 0 && (
         <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
           {suggestions.map(s => (
             <button key={s} type="button"
-              onMouseDown={e => { e.preventDefault(); if (inputRef.current) inputRef.current.value = s; onSelectSuggestion(s); }}
+              onMouseDown={e => { e.preventDefault(); onSelectSuggestion(s); }}
               className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border/30 last:border-0"
             >{s}</button>
           ))}
@@ -656,6 +629,7 @@ export default function Estoque() {
   const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const [intermediaryLotesOpen, setIntermediaryLotesOpen] = useState(false);
   const [allMovOpen, setAllMovOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [baixoOpen, setBaixoOpen] = useState(false);
@@ -663,6 +637,7 @@ export default function Estoque() {
   const [deleting, setDeleting] = useState(false);
   const [lotesItem, setLotesItem] = useState<StockItem | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
+  const [excelImportOpen, setExcelImportOpen] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const [deleteAllTyped, setDeleteAllTyped] = useState("");
   const [clearHistConfirm, setClearHistConfirm] = useState(false);
@@ -771,10 +746,10 @@ export default function Estoque() {
       setShowAutocomplete(false);
       return;
     }
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
       const q = search.trim().toLowerCase();
-      const sourceItems = filteredItems.length > 0 ? filteredItems : allItems;
-      const suggestions = sourceItems
+      // Usa allItems diretamente — filteredItems não é estável (nova referência a cada render)
+      const suggestions = allItems
         .filter(i => i.device?.model)
         .map(i => i.device.model)
         .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
@@ -783,7 +758,7 @@ export default function Estoque() {
       setShowAutocomplete(suggestions.length > 0);
     }, 150);
     return () => clearTimeout(timer);
-  }, [search, allItems, filteredItems]);
+  }, [search, allItems]);
 
   // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
   useClickOutside(autocompleteRef, () => setShowAutocomplete(false));
@@ -806,7 +781,9 @@ export default function Estoque() {
       return;
     }
     debouncedSearchUpdate(v.trim());
-  }, [debouncedSearchUpdate]);
+  // debouncedSearchUpdate agora é estável (useDebounce corrigido)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleSearchSubmit(v: string) {
     setQuerySearch(v);
@@ -857,15 +834,18 @@ export default function Estoque() {
     [pagedItems.map((i) => i.id).join(",")]
   );
 
-  // Busca contagem de lotes em UMA única query batch (evita N requests simultâneas)
+  // Busca contagem de lotes em UMA única query batch (evita N requests simultâneas).
+  // PERF: só executa nas abas que mostram lotes (intermediaria/expedicao/retrabalho).
+  // Em dashboard/recebimento/pedidos não há cards com badge de lote.
+  const viewHasLotes = activeView === "intermediaria" || activeView === "expedicao" || activeView === "retrabalho";
   useEffect(() => {
-    if (pagedItemIds.length === 0) { setLotesSummary(new Map()); return; }
+    if (!viewHasLotes || pagedItemIds.length === 0) { setLotesSummary(new Map()); return; }
     let cancelled = false;
     fetchLotesSummaryBatch(pagedItemIds).then((result) => {
       if (!cancelled) setLotesSummary(result);
     });
     return () => { cancelled = true; };
-  }, [pagedItemIds]);
+  }, [pagedItemIds, viewHasLotes]);
 
   async function handleDeleteAll() {
     setDeletingAll(true);
@@ -957,6 +937,14 @@ export default function Estoque() {
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setListOpen(true)}>
                     <List className="h-3.5 w-3.5" /> Lista
                   </Button>
+                  {activeView === "intermediaria" && (
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-primary border-primary/40 hover:bg-primary/10" onClick={() => setIntermediaryLotesOpen(true)}>
+                      <Tag className="h-3.5 w-3.5" /> Lotes
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10" onClick={() => setExcelImportOpen(true)}>
+                    <FileSpreadsheet className="h-3.5 w-3.5" /> Importar Excel
+                  </Button>
                   <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
                     <DatabaseBackup className="h-3.5 w-3.5" /> Backup
                   </Button>
@@ -986,10 +974,10 @@ export default function Estoque() {
                       {[
                         { label: "Adicionar Peça", icon: Plus, action: () => setAddOpen(true) },
                         { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
-                        { label: "Importar CSV", icon: ScanBarcode, action: () => setCsvOpen(true) },
+                        ...(activeView === "intermediaria" ? [{ label: "Lotes do Intermediário", icon: Tag, action: () => setIntermediaryLotesOpen(true) }] : []),
+                        { label: "Importar Excel / PDF", icon: FileSpreadsheet, action: () => setExcelImportOpen(true) },
                         { label: "Backup", icon: DatabaseBackup, action: () => setBackupOpen(true) },
                         { label: "Apagar Histórico", icon: Trash2, action: () => setClearHistConfirm(true), danger: true },
-                        { label: "Excluir Todo Estoque", icon: Trash2, action: () => setDeleteAllOpen(true), danger: true },
                       ].map(({ label, icon: Icon, action, danger }) => (
                         <button
                           key={label}
@@ -1050,14 +1038,13 @@ export default function Estoque() {
         {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && (
           <div className="space-y-2">
             <div className="flex gap-2">
-              <SearchBar
+              <SearchInputWithBarcode
+                className="flex-1"
+                value={search}
+                onChange={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); }}
                 onSearch={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
-                onClear={() => { setSearch(""); setQuerySearch(""); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
-                hasValue={!!search}
-                suggestions={autocompleteItems}
-                showSuggestions={showAutocomplete}
-                onSelectSuggestion={handleSelectSuggestion}
-                onCloseSuggestions={() => setShowAutocomplete(false)}
+                placeholder="Buscar por modelo, referência, UDI ou lote..."
+                height="h-11"
               />
               <Button
                 type="button"
@@ -1435,9 +1422,20 @@ export default function Estoque() {
         onClose={() => setLotesItem(null)}
       />
 
+      <IntermediaryLotesModal
+        open={intermediaryLotesOpen}
+        onClose={() => setIntermediaryLotesOpen(false)}
+      />
+
       <StockCsvImport
         open={csvOpen}
         onClose={() => setCsvOpen(false)}
+        onSuccess={refetch}
+      />
+
+      <ExcelStockImport
+        open={excelImportOpen}
+        onClose={() => setExcelImportOpen(false)}
         onSuccess={refetch}
       />
 

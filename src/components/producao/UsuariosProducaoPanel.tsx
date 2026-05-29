@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Search, Shield, Eye, Users, CheckCircle2, RefreshCw, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -115,7 +116,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       <div className="flex gap-2">
-        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"/><Input className="pl-8 h-9 text-sm" placeholder="Buscar usuário..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+        <div className="relative flex-1"><SearchInputWithBarcode value={search} onChange={setSearch} onSearch={setSearch} placeholder="Buscar usuário..." height="h-9"/></div>
         <select value={filtroRole} onChange={e=>setFiltroRole(e.target.value as typeof filtroRole)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm">
           <option value="todos">Todos</option>
           {(Object.keys(ROLE_CFG) as AppRole[]).map(r=><option key={r} value={r}>{ROLE_CFG[r].label}</option>)}

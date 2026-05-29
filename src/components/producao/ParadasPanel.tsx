@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, X, OctagonPause, Clock, AlertTriangle, CheckCircle2, Search, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -207,7 +208,7 @@ export function ParadasPanel() {
       )}
 
       <div className="flex gap-2">
-        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"/><Input className="pl-8 h-9 text-sm" placeholder="Buscar parada..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+        <div className="relative flex-1"><SearchInputWithBarcode value={search} onChange={setSearch} onSearch={setSearch} placeholder="Bipe o código ou busque parada..." height="h-9"/></div>
         <Button size="sm" className="gap-1 h-9" onClick={()=>setModalOpen(true)}><Plus className="h-4 w-4"/>Registrar</Button>
         <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
       </div>

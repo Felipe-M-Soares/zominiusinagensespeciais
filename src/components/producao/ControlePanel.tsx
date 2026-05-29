@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, X, Search, Clock, User2, Package, Hash, CheckCircle2, PlayCircle, ClipboardList, RefreshCw, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -240,8 +241,13 @@ export function ControlePanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
       {/* Barra de ações */}
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"/>
-          <Input className="pl-8 h-9 text-sm" placeholder="Buscar..." value={search} onChange={e=>setSearch(e.target.value)}/>
+          <SearchInputWithBarcode
+            value={search}
+            onChange={setSearch}
+            onSearch={setSearch}
+            placeholder="Bipe o código ou busque..."
+            height="h-9"
+          />
         </div>
         <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value as typeof filtroStatus)}
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm">

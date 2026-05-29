@@ -26,6 +26,7 @@ import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert } from "lu
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { logger } from "@/lib/logger";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
 const deviceSchema = z.object({
   udi_di: z.string().min(1, "UDI-DI é obrigatório").max(200),
@@ -492,8 +493,13 @@ export function AdminDevices() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar dispositivos..." value={search} onChange={e => handleSearchChange(e.target.value)} className="pl-10" />
+          <SearchInputWithBarcode
+            value={search}
+            onChange={handleSearchChange}
+            onSearch={handleSearchChange}
+            placeholder="Bipe o código ou busque dispositivos..."
+            height="h-9"
+          />
         </div>
         <div className="flex items-center gap-2">
           {/* FIX CSV: aceita apenas .json e .csv */}
@@ -659,6 +665,48 @@ export function AdminDevices() {
               <div className="flex items-center gap-3"><Switch checked={!!editDevice.sterile} onCheckedChange={v => updateField("sterile", v)} /><Label>Estéril</Label></div>
               <div className="flex items-center gap-3"><Switch checked={!!editDevice.single_use} onCheckedChange={v => updateField("single_use", v)} /><Label>Uso Único</Label></div>
               <div className="flex items-center gap-3"><Switch checked={editDevice.implantable !== false} onCheckedChange={v => updateField("implantable", v)} /><Label>Implantável</Label></div>
+
+              {/* Campos fiscais: preenchidos automaticamente pelo banco */}
+              <div className="sm:col-span-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3 space-y-2">
+                <p style={{fontSize:"11px",fontWeight:700,color:"#7c3aed",textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                  🧾 Dados Fiscais — preenchidos automaticamente ao salvar
+                </p>
+                <p style={{fontSize:"10px",color:"var(--muted-foreground)",lineHeight:1.5}}>
+                  NCM e CFOP são calculados pelo banco com base na Classe de Risco, Implantável, Região do Corpo e Material.
+                  Para personalizar, use a aba <strong>Tabela de Preços</strong> no Financeiro.
+                </p>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",fontSize:"11px"}}>
+                  {(() => {
+                    const b = (editDevice.body_region ?? "").toLowerCase();
+                    const c = (editDevice.classification_code ?? "").toLowerCase();
+                    const m = (editDevice.primary_material ?? "").toLowerCase();
+                    const imp = editDevice.implantable !== false;
+                    let ncm = "9021.39.90";
+                    let ncmDesc = "Prótese dentária";
+                    if (imp && (b.includes("oral") || b.includes("dent") || b.includes("buc"))) {
+                      if (c.includes("implant") || c.includes("fixture") || c.includes("parafus") || m.includes("titani")) {
+                        ncm = "9021.29.10"; ncmDesc = "Implante intraósseo";
+                      } else { ncm = "9021.39.90"; ncmDesc = "Componente protético"; }
+                    } else if (b.includes("oral") || b.includes("dent")) {
+                      if (c.includes("instrumen") || c.includes("broca") || c.includes("fresa")) {
+                        ncm = "9018.49.90"; ncmDesc = "Instrumento odontológico";
+                      }
+                    }
+                    return [
+                      { label: "NCM estimado", value: ncm, desc: ncmDesc },
+                      { label: "CFOP padrão",  value: "5102", desc: "Venda intra-estadual" },
+                      { label: "Unidade",       value: "UN",   desc: "Unidade padrão" },
+                    ].map(f => (
+                      <div key={f.label} style={{borderRadius:10,border:"1px solid hsl(var(--border))",background:"hsl(var(--background))",padding:"8px",textAlign:"center"}}>
+                        <p style={{fontSize:"9px",color:"var(--muted-foreground)",textTransform:"uppercase",letterSpacing:"0.05em"}}>{f.label}</p>
+                        <p style={{fontSize:"15px",fontWeight:900,color:"#7c3aed",fontFamily:"monospace"}}>{f.value}</p>
+                        <p style={{fontSize:"9px",color:"var(--muted-foreground)",opacity:0.7,marginTop:2}}>{f.desc}</p>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+
               <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setEditDevice(null)}>Cancelar</Button>
                 <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>

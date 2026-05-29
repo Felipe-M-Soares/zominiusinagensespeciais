@@ -65,6 +65,7 @@ import {
   Minus,
 } from "lucide-react";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { Logo } from "@/components/Logo";
 
 import { formatLote, loteValido, displayLote } from "@/lib/lote";
@@ -98,6 +99,7 @@ interface PedidoCompleto {
   vendedora_nome: string | null;
   status: "pendente" | "separando" | "pronto" | "faturado" | "enviado" | "cancelado";
   observacoes: string | null;
+  desconto_pct: number;
   created_at: string;
   faturado_em: string | null;
   itens: Array<{
@@ -261,10 +263,10 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const [showAutocomp, setShowAutocomp] = useState(false);
   const [selectedPeca, setSelectedPeca] = useState<ReturnType<typeof useStock>["items"][0] | null>(null);
 
-  // Lista do pedido, frete e obs
+  // Lista do pedido e obs
   const [qtd, setQtd] = useState(1);
+  const [desconto, setDesconto] = useState(0);
   const [itens, setItens] = useState<PedidoItem[]>([]);
-  const [frete, setFrete] = useState("0");
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -281,7 +283,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (!open) return;
     setClienteId(clienteFixo?.id ?? "");
     setClienteSearch(clienteFixo?.nome ?? "");
-    setItens([]); setObs(""); setFrete("0");
+    setItens([]); setObs(""); setDesconto(0);
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
     setSelectedPeca(null); setQtd(1);
     loadClientes();
@@ -377,8 +379,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     try {
       const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
       const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
-      // BUG-06 FIX: garante que o frete seja um número não-negativo e razoável
-      const freteVal = Math.max(0, Math.min(99999.99, parseFloat(frete.replace(",", ".")) || 0));
+      // Cria o pedido
 
       // COD-01 FIX: usa criarPedidoComReserva para garantir que reserve_stock
       // seja chamado e quantity_reserved seja incrementado corretamente no banco.
@@ -394,12 +395,8 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         vendedoraId: user?.id,
         vendedoraNome,
         observacoes: obs || null,
+        descontoPct: desconto,
       });
-
-      // Aplica frete ao pedido criado (campo extra não suportado pelo util genérico)
-      if (result.ok && result.pedidoId && freteVal > 0) {
-        await supabase.from("pedidos_comerciais").update({ frete: freteVal }).eq("id", result.pedidoId);
-      }
 
       if (!result.ok) {
         toast.error(result.error ?? "Erro ao criar pedido.");
@@ -424,10 +421,15 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
-          <div className="flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4 text-violet-500" />
-            <p className="text-sm font-semibold">Novo Pedido</p>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border/30 shrink-0 bg-gradient-to-r from-violet-500/5 to-transparent">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-xl bg-violet-500/10 flex items-center justify-center">
+              <ShoppingCart className="h-4 w-4 text-violet-500" />
+            </div>
+            <div>
+              <p className="text-[13px] font-bold">Novo Pedido</p>
+              <p className="text-[10px] text-muted-foreground">Preencha cliente, peças e desconto</p>
+            </div>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
             <X className="h-4 w-4" />
@@ -440,14 +442,12 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Cliente *</label>
             <div className="relative" ref={clienteDropRef}>
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
+              <SearchInputWithBarcode
                 value={clienteSearch}
-                onChange={e => { setClienteSearch(e.target.value); setClienteId(""); setShowClienteDrop(true); }}
-                onFocus={() => setShowClienteDrop(true)}
+                onChange={v => { setClienteSearch(v); setClienteId(""); setShowClienteDrop(true); }}
+                onSearch={v => { setClienteSearch(v); setClienteId(""); setShowClienteDrop(true); }}
                 placeholder="Buscar cliente..."
-                className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+                height="h-10"
               />
               {showClienteDrop && clientesFiltrados.length > 0 && (
                 <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-40 overflow-y-auto">
@@ -465,36 +465,17 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
             </button>
           </div>
 
-          {/* ── Frete ── */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Valor do Frete</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground font-medium">R$</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={frete}
-                onChange={e => setFrete(e.target.value.replace(/[^0-9.,]/g, ""))}
-                placeholder="0,00"
-                className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
-              />
-            </div>
-          </div>
-
           {/* ── Adicionar Peça ── */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Adicionar Peça</label>
             <div className="flex gap-2">
               <div className="relative flex-1" ref={pecaDropRef}>
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <input
-                  ref={pecaInputRef}
-                  type="text"
+                <SearchInputWithBarcode
                   value={pecaSearch}
-                  onChange={e => handlePecaInput(e.target.value)}
-                  onFocus={handlePecaFocus}
-                  placeholder="Buscar por nome da peça..."
-                  className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+                  onChange={v => handlePecaInput(v)}
+                  onSearch={v => handlePecaInput(v)}
+                  placeholder="Bipe o código ou busque a peça..."
+                  height="h-10"
                 />
                 {showAutocomp && autocomplete.length > 0 && (
                   <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-48 overflow-y-auto">
@@ -516,7 +497,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                   const v = Math.max(1, parseInt(e.target.value) || 1);
                   setQtd(maxDisponivel > 0 ? Math.min(v, maxDisponivel) : v);
                 }}
-                className="w-16 h-10 rounded-xl border border-border/50 bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="w-14 h-10 rounded-xl border border-border/50 bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
               />
               <button
                 type="button"
@@ -552,7 +533,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                       <p className="text-[12px] font-medium truncate">{item.device_model}</p>
                       <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
                     </div>
-                    <span className="text-[13px] font-bold shrink-0">{item.quantidade} un.</span>
+                    <span className="text-[12px] font-bold shrink-0">{item.quantidade} un.</span>
                     <button type="button" onClick={() => setItens(prev => prev.filter((_, i) => i !== idx))} className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors">
                       <X className="h-3 w-3" />
                     </button>
@@ -561,6 +542,46 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               </div>
             </div>
           )}
+
+          {/* ── Desconto do Pedido ── */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto no Pedido</label>
+              <span className={cn(
+                "text-[13px] font-black tabular-nums px-2 py-0.5 rounded-lg",
+                desconto > 0 ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted/30 text-muted-foreground"
+              )}>
+                {desconto === 0 ? "Sem desconto" : `${desconto}%`}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={desconto}
+              onChange={e => setDesconto(Number(e.target.value))}
+              className="w-full h-2 rounded-full appearance-none cursor-pointer"
+              style={{
+                background: desconto === 0
+                  ? "hsl(var(--border))"
+                  : `linear-gradient(to right, #059669 ${desconto}%, hsl(var(--border)) ${desconto}%)`,
+                accentColor: "#059669",
+              }}
+            />
+            <div className="flex justify-between text-[9px] text-muted-foreground/60 font-mono px-0.5">
+              <span>0%</span>
+              <span>25%</span>
+              <span>50%</span>
+              <span>75%</span>
+              <span>100%</span>
+            </div>
+            {desconto > 0 && (
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <span className="font-bold">✓</span> Desconto de {desconto}% aplicado a todas as peças deste pedido
+              </p>
+            )}
+          </div>
 
           {/* ── Observações ── */}
           <div className="space-y-1.5">
@@ -607,123 +628,158 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const data = new Date(pedido.created_at).toLocaleDateString("pt-BR");
   const hora = new Date(pedido.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const temDesconto = pedido.desconto_pct > 0;
 
-  const statusColor = {
-    pendente: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25",
-    faturado: "text-success bg-success/8 border-success/25",
-    cancelado: "text-muted-foreground bg-muted/20 border-border/40",
-  }[pedido.status];
-
-  const statusIcon = {
-    pendente: <Clock className="h-2.5 w-2.5" />,
-    faturado: <CheckCircle2 className="h-2.5 w-2.5" />,
-    cancelado: <Ban className="h-2.5 w-2.5" />,
-  }[pedido.status];
-
-  const topBarColor = {
-    pendente: "via-amber-500 opacity-70",
-    faturado: "via-success opacity-60",
-    cancelado: "via-muted-foreground/40 opacity-30",
-  }[pedido.status];
+  // Cores sólidas por status — sem opacidade para garantir visibilidade no tema claro
+  const statusMeta: Record<string, { bar: string; badge: string; label: string; icon: React.ReactNode }> = {
+    pendente:  { bar: "bg-amber-400",          badge: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700",          label: "Pendente",  icon: <Clock className="h-3 w-3" /> },
+    separando: { bar: "bg-blue-400",            badge: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700",            label: "Separando", icon: <PackageCheck className="h-3 w-3" /> },
+    pronto:    { bar: "bg-emerald-500",         badge: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700",   label: "Pronto",    icon: <CheckCircle2 className="h-3 w-3" /> },
+    faturado:  { bar: "bg-green-500",           badge: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",         label: "Faturado",  icon: <CheckCircle2 className="h-3 w-3" /> },
+    enviado:   { bar: "bg-teal-500",            badge: "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-700",            label: "Enviado",   icon: <Truck className="h-3 w-3" /> },
+    cancelado: { bar: "bg-muted/30",            badge: "bg-muted/30 text-muted-foreground border-border",           label: "Cancelado", icon: <Ban className="h-3 w-3" /> },
+  };
+  const meta = statusMeta[pedido.status] ?? statusMeta["cancelado"];
 
   return (
-    <div className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5" style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
-      <div className={cn("h-0.5 bg-gradient-to-r from-transparent to-transparent transition-opacity group-hover:opacity-100", topBarColor)} />
+    <div className="rounded-2xl bg-card border border-border/40 overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+      style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
+
+      {/* Barra de status — sólida, visível */}
+      <div className={cn("h-1 w-full", meta.bar)} />
+
       <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <User className="h-3 w-3 text-violet-500 shrink-0" />
-              <h3 className="text-[13px] font-semibold truncate">{pedido.cliente_nome}</h3>
+
+        {/* ── Cabeçalho: cliente + status ── */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-violet-100 dark:bg-violet-500/20 flex items-center justify-center shrink-0">
+                <User className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+              </div>
+              <h3 className="text-[14px] font-bold text-foreground truncate">{pedido.cliente_nome}</h3>
             </div>
-            <p className="text-[11px] text-muted-foreground/70">{pedido.vendedora_nome}</p>
+            {pedido.vendedora_nome && (
+              <p className="text-[11px] text-muted-foreground mt-1 ml-9">{pedido.vendedora_nome}</p>
+            )}
           </div>
-          <Badge variant="outline" className={cn("shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-lg flex items-center gap-1", statusColor)}>
-            {statusIcon} {{ pendente: "Pendente", separando: "Separando", pronto: "Pronto", faturado: "Faturado", enviado: "Enviado", cancelado: "Cancelado" }[pedido.status]}
-          </Badge>
+          <span className={cn("shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1.5 border", meta.badge)}>
+            {meta.icon} {meta.label}
+          </span>
         </div>
 
-        <div className="flex items-center justify-between rounded-xl px-3 py-2 border bg-muted/20 border-border/30">
-          <div className="flex items-center gap-1.5">
-            <ShoppingBag className="h-3.5 w-3.5 text-violet-500" />
-            <span className="text-[11px] font-medium text-muted-foreground">{pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça</span>
+        {/* ── Resumo: qtd + desconto ── */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5 rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
+            <div className="flex items-center gap-2">
+              <ShoppingBag className="h-3.5 w-3.5 text-violet-500" />
+              <span className="text-[12px] text-muted-foreground">
+                {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-[18px] font-black text-foreground tabular-nums">{totalItens}</span>
+              <span className="text-[11px] text-muted-foreground">un.</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[15px] font-bold tabular-nums">{totalItens}</span>
-            <span className="text-[10px] text-muted-foreground">un.</span>
-          </div>
+          {temDesconto && (
+            <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2 flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
+              <span className="text-[14px] font-black text-green-700">{pedido.desconto_pct}%</span>
+              <span className="text-[9px] font-semibold text-green-600 uppercase tracking-wide">desc.</span>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60">
-          <Clock className="h-3 w-3" />
-          <span>{data} às {hora}</span>
+        {/* ── Data/hora ── */}
+        <div className="flex items-center gap-1.5">
+          <Clock className="h-3 w-3 text-muted-foreground/70" />
+          <span className="text-[11px] text-muted-foreground">{data} às {hora}</span>
         </div>
 
+        {/* ── Itens expandidos ── */}
         {expanded && (
-          <div className="space-y-1.5 pt-1 border-t border-border/20">
+          <div className="space-y-1.5 pt-2" className="border-t border-border">
             {pedido.itens.map(it => (
-              <div key={it.id} className="flex items-center gap-2 rounded-lg bg-muted/20 px-3 py-1.5">
-                <Package className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+              <div key={it.id} className="flex items-center gap-2 rounded-xl px-3 py-2 rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
+                <Package className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-medium truncate">{it.device_model}</p>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    {displayLote(it.lote) ? (
+                  <p className="text-[12px] font-semibold text-foreground truncate">{it.device_model}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {displayLote(it.lote) && (
                       <>
-                        <Tag className="h-2.5 w-2.5" />
-                        <span className="font-mono">{displayLote(it.lote)}</span>
-                        <span>·</span>
+                        <Tag className="h-2.5 w-2.5 text-muted-foreground/70" />
+                        <span className="text-[10px] font-mono text-muted-foreground">{displayLote(it.lote)}</span>
+                        <span className="text-muted-foreground/40">·</span>
                       </>
-                    ) : null}
-                    <span>{it.quantidade} un.</span>
+                    )}
+                    <span className="text-[11px] text-muted-foreground">{it.quantidade} un.</span>
                   </div>
                 </div>
               </div>
             ))}
             {pedido.observacoes && (
-              <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground/70 px-1 pt-1">
-                <FileText className="h-3 w-3 mt-0.5 shrink-0" />
-                <span>{pedido.observacoes}</span>
+              <div className="flex items-start gap-1.5 px-1 pt-1">
+                <FileText className="h-3 w-3 mt-0.5 text-muted-foreground/70 shrink-0" />
+                <span className="text-[11px] text-muted-foreground italic">{pedido.observacoes}</span>
               </div>
             )}
           </div>
         )}
 
-        <div className="space-y-1.5 pt-1 border-t border-border/20">
-          <button type="button" onClick={() => setExpanded(v => !v)} className="w-full flex items-center justify-center gap-1.5 h-7 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors">
-            {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {expanded ? "Ocultar peças" : "Ver peças"}
+        {/* ── Ações ── */}
+        <div className="space-y-2 pt-2" className="border-t border-border">
+          <button
+            type="button"
+            onClick={() => setExpanded(v => !v)}
+            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted/50 transition-colors w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground bg-muted/30 border border-border"
+          >
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {expanded ? "Ocultar peças" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
           </button>
+
           {pedido.status === "pendente" && (
             <button
               type="button"
               onClick={() => onAdicionarPeca(pedido)}
-              className="w-full flex items-center justify-center gap-1.5 h-7 rounded-lg bg-violet-500/8 hover:bg-violet-500/15 text-violet-600 dark:text-violet-400 text-[10px] font-medium transition-colors border border-violet-500/20"
+              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-violet-700 dark:text-violet-300 transition-colors bg-violet-100 dark:bg-violet-900/30 border border-violet-300 dark:border-violet-700"
             >
-              <Plus className="h-3 w-3" /> Adicionar peça
+              <Plus className="h-3.5 w-3.5" /> Adicionar peça
             </button>
           )}
+
           {pedido.status === "pendente" && isAdmin && (
-            <div className="flex gap-1.5">
-              <button type="button" onClick={() => onFaturar(pedido)} className="flex-1 h-8 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[11px] font-medium transition-colors flex items-center justify-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => onFaturar(pedido)}
+                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-bold transition-colors flex items-center justify-center gap-1.5"
+                style={{ boxShadow: "0 2px 8px rgba(124,58,237,0.35)" }}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar Pedido
               </button>
-              <button type="button" onClick={() => onCancelar(pedido)} className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors" title="Cancelar">
+              <button
+                type="button"
+                onClick={() => onCancelar(pedido)}
+                className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-red-500/10 dark:hover:bg-red-950 hover:text-red-500 transition-colors border border-border"
+                title="Cancelar pedido"
+              >
                 <Ban className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
+
           {pedido.status === "separando" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-lg bg-blue-500/8 border border-blue-500/20 text-blue-600 text-[11px]">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 dark:text-blue-300 text-[11px] font-semibold bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700">
               <PackageCheck className="h-3.5 w-3.5" /> Estoque separando...
             </div>
           )}
           {pedido.status === "pronto" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-lg bg-emerald-500/8 border border-emerald-500/20 text-emerald-600 text-[11px]">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
               <CheckCircle2 className="h-3.5 w-3.5" /> Pronto — aguardando NF
             </div>
           )}
           {pedido.status === "enviado" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-lg bg-success/8 border border-success/20 text-success text-[11px]">
+            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 dark:text-teal-300 text-[11px] font-semibold bg-teal-100 dark:bg-teal-900/30 border border-teal-300 dark:border-teal-700">
               <Truck className="h-3.5 w-3.5" /> Enviado ao cliente! 🎉
             </div>
           )}
@@ -860,14 +916,13 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
           {/* Busca com autocomplete — lista inline, não dropdown flutuante */}
           <div className="flex flex-col flex-1" ref={dropRef}>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <input
-                ref={inputRef}
+              <SearchInputWithBarcode
                 value={search}
-                onChange={e => handleInput(e.target.value)}
-                onFocus={handleFocus}
-                placeholder="Buscar peça por modelo..."
-                className="w-full h-11 pl-10 pr-3 rounded-xl border border-border/40 bg-muted/20 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/40"
+                onChange={v => handleInput(v)}
+                onSearch={v => { handleInput(v); }}
+                placeholder="Buscar peça por modelo ou bipe o código..."
+                height="h-11"
+                inputClass="bg-muted/20 text-[13px]"
               />
             </div>
 
@@ -1611,6 +1666,11 @@ export default function Comercial() {
     return theme === "dark";
   });
 
+  // Aplica o tema salvo ao montar a página
+  useEffect(() => {
+    applyTheme(getStoredTheme());
+  }, []);
+
   const toggleTheme = useCallback(() => {
     const next = !isDark;
     setIsDark(next);
@@ -1686,7 +1746,7 @@ export default function Comercial() {
 
       setPedidos(pedidosData.map((p: Record<string, unknown>) => {
         const c = p.clientes as Record<string, unknown> | null;
-        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
+        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
     } catch (_e) {
       toast.error("Erro ao carregar pedidos.", {
@@ -1893,25 +1953,13 @@ export default function Comercial() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                    <input
-                      ref={clienteSearchRef}
-                      type="text"
-                      placeholder="Buscar cliente..."
-                      defaultValue=""
-                      onChange={e => {
-                        if (clienteSearchDebounce.current) clearTimeout(clienteSearchDebounce.current);
-                        const v = e.target.value;
-                        clienteSearchDebounce.current = setTimeout(() => setClienteSearchFilter(v), 300);
-                      }}
-                      className="pl-9 pr-8 h-9 w-full text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    <SearchInputWithBarcode
+                      value={clienteSearchFilter}
+                      onChange={setClienteSearchFilter}
+                      onSearch={setClienteSearchFilter}
+                      placeholder="Bipe o código ou busque por cliente..."
+                      height="h-9"
                     />
-                    {clienteSearchFilter && (
-                      <button type="button" onClick={() => { if (clienteSearchRef.current) clienteSearchRef.current.value = ""; setClienteSearchFilter(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
                   <Button size="sm" className="h-9 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setEditCliente(null); setClienteModal(true); }}>
                     <UserPlus className="h-3.5 w-3.5" /> Novo
                   </Button>
