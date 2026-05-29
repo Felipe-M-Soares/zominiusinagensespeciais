@@ -15,6 +15,7 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_user_action_created
   ON public.rate_limit_log (user_id, action, created_at DESC);
 
 -- Limpa entradas > 5 min automaticamente via trigger
+DROP TRIGGER IF EXISTS trg_cleanup_rate_limit ON public.rate_limit_log;
 DROP FUNCTION IF EXISTS public.cleanup_rate_limit_log();
 CREATE OR REPLACE FUNCTION public.cleanup_rate_limit_log()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
