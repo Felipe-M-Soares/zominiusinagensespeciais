@@ -20,6 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { RecebimentoMaterialModal } from "./RecebimentoMaterialModal";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -371,24 +372,13 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
       </div>
 
       {/* Busca */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input
-          placeholder="Buscar por lote, descrição, fornecedor..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10 pr-10 h-11 text-sm bg-card"
-        />
-        {search && (
-          <button
-            type="button"
-            onClick={() => setSearch("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
+      <SearchInputWithBarcode
+        value={search}
+        onChange={setSearch}
+        onSearch={setSearch}
+        placeholder="Bipe o código ou busque por lote, descrição, fornecedor..."
+        height="h-11"
+      />
 
       {/* Descrição da aba */}
       <div className="rounded-xl border px-4 py-3 text-[12px] bg-cyan-500/5 border-cyan-500/20 text-cyan-700 dark:text-cyan-300">

@@ -43,6 +43,7 @@ import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { PrintButton } from "@/components/PrintButton";
 import { escHtml } from "@/lib/escHtml";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,11 @@ interface Pedido {
 function fmtDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+function fmtTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function statusColor(status: string) {
@@ -532,7 +538,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
               <Package className="h-2.5 w-2.5" />{totalItens} un.
             </span>
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
-              <Clock className="h-2.5 w-2.5" />{fmtDate(pedido.created_at)}
+              <Clock className="h-2.5 w-2.5" />{fmtDate(pedido.created_at)} às {fmtTime(pedido.created_at)}
             </span>
           </div>
         </div>
@@ -1252,40 +1258,15 @@ interface SearchBarPedidosProps {
   hasValue: boolean;
 }
 
-const SearchBarPedidos = memo(function SearchBarPedidos({ onSearch, onClear, hasValue }: SearchBarPedidosProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  // CODE-01 FIX: useDebounce substitui debounceRef inline
-  const debouncedSearch = useDebounce((v: string) => onSearch(v), 300);
-
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    debouncedSearch(e.target.value.trim());
-  }
-
-  function handleClear() {
-    if (inputRef.current) inputRef.current.value = "";
-    onClear();
-  }
-
+const SearchBarPedidos = memo(function SearchBarPedidos({ onSearch, onClear }: SearchBarPedidosProps) {
   return (
     <div className="relative flex-1">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-      <input
-        ref={inputRef}
-        defaultValue=""
-        type="text"
-        placeholder="Buscar por cliente ou vendedora..."
-        onChange={handleChange}
-        className="flex h-9 w-full rounded-xl border border-input bg-background px-3 py-2 pl-9 pr-8 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      <SearchInputWithBarcode
+        placeholder="Bipe o código ou busque por cliente/vendedora..."
+        onChange={(v) => onSearch(v.trim())}
+        onSearch={(v) => onSearch(v.trim())}
+        height="h-9"
       />
-      {hasValue && (
-        <button
-          type="button"
-          onClick={handleClear}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      )}
     </div>
   );
 });

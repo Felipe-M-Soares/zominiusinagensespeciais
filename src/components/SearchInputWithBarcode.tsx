@@ -1,6 +1,7 @@
 /**
- * SearchInputWithBarcode — campo de busca com botão de câmera/scanner.
+ * SearchInputWithBarcode — campo de busca com ícone de leitor de código de barras.
  * Drop-in para qualquer barra de busca do sistema.
+ * Funciona com bipe/teclado; câmera foi removida de todas as telas.
  *
  * Props:
  *  value       — valor controlado externamente (opcional)
@@ -16,7 +17,6 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { ScanBarcode, X, Search } from "lucide-react";
-import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -44,7 +44,6 @@ export function SearchInputWithBarcode({
   debounceMs = 300,
   showSearchIcon = false,
 }: Props) {
-  const [scannerOpen, setScannerOpen] = useState(false);
   const [localValue, setLocalValue] = useState(value ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -82,14 +81,6 @@ export function SearchInputWithBarcode({
     if (e.key === "Escape") handleClear();
   }
 
-  function handleDetected(code: string) {
-    setLocalValue(code);
-    onChange?.(code);
-    onSearch?.(code);
-    // Auto-focus input after scan so user sees result
-    setTimeout(() => inputRef.current?.focus(), 100);
-  }
-
   const hasValue = localValue.trim().length > 0;
 
   return (
@@ -112,7 +103,7 @@ export function SearchInputWithBarcode({
           autoFocus={autoFocus}
           className={cn(
             "w-full rounded-xl border border-border bg-background text-sm",
-            "pl-9 pr-16",
+            "pl-9 pr-10",
             "placeholder:text-muted-foreground/60",
             "focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/40",
             "transition-all",
@@ -121,8 +112,8 @@ export function SearchInputWithBarcode({
           )}
         />
 
-        {/* Right side: clear + camera button */}
-        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+        {/* Right side: clear button */}
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
           {hasValue && (
             <button
               type="button"
@@ -133,27 +124,8 @@ export function SearchInputWithBarcode({
               <X className="h-3 w-3" />
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setScannerOpen(true)}
-            aria-label="Escanear código de barras"
-            title="Abrir câmera para escanear código de barras"
-            className={cn(
-              "h-7 w-7 flex items-center justify-center rounded-lg transition-all",
-              "text-violet-600 hover:bg-violet-500/10 border border-violet-500/20",
-              "active:scale-95",
-            )}
-          >
-            <ScanBarcode className="h-3.5 w-3.5" />
-          </button>
         </div>
       </div>
-
-      <BarcodeScanner
-        open={scannerOpen}
-        onClose={() => setScannerOpen(false)}
-        onDetected={handleDetected}
-      />
     </>
   );
 }

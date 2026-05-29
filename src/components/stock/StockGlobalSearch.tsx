@@ -19,6 +19,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { cn } from "@/lib/utils";
 import type { StockFase } from "@/hooks/useStock";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 
@@ -457,31 +458,13 @@ export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: 
       <div className="relative" ref={containerRef}>
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <input
-              ref={inputRef}
-              type="text"
+            <SearchInputWithBarcode
               value={query}
-              placeholder="Pesquisar peça por modelo, referência ou código..."
-              onChange={e => handleChange(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter") { handleSubmit(); }
-                if (e.key === "Escape") { setShowSuggestions(false); }
-              }}
-              onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-              className="flex h-10 sm:h-11 w-full rounded-xl border border-input bg-card px-3 py-2 pl-10 pr-10 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-all"
+              onChange={v => handleChange(v)}
+              onSearch={v => { handleChange(v); setTimeout(handleSubmit, 50); }}
+              placeholder="Bipe o código ou pesquise por modelo, referência..."
+              height="h-10 sm:h-11"
             />
-            {query && (
-              <button
-                type="button"
-                onClick={handleClear}
-                aria-label="Limpar busca"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
           <button
             type="button"
             onClick={handleSubmit}

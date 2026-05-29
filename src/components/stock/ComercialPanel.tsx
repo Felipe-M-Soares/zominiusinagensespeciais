@@ -56,6 +56,7 @@ import type { StockItem } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
 // ─── Lote helpers (formato DDMMYYS-NN ou DDMMYYS-NN/A) ───────────────────────
 const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
@@ -612,8 +613,8 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
   const [expanded, setExpanded] = useState(false);
 
   const statusConfig = {
-    pendente:  { badge: "bg-amber-500/12 text-amber-500 border-amber-500/25",  accent: "from-amber-500",   icon: <Clock className="h-3 w-3" />,        label: "Pendente"  },
-    faturado:  { badge: "bg-emerald-500/12 text-emerald-500 border-emerald-500/25", accent: "from-emerald-500", icon: <CheckCircle2 className="h-3 w-3" />, label: "Faturado"  },
+    pendente:  { badge: "bg-amber-500/12 text-amber-600 border-amber-500/25",  accent: "from-amber-500",   icon: <Clock className="h-3 w-3" />,        label: "Pendente"  },
+    faturado:  { badge: "bg-emerald-500/12 text-emerald-600 border-emerald-500/25", accent: "from-emerald-500", icon: <CheckCircle2 className="h-3 w-3" />, label: "Faturado"  },
     cancelado: { badge: "bg-muted/30 text-muted-foreground border-border/30",  accent: "from-border/60",  icon: <Ban className="h-3 w-3" />,          label: "Cancelado" },
   }[pedido.status] ?? {
     badge: "bg-muted/30 text-muted-foreground border-border/30", accent: "from-border/60", icon: null, label: pedido.status,
@@ -625,56 +626,57 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
 
   return (
     <div className={cn(
-      "relative rounded-2xl bg-card border overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5",
-      pedido.status === "pendente"  ? "border-amber-500/20"   :
-      pedido.status === "faturado"  ? "border-emerald-500/20" :
+      "relative rounded-2xl bg-card border overflow-hidden transition-all duration-200 hover:shadow-md",
+      pedido.status === "pendente"  ? "border-amber-500/25"   :
+      pedido.status === "faturado"  ? "border-emerald-500/25" :
       pedido.status === "cancelado" ? "border-border/20 opacity-60" :
       "border-border/30"
     )}>
       {/* Accent bar */}
-      <div className={cn("h-[3px] bg-gradient-to-r to-transparent", statusConfig.accent)} />
+      <div className={cn("h-0.5 bg-gradient-to-r to-transparent", statusConfig.accent)} />
 
-      <div className="p-4 space-y-3">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0",
-              pedido.status === "pendente"  ? "bg-amber-500/10"   :
-              pedido.status === "faturado"  ? "bg-emerald-500/10" :
-              "bg-muted/30"
-            )}>
-              <User className={cn("h-4 w-4",
-                pedido.status === "pendente"  ? "text-amber-500"   :
-                pedido.status === "faturado"  ? "text-emerald-500" :
-                "text-muted-foreground"
-              )} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[13px] font-bold truncate leading-tight">{pedido.cliente_nome}</p>
-              {pedido.vendedora_nome && (
-                <p className="text-[11px] text-muted-foreground/60 truncate">{pedido.vendedora_nome}</p>
-              )}
-            </div>
+      <div className="p-3.5 space-y-3">
+        {/* Header: avatar + nome + badge */}
+        <div className="flex items-start gap-2.5">
+          <div className={cn(
+            "h-8 w-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5",
+            pedido.status === "pendente"  ? "bg-amber-500/10"   :
+            pedido.status === "faturado"  ? "bg-emerald-500/10" :
+            "bg-muted/30"
+          )}>
+            <User className={cn("h-3.5 w-3.5",
+              pedido.status === "pendente"  ? "text-amber-500"   :
+              pedido.status === "faturado"  ? "text-emerald-500" :
+              "text-muted-foreground"
+            )} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-bold truncate leading-tight">{pedido.cliente_nome}</p>
+            {pedido.vendedora_nome && (
+              <p className="text-[11px] text-muted-foreground/60 truncate mt-0.5">{pedido.vendedora_nome}</p>
+            )}
           </div>
           <span className={cn("shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg border flex items-center gap-1 leading-none", statusConfig.badge)}>
             {statusConfig.icon}{statusConfig.label}
           </span>
         </div>
 
-        {/* Métricas */}
-        <div className="rounded-xl bg-muted/20 border border-border/20 px-3 py-2.5 flex items-center gap-3">
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <Package className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
-            <span className="text-[11px] text-muted-foreground/70">{pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça</span>
-          </div>
-          <div className="flex items-baseline gap-1 shrink-0">
-            <span className="text-[22px] font-bold tabular-nums leading-none text-violet-600 dark:text-violet-400">{totalItens}</span>
-            <span className="text-[10px] text-muted-foreground/50">un.</span>
+        {/* Metrics row */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 rounded-xl bg-muted/20 border border-border/20 px-3 py-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
+              <Package className="h-3 w-3 shrink-0" />
+              {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}
+            </span>
+            <div className="flex items-baseline gap-0.5">
+              <span className="text-[20px] font-bold tabular-nums leading-none text-violet-600 dark:text-violet-400">{totalItens}</span>
+              <span className="text-[10px] text-muted-foreground/50">un.</span>
+            </div>
           </div>
         </div>
 
-        {/* Data */}
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50">
+        {/* Data + hora */}
+        <div className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
           <Clock className="h-3 w-3 shrink-0" />
           <span>{data} às {hora}</span>
         </div>
@@ -684,7 +686,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
           <div className="space-y-1.5 pt-2 border-t border-border/15 animate-in fade-in slide-in-from-top-1 duration-150">
             <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Peças do pedido</p>
             {pedido.itens.map(it => (
-              <div key={it.id} className="flex items-center gap-2.5 rounded-xl bg-muted/20 border border-border/15 px-3 py-2">
+              <div key={it.id} className="flex items-center gap-2 rounded-xl bg-muted/20 border border-border/15 px-3 py-2">
                 <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
                   <Package className="h-3 w-3 text-violet-500/70" />
                 </div>
@@ -693,7 +695,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
                   <p className="text-[10px] text-muted-foreground/50 font-mono">{it.device_reference}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <span className="text-[15px] font-bold tabular-nums">{it.quantidade}</span>
+                  <span className="text-[14px] font-bold tabular-nums">{it.quantidade}</span>
                   <span className="text-[10px] text-muted-foreground/50 ml-0.5">un.</span>
                 </div>
               </div>
@@ -712,10 +714,10 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl bg-muted/25 hover:bg-muted/50 text-muted-foreground text-[11px] font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 h-7 rounded-xl bg-muted/20 hover:bg-muted/40 text-muted-foreground text-[11px] font-medium transition-colors"
           >
-            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            {expanded ? "Ocultar peças" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
+            {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {expanded ? "Ocultar" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
           </button>
 
           {pedido.status === "pendente" && isAdmin && (
@@ -724,15 +726,15 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
                 type="button"
                 onClick={() => { if (isConfirmado) return; onConfirmar(pedido.id); onFaturar(pedido); }}
                 disabled={isConfirmado}
-                className="flex-1 h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none border border-emerald-500/20"
+                className="flex-1 h-8 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none border border-emerald-500/20"
               >
                 {isConfirmado ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Receipt className="h-3.5 w-3.5" />}
-                {isConfirmado ? "Confirmado" : "Faturar pedido"}
+                {isConfirmado ? "Confirmado" : "Faturar"}
               </button>
               <button
                 type="button"
                 onClick={() => onCancelar(pedido)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl bg-muted/20 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors border border-border/20"
+                className="h-8 w-8 flex items-center justify-center rounded-xl bg-muted/20 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors border border-border/20"
                 title="Cancelar pedido"
               >
                 <Ban className="h-3.5 w-3.5" />
@@ -1774,25 +1776,13 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <input
-                ref={clienteSearchRef}
-                type="text"
-                placeholder="Buscar cliente..."
-                defaultValue=""
-                onChange={e => {
-                  if (clienteSearchDebounce.current) clearTimeout(clienteSearchDebounce.current);
-                  const v = e.target.value;
-                  clienteSearchDebounce.current = setTimeout(() => setClienteSearchFilter(v), 300);
-                }}
-                className="pl-9 pr-8 h-9 w-full text-sm rounded-xl border border-border/40 bg-muted/20 placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/40 transition-colors"
+              <SearchInputWithBarcode
+                value={clienteSearchFilter}
+                onChange={setClienteSearchFilter}
+                onSearch={setClienteSearchFilter}
+                placeholder="Bipe o código ou busque por cliente..."
+                height="h-9"
               />
-              {clienteSearchFilter && (
-                <button type="button" onClick={() => { if (clienteSearchRef.current) clienteSearchRef.current.value = ""; setClienteSearchFilter(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
             <button
               type="button"
               className="h-9 px-3 flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-semibold transition-colors shrink-0"
