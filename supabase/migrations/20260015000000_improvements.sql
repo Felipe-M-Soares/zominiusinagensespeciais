@@ -54,13 +54,15 @@ DROP POLICY IF EXISTS "audit_log_admin_select" ON public.audit_log;
 CREATE POLICY "audit_log_admin_select" ON public.audit_log
   FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')
-  )
+  );
+
 DROP POLICY IF EXISTS "audit_log_self_select" ON public.audit_log;
 CREATE POLICY "audit_log_self_select" ON public.audit_log
-  FOR SELECT USING (user_id = auth.uid())
+  FOR SELECT USING (user_id = auth.uid());
+
 DROP POLICY IF EXISTS "audit_log_insert" ON public.audit_log;
 CREATE POLICY "audit_log_insert" ON public.audit_log
-  FOR INSERT WITH CHECK (true)
+  FOR INSERT WITH CHECK (true);
 
 -- ── 5. Guard no faturar_pedido_sefaz: idempotência ────────────────────────────
 CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(
@@ -112,8 +114,3 @@ ALTER TABLE public.pedidos_comerciais
 CREATE INDEX IF NOT EXISTS idx_pedidos_rastreio
   ON public.pedidos_comerciais (rastreio_envio) WHERE rastreio_envio IS NOT NULL;
 
--- ── 7. Atualiza ANALYZE para novos índices ────────────────────────────────────
-ANALYZE public.stock_movements;
-ANALYZE public.pedido_itens;
-ANALYZE public.pedidos_comerciais;
-ANALYZE public.audit_log;

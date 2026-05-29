@@ -32,10 +32,11 @@ CREATE TRIGGER trg_cleanup_rate_limit
 ALTER TABLE public.rate_limit_log ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "rate_limit_self" ON public.rate_limit_log;
 CREATE POLICY "rate_limit_self" ON public.rate_limit_log
-  FOR SELECT USING (user_id = auth.uid())
+  FOR SELECT USING (user_id = auth.uid());
+
 DROP POLICY IF EXISTS "rate_limit_insert" ON public.rate_limit_log;
 CREATE POLICY "rate_limit_insert" ON public.rate_limit_log
-  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid())
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
 -- ── Função check_rate_limit ───────────────────────────────────────────────────
 -- Retorna TRUE se dentro do limite, FALSE se excedeu.
@@ -196,4 +197,3 @@ BEGIN
 END; $$;
 GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz(uuid,text,text,text,timestamptz,uuid,text,text) TO authenticated;
 
-ANALYZE public.rate_limit_log;
