@@ -1022,20 +1022,21 @@ function NFViewerModal({ pedido, onClose }: NFViewerModalProps) {
   const [loadingXml, setLoadingXml] = useState(false);
 
   // Busca xml_nfe sob demanda — não carregado na listagem para economizar memória
+  const pedidoId = pedido?.id ?? null;
   useEffect(() => {
-    if (!pedido) return;
+    if (!pedidoId) { setXmlNfe(null); return; }
     setXmlNfe(null);
     setLoadingXml(true);
     supabase
       .from("pedidos_comerciais")
       .select("xml_nfe")
-      .eq("id", pedido.id)
+      .eq("id", pedidoId)
       .single()
       .then(({ data }) => {
         setXmlNfe((data as { xml_nfe?: string | null } | null)?.xml_nfe ?? null);
         setLoadingXml(false);
       });
-  }, [pedido?.id]);
+  }, [pedidoId]);
 
   if (!pedido) return null;
 
@@ -3005,7 +3006,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
       <th style="text-align:right">Custo</th><th style="text-align:right">Venda</th>
       <th style="text-align:center">Margem</th><th style="text-align:center">Desc. Máx</th><th style="text-align:center">Status</th>
     </tr></thead><tbody>${rows}</tbody></table>
-    <script>window.print();<\/script>
+    <script>window.print();</script>
     </body></html>`;
     const w = window.open("", "_blank");
     if (!w) { toast.error("Popup bloqueado. Permita popups para imprimir."); return; }

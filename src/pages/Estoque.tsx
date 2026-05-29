@@ -832,8 +832,11 @@ export default function Estoque() {
 
   // IDs dos itens visíveis — chave estável para evitar re-render/re-fetch infinito.
   // PERF: idsKey é calculado uma vez e só muda quando os IDs realmente mudam.
-  const idsKey = useMemo(() => pagedItems.map((i) => i.id).join(","), [pagedItems]);
-  const pagedItemIds = useMemo(() => pagedItems.map((i) => i.id), [idsKey]);
+  // PERF: single memo computes both key and ids array — ESLint-clean and stable
+  const { idsKey, pagedItemIds } = useMemo(() => {
+    const ids = pagedItems.map((i) => i.id);
+    return { idsKey: ids.join(","), pagedItemIds: ids };
+  }, [pagedItems]);
 
   // Busca contagem de lotes em UMA única query batch (evita N requests simultâneas).
   // PERF: só executa nas abas que mostram lotes (intermediaria/expedicao/retrabalho).

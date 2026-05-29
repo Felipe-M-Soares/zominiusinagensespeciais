@@ -352,7 +352,8 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
     setSelectedPeca(null); setQtd(1);
     loadClientes();
-  }, [open, clienteFixo]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, clienteFixo, duplicarDe]);
 
   async function loadClientes() {
     const { data } = await supabase.from("clientes").select("*").order("nome");
