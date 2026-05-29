@@ -1886,7 +1886,7 @@ export default function Comercial() {
 
   // Peças da expedição (para criar pedidos)
   const { items: allItems, loading: loadingStock, refetch: refetchStock } = useStock("");
-  const expedicaoItems = allItems.filter(i => i.fase === "expedicao" && i.quantity_available > 0);
+  const expedicaoItems = allItems.filter(i => i.fase === "expedicao");
   // allStockItems: todas as peças com estoque disponível (qualquer fase) para busca no modal
   const allStockItems = allItems.filter(i => i.quantity_available > 0);
 
