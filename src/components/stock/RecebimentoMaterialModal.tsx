@@ -120,9 +120,13 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Tag className="h-3 w-3" />
               Número do Lote *
+              <span className="ml-auto flex items-center gap-1 text-[10px] font-normal text-muted-foreground/60 normal-case">
+                <ScanBarcode className="h-2.5 w-2.5" /> Bipe o código de barras
+              </span>
             </label>
             <div className="relative">
               <Input
+                autoFocus
                 placeholder="0101261-01"
                 value={lote}
                 onChange={(e) => setLote(formatLote(e.target.value))}

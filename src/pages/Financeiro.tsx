@@ -18,7 +18,7 @@ import { friendlyError } from "@/lib/errorMessages";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import {
-  ArrowLeft, Receipt, CheckCircle2, Package, User, Clock,
+  ArrowLeft, Receipt, CheckCircle2, Package, User, Clock, Printer,
   Truck, ChevronDown, ChevronUp, Send, X, RefreshCw,
   FileText, History, BadgeCheck, Ban, Bell, FileCheck2,
   AlertCircle, Building2, Hash, DollarSign, CreditCard,
@@ -2063,6 +2063,8 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
   const [search,     setSearch]     = useState("");
   const [filtroNF,   setFiltroNF]   = useState<"todos" | LancamentoFinanceiro["status_nf"]>("todos");
   const [showRecorr, setShowRecorr] = useState(false);
+  const [filtroDataInicio, setFiltroDataInicio] = useState("");
+  const [filtroDataFim, setFiltroDataFim] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2097,8 +2099,10 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
       (i.fornecedor ?? "").toLowerCase().includes(search.toLowerCase());
     const matchNF     = filtroNF === "todos" || i.status_nf === filtroNF;
     const matchRecorr = !showRecorr || i.recorrente;
-    return matchSearch && matchNF && matchRecorr;
-  }), [itens, search, filtroNF, showRecorr]);
+    const matchInicio = !filtroDataInicio || i.data_lancamento >= filtroDataInicio;
+    const matchFim    = !filtroDataFim    || i.data_lancamento <= filtroDataFim;
+    return matchSearch && matchNF && matchRecorr && matchInicio && matchFim;
+  }), [itens, search, filtroNF, showRecorr, filtroDataInicio, filtroDataFim]);
 
   const nfColors: Record<LancamentoFinanceiro["status_nf"], { label: string; cls: string }> = {
     sem_nf:     { label: "Sem NF",        cls: "bg-muted/50 text-muted-foreground border-border/40" },
@@ -2163,6 +2167,19 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
               : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50")}>
           <Repeat2 size={13} />Recorrentes
         </button>
+        <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}
+          title="Data início"
+          className="h-9 rounded-xl border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+        <span className="text-[10px] text-muted-foreground">–</span>
+        <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}
+          title="Data fim"
+          className="h-9 rounded-xl border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+        {(filtroDataInicio || filtroDataFim) && (
+          <button type="button" onClick={() => { setFiltroDataInicio(""); setFiltroDataFim(""); }}
+            className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-muted/50 text-muted-foreground transition-colors" title="Limpar período">
+            <X size={13} />
+          </button>
+        )}
         <button type="button" onClick={load} disabled={loading}
           className="h-9 w-9 flex items-center justify-center rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors">
           <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
@@ -2951,6 +2968,50 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
     toast.success(`Planilha exportada! ${filtered.length} peças.`);
   }
 
+  function printTabelaPrecos() {
+    const esc = (s?: string | null) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const rows = filtered.map(d => {
+      const margem = d.preco_venda > 0
+        ? ((d.preco_venda - d.preco_custo) / d.preco_venda * 100).toFixed(1) + "%"
+        : "—";
+      return `<tr>
+        <td>${esc(d.model)}</td>
+        <td>${esc(d.reference)}</td>
+        <td>${esc(d.ncm)}</td>
+        <td style="text-align:right">R$ ${d.preco_custo.toFixed(2).replace(".",",")}</td>
+        <td style="text-align:right">R$ ${d.preco_venda.toFixed(2).replace(".",",")}</td>
+        <td style="text-align:center">${margem}</td>
+        <td style="text-align:center">${d.desconto_max_pct}%</td>
+        <td style="text-align:center">${d.ativo ? "Ativo" : "Inativo"}</td>
+      </tr>`;
+    }).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Tabela de Preços — Zomini</title>
+    <style>
+      body{font-family:Arial,sans-serif;font-size:11px;padding:16px;color:#111}
+      h1{font-size:16px;font-weight:700;margin-bottom:4px}
+      p.sub{font-size:10px;color:#666;margin-bottom:12px}
+      table{width:100%;border-collapse:collapse}
+      th{background:#f3f0ff;color:#5b21b6;font-size:9px;text-transform:uppercase;padding:6px 8px;border-bottom:2px solid #ddd6fe;text-align:left}
+      td{padding:5px 8px;border-bottom:1px solid #f0eeff;font-size:10px;vertical-align:top}
+      tr:nth-child(even) td{background:#faf9ff}
+      @media print{body{padding:8px}button{display:none}}
+    </style></head>
+    <body>
+    <h1>Tabela de Preços — Zomini Usinagens Especiais</h1>
+    <p class="sub">Gerado em ${new Date().toLocaleString("pt-BR")} · ${filtered.length} peças</p>
+    <table><thead><tr>
+      <th>Modelo</th><th>Referência</th><th>NCM</th>
+      <th style="text-align:right">Custo</th><th style="text-align:right">Venda</th>
+      <th style="text-align:center">Margem</th><th style="text-align:center">Desc. Máx</th><th style="text-align:center">Status</th>
+    </tr></thead><tbody>${rows}</tbody></table>
+    <script>window.print();<\/script>
+    </body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { toast.error("Popup bloqueado. Permita popups para imprimir."); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
   function startEdit(d: DevicePreco) {
     setEditRow(d.id);
     setEditData({
@@ -3081,6 +3142,10 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
         <button type="button" onClick={exportExcel} disabled={filtered.length === 0}
           className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/8 hover:bg-emerald-500/15 transition-colors disabled:opacity-40">
           <FileSpreadsheet size={14} />Exportar Excel
+        </button>
+        <button type="button" onClick={printTabelaPrecos} disabled={filtered.length === 0}
+          className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-violet-500/40 text-violet-700 dark:text-violet-400 bg-violet-500/8 hover:bg-violet-500/15 transition-colors disabled:opacity-40">
+          <Printer size={14} />Imprimir PDF
         </button>
       </div>
 

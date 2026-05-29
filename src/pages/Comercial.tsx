@@ -47,7 +47,7 @@ import {
   MapPin,
   ShoppingCart,
   Receipt,
-  Ban,
+  Ban, Copy,
   Truck,
   ArrowLeft,
   LogOut,
@@ -124,6 +124,7 @@ interface PedidoCompleto {
   status: "pendente" | "separando" | "pronto" | "faturado" | "enviado" | "cancelado";
   observacoes: string | null;
   desconto_pct: number;
+  prazo_entrega: string | null;
   created_at: string;
   faturado_em: string | null;
   itens: Array<{
@@ -269,9 +270,10 @@ interface NovoPedidoModalProps {
   onSuccess: () => void;
   clienteFixo?: Cliente | null;
   expedicaoItems: ReturnType<typeof useStock>["items"];
+  duplicarDe?: PedidoCompleto | null;
 }
 
-function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems }: NovoPedidoModalProps) {
+function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems, duplicarDe }: NovoPedidoModalProps) {
   const { user } = useAuth();
 
   // Cliente
@@ -292,7 +294,30 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const [desconto, setDesconto] = useState(0);
   const [itens, setItens] = useState<PedidoItem[]>([]);
   const [obs, setObs] = useState("");
+  const [prazoEntrega, setPrazoEntrega] = useState("");
   const [saving, setSaving] = useState(false);
+  const [favoritas, setFavoritas] = useState<Set<string>>(new Set());
+
+  // Carrega favoritas do usuário atual
+  useEffect(() => {
+    supabase.from("peca_favoritas").select("device_id")
+      .then(({ data }) => {
+        setFavoritas(new Set((data ?? []).map((r: { device_id: string }) => r.device_id)));
+      });
+  }, [open]);
+
+  async function toggleFavorita(deviceId: string) {
+    const isFav = favoritas.has(deviceId);
+    if (isFav) {
+      await supabase.from("peca_favoritas").delete().eq("device_id", deviceId);
+      setFavoritas(prev => { const n = new Set(prev); n.delete(deviceId); return n; });
+    } else {
+      const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "").maybeSingle();
+      void profile;
+      await supabase.from("peca_favoritas").insert({ device_id: deviceId });
+      setFavoritas(prev => new Set([...prev, deviceId]));
+    }
+  }
 
   const clienteDropRef = useRef<HTMLDivElement>(null);
   const pecaDropRef = useRef<HTMLDivElement>(null);
@@ -307,7 +332,23 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (!open) return;
     setClienteId(clienteFixo?.id ?? "");
     setClienteSearch(clienteFixo?.nome ?? "");
-    setItens([]); setObs(""); setDesconto(0);
+    if (duplicarDe) {
+      // Pré-preenche com dados do pedido original
+      setClienteId(duplicarDe.cliente_id);
+      setClienteSearch(duplicarDe.cliente_nome);
+      setDesconto(duplicarDe.desconto_pct);
+      setObs(duplicarDe.observacoes ?? "");
+      // Itens: converte PedidoCompleto.itens para PedidoItem
+      setItens(duplicarDe.itens.map(i => ({
+        stock_item_id: i.stock_item_id,
+        lote: i.lote ?? null,
+        quantidade: i.quantidade,
+        device_model: i.device_model ?? "",
+        device_reference: i.device_reference ?? "",
+      })));
+    } else {
+      setItens([]); setObs(""); setDesconto(0); setPrazoEntrega("");
+    }
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
     setSelectedPeca(null); setQtd(1);
     loadClientes();
@@ -353,10 +394,17 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         )
       : items;
     const vistos = new Set<string>();
-    return lista.filter(i => {
+    const deduped = lista.filter(i => {
       if (vistos.has(i.device_id)) return false;
       vistos.add(i.device_id); return true;
-    }).slice(0, 20);
+    });
+    // Favoritas aparecem primeiro
+    deduped.sort((a, b) => {
+      const af = favoritas.has(a.device_id) ? 0 : 1;
+      const bf = favoritas.has(b.device_id) ? 0 : 1;
+      return af - bf;
+    });
+    return deduped.slice(0, 20);
   }
 
   function handlePecaFocus() {
@@ -437,6 +485,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         vendedoraNome,
         observacoes: obs || null,
         descontoPct: desconto,
+        prazoEntrega: prazoEntrega || null,
       });
 
       if (!result.ok) {
@@ -532,26 +581,35 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                         <p className="text-[10px] text-muted-foreground/60 mt-0.5">Verifique o nome ou o estoque disponível</p>
                       </div>
                     ) : autocomplete.map(i => (
-                      <button key={i.id} type="button" onClick={() => handleSelectPeca(i)}
-                        className="w-full text-left px-3 py-2 hover:bg-muted/40 transition-colors border-b border-border/10 last:border-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-[12px] font-semibold text-foreground truncate">{i.device?.model}</p>
-                            <p className="text-[10px] text-muted-foreground/70 font-mono">{i.device?.reference}</p>
+                      <div key={i.id} className="flex items-stretch border-b border-border/10 last:border-0 hover:bg-muted/40 transition-colors">
+                        <button type="button" onClick={() => handleSelectPeca(i)}
+                          className="flex-1 text-left px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1">
+                                {favoritas.has(i.device_id) && <Star className="h-2.5 w-2.5 text-amber-400 fill-amber-400 shrink-0" />}
+                                <p className="text-[12px] font-semibold text-foreground truncate">{i.device?.model}</p>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground/70 font-mono">{i.device?.reference}</p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <span className={cn(
+                                "text-[11px] font-bold px-1.5 py-0.5 rounded-lg",
+                                i.quantity_available > 0
+                                  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
+                                  : "bg-red-50 dark:bg-red-950/40 text-red-600"
+                              )}>
+                                {i.quantity_available} un.
+                              </span>
+                            </div>
                           </div>
-                          <div className="shrink-0 text-right">
-                            <span className={cn(
-                              "text-[11px] font-bold px-1.5 py-0.5 rounded-lg",
-                              i.quantity_available > 0
-                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
-                                : "bg-red-50 dark:bg-red-950/40 text-red-600"
-                            )}>
-                              {i.quantity_available} un.
-                            </span>
-                            <p className="text-[9px] text-muted-foreground/50 capitalize mt-0.5">{i.fase}</p>
-                          </div>
-                        </div>
-                      </button>
+                        </button>
+                        <button type="button" onClick={() => toggleFavorita(i.device_id)}
+                          className="px-2 flex items-center text-muted-foreground/40 hover:text-amber-400 transition-colors"
+                          title={favoritas.has(i.device_id) ? "Remover dos favoritos" : "Adicionar aos favoritos"}>
+                          <Star className={cn("h-3.5 w-3.5", favoritas.has(i.device_id) && "fill-amber-400 text-amber-400")} />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -678,6 +736,18 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
             )}
           </div>
 
+          {/* ── Prazo de entrega ── */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Prazo de entrega</label>
+            <input
+              type="date"
+              value={prazoEntrega}
+              onChange={e => setPrazoEntrega(e.target.value)}
+              min={new Date().toISOString().split("T")[0]}
+              className="w-full h-9 rounded-xl border border-border/50 bg-background text-sm px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+            />
+          </div>
+
           {/* ── Observações ── */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Observações</label>
@@ -716,9 +786,11 @@ interface PedidoCardProps {
   onFaturar: (p: PedidoCompleto) => void;
   onCancelar: (p: PedidoCompleto) => void;
   onAdicionarPeca: (p: PedidoCompleto) => void;
+  onDuplicar: (p: PedidoCompleto) => void;
+  onComentar: (p: PedidoCompleto) => void;
 }
 
-function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }: PedidoCardProps) {
+function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const temDesconto = pedido.desconto_pct > 0;
@@ -729,6 +801,11 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
   const hrCriacao = new Date(pedido.created_at).toLocaleTimeString("pt-BR", {
     hour: "2-digit", minute: "2-digit",
   });
+  const prazoFmt = pedido.prazo_entrega
+    ? new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })
+    : null;
+  const prazoAtrasado = pedido.prazo_entrega && !(["cancelado","enviado","faturado"] as string[]).includes(pedido.status)
+    && new Date(pedido.prazo_entrega) < new Date();
 
   // ── Paleta de status ──────────────────────────────────────────────────────
   const STATUS: Record<string, {
@@ -901,6 +978,16 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
             <span className="text-[10px] text-muted-foreground/60">
               {dtCriacao} às {hrCriacao}
             </span>
+            {prazoFmt && (
+              <span className={cn(
+                "text-[10px] font-semibold px-1.5 py-0.5 rounded-md border",
+                prazoAtrasado
+                  ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
+                  : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+              )}>
+                prazo: {prazoFmt}
+              </span>
+            )}
           </div>
 
           {/* ── Itens expandidos ── */}
@@ -973,6 +1060,24 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
               <Plus className="h-3.5 w-3.5" /> Adicionar peça
             </button>
           )}
+
+          {/* ── Ações rápidas: comentar e duplicar ── */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onComentar(pedido)}
+              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors"
+            >
+              <MessageSquare className="h-3 w-3" /> Comentários
+            </button>
+            <button
+              type="button"
+              onClick={() => onDuplicar(pedido)}
+              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors"
+            >
+              <Copy className="h-3 w-3" /> Duplicar
+            </button>
+          </div>
 
           {/* ── Ações Admin (confirmar / cancelar) ── */}
           {pedido.status === "pendente" && isAdmin && (
@@ -1455,6 +1560,113 @@ function HistoricoClienteModal({ clienteId, clientes, onClose }: {
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Comentários internos do pedido ──────────────────────────────────────────
+
+interface Comentario {
+  id: string;
+  user_name: string;
+  texto: string;
+  created_at: string;
+}
+
+function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | null; onClose: () => void }) {
+  const { user } = useAuth();
+  const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [texto, setTexto] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pedidoId) return;
+    setLoading(true);
+    supabase
+      .from("pedido_comentarios")
+      .select("id, user_name, texto, created_at")
+      .eq("pedido_id", pedidoId)
+      .order("created_at", { ascending: true })
+      .then(({ data }) => {
+        setComentarios((data ?? []) as Comentario[]);
+        setLoading(false);
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      });
+  }, [pedidoId]);
+
+  if (!pedidoId) return null;
+
+  async function handleEnviar() {
+    if (!texto.trim() || saving) return;
+    setSaving(true);
+    const { data: profile } = await supabase
+      .from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
+    const userName = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Usuário";
+    const { data, error } = await supabase.from("pedido_comentarios").insert({
+      pedido_id: pedidoId,
+      user_id: user?.id,
+      user_name: userName,
+      texto: texto.trim().slice(0, 2000),
+    }).select("id, user_name, texto, created_at").single();
+    setSaving(false);
+    if (error) { toast.error("Erro ao enviar comentário."); return; }
+    setComentarios(prev => [...prev, data as Comentario]);
+    setTexto("");
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl flex flex-col max-h-[75vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-violet-500" />
+            <p className="text-sm font-semibold">Comentários internos</p>
+          </div>
+          <button type="button" onClick={onClose}
+            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          {loading && <div className="flex justify-center py-6"><div className="h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}
+          {!loading && comentarios.length === 0 && (
+            <p className="text-center text-sm text-muted-foreground py-8">Nenhum comentário ainda. Seja o primeiro.</p>
+          )}
+          {comentarios.map(cm => (
+            <div key={cm.id} className={cn(
+              "rounded-xl px-3 py-2 max-w-[88%] text-[12px]",
+              cm.user_name === user?.email
+                ? "ml-auto bg-violet-500/10 border border-violet-500/20 text-violet-700 dark:text-violet-300"
+                : "bg-muted/30 border border-border/20 text-foreground"
+            )}>
+              <p className="font-semibold text-[10px] text-muted-foreground mb-0.5">{cm.user_name}</p>
+              <p className="leading-relaxed whitespace-pre-wrap">{cm.texto}</p>
+              <p className="text-[9px] text-muted-foreground/60 mt-1 text-right">
+                {new Date(cm.created_at).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}
+              </p>
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+        <div className="flex gap-2 px-4 py-3 border-t border-border/20 shrink-0">
+          <input
+            type="text"
+            value={texto}
+            onChange={e => setTexto(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleEnviar(); } }}
+            placeholder="Escreva um comentário..."
+            maxLength={2000}
+            className="flex-1 h-9 rounded-xl border border-border/50 bg-background text-[12px] px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+          />
+          <button type="button" onClick={handleEnviar} disabled={!texto.trim() || saving}
+            className="h-9 w-9 flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-40">
+            {saving ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+          </button>
         </div>
       </div>
     </div>
@@ -2038,6 +2250,8 @@ export default function Comercial() {
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>([]);
   const [loadingPedidos, setLoadingPedidos] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "faturado" | "cancelado">("todos");
+  const [filtroDataInicio, setFiltroDataInicio] = useState("");
+  const [filtroDataFim, setFiltroDataFim] = useState("");
   const [novoPedidoOpen, setNovoPedidoOpen] = useState(false);
   const [faturarPedido, setFaturarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<PedidoCompleto | null>(null);
@@ -2057,6 +2271,14 @@ export default function Comercial() {
   const [deleteCliente, setDeleteCliente] = useState<Cliente | null>(null);
   const [deletingCliente, setDeletingCliente] = useState(false);
   const [historicoClienteId, setHistoricoClienteId] = useState<string | null>(null);
+  const [comentarioPedidoId, setComentarioPedidoId] = useState<string | null>(null);
+  const [duplicandoPedido, setDuplicandoPedido] = useState<PedidoCompleto | null>(null);
+
+  function handleDuplicar(pedido: PedidoCompleto) {
+    // Pré-carrega cliente e itens do pedido original no NovoPedidoModal
+    setDuplicandoPedido(pedido);
+    setNovoPedidoOpen(true);
+  }
 
   const loadPedidos = useCallback(async () => {
     // PERF-05: Cancel any in-flight request before starting a new one
@@ -2095,7 +2317,7 @@ export default function Comercial() {
 
       setPedidos(pedidosData.map((p: Record<string, unknown>) => {
         const c = p.clientes as Record<string, unknown> | null;
-        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
+        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
     } catch (_e) {
       toast.error("Erro ao carregar pedidos.", {
@@ -2164,7 +2386,12 @@ export default function Comercial() {
     loadClientes();
   }
 
-  const pedidosFiltrados = pedidos.filter(p => filtroStatus === "todos" || p.status === filtroStatus);
+  const pedidosFiltrados = pedidos.filter(p => {
+    if (filtroStatus !== "todos" && p.status !== filtroStatus) return false;
+    if (filtroDataInicio && p.created_at < filtroDataInicio) return false;
+    if (filtroDataFim && p.created_at > filtroDataFim + "T23:59:59") return false;
+    return true;
+  });
   const pedidosPendentes = pedidos.filter(p => p.status === "pendente").length;
   const clientesFiltrados = clientes.filter(c =>
     c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
@@ -2272,10 +2499,38 @@ export default function Comercial() {
             {/* ── Aba Pedidos ── */}
             {subTab === "pedidos" && (
               <div className="space-y-3">
-                <div className="flex items-center justify-end gap-2">
-                  <Button size="sm" className="h-8 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setPedidoComCliente(null); setNovoPedidoOpen(true); }}>
-                    <Plus className="h-3.5 w-3.5" /> Novo Pedido
-                  </Button>
+                {/* ── Filtros + Novo Pedido ── */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Status chips */}
+                  {(["todos","pendente","faturado","cancelado"] as const).map(s => (
+                    <button key={s} type="button"
+                      onClick={() => setFiltroStatus(s)}
+                      className={cn(
+                        "h-7 px-3 rounded-full text-[11px] font-semibold border transition-colors",
+                        filtroStatus === s
+                          ? "bg-violet-600 text-white border-violet-600"
+                          : "bg-background text-muted-foreground border-border/50 hover:border-violet-400"
+                      )}>
+                      {s === "todos" ? "Todos" : s.charAt(0).toUpperCase() + s.slice(1)}
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    {/* Date range */}
+                    <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}
+                      className="h-7 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+                    <span className="text-[10px] text-muted-foreground">até</span>
+                    <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}
+                      className="h-7 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+                    {(filtroDataInicio || filtroDataFim) && (
+                      <button type="button" onClick={() => { setFiltroDataInicio(""); setFiltroDataFim(""); }}
+                        className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50 text-muted-foreground transition-colors">
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                    <Button size="sm" className="h-7 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setPedidoComCliente(null); setNovoPedidoOpen(true); }}>
+                      <Plus className="h-3.5 w-3.5" /> Novo
+                    </Button>
+                  </div>
                 </div>
 
                 {loadingPedidos ? (
@@ -2291,7 +2546,7 @@ export default function Comercial() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {pedidosFiltrados.map(p => (
-                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} />
+                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)} />
                     ))}
                   </div>
                 )}
@@ -2363,9 +2618,10 @@ export default function Comercial() {
       {/* ── Modais ── */}
       <NovoPedidoModal
         open={novoPedidoOpen}
-        onClose={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); }}
-        onSuccess={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); loadPedidos(); refetchStock(); }}
+        onClose={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); setDuplicandoPedido(null); }}
+        onSuccess={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); setDuplicandoPedido(null); loadPedidos(); refetchStock(); }}
         clienteFixo={pedidoComCliente}
+        duplicarDe={duplicandoPedido}
         expedicaoItems={expedicaoItems}
       />
 
@@ -2441,6 +2697,10 @@ export default function Comercial() {
         clienteId={historicoClienteId}
         clientes={clientes}
         onClose={() => setHistoricoClienteId(null)}
+      />
+      <ComentariosModal
+        pedidoId={comentarioPedidoId}
+        onClose={() => setComentarioPedidoId(null)}
       />
     </div>
   );

@@ -25,6 +25,7 @@ export interface CriarPedidoParams {
   vendedoraNome: string;
   observacoes?: string | null;
   descontoPct?: number;
+  prazoEntrega?: string | null;
 }
 
 export interface CriarPedidoResult {
@@ -51,6 +52,7 @@ export async function criarPedidoComReserva(
       vendedora_nome: vendedoraNome,
       observacoes: observacoes ?? null,
       desconto_pct: descontoPct ?? 0,
+      prazo_entrega: prazoEntrega ?? null,
     })
     .select()
     .single();

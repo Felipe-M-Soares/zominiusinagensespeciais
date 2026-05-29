@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowDownCircle, ArrowUpCircle, History, User, RefreshCw, Tag, Truck, Package, Wrench } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, History, User, RefreshCw, Tag, Truck, Package, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement, StockFase } from "@/hooks/useStock";
@@ -27,6 +27,9 @@ const FASE_LABELS: Record<StockFase, { label: string; Icon: React.ElementType }>
 export function AllMovementsModal({ open, onClose, fase }: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filtroInicio, setFiltroInicio] = useState("");
+  const [filtroFim, setFiltroFim] = useState("");
 
   // Exclui movimentos originados pelo Financeiro ou pelo Comercial (pedidos)
   const filterStockOnly = useCallback((data: AllMovement[]) => {
@@ -61,6 +64,18 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
     return () => { cancelled = true; };
   }, [open, fase, filterStockOnly]);
 
+  const movimentosFiltrados = movements.filter(m => {
+    if (search && !(
+      (m.device_model ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (m.lote ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (m.user_display_name ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (m.reason ?? "").toLowerCase().includes(search.toLowerCase())
+    )) return false;
+    if (filtroInicio && m.created_at < filtroInicio) return false;
+    if (filtroFim && m.created_at > filtroFim + "T23:59:59") return false;
+    return true;
+  });
+
   function fmtDate(iso: string) {
     const d = new Date(iso);
     return {
@@ -84,7 +99,7 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
                 </DialogTitle>
               </DialogHeader>
               <p className="text-[12px] text-muted-foreground mt-0.5">
-                Últimas {movements.length} movimentações do estoque
+                {movimentosFiltrados.length} movimentações
               </p>
             </div>
             <Button
@@ -100,6 +115,28 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
           </div>
         </div>
 
+        {/* Filtros */}
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-3 border-b border-border/20">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar peça, lote, usuário..."
+            className="flex-1 min-w-[140px] h-8 rounded-lg border border-border/50 bg-background text-[11px] px-3 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+          />
+          <input type="date" value={filtroInicio} onChange={e => setFiltroInicio(e.target.value)}
+            className="h-8 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
+          <span className="text-[10px] text-muted-foreground">–</span>
+          <input type="date" value={filtroFim} onChange={e => setFiltroFim(e.target.value)}
+            className="h-8 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
+          {(search || filtroInicio || filtroFim) && (
+            <button type="button" onClick={() => { setSearch(""); setFiltroInicio(""); setFiltroFim(""); }}
+              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/50 text-muted-foreground transition-colors">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
         <div className="px-3 pb-4 max-h-[500px] overflow-y-auto space-y-1">
           {loading && (
             <div className="flex items-center justify-center py-10">
@@ -107,13 +144,13 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
             </div>
           )}
 
-          {!loading && movements.length === 0 && (
+          {!loading && movimentosFiltrados.length === 0 && (
             <div className="text-center py-12 text-sm text-muted-foreground">
               Nenhuma movimentação registrada
             </div>
           )}
 
-          {!loading && movements.map((mv) => {
+          {!loading && movimentosFiltrados.map((mv) => {
             const { date, time } = fmtDate(mv.created_at);
             return (
               <div
