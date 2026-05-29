@@ -157,6 +157,9 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   const [sel, setSel] = useState<LoteSelecao>({});
   const [loadingLotes, setLoadingLotes] = useState(false);
   const loadedRef = useRef(false);
+  // Per-item confirmation (only relevant during "separando")
+  const [confirmedItems, setConfirmedItems] = useState<Set<string>>(new Set());
+  const [savingItem, setSavingItem] = useState<string | null>(null);
 
   const isSeparando = pedido.status === "separando";
   const isPendente  = pedido.status === "pendente";
@@ -326,6 +329,53 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     if (lotes.length === 0) return true;
     return totalSel(item.id) === item.quantidade;
   });
+
+  // All items confirmed (used to enable "Marcar como Pronto" in separando mode with multiple items)
+  const allItemsConfirmed = isSeparando && pedido.itens.length > 1
+    ? pedido.itens.every(item => confirmedItems.has(item.id))
+    : true;
+
+  // Confirm a single item during separation: save snapshot and mark locally
+  async function handleConfirmarItem(item: PedidoItem) {
+    if (savingItem) return;
+    setSavingItem(item.id);
+    try {
+      // Build a merged snapshot including this item's selection
+      const snapshotMap = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
+      // Start from existing lotes_separados for OTHER items
+      for (const ls of pedido.lotes_separados ?? []) {
+        const ownerItem = pedido.itens.find(
+          i => (expIdByItem[i.id] ?? i.stock_item_id) === ls.stock_item_id && i.id !== item.id
+        );
+        if (!ownerItem) continue; // skip entries belonging to this item (will be replaced)
+        const key = `${ls.stock_item_id}||${ls.lote}`;
+        const ex = snapshotMap.get(key);
+        if (ex) ex.quantidade += ls.quantidade;
+        else snapshotMap.set(key, { pedido_item_id: ownerItem.ids[0], stock_item_id: ls.stock_item_id, lote: ls.lote, quantidade: ls.quantidade, device_model: ls.device_model });
+      }
+      // Add this item's current selection
+      const expId = expIdByItem[item.id] ?? item.stock_item_id;
+      for (const [lote, qty] of Object.entries(sel[item.id] ?? {})) {
+        if (qty <= 0) continue;
+        const key = `${expId}||${lote}`;
+        const ex = snapshotMap.get(key);
+        if (ex) ex.quantidade += qty;
+        else snapshotMap.set(key, { pedido_item_id: item.ids[0], stock_item_id: expId, lote, quantidade: qty, device_model: item.device_model });
+      }
+      const snapshot = [...snapshotMap.values()];
+      const { error } = await supabase
+        .from("pedidos_comerciais")
+        .update({ lotes_separados: snapshot })
+        .eq("id", pedido.id);
+      if (error) { toast.error("Erro ao confirmar peça."); return; }
+      setConfirmedItems(prev => new Set([...prev, item.id]));
+      toast.success(`${item.device_model} confirmada!`);
+    } catch (_e) {
+      toast.error("Erro ao confirmar peça.");
+    } finally {
+      setSavingItem(null);
+    }
+  }
 
   // ── Print ──────────────────────────────────────────────────────────────────
   async function handleImprimir() {
@@ -710,6 +760,50 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                               )
                             )}
 
+                            {/* Separando: indicador de status da peça + botão confirmar */}
+                            {isSeparando && pedido.itens.length > 1 && (() => {
+                              const isItemOk = totalSel(item.id) === item.quantidade;
+                              const isConfirmed = confirmedItems.has(item.id);
+                              const isSaving = savingItem === item.id;
+                              if (isConfirmed) {
+                                return (
+                                  <div className="flex items-center gap-2 mt-1 px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                    <span className="text-[11px] font-semibold text-emerald-600">Peça confirmada na separação</span>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className={cn(
+                                    "flex-1 flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[11px] font-medium",
+                                    isItemOk
+                                      ? "bg-amber-500/8 border-amber-500/25 text-amber-600"
+                                      : "bg-destructive/8 border-destructive/25 text-destructive"
+                                  )}>
+                                    {isItemOk
+                                      ? <><Package className="h-3 w-3 shrink-0" /> Lotes escolhidos — confirme abaixo</>
+                                      : <><AlertTriangle className="h-3 w-3 shrink-0" /> Lotes não separados ainda</>
+                                    }
+                                  </div>
+                                  {isItemOk && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleConfirmarItem(item)}
+                                      disabled={!!savingItem}
+                                      className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-[11px] font-bold transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                                    >
+                                      {isSaving
+                                        ? <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        : <CheckCircle2 className="h-3 w-3" />
+                                      }
+                                      Confirmar
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
                             {/* Pronto: exibe lotes escolhidos */}
                             {pedido.status === "pronto" && (() => {
                               const entries = (pedido.lotes_separados ?? [])
@@ -764,13 +858,45 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
               </button>
             )}
 
-            {isSeparando && (
-              <button type="button" onClick={() => onMarcarPronto(pedido, sel, expIdByItem)}
-                className="flex-1 h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Marcar como Pronto
-              </button>
-            )}
+            {isSeparando && (() => {
+              const multiPecas = pedido.itens.length > 1;
+              const totalConfirmed = confirmedItems.size;
+              const totalPecasTipos = pedido.itens.length;
+              return (
+                <div className="flex-1 flex flex-col gap-1.5">
+                  {multiPecas && (
+                    <div className="flex items-center justify-between px-2">
+                      <span className="text-[10px] text-muted-foreground">
+                        {totalConfirmed}/{totalPecasTipos} peças confirmadas
+                      </span>
+                      <div className="flex gap-1">
+                        {pedido.itens.map(it => (
+                          <div
+                            key={it.id}
+                            className={cn(
+                              "h-1.5 w-4 rounded-full transition-colors",
+                              confirmedItems.has(it.id) ? "bg-emerald-500" : "bg-destructive/40"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onMarcarPronto(pedido, sel, expIdByItem)}
+                    disabled={multiPecas && !allItemsConfirmed}
+                    className="w-full h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {multiPecas && !allItemsConfirmed
+                      ? `Confirme todas as peças (${totalConfirmed}/${totalPecasTipos})`
+                      : "Marcar como Pronto"
+                    }
+                  </button>
+                </div>
+              );
+            })()}
 
             {pedido.status === "pronto" && (
               <div className="flex-1 h-9 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-emerald-600 text-[12px] font-medium flex items-center justify-center gap-1.5">

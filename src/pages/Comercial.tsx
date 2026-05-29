@@ -71,6 +71,30 @@ import { Logo } from "@/components/Logo";
 import { formatLote, loteValido, displayLote } from "@/lib/lote";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
 
+
+// ─── Audit log helper ─────────────────────────────────────────────────────────
+async function logAudit(
+  userId: string | undefined,
+  userName: string | null | undefined,
+  action: string,
+  entityType: string,
+  entityId: string,
+  details?: Record<string, unknown>
+) {
+  try {
+    await supabase.from("audit_log").insert({
+      user_id: userId ?? null,
+      user_name: userName ?? null,
+      action,
+      entity_type: entityType,
+      entity_id: entityId,
+      details: details ?? null,
+    });
+  } catch (_e) {
+    // Falha silenciosa — não bloqueia ações críticas
+  }
+}
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Cliente {
@@ -298,15 +322,19 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const debouncedPecaSearch = useDebounce((v: string) => {
     const q = v.trim().toLowerCase();
     const sugestoes = expedicaoItems.filter(i =>
-      !q || i.device?.model?.toLowerCase().includes(q)
+      !q ||
+      i.device?.model?.toLowerCase().includes(q) ||
+      i.device?.reference?.toLowerCase().includes(q) ||
+      i.device?.internal_code?.toLowerCase().includes(q)
     );
     const vistos = new Set<string>();
     const deduped = sugestoes.filter(i => {
       if (vistos.has(i.device_id)) return false;
       vistos.add(i.device_id); return true;
-    }).slice(0, 15);
+    }).slice(0, 20);
     setAutocomplete(deduped);
-    setShowAutocomp(deduped.length > 0);
+    // Mantém o dropdown aberto mesmo sem resultados para mostrar "Nenhuma peça encontrada"
+    if (showAutocomp || q) setShowAutocomp(true);
   }, 80);
 
   // Autocomplete de peça — filtra apenas por NOME (device.model), não mostra lotes
@@ -316,14 +344,27 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     debouncedPecaSearch(v);
   }
 
-  function handlePecaFocus() {
+  function buildSugestoes(q: string, items: typeof expedicaoItems) {
+    const lista = q
+      ? items.filter(i =>
+          i.device?.model?.toLowerCase().includes(q) ||
+          i.device?.reference?.toLowerCase().includes(q) ||
+          i.device?.internal_code?.toLowerCase().includes(q)
+        )
+      : items;
     const vistos = new Set<string>();
-    const deduped = expedicaoItems.filter(i => {
+    return lista.filter(i => {
       if (vistos.has(i.device_id)) return false;
       vistos.add(i.device_id); return true;
-    }).slice(0, 15);
+    }).slice(0, 20);
+  }
+
+  function handlePecaFocus() {
+    const q = pecaSearch.trim().toLowerCase();
+    const deduped = buildSugestoes(q, expedicaoItems);
     setAutocomplete(deduped);
-    setShowAutocomp(deduped.length > 0);
+    // Mostra o dropdown mesmo vazio — o JSX exibe "Nenhuma peça" se lista vazia
+    setShowAutocomp(true);
   }
 
   function handleSelectPeca(item: ReturnType<typeof useStock>["items"][0]) {
@@ -412,9 +453,10 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     }
   }
 
-  const clientesFiltrados = clientes.filter(c =>
-    c.nome.toLowerCase().includes(clienteSearch.toLowerCase()) || (c.documento ?? "").includes(clienteSearch)
-  );
+  const clientesFiltrados = clientes.filter(c => {
+    const q = clienteSearch.trim().toLowerCase();
+    return !q || c.nome.toLowerCase().includes(q) || (c.documento ?? "").toLowerCase().includes(q);
+  });
 
   if (!open) return null;
 
@@ -442,16 +484,18 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Cliente *</label>
             <div className="relative" ref={clienteDropRef}>
-              <SearchInputWithBarcode
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
                 value={clienteSearch}
-                onChange={v => { setClienteSearch(v); setClienteId(""); setShowClienteDrop(true); }}
-                onSearch={v => { setClienteSearch(v); setClienteId(""); setShowClienteDrop(true); }}
+                onChange={e => { setClienteSearch(e.target.value); setClienteId(""); setShowClienteDrop(true); }}
+                onFocus={() => setShowClienteDrop(true)}
                 placeholder="Buscar cliente..."
-                height="h-10"
+                className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
               />
-              {showClienteDrop && clientesFiltrados.length > 0 && (
+              {showClienteDrop && (clientesFiltrados.length > 0 || clientes.length > 0) && (
                 <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-40 overflow-y-auto">
-                  {clientesFiltrados.slice(0, 8).map(c => (
+                  {(clienteSearch.trim() ? clientesFiltrados : clientes).slice(0, 10).map(c => (
                     <button key={c.id} type="button" onClick={() => { setClienteId(c.id); setClienteSearch(c.nome); setShowClienteDrop(false); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0">
                       <p className="font-medium text-[13px]">{c.nome}</p>
                       {c.documento && <p className="text-[11px] text-muted-foreground">{c.documento}</p>}
@@ -470,19 +514,43 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Adicionar Peça</label>
             <div className="flex gap-2">
               <div className="relative flex-1" ref={pecaDropRef}>
-                <SearchInputWithBarcode
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  ref={pecaInputRef}
+                  type="text"
                   value={pecaSearch}
-                  onChange={v => handlePecaInput(v)}
-                  onSearch={v => handlePecaInput(v)}
-                  placeholder="Bipe o código ou busque a peça..."
-                  height="h-10"
+                  onChange={e => handlePecaInput(e.target.value)}
+                  onFocus={handlePecaFocus}
+                  placeholder="Buscar por nome da peça..."
+                  className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
                 />
-                {showAutocomp && autocomplete.length > 0 && (
-                  <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-48 overflow-y-auto">
-                    {autocomplete.map(i => (
-                      <button key={i.id} type="button" onClick={() => handleSelectPeca(i)} className="w-full text-left px-4 py-2.5 hover:bg-muted/40 transition-colors border-b border-border/20 last:border-0">
-                        <p className="text-[13px] font-medium">{i.device?.model}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{i.device?.reference}</p>
+                {showAutocomp && (
+                  <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                    {autocomplete.length === 0 ? (
+                      <div className="px-4 py-3 text-center">
+                        <p className="text-[12px] font-semibold text-muted-foreground">Nenhuma peça encontrada</p>
+                        <p className="text-[10px] text-muted-foreground/60 mt-0.5">Verifique o nome ou o estoque disponível</p>
+                      </div>
+                    ) : autocomplete.map(i => (
+                      <button key={i.id} type="button" onClick={() => handleSelectPeca(i)}
+                        className="w-full text-left px-3 py-2 hover:bg-muted/40 transition-colors border-b border-border/10 last:border-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[12px] font-semibold text-foreground truncate">{i.device?.model}</p>
+                            <p className="text-[10px] text-muted-foreground/70 font-mono">{i.device?.reference}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className={cn(
+                              "text-[11px] font-bold px-1.5 py-0.5 rounded-lg",
+                              i.quantity_available > 0
+                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
+                                : "bg-red-50 dark:bg-red-950/40 text-red-600"
+                            )}>
+                              {i.quantity_available} un.
+                            </span>
+                            <p className="text-[9px] text-muted-foreground/50 capitalize mt-0.5">{i.fase}</p>
+                          </div>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -545,40 +613,67 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
           {/* ── Desconto do Pedido ── */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto no Pedido</label>
-              <span className={cn(
-                "text-[13px] font-black tabular-nums px-2 py-0.5 rounded-lg",
-                desconto > 0 ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted/30 text-muted-foreground"
-              )}>
-                {desconto === 0 ? "Sem desconto" : `${desconto}%`}
-              </span>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto por Peça</label>
+            <div className="grid grid-cols-5 gap-1.5">
+              {[0, 5, 10, 15, 20].map(pct => (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => setDesconto(pct)}
+                  className={cn(
+                    "h-10 rounded-xl text-[13px] font-bold border transition-all active:scale-95",
+                    desconto === pct
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
+                      : "bg-muted/30 text-muted-foreground border-border hover:border-emerald-400 hover:text-emerald-700"
+                  )}
+                >
+                  {pct === 0 ? "—" : `${pct}%`}
+                </button>
+              ))}
             </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={desconto}
-              onChange={e => setDesconto(Number(e.target.value))}
-              className="w-full h-2 rounded-full appearance-none cursor-pointer"
-              style={{
-                background: desconto === 0
-                  ? "hsl(var(--border))"
-                  : `linear-gradient(to right, #059669 ${desconto}%, hsl(var(--border)) ${desconto}%)`,
-                accentColor: "#059669",
-              }}
-            />
-            <div className="flex justify-between text-[9px] text-muted-foreground/60 font-mono px-0.5">
-              <span>0%</span>
-              <span>25%</span>
-              <span>50%</span>
-              <span>75%</span>
-              <span>100%</span>
+            <div className="grid grid-cols-5 gap-1.5">
+              {[25, 30, 40, 50, "outro"].map(pct => (
+                pct === "outro" ? (
+                  <div key="outro" className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      placeholder="Outro"
+                      value={![0,5,10,15,20,25,30,40,50].includes(desconto) && desconto > 0 ? desconto : ""}
+                      onChange={e => {
+                        const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                        setDesconto(v);
+                      }}
+                      className={cn(
+                        "w-full h-10 rounded-xl text-[12px] font-bold border text-center focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all",
+                        ![0,5,10,15,20,25,30,40,50].includes(desconto) && desconto > 0
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-muted/30 text-muted-foreground border-border"
+                      )}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setDesconto(pct as number)}
+                    className={cn(
+                      "h-10 rounded-xl text-[13px] font-bold border transition-all active:scale-95",
+                      desconto === pct
+                        ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
+                        : "bg-muted/30 text-muted-foreground border-border hover:border-emerald-400 hover:text-emerald-700"
+                    )}
+                  >
+                    {`${pct}%`}
+                  </button>
+                )
+              ))}
             </div>
             {desconto > 0 && (
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <span className="font-bold">✓</span> Desconto de {desconto}% aplicado a todas as peças deste pedido
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 px-1">
+                <span className="h-4 w-4 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[9px] font-black shrink-0">✓</span>
+                {desconto}% aplicado individualmente em cada peça
               </p>
             )}
           </div>
@@ -626,141 +721,277 @@ interface PedidoCardProps {
 function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
-  const data = new Date(pedido.created_at).toLocaleDateString("pt-BR");
-  const hora = new Date(pedido.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const temDesconto = pedido.desconto_pct > 0;
 
-  // Cores sólidas por status — sem opacidade para garantir visibilidade no tema claro
-  const statusMeta: Record<string, { bar: string; badge: string; label: string; icon: React.ReactNode }> = {
-    pendente:  { bar: "bg-amber-400",          badge: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700",          label: "Pendente",  icon: <Clock className="h-3 w-3" /> },
-    separando: { bar: "bg-blue-400",            badge: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700",            label: "Separando", icon: <PackageCheck className="h-3 w-3" /> },
-    pronto:    { bar: "bg-emerald-500",         badge: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700",   label: "Pronto",    icon: <CheckCircle2 className="h-3 w-3" /> },
-    faturado:  { bar: "bg-green-500",           badge: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700",         label: "Faturado",  icon: <CheckCircle2 className="h-3 w-3" /> },
-    enviado:   { bar: "bg-teal-500",            badge: "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-700",            label: "Enviado",   icon: <Truck className="h-3 w-3" /> },
-    cancelado: { bar: "bg-muted/30",            badge: "bg-muted/30 text-muted-foreground border-border",           label: "Cancelado", icon: <Ban className="h-3 w-3" /> },
+  const dtCriacao = new Date(pedido.created_at).toLocaleDateString("pt-BR", {
+    day: "2-digit", month: "2-digit", year: "2-digit",
+  });
+  const hrCriacao = new Date(pedido.created_at).toLocaleTimeString("pt-BR", {
+    hour: "2-digit", minute: "2-digit",
+  });
+
+  // ── Paleta de status ──────────────────────────────────────────────────────
+  const STATUS: Record<string, {
+    accent: string;        // cor da barra lateral e badge
+    badgeBg: string;       // fundo do badge
+    badgeText: string;     // texto do badge
+    badgeBorder: string;   // borda do badge
+    label: string;
+    icon: React.ReactNode;
+    statusBtnBg: string;   // fundo do botão de estado
+    statusBtnText: string;
+    statusBtnBorder: string;
+  }> = {
+    pendente:  {
+      accent: "#f59e0b",
+      badgeBg: "bg-amber-50 dark:bg-amber-950/50",
+      badgeText: "text-amber-700 dark:text-amber-300",
+      badgeBorder: "border-amber-300 dark:border-amber-700",
+      label: "Pendente",
+      icon: <Clock className="h-3 w-3" />,
+      statusBtnBg: "bg-amber-50 dark:bg-amber-950/30",
+      statusBtnText: "text-amber-700 dark:text-amber-300",
+      statusBtnBorder: "border-amber-200 dark:border-amber-800",
+    },
+    separando: {
+      accent: "#3b82f6",
+      badgeBg: "bg-blue-50 dark:bg-blue-950/50",
+      badgeText: "text-blue-700 dark:text-blue-300",
+      badgeBorder: "border-blue-300 dark:border-blue-700",
+      label: "Separando",
+      icon: <PackageCheck className="h-3 w-3" />,
+      statusBtnBg: "bg-blue-50 dark:bg-blue-950/30",
+      statusBtnText: "text-blue-700 dark:text-blue-300",
+      statusBtnBorder: "border-blue-200 dark:border-blue-800",
+    },
+    pronto: {
+      accent: "#10b981",
+      badgeBg: "bg-emerald-50 dark:bg-emerald-950/50",
+      badgeText: "text-emerald-700 dark:text-emerald-300",
+      badgeBorder: "border-emerald-300 dark:border-emerald-700",
+      label: "Pronto",
+      icon: <CheckCircle2 className="h-3 w-3" />,
+      statusBtnBg: "bg-emerald-50 dark:bg-emerald-950/30",
+      statusBtnText: "text-emerald-700 dark:text-emerald-300",
+      statusBtnBorder: "border-emerald-200 dark:border-emerald-800",
+    },
+    faturado: {
+      accent: "#7c3aed",
+      badgeBg: "bg-violet-50 dark:bg-violet-950/50",
+      badgeText: "text-violet-700 dark:text-violet-300",
+      badgeBorder: "border-violet-300 dark:border-violet-700",
+      label: "Faturado",
+      icon: <CheckCircle2 className="h-3 w-3" />,
+      statusBtnBg: "bg-violet-50 dark:bg-violet-950/30",
+      statusBtnText: "text-violet-700 dark:text-violet-300",
+      statusBtnBorder: "border-violet-200 dark:border-violet-800",
+    },
+    enviado: {
+      accent: "#14b8a6",
+      badgeBg: "bg-teal-50 dark:bg-teal-950/50",
+      badgeText: "text-teal-700 dark:text-teal-300",
+      badgeBorder: "border-teal-300 dark:border-teal-700",
+      label: "Enviado",
+      icon: <Truck className="h-3 w-3" />,
+      statusBtnBg: "bg-teal-50 dark:bg-teal-950/30",
+      statusBtnText: "text-teal-700 dark:text-teal-300",
+      statusBtnBorder: "border-teal-200 dark:border-teal-800",
+    },
+    cancelado: {
+      accent: "#94a3b8",
+      badgeBg: "bg-muted/40",
+      badgeText: "text-muted-foreground",
+      badgeBorder: "border-border",
+      label: "Cancelado",
+      icon: <Ban className="h-3 w-3" />,
+      statusBtnBg: "bg-muted/30",
+      statusBtnText: "text-muted-foreground",
+      statusBtnBorder: "border-border",
+    },
   };
-  const meta = statusMeta[pedido.status] ?? statusMeta["cancelado"];
+
+  const s = STATUS[pedido.status] ?? STATUS["cancelado"];
 
   return (
-    <div className="rounded-2xl bg-card border border-border/40 overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
-      style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
+    <div
+      className="rounded-2xl bg-card overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
+      style={{
+        border: "1px solid hsl(var(--border) / 0.5)",
+        boxShadow: "0 1px 3px hsl(var(--border) / 0.2), 0 6px 16px -4px hsl(var(--border) / 0.12)",
+      }}
+    >
+      {/* Barra lateral colorida por status */}
+      <div className="flex">
+        <div className="w-1 shrink-0 rounded-l-2xl" style={{ background: s.accent }} />
 
-      {/* Barra de status — sólida, visível */}
-      <div className={cn("h-1 w-full", meta.bar)} />
+        <div className="flex-1 min-w-0 p-4 space-y-3">
 
-      <div className="p-4 space-y-3">
-
-        {/* ── Cabeçalho: cliente + status ── */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-violet-100 dark:bg-violet-500/20 flex items-center justify-center shrink-0">
-                <User className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+          {/* ── Linha 1: Avatar cliente + nome + badge status ── */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {/* Avatar com inicial */}
+              <div
+                className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 text-white text-[13px] font-black"
+                style={{ background: `linear-gradient(135deg, ${s.accent}cc, ${s.accent})` }}
+              >
+                {pedido.cliente_nome.charAt(0).toUpperCase()}
               </div>
-              <h3 className="text-[14px] font-bold text-foreground truncate">{pedido.cliente_nome}</h3>
+              <div className="min-w-0">
+                <h3 className="text-[14px] font-bold text-foreground leading-tight truncate">
+                  {pedido.cliente_nome}
+                </h3>
+                {pedido.vendedora_nome && (
+                  <p className="text-[10px] text-muted-foreground/70 leading-tight truncate">
+                    por {pedido.vendedora_nome}
+                  </p>
+                )}
+              </div>
             </div>
-            {pedido.vendedora_nome && (
-              <p className="text-[11px] text-muted-foreground mt-1 ml-9">{pedido.vendedora_nome}</p>
+
+            {/* Badge status */}
+            <span className={cn(
+              "shrink-0 flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border",
+              s.badgeBg, s.badgeText, s.badgeBorder
+            )}>
+              {s.icon}
+              {s.label}
+            </span>
+          </div>
+
+          {/* ── Linha 2: Métricas (peças + desconto + data) ── */}
+          <div className="flex items-center gap-2">
+            {/* Qtd de peças */}
+            <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2 bg-muted/25 border border-border/50">
+              <ShoppingBag className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-muted-foreground leading-none mb-0.5">
+                  {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}
+                </p>
+                <p className="text-[16px] font-black text-foreground leading-none tabular-nums">
+                  {totalItens}
+                  <span className="text-[10px] font-semibold text-muted-foreground ml-1">un.</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Desconto — destaque se tiver */}
+            {temDesconto ? (
+              <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2 border min-w-[54px]"
+                style={{
+                  background: "linear-gradient(135deg, #d1fae5, #a7f3d0)",
+                  borderColor: "#6ee7b7",
+                }}>
+                <span className="text-[17px] font-black text-emerald-800 leading-none tabular-nums">
+                  {pedido.desconto_pct}%
+                </span>
+                <span className="text-[8px] font-bold text-emerald-700 uppercase tracking-widest leading-none mt-0.5">
+                  desc.
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center rounded-xl px-3 py-2 bg-muted/20 border border-border/40 min-w-[54px]">
+                <span className="text-[10px] font-medium text-muted-foreground/50">Sem desc.</span>
+              </div>
             )}
           </div>
-          <span className={cn("shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1.5 border", meta.badge)}>
-            {meta.icon} {meta.label}
-          </span>
-        </div>
 
-        {/* ── Resumo: qtd + desconto ── */}
-        <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5 rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
-            <div className="flex items-center gap-2">
-              <ShoppingBag className="h-3.5 w-3.5 text-violet-500" />
-              <span className="text-[12px] text-muted-foreground">
-                {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""} de peça
-              </span>
-            </div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-[18px] font-black text-foreground tabular-nums">{totalItens}</span>
-              <span className="text-[11px] text-muted-foreground">un.</span>
-            </div>
+          {/* ── Linha 3: Data/hora ── */}
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-2.5 w-2.5 text-muted-foreground/50 shrink-0" />
+            <span className="text-[10px] text-muted-foreground/60">
+              {dtCriacao} às {hrCriacao}
+            </span>
           </div>
-          {temDesconto && (
-            <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2 flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
-              <span className="text-[14px] font-black text-green-700">{pedido.desconto_pct}%</span>
-              <span className="text-[9px] font-semibold text-green-600 uppercase tracking-wide">desc.</span>
-            </div>
-          )}
-        </div>
 
-        {/* ── Data/hora ── */}
-        <div className="flex items-center gap-1.5">
-          <Clock className="h-3 w-3 text-muted-foreground/70" />
-          <span className="text-[11px] text-muted-foreground">{data} às {hora}</span>
-        </div>
-
-        {/* ── Itens expandidos ── */}
-        {expanded && (
-          <div className="space-y-1.5 pt-2" className="border-t border-border">
-            {pedido.itens.map(it => (
-              <div key={it.id} className="flex items-center gap-2 rounded-xl px-3 py-2 rounded-xl px-3 py-2.5 bg-muted/30 border border-border">
-                <Package className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-semibold text-foreground truncate">{it.device_model}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    {displayLote(it.lote) && (
-                      <>
-                        <Tag className="h-2.5 w-2.5 text-muted-foreground/70" />
-                        <span className="text-[10px] font-mono text-muted-foreground">{displayLote(it.lote)}</span>
-                        <span className="text-muted-foreground/40">·</span>
-                      </>
-                    )}
-                    <span className="text-[11px] text-muted-foreground">{it.quantidade} un.</span>
+          {/* ── Itens expandidos ── */}
+          {expanded && (
+            <div className="space-y-1.5 pt-1 border-t border-border/40">
+              {pedido.itens.map((it, idx) => (
+                <div key={it.id}
+                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-muted/20 border border-border/40 group"
+                >
+                  <div
+                    className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 text-[9px] font-black text-white"
+                    style={{ background: s.accent + "cc" }}
+                  >
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold text-foreground truncate leading-tight">
+                      {it.device_model}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {displayLote(it.lote) && (
+                        <span className="text-[9px] font-mono text-muted-foreground/60 bg-muted/40 rounded px-1">
+                          {displayLote(it.lote)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="text-[13px] font-black tabular-nums" style={{ color: s.accent }}>
+                      {it.quantidade}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground ml-0.5">un.</span>
                   </div>
                 </div>
-              </div>
-            ))}
-            {pedido.observacoes && (
-              <div className="flex items-start gap-1.5 px-1 pt-1">
-                <FileText className="h-3 w-3 mt-0.5 text-muted-foreground/70 shrink-0" />
-                <span className="text-[11px] text-muted-foreground italic">{pedido.observacoes}</span>
-              </div>
-            )}
-          </div>
-        )}
+              ))}
+              {pedido.observacoes && (
+                <div className="flex items-start gap-2 px-2 pt-1 pb-0.5">
+                  <FileText className="h-3 w-3 mt-0.5 text-muted-foreground/50 shrink-0" />
+                  <span className="text-[11px] text-muted-foreground/80 italic leading-relaxed">
+                    {pedido.observacoes}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
-        {/* ── Ações ── */}
-        <div className="space-y-2 pt-2" className="border-t border-border">
+          {/* ── Botão expandir ── */}
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted/50 transition-colors w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-muted-foreground bg-muted/30 border border-border"
+            className="w-full flex items-center justify-center gap-1.5 h-7 rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted/40 transition-colors border border-border/40"
           >
-            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            {expanded ? "Ocultar peças" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
+            {expanded
+              ? <><ChevronUp className="h-3 w-3" />Ocultar peças</>
+              : <><ChevronDown className="h-3 w-3" />Ver {pedido.itens.length} peça{pedido.itens.length !== 1 ? "s" : ""}</>}
           </button>
 
+          {/* ── Botão adicionar peça (só pendente) ── */}
           {pedido.status === "pendente" && (
             <button
               type="button"
               onClick={() => onAdicionarPeca(pedido)}
-              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold text-violet-700 dark:text-violet-300 transition-colors bg-violet-100 dark:bg-violet-900/30 border border-violet-300 dark:border-violet-700"
+              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold transition-colors"
+              style={{
+                background: "#ede9fe",
+                color: "#6d28d9",
+                border: "1px solid #c4b5fd",
+              }}
             >
               <Plus className="h-3.5 w-3.5" /> Adicionar peça
             </button>
           )}
 
+          {/* ── Ações Admin (confirmar / cancelar) ── */}
           {pedido.status === "pendente" && isAdmin && (
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => onFaturar(pedido)}
-                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-bold transition-colors flex items-center justify-center gap-1.5"
-                style={{ boxShadow: "0 2px 8px rgba(124,58,237,0.35)" }}
+                className="flex-1 h-9 rounded-xl text-white text-[12px] font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                style={{
+                  background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+                  boxShadow: "0 2px 8px rgba(124,58,237,0.35)",
+                }}
               >
                 <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar Pedido
               </button>
               <button
                 type="button"
                 onClick={() => onCancelar(pedido)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-red-500/10 dark:hover:bg-red-950 hover:text-red-500 transition-colors border border-border"
+                className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-500 transition-colors border border-border"
                 title="Cancelar pedido"
               >
                 <Ban className="h-3.5 w-3.5" />
@@ -768,21 +999,22 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca }:
             </div>
           )}
 
-          {pedido.status === "separando" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-blue-700 dark:text-blue-300 text-[11px] font-semibold bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700">
-              <PackageCheck className="h-3.5 w-3.5" /> Estoque separando...
+          {/* ── Indicadores de estado (sem ação) ── */}
+          {(["separando","pronto","faturado","enviado","cancelado"] as const).includes(
+            pedido.status as "separando"|"pronto"|"faturado"|"enviado"|"cancelado"
+          ) && (
+            <div className={cn(
+              "flex items-center justify-center gap-1.5 h-9 rounded-xl text-[11px] font-bold border",
+              s.statusBtnBg, s.statusBtnText, s.statusBtnBorder
+            )}>
+              {pedido.status === "separando" && <><PackageCheck className="h-3.5 w-3.5" />Estoque sendo separado...</>}
+              {pedido.status === "pronto"    && <><CheckCircle2 className="h-3.5 w-3.5" />Pronto — aguardando NF</>}
+              {pedido.status === "faturado"  && <><CheckCircle2 className="h-3.5 w-3.5" />Nota fiscal emitida</>}
+              {pedido.status === "enviado"   && <><Truck className="h-3.5 w-3.5" />Enviado ao cliente! 🎉</>}
+              {pedido.status === "cancelado" && <><Ban className="h-3.5 w-3.5" />Pedido cancelado</>}
             </div>
           )}
-          {pedido.status === "pronto" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Pronto — aguardando NF
-            </div>
-          )}
-          {pedido.status === "enviado" && (
-            <div className="flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 h-8 rounded-xl text-teal-700 dark:text-teal-300 text-[11px] font-semibold bg-teal-100 dark:bg-teal-900/30 border border-teal-300 dark:border-teal-700">
-              <Truck className="h-3.5 w-3.5" /> Enviado ao cliente! 🎉
-            </div>
-          )}
+
         </div>
       </div>
     </div>
@@ -1086,9 +1318,10 @@ interface ClienteCardProps {
   onPedido: (c: Cliente) => void;
   onEditar: (c: Cliente) => void;
   onExcluir: (c: Cliente) => void;
+  onHistorico?: (c: Cliente) => void;
 }
 
-function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir }: ClienteCardProps) {
+function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir, onHistorico }: ClienteCardProps) {
   return (
     <div className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5" style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
       <div className="h-0.5 bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
@@ -1111,7 +1344,10 @@ function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir }: Cli
           <button type="button" onClick={() => onPedido(c)} className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[10px] font-medium transition-colors">
             <ShoppingCart className="h-3 w-3" /> Pedido
           </button>
-          <button type="button" onClick={() => onEditar(c)} className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors">
+          <button type="button" onClick={() => onHistorico && onHistorico(c)} className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground transition-colors" title="Histórico de compras">
+            <History className="h-3 w-3" />
+          </button>
+          <button type="button" onClick={() => onEditar(c)} className="h-7 flex items-center justify-center px-2 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors">
             Editar
           </button>
           {isAdmin && (
@@ -1119,6 +1355,106 @@ function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir }: Cli
               <Trash2 className="h-3 w-3" />
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Histórico de compras do cliente ─────────────────────────────────────────
+
+function HistoricoClienteModal({ clienteId, clientes, onClose }: {
+  clienteId: string | null;
+  clientes: Cliente[];
+  onClose: () => void;
+}) {
+  const [pedidos, setPedidos] = useState<{ id: string; status: string; created_at: string; itens: { device_model?: string; quantidade: number }[] }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const cliente = clientes.find(c => c.id === clienteId);
+
+  useEffect(() => {
+    if (!clienteId) return;
+    setLoading(true);
+    supabase
+      .from("pedidos_comerciais")
+      .select("id, status, created_at, pedido_itens(quantidade, stock_items(devices(model)))")
+      .eq("cliente_id", clienteId)
+      .order("created_at", { ascending: false })
+      .limit(30)
+      .then(({ data }) => {
+        setPedidos((data ?? []).map((p: Record<string, unknown>) => ({
+          id: p.id as string,
+          status: p.status as string,
+          created_at: p.created_at as string,
+          itens: ((p.pedido_itens as Record<string,unknown>[]) ?? []).map((i: Record<string,unknown>) => ({
+            device_model: ((i.stock_items as { devices?: { model?: string } } | null)?.devices?.model),
+            quantidade: i.quantidade as number,
+          })),
+        })));
+        setLoading(false);
+      });
+  }, [clienteId]);
+
+  if (!clienteId) return null;
+
+  const statusColors: Record<string, string> = {
+    pendente: "bg-amber-500/10 text-amber-600",
+    separando: "bg-blue-500/10 text-blue-600",
+    pronto: "bg-emerald-500/10 text-emerald-600",
+    faturado: "bg-violet-500/10 text-violet-600",
+    enviado: "bg-green-500/10 text-green-600",
+    cancelado: "bg-muted/30 text-muted-foreground",
+  };
+  const statusLabels: Record<string, string> = {
+    pendente: "Pendente", separando: "Separando", pronto: "Pronto",
+    faturado: "Faturado", enviado: "Enviado", cancelado: "Cancelado",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-violet-500" />
+            <div>
+              <p className="text-sm font-semibold">Histórico de Compras</p>
+              <p className="text-[11px] text-muted-foreground">{cliente?.nome ?? "Cliente"}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose}
+            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {loading && <div className="flex items-center justify-center py-10"><div className="h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}
+          {!loading && pedidos.length === 0 && (
+            <div className="text-center py-10 text-sm text-muted-foreground">Nenhum pedido encontrado</div>
+          )}
+          {!loading && pedidos.map(p => {
+            const totalItens = p.itens.reduce((s, i) => s + i.quantidade, 0);
+            return (
+              <div key={p.id} className="rounded-xl border border-border/20 bg-background/50 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-muted-foreground/70">
+                    {new Date(p.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+                  </span>
+                  <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full", statusColors[p.status] ?? "bg-muted/20 text-muted-foreground")}>
+                    {statusLabels[p.status] ?? p.status}
+                  </span>
+                </div>
+                <div className="space-y-0.5">
+                  {p.itens.slice(0, 3).map((i, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-[11px]">
+                      <span className="text-muted-foreground truncate">{i.device_model ?? "—"}</span>
+                      <span className="font-semibold shrink-0 ml-2">{i.quantidade} un.</span>
+                    </div>
+                  ))}
+                  {p.itens.length > 3 && <p className="text-[10px] text-muted-foreground/50">+{p.itens.length - 3} itens · {totalItens} un. total</p>}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -1144,11 +1480,21 @@ function NotificacoesBell({ userId }: { userId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime subscription
+  // Realtime subscription — recebe notificação instantaneamente e mostra toast
   useEffect(() => {
     const channel = supabase
       .channel(`notif-${userId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notificacoes", filter: `user_id=eq.${userId}` }, () => load())
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "notificacoes",
+        filter: `user_id=eq.${userId}`
+      }, (payload) => {
+        const row = payload.new as { titulo?: string; mensagem?: string | null };
+        load();
+        toast(row.titulo ?? "Nova notificação", {
+          description: row.mensagem ?? undefined,
+          duration: 5000,
+        });
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [userId, load]);
@@ -1684,7 +2030,9 @@ export default function Comercial() {
 
   // Peças da expedição (para criar pedidos)
   const { items: allItems, loading: loadingStock, refetch: refetchStock } = useStock("");
-  const expedicaoItems = allItems.filter(i => i.fase === "expedicao" && i.quantity_available > 0);
+  const expedicaoItems = allItems.filter(i => i.fase === "expedicao");
+  // allStockItems: todas as peças com estoque disponível (qualquer fase) para busca no modal
+  const allStockItems = allItems.filter(i => i.quantity_available > 0);
 
   // Pedidos
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>([]);
@@ -1708,6 +2056,7 @@ export default function Comercial() {
   const [editCliente, setEditCliente] = useState<Cliente | null>(null);
   const [deleteCliente, setDeleteCliente] = useState<Cliente | null>(null);
   const [deletingCliente, setDeletingCliente] = useState(false);
+  const [historicoClienteId, setHistoricoClienteId] = useState<string | null>(null);
 
   const loadPedidos = useCallback(async () => {
     // PERF-05: Cancel any in-flight request before starting a new one
@@ -1784,6 +2133,7 @@ export default function Comercial() {
       // BUG-05: Use atomic RPC — cancels pedido + releases all reservations in one transaction
       const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
       if (error) { toast.error("Erro ao cancelar."); return; }
+      await logAudit(user?.id, currentUserName, "cancel_pedido", "pedido_comercial", cancelarPedido.id, { cliente: cancelarPedido.cliente_nome });
       toast.success("Pedido cancelado.");
       setCancelarPedido(null);
       loadPedidos();
@@ -1953,13 +2303,24 @@ export default function Comercial() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
-                    <SearchInputWithBarcode
-                      value={clienteSearchFilter}
-                      onChange={setClienteSearchFilter}
-                      onSearch={setClienteSearchFilter}
-                      placeholder="Bipe o código ou busque por cliente..."
-                      height="h-9"
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <input
+                      ref={clienteSearchRef}
+                      type="text"
+                      placeholder="Buscar cliente..."
+                      defaultValue=""
+                      onChange={e => {
+                        if (clienteSearchDebounce.current) clearTimeout(clienteSearchDebounce.current);
+                        const v = e.target.value;
+                        clienteSearchDebounce.current = setTimeout(() => setClienteSearchFilter(v), 300);
+                      }}
+                      className="pl-9 pr-8 h-9 w-full text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     />
+                    {clienteSearchFilter && (
+                      <button type="button" onClick={() => { if (clienteSearchRef.current) clienteSearchRef.current.value = ""; setClienteSearchFilter(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                   <Button size="sm" className="h-9 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setEditCliente(null); setClienteModal(true); }}>
                     <UserPlus className="h-3.5 w-3.5" /> Novo
@@ -1988,6 +2349,7 @@ export default function Comercial() {
                         onPedido={(cl) => { setPedidoComCliente(cl); setNovoPedidoOpen(true); setSubTab("pedidos"); }}
                         onEditar={(cl) => { setEditCliente(cl); setClienteModal(true); }}
                         onExcluir={setDeleteCliente}
+                        onHistorico={(cl) => setHistoricoClienteId(cl.id)}
                       />
                     ))}
                   </div>
@@ -2075,6 +2437,11 @@ export default function Comercial() {
 
       {/* Histórico Geral */}
       <HistoricoGeralModal open={historicoOpen} onClose={() => setHistoricoOpen(false)} />
+      <HistoricoClienteModal
+        clienteId={historicoClienteId}
+        clientes={clientes}
+        onClose={() => setHistoricoClienteId(null)}
+      />
     </div>
   );
 }

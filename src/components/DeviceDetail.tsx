@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Device } from "@/types/device";
+import { supabase } from "@/integrations/supabase/client";
 import {
 Dialog,
 DialogContent,
@@ -70,7 +71,21 @@ function CountryRow({ country }: { country: string }) {
 }
 
 export function DeviceDetail({ device, open, onClose }: Props) {
-if (!device) return null;
+  const [fullDevice, setFullDevice] = useState<Partial<Device>>({});
+
+  useEffect(() => {
+    if (!open || !device?.id) { setFullDevice({}); return; }
+    supabase
+      .from("devices")
+      .select("sterile, single_use, implantable, intended_use, body_region, primary_material, secondary_material, surface_treatment, exocad_compatibility, compatible_systems")
+      .eq("id", device.id)
+      .single()
+      .then(({ data }) => { if (data) setFullDevice(data as Partial<Device>); });
+  }, [open, device?.id]);
+
+  const d = { ...device, ...fullDevice };
+
+  if (!device) return null;
 
 return (
   <Dialog open={open} onOpenChange={onClose}>
@@ -90,19 +105,19 @@ return (
             <Badge variant="outline" className="border-primary/20 text-primary/80 font-mono text-[11px] rounded-lg">
               Classe {device.classification_code}
             </Badge>
-            {device.sterile ? (
+            {d.sterile ? (
               <Badge className="bg-success/10 text-success border-0 text-[11px] rounded-lg">
                 <Shield className="h-3 w-3 mr-1" /> Estéril
               </Badge>
             ) : (
               <Badge variant="outline" className="text-[11px] rounded-lg border-muted-foreground/30 text-muted-foreground bg-muted/20">Não Estéril</Badge>
             )}
-            {device.single_use && (
+            {d.single_use && (
               <Badge className="bg-orange-500/10 text-orange-500 border-0 text-[11px] rounded-lg">
                 <Package className="h-3 w-3 mr-1" /> Uso Único
               </Badge>
             )}
-            {device.implantable && (
+            {d.implantable && (
               <Badge className="bg-primary/10 text-primary border-0 text-[11px] rounded-lg">
                 <Activity className="h-3 w-3 mr-1" /> Implantável
               </Badge>
@@ -118,17 +133,17 @@ return (
         <InfoRow icon={Hash} label="Código Interno" value={device.internal_code} copyable />
         <InfoRow icon={FileText} label="Registro ANVISA" value={device.anvisa_registration} copyable />
         <CountryRow country={device.manufacturer_country} />
-        <InfoRow icon={FlaskConical} label="Material Principal" value={device.primary_material} />
-        <InfoRow icon={Layers} label="Material Secundário" value={device.secondary_material ?? ""} />
-        <InfoRow icon={Layers} label="Tratamento de Superfície" value={device.surface_treatment ?? ""} />
-        <InfoRow icon={Cpu} label="Compatibilidade Exocad" value={device.exocad_compatibility} />
+        <InfoRow icon={FlaskConical} label="Material Principal" value={d.primary_material} />
+        <InfoRow icon={Layers} label="Material Secundário" value={d.secondary_material ?? ""} />
+        <InfoRow icon={Layers} label="Tratamento de Superfície" value={d.surface_treatment ?? ""} />
+        <InfoRow icon={Cpu} label="Compatibilidade Exocad" value={d.exocad_compatibility} />
 
-        {device.intended_use && (
+        {d.intended_use && (
           <>
             <Separator className="my-3 opacity-20" />
             <div className="px-2">
               <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium mb-1">Uso Pretendido</p>
-              <p className="text-sm text-foreground leading-relaxed">{device.intended_use}</p>
+              <p className="text-sm text-foreground leading-relaxed">{d.intended_use}</p>
             </div>
           </>
         )}

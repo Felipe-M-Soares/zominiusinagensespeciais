@@ -671,8 +671,10 @@ export default function Estoque() {
   const [resetting, setResetting] = useState(false);
 
   // Paginação
-  const ITEMS_PER_PAGE = 60;
+  // PERF: 40 itens na primeira carga (menos DOM nodes) — scroll automático carrega mais
+  const ITEMS_PER_PAGE = 40;
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const inputRef = useRef<HTMLInputElement>(null);
@@ -718,7 +720,8 @@ export default function Estoque() {
       .channel("estoque-low-stock-watch")
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "stock_items" },
+        // PERF: filtro por fase=expedicao no server — reduz eventos desnecessários
+        { event: "UPDATE", schema: "public", table: "stock_items", filter: "fase=eq.expedicao" },
         (payload) => {
           const updated = payload.new as { quantity?: number; fase?: string; device_id?: string };
           if (
@@ -827,12 +830,10 @@ export default function Estoque() {
     [filteredItems, visibleCount]
   );
 
-  // IDs dos itens visíveis — string estabilizada para evitar re-render infinito
-  const pagedItemIds = useMemo(
-    () => pagedItems.map((i) => i.id),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pagedItems.map((i) => i.id).join(",")]
-  );
+  // IDs dos itens visíveis — chave estável para evitar re-render/re-fetch infinito.
+  // PERF: idsKey é calculado uma vez e só muda quando os IDs realmente mudam.
+  const idsKey = useMemo(() => pagedItems.map((i) => i.id).join(","), [pagedItems]);
+  const pagedItemIds = useMemo(() => pagedItems.map((i) => i.id), [idsKey]);
 
   // Busca contagem de lotes em UMA única query batch (evita N requests simultâneas).
   // PERF: só executa nas abas que mostram lotes (intermediaria/expedicao/retrabalho).
@@ -846,6 +847,22 @@ export default function Estoque() {
     });
     return () => { cancelled = true; };
   }, [pagedItemIds, viewHasLotes]);
+
+  // PERF: auto-load ao fazer scroll — elimina o clique manual em "Carregar mais"
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          setVisibleCount((c) => c + ITEMS_PER_PAGE);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMore]);
 
   async function handleDeleteAll() {
     setDeletingAll(true);
@@ -1298,17 +1315,12 @@ export default function Estoque() {
               )}
             </div>
 
-            {/* Carregar mais */}
+            {/* Carregar mais — sentinel para IntersectionObserver (auto-scroll) */}
             {hasMore && (
-              <div className="flex justify-center pt-2 pb-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setVisibleCount((c) => c + ITEMS_PER_PAGE)}
-                  className="gap-2"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                  Carregar mais ({(filteredItems.length - visibleCount).toLocaleString("pt-BR")} restantes)
-                </Button>
+              <div ref={loadMoreRef} className="flex justify-center pt-2 pb-6">
+                <span className="text-[11px] text-muted-foreground/50">
+                  {(filteredItems.length - visibleCount).toLocaleString("pt-BR")} mais...
+                </span>
               </div>
             )}
           </>

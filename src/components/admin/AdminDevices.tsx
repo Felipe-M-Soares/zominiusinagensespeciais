@@ -206,6 +206,18 @@ export function AdminDevices() {
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
+    // SEG-05: valida MIME além da extensão — impede renomear arquivo malicioso
+    const ALLOWED_MIMES = [
+      "application/json", "text/json",
+      "text/csv", "text/plain",
+      "application/octet-stream", // alguns browsers enviam isso para ambos
+      "", // file.type pode ser vazio em alguns sistemas operacionais
+    ];
+    if (file.type !== "" && !ALLOWED_MIMES.includes(file.type)) {
+      toast.error("Tipo MIME inválido. Aceitos: JSON ou CSV.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
     setImporting(true);
     try {
