@@ -15,13 +15,17 @@ create table if not exists public.clientes (
 alter table public.clientes enable row level security;
 
 -- Qualquer usuário autenticado pode ver e criar clientes
+drop policy if exists "clientes_select" on public.clientes;
 create policy "clientes_select" on public.clientes for select to authenticated using (true);
+drop policy if exists "clientes_insert" on public.clientes;
 create policy "clientes_insert" on public.clientes for insert to authenticated with check (auth.uid() = created_by);
 -- Admins e quem criou podem editar/excluir
+drop policy if exists "clientes_update" on public.clientes;
 create policy "clientes_update" on public.clientes for update to authenticated using (
   auth.uid() = created_by
   or exists (select 1 from public.user_roles where user_id = auth.uid() and role = 'admin')
 );
+drop policy if exists "clientes_delete" on public.clientes;
 create policy "clientes_delete" on public.clientes for delete to authenticated using (
   auth.uid() = created_by
   or exists (select 1 from public.user_roles where user_id = auth.uid() and role = 'admin')
@@ -44,9 +48,13 @@ create table if not exists public.pedidos_comerciais (
 
 alter table public.pedidos_comerciais enable row level security;
 
+drop policy if exists "pedidos_select" on public.pedidos_comerciais;
 create policy "pedidos_select" on public.pedidos_comerciais for select to authenticated using (true);
+drop policy if exists "pedidos_insert" on public.pedidos_comerciais;
 create policy "pedidos_insert" on public.pedidos_comerciais for insert to authenticated with check (true);
+drop policy if exists "pedidos_update" on public.pedidos_comerciais;
 create policy "pedidos_update" on public.pedidos_comerciais for update to authenticated using (true);
+drop policy if exists "pedidos_delete" on public.pedidos_comerciais;
 create policy "pedidos_delete" on public.pedidos_comerciais for delete to authenticated using (
   exists (select 1 from public.user_roles where user_id = auth.uid() and role = 'admin')
 );
@@ -64,9 +72,13 @@ create table if not exists public.pedido_itens (
 
 alter table public.pedido_itens enable row level security;
 
+drop policy if exists "pedido_itens_select" on public.pedido_itens;
 create policy "pedido_itens_select" on public.pedido_itens for select to authenticated using (true);
+drop policy if exists "pedido_itens_insert" on public.pedido_itens;
 create policy "pedido_itens_insert" on public.pedido_itens for insert to authenticated with check (true);
+drop policy if exists "pedido_itens_update" on public.pedido_itens;
 create policy "pedido_itens_update" on public.pedido_itens for update to authenticated using (true);
+drop policy if exists "pedido_itens_delete" on public.pedido_itens;
 create policy "pedido_itens_delete" on public.pedido_itens for delete to authenticated using (true);
 
 -- ── Trigger updated_at ────────────────────────────────────────────────────────
