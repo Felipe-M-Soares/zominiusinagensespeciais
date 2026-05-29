@@ -47,7 +47,7 @@ import {
   MapPin,
   ShoppingCart,
   Receipt,
-  Ban, Copy,
+  Ban,
   Truck,
   ArrowLeft,
   LogOut,
@@ -63,6 +63,10 @@ import {
   Download,
   Bell,
   Minus,
+  Copy,
+  MessageSquare,
+  Send,
+  Star,
 } from "lucide-react";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
@@ -295,13 +299,14 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const [itens, setItens] = useState<PedidoItem[]>([]);
   const [obs, setObs] = useState("");
   const [prazoEntrega, setPrazoEntrega] = useState("");
-  const [saving, setSaving] = useState(false);
   const [favoritas, setFavoritas] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
 
   // Carrega favoritas do usuário atual
   useEffect(() => {
     supabase.from("peca_favoritas").select("device_id")
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) return;
         setFavoritas(new Set((data ?? []).map((r: { device_id: string }) => r.device_id)));
       });
   }, [open]);
@@ -312,8 +317,6 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       await supabase.from("peca_favoritas").delete().eq("device_id", deviceId);
       setFavoritas(prev => { const n = new Set(prev); n.delete(deviceId); return n; });
     } else {
-      const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "").maybeSingle();
-      void profile;
       await supabase.from("peca_favoritas").insert({ device_id: deviceId });
       setFavoritas(prev => new Set([...prev, deviceId]));
     }
@@ -333,12 +336,10 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setClienteId(clienteFixo?.id ?? "");
     setClienteSearch(clienteFixo?.nome ?? "");
     if (duplicarDe) {
-      // Pré-preenche com dados do pedido original
       setClienteId(duplicarDe.cliente_id);
       setClienteSearch(duplicarDe.cliente_nome);
       setDesconto(duplicarDe.desconto_pct);
       setObs(duplicarDe.observacoes ?? "");
-      // Itens: converte PedidoCompleto.itens para PedidoItem
       setItens(duplicarDe.itens.map(i => ({
         stock_item_id: i.stock_item_id,
         lote: i.lote ?? null,
@@ -352,7 +353,6 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
     setSelectedPeca(null); setQtd(1);
     loadClientes();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, clienteFixo, duplicarDe]);
 
   async function loadClientes() {
@@ -395,17 +395,10 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         )
       : items;
     const vistos = new Set<string>();
-    const deduped = lista.filter(i => {
+    return lista.filter(i => {
       if (vistos.has(i.device_id)) return false;
       vistos.add(i.device_id); return true;
-    });
-    // Favoritas aparecem primeiro
-    deduped.sort((a, b) => {
-      const af = favoritas.has(a.device_id) ? 0 : 1;
-      const bf = favoritas.has(b.device_id) ? 0 : 1;
-      return af - bf;
-    });
-    return deduped.slice(0, 20);
+    }).slice(0, 20);
   }
 
   function handlePecaFocus() {
@@ -583,8 +576,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                       </div>
                     ) : autocomplete.map(i => (
                       <div key={i.id} className="flex items-stretch border-b border-border/10 last:border-0 hover:bg-muted/40 transition-colors">
-                        <button type="button" onClick={() => handleSelectPeca(i)}
-                          className="flex-1 text-left px-3 py-2">
+                        <button type="button" onClick={() => handleSelectPeca(i)} className="flex-1 text-left px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
                             <div className="min-w-0">
                               <div className="flex items-center gap-1">
@@ -594,12 +586,8 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                               <p className="text-[10px] text-muted-foreground/70 font-mono">{i.device?.reference}</p>
                             </div>
                             <div className="shrink-0 text-right">
-                              <span className={cn(
-                                "text-[11px] font-bold px-1.5 py-0.5 rounded-lg",
-                                i.quantity_available > 0
-                                  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
-                                  : "bg-red-50 dark:bg-red-950/40 text-red-600"
-                              )}>
+                              <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded-lg",
+                                i.quantity_available > 0 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" : "bg-red-50 dark:bg-red-950/40 text-red-600")}>
                                 {i.quantity_available} un.
                               </span>
                             </div>
@@ -740,13 +728,9 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           {/* ── Prazo de entrega ── */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Prazo de entrega</label>
-            <input
-              type="date"
-              value={prazoEntrega}
-              onChange={e => setPrazoEntrega(e.target.value)}
+            <input type="date" value={prazoEntrega} onChange={e => setPrazoEntrega(e.target.value)}
               min={new Date().toISOString().split("T")[0]}
-              className="w-full h-9 rounded-xl border border-border/50 bg-background text-sm px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
-            />
+              className="w-full h-9 rounded-xl border border-border/50 bg-background text-sm px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50" />
           </div>
 
           {/* ── Observações ── */}
@@ -1046,6 +1030,18 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca, o
               : <><ChevronDown className="h-3 w-3" />Ver {pedido.itens.length} peça{pedido.itens.length !== 1 ? "s" : ""}</>}
           </button>
 
+          {/* ── Ações rápidas: comentar e duplicar ── */}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => onComentar(pedido)}
+              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors">
+              <MessageSquare className="h-3 w-3" /> Comentários
+            </button>
+            <button type="button" onClick={() => onDuplicar(pedido)}
+              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors">
+              <Copy className="h-3 w-3" /> Duplicar
+            </button>
+          </div>
+
           {/* ── Botão adicionar peça (só pendente) ── */}
           {pedido.status === "pendente" && (
             <button
@@ -1061,24 +1057,6 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca, o
               <Plus className="h-3.5 w-3.5" /> Adicionar peça
             </button>
           )}
-
-          {/* ── Ações rápidas: comentar e duplicar ── */}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => onComentar(pedido)}
-              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors"
-            >
-              <MessageSquare className="h-3 w-3" /> Comentários
-            </button>
-            <button
-              type="button"
-              onClick={() => onDuplicar(pedido)}
-              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors"
-            >
-              <Copy className="h-3 w-3" /> Duplicar
-            </button>
-          </div>
 
           {/* ── Ações Admin (confirmar / cancelar) ── */}
           {pedido.status === "pendente" && isAdmin && (
@@ -1592,10 +1570,9 @@ function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | null; onCl
       .select("id, user_name, texto, created_at")
       .eq("pedido_id", pedidoId)
       .order("created_at", { ascending: true })
-      .then(({ data }) => {
-        setComentarios((data ?? []) as Comentario[]);
+      .then(({ data, error }) => {
+        if (!error) setComentarios((data ?? []) as Comentario[]);
         setLoading(false);
-        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
       });
   }, [pedidoId]);
 
@@ -1609,7 +1586,7 @@ function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | null; onCl
     const userName = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Usuário";
     const { data, error } = await supabase.from("pedido_comentarios").insert({
       pedido_id: pedidoId,
-      user_id: user?.id,
+      user_id: user?.id ?? null,
       user_name: userName,
       texto: texto.trim().slice(0, 2000),
     }).select("id, user_name, texto, created_at").single();
@@ -1636,7 +1613,7 @@ function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | null; onCl
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {loading && <div className="flex justify-center py-6"><div className="h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}
           {!loading && comentarios.length === 0 && (
-            <p className="text-center text-sm text-muted-foreground py-8">Nenhum comentário ainda. Seja o primeiro.</p>
+            <p className="text-center text-sm text-muted-foreground py-8">Nenhum comentário ainda.</p>
           )}
           {comentarios.map(cm => (
             <div key={cm.id} className={cn(
@@ -1655,15 +1632,10 @@ function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | null; onCl
           <div ref={bottomRef} />
         </div>
         <div className="flex gap-2 px-4 py-3 border-t border-border/20 shrink-0">
-          <input
-            type="text"
-            value={texto}
-            onChange={e => setTexto(e.target.value)}
+          <input type="text" value={texto} onChange={e => setTexto(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleEnviar(); } }}
-            placeholder="Escreva um comentário..."
-            maxLength={2000}
-            className="flex-1 h-9 rounded-xl border border-border/50 bg-background text-[12px] px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-          />
+            placeholder="Escreva um comentário..." maxLength={2000}
+            className="flex-1 h-9 rounded-xl border border-border/50 bg-background text-[12px] px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
           <button type="button" onClick={handleEnviar} disabled={!texto.trim() || saving}
             className="h-9 w-9 flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-40">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-3.5 w-3.5" />}
@@ -2251,8 +2223,6 @@ export default function Comercial() {
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>([]);
   const [loadingPedidos, setLoadingPedidos] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "faturado" | "cancelado">("todos");
-  const [filtroDataInicio, setFiltroDataInicio] = useState("");
-  const [filtroDataFim, setFiltroDataFim] = useState("");
   const [novoPedidoOpen, setNovoPedidoOpen] = useState(false);
   const [faturarPedido, setFaturarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<PedidoCompleto | null>(null);
@@ -2274,9 +2244,10 @@ export default function Comercial() {
   const [historicoClienteId, setHistoricoClienteId] = useState<string | null>(null);
   const [comentarioPedidoId, setComentarioPedidoId] = useState<string | null>(null);
   const [duplicandoPedido, setDuplicandoPedido] = useState<PedidoCompleto | null>(null);
+  const [filtroDataInicio, setFiltroDataInicio] = useState("");
+  const [filtroDataFim, setFiltroDataFim] = useState("");
 
   function handleDuplicar(pedido: PedidoCompleto) {
-    // Pré-carrega cliente e itens do pedido original no NovoPedidoModal
     setDuplicandoPedido(pedido);
     setNovoPedidoOpen(true);
   }
@@ -2500,23 +2471,15 @@ export default function Comercial() {
             {/* ── Aba Pedidos ── */}
             {subTab === "pedidos" && (
               <div className="space-y-3">
-                {/* ── Filtros + Novo Pedido ── */}
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* Status chips */}
                   {(["todos","pendente","faturado","cancelado"] as const).map(s => (
-                    <button key={s} type="button"
-                      onClick={() => setFiltroStatus(s)}
-                      className={cn(
-                        "h-7 px-3 rounded-full text-[11px] font-semibold border transition-colors",
-                        filtroStatus === s
-                          ? "bg-violet-600 text-white border-violet-600"
-                          : "bg-background text-muted-foreground border-border/50 hover:border-violet-400"
-                      )}>
+                    <button key={s} type="button" onClick={() => setFiltroStatus(s)}
+                      className={cn("h-7 px-3 rounded-full text-[11px] font-semibold border transition-colors",
+                        filtroStatus === s ? "bg-violet-600 text-white border-violet-600" : "bg-background text-muted-foreground border-border/50 hover:border-violet-400")}>
                       {s === "todos" ? "Todos" : s.charAt(0).toUpperCase() + s.slice(1)}
                     </button>
                   ))}
                   <div className="flex items-center gap-1.5 ml-auto">
-                    {/* Date range */}
                     <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}
                       className="h-7 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
                     <span className="text-[10px] text-muted-foreground">até</span>
@@ -2524,7 +2487,7 @@ export default function Comercial() {
                       className="h-7 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
                     {(filtroDataInicio || filtroDataFim) && (
                       <button type="button" onClick={() => { setFiltroDataInicio(""); setFiltroDataFim(""); }}
-                        className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50 text-muted-foreground transition-colors">
+                        className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50 text-muted-foreground">
                         <X className="h-3 w-3" />
                       </button>
                     )}
