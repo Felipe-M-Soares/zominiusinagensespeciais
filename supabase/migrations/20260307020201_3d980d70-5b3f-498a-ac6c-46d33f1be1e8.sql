@@ -1,1 +1,0 @@
-ALTER TABLE public.devices ADD COLUMN brand_name text NOT NULL DEFAULT '';
