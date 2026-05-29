@@ -5,6 +5,7 @@
 
 -- ── increment_stock_quantity ──────────────────────────────────────────────────
 -- Requer: usuário autenticado (qualquer role pode registrar movimentos)
+DROP FUNCTION IF EXISTS public.increment_stock_quantity(uuid, integer);
 CREATE OR REPLACE FUNCTION public.increment_stock_quantity(
   p_item_id uuid, p_qty integer
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -41,6 +42,7 @@ GRANT EXECUTE ON FUNCTION public.reserve_stock(uuid, jsonb) TO authenticated;
 
 -- ── stock_movement_atomic ─────────────────────────────────────────────────────
 -- Requer: usuário autenticado
+DROP FUNCTION IF EXISTS public.stock_movement_atomic(uuid, text, integer, text, text, uuid, text);
 CREATE OR REPLACE FUNCTION public.stock_movement_atomic(
   p_item_id   uuid,
   p_type      text,
@@ -77,6 +79,7 @@ GRANT EXECUTE ON FUNCTION public.stock_movement_atomic(uuid,text,integer,text,te
 
 -- ── cancel_pedido ─────────────────────────────────────────────────────────────
 -- Requer: autenticado + admin OU vendedora dona do pedido
+DROP FUNCTION IF EXISTS public.cancel_pedido(uuid);
 CREATE OR REPLACE FUNCTION public.cancel_pedido(p_pedido_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_vendedora_id uuid; v_status text;
@@ -107,6 +110,7 @@ GRANT EXECUTE ON FUNCTION public.cancel_pedido(uuid) TO authenticated;
 
 -- ── faturar_pedido (versão antiga sem SEFAZ) ─────────────────────────────────
 -- Requer: admin ou financeiro
+DROP FUNCTION IF EXISTS public.faturar_pedido(uuid, text, uuid, text);
 CREATE OR REPLACE FUNCTION public.faturar_pedido(
   p_pedido_id uuid, p_nf text, p_user_id uuid, p_user_name text
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -137,6 +141,7 @@ GRANT EXECUTE ON FUNCTION public.faturar_pedido(uuid,text,uuid,text) TO authenti
 
 -- ── sync_stock_items_from_devices ─────────────────────────────────────────────
 -- Requer: admin only
+DROP FUNCTION IF EXISTS public.sync_stock_items_from_devices();
 CREATE OR REPLACE FUNCTION public.sync_stock_items_from_devices()
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -156,22 +161,26 @@ GRANT EXECUTE ON FUNCTION public.sync_stock_items_from_devices() TO authenticate
 
 -- ── get_lotes_intermediario ───────────────────────────────────────────────────
 -- Requer: autenticado (leitura, qualquer role)
+-- Convertido para plpgsql para permitir guard auth.uid() antes da query
+DROP FUNCTION IF EXISTS public.get_lotes_intermediario(uuid);
 CREATE OR REPLACE FUNCTION public.get_lotes_intermediario(p_stock_item_id uuid)
 RETURNS TABLE(lote text, saldo integer, last_movement timestamptz)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT
-    sm.lote,
-    SUM(CASE WHEN sm.type='entrada' THEN sm.quantity ELSE -sm.quantity END)::integer AS saldo,
-    MAX(sm.created_at) AS last_movement
-  FROM public.stock_movements sm
-  WHERE sm.stock_item_id = p_stock_item_id
-    AND sm.lote IS NOT NULL
-    AND auth.uid() IS NOT NULL  -- SEG-02: rejeita chamadas não autenticadas
-  GROUP BY sm.lote
-  HAVING SUM(CASE WHEN sm.type='entrada' THEN sm.quantity ELSE -sm.quantity END) > 0
-  ORDER BY last_movement DESC;
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN; END IF;  -- SEG-02: rejeita não autenticados
+
+  RETURN QUERY
+    SELECT
+      sm.lote,
+      SUM(CASE WHEN sm.type='entrada' THEN sm.quantity ELSE -sm.quantity END)::integer AS saldo,
+      MAX(sm.created_at) AS last_movement
+    FROM public.stock_movements sm
+    WHERE sm.stock_item_id = p_stock_item_id
+      AND sm.lote IS NOT NULL
+    GROUP BY sm.lote
+    HAVING SUM(CASE WHEN sm.type='entrada' THEN sm.quantity ELSE -sm.quantity END) > 0
+    ORDER BY last_movement DESC;
+END;
 $$;
 GRANT EXECUTE ON FUNCTION public.get_lotes_intermediario(uuid) TO authenticated;
 
-ANALYZE public.stock_items;
-ANALYZE public.pedidos_comerciais;

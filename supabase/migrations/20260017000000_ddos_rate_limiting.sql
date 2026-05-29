@@ -15,6 +15,7 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_user_action_created
   ON public.rate_limit_log (user_id, action, created_at DESC);
 
 -- Limpa entradas > 5 min automaticamente via trigger
+DROP FUNCTION IF EXISTS public.cleanup_rate_limit_log();
 CREATE OR REPLACE FUNCTION public.cleanup_rate_limit_log()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -45,6 +46,7 @@ CREATE POLICY "rate_limit_insert" ON public.rate_limit_log
 --   reserve_stock         : 20 req/60s
 --   cancel_pedido         : 10 req/60s
 --   faturar_pedido_sefaz  : 5  req/60s
+DROP FUNCTION IF EXISTS public.check_rate_limit(text, uuid);
 CREATE OR REPLACE FUNCTION public.check_rate_limit(
   p_action text,
   p_user_id uuid DEFAULT auth.uid()
@@ -84,6 +86,7 @@ GRANT EXECUTE ON FUNCTION public.check_rate_limit(text, uuid) TO authenticated;
 -- ── Adiciona check_rate_limit nas RPCs críticas ───────────────────────────────
 
 -- stock_movement_atomic com rate limit
+DROP FUNCTION IF EXISTS public.stock_movement_atomic(uuid, text, integer, text, text, uuid, text);
 CREATE OR REPLACE FUNCTION public.stock_movement_atomic(
   p_item_id   uuid,
   p_type      text,
@@ -122,6 +125,7 @@ END; $$;
 GRANT EXECUTE ON FUNCTION public.stock_movement_atomic(uuid,text,integer,text,text,uuid,text) TO authenticated;
 
 -- cancel_pedido com rate limit
+DROP FUNCTION IF EXISTS public.cancel_pedido(uuid);
 CREATE OR REPLACE FUNCTION public.cancel_pedido(p_pedido_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_vendedora_id uuid; v_status text;
@@ -154,6 +158,7 @@ END; $$;
 GRANT EXECUTE ON FUNCTION public.cancel_pedido(uuid) TO authenticated;
 
 -- faturar_pedido_sefaz com rate limit (redefine a versão da migration 015)
+DROP FUNCTION IF EXISTS public.faturar_pedido_sefaz(uuid, text, text, text, timestamptz, uuid, text, text);
 CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(
   p_pedido_id uuid, p_nf text, p_chave_acesso text, p_protocolo text,
   p_dh_autorizacao timestamptz, p_user_id uuid, p_user_name text,
