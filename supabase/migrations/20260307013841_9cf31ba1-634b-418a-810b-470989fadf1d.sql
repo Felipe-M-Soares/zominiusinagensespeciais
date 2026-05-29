@@ -1,0 +1,1 @@
+ALTER TABLE public.devices ADD CONSTRAINT devices_udi_di_unique UNIQUE (udi_di);
