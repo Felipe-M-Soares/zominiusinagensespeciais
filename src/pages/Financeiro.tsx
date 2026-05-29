@@ -895,6 +895,174 @@ function NotaManualModal({
   );
 }
 
+// ─── Helper: notifica vendedora + todos os admins sobre pedido enviado ──────────
+async function notificarPedidoEnviado(
+  pedido: Pedido,
+  nfLabel: string,
+  protocolo: string
+): Promise<void> {
+  try {
+    const { data: admins } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("role", "admin");
+
+    const destinatarios = new Set<string>();
+    if (pedido.vendedora_id) destinatarios.add(pedido.vendedora_id);
+    for (const a of (admins ?? []) as { user_id: string }[]) destinatarios.add(a.user_id);
+
+    const notifs = [...destinatarios].map(uid => ({
+      user_id: uid,
+      pedido_id: pedido.id,
+      tipo: "pedido_enviado",
+      titulo: "Pedido faturado e enviado! 🚚",
+      mensagem: `${pedido.cliente_nome} — ${nfLabel}${protocolo ? ` — Prot. ${protocolo}` : ""}`,
+    }));
+    if (notifs.length > 0) {
+      await supabase.from("notificacoes").insert(notifs);
+    }
+  } catch (_e) {
+    // Falha silenciosa — NF já emitida, não bloqueia o fluxo
+  }
+}
+
+// ─── NFViewerModal — visualiza e baixa a NF emitida ──────────────────────────
+
+interface NFViewerModalProps {
+  pedido: Pedido | null;
+  onClose: () => void;
+}
+
+function NFViewerModal({ pedido, onClose }: NFViewerModalProps) {
+  if (!pedido) return null;
+
+  function downloadXml() {
+    if (!pedido?.xml_nfe) return;
+    const blob = new Blob([pedido.xml_nfe], { type: "application/xml" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `NFe-${pedido.nota_fiscal ?? "nota"}.xml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function copyChave() {
+    if (!pedido?.chave_acesso_nfe) return;
+    navigator.clipboard.writeText(pedido.chave_acesso_nfe);
+    toast.success("Chave copiada!");
+  }
+
+  function viewDanfe() {
+    const esc = (s?: string | null) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const itensRows = (pedido?.itens ?? []).map((i, idx) =>
+      `<tr><td>${idx + 1}</td><td>${esc(i.device_model)}</td><td style="text-align:center">${i.quantidade}</td></tr>`
+    ).join("");
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>NF-e — ${esc(pedido?.nota_fiscal)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
+body{padding:24px;color:#111;font-size:12px}
+h1{font-size:18px;font-weight:800;color:#3b0764;margin-bottom:4px}
+.header{border:2px solid #ddd6fe;border-radius:8px;padding:14px 16px;margin-bottom:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.box{border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px}
+.box-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7c3aed;margin-bottom:4px}
+.box-val{font-size:13px;font-weight:600;color:#111}
+.box-sub{font-size:10px;color:#666;margin-top:2px;font-family:monospace}
+table{width:100%;border-collapse:collapse;margin-bottom:16px}
+th{background:#f3f0ff;color:#5b21b6;font-size:10px;text-transform:uppercase;padding:7px 10px;border-bottom:2px solid #ddd6fe;text-align:left}
+td{padding:6px 10px;border-bottom:1px solid #f0eeff;font-size:11px}
+tr:nth-child(even) td{background:#faf9ff}
+.chave{background:#f3f0ff;border:1px solid #ddd6fe;border-radius:6px;padding:8px 12px;font-family:monospace;font-size:10px;word-break:break-all;color:#5b21b6;margin-bottom:12px}
+.footer{font-size:10px;color:#999;text-align:right}
+@media print{body{padding:12px}}
+</style></head>
+<body>
+<div class="header">
+  <h1>NF-e — ${esc(pedido?.nota_fiscal)}</h1>
+  <p style="font-size:11px;color:#666;margin-top:4px">Emitida em: ${pedido?.nf_criada_em ? new Date(pedido.nf_criada_em).toLocaleString("pt-BR") : "—"} &nbsp;·&nbsp; Protocolo: <strong>${esc(pedido?.protocolo_sefaz)}</strong></p>
+</div>
+<div class="grid2">
+  <div class="box"><div class="box-title">Destinatário</div><div class="box-val">${esc(pedido?.cliente_nome)}</div>${pedido?.cliente_documento ? `<div class="box-sub">${esc(pedido.cliente_documento)}</div>` : ""}${pedido?.cliente_telefone ? `<div class="box-sub">Tel: ${esc(pedido.cliente_telefone)}</div>` : ""}</div>
+  <div class="box"><div class="box-title">Vendedora</div><div class="box-val">${esc(pedido?.vendedora_nome ?? "—")}</div></div>
+</div>
+${pedido?.chave_acesso_nfe ? `<p style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:4px;text-transform:uppercase">Chave de Acesso NF-e</p><div class="chave">${esc(pedido.chave_acesso_nfe)}</div>` : ""}
+<p style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:6px;text-transform:uppercase">Itens</p>
+<table><thead><tr><th>#</th><th>Descrição</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${itensRows}</tbody></table>
+<div class="footer">Zomini Usinagens Especiais · ${esc(pedido?.nota_fiscal)}</div>
+</body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { toast.error("Popup bloqueado. Permita popups para visualizar a NF."); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(() => { w.focus(); w.print(); }, 300);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 bg-gradient-to-r from-emerald-500/5 to-transparent">
+          <div className="flex items-center gap-2">
+            <FileCheck2 className="h-4 w-4 text-emerald-600" />
+            <div>
+              <p className="text-sm font-bold">Nota Fiscal Emitida</p>
+              <p className="text-[11px] text-muted-foreground">{pedido.nota_fiscal} · {pedido.cliente_nome}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose}
+            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/8 border border-emerald-500/20">
+            <BadgeCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+            <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-400">NF autorizada pelo SEFAZ</span>
+            {pedido.protocolo_sefaz && (
+              <span className="ml-auto text-[10px] font-mono text-emerald-600/70">Prot. {pedido.protocolo_sefaz}</span>
+            )}
+          </div>
+          {pedido.chave_acesso_nfe && (
+            <div className="rounded-xl bg-muted/20 border border-border/30 p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Chave de Acesso</p>
+                <button type="button" onClick={copyChave}
+                  className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 hover:bg-violet-200 transition-colors">
+                  <Copy className="h-2.5 w-2.5" />Copiar
+                </button>
+              </div>
+              <p className="text-[9px] font-mono break-all text-muted-foreground leading-relaxed">{pedido.chave_acesso_nfe}</p>
+            </div>
+          )}
+          <div className="rounded-xl bg-muted/10 border border-border/20 px-3 py-2 space-y-1">
+            {pedido.itens.slice(0, 4).map(i => (
+              <div key={i.id} className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground truncate">{i.device_model}</span>
+                <span className="font-bold shrink-0 ml-2">{i.quantidade} un.</span>
+              </div>
+            ))}
+            {pedido.itens.length > 4 && (
+              <p className="text-[10px] text-muted-foreground/60">+{pedido.itens.length - 4} itens</p>
+            )}
+          </div>
+        </div>
+        <div className="flex gap-2 px-5 pb-5">
+          <button type="button" onClick={viewDanfe}
+            className="flex-1 h-10 flex items-center justify-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors">
+            <FileText className="h-3.5 w-3.5" />Ver / Imprimir NF
+          </button>
+          {pedido.xml_nfe && (
+            <button type="button" onClick={downloadXml}
+              className="h-10 px-3 flex items-center justify-center gap-1.5 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground border border-border/40 text-[11px] font-semibold transition-colors">
+              <Download className="h-3.5 w-3.5" />XML
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── SefazModal ──────────────────────────────────────────────────────────────
 
 function SefazModal({
@@ -973,8 +1141,11 @@ function SefazModal({
           p_dh_autorizacao: fake.dhAutorizacao ?? new Date().toISOString(),
           p_user_id: user.id, p_user_name: "Financeiro",
         } as Record<string, unknown>);
+        // Notifica vendedora + admins mesmo no modo teste
+        await notificarPedidoEnviado(pedido, nfLabel, fake.protocolo ?? "");
         toast.success(`[TESTE] NF-e simulada! Protocolo ${fake.protocolo}`, { duration: 5000 });
-        onClose(); onSuccess(); return;
+        setLastResult(fake);
+        onSuccess(); return;
       }
       const { data, error } = await supabase.functions.invoke("sefaz-emitir", {
         body: { pedidoId: pedido.id, dadosFiscais: dados, modoTeste },
@@ -999,13 +1170,8 @@ function SefazModal({
       if (rpcErr) { toast.error(`NF autorizada, mas erro ao salvar: ${rpcErr.message}`); return; }
       const rpcData = rpc as { error?: string } | null;
       if (rpcData?.error) { toast.error(`Erro: ${rpcData.error}`); return; }
-      if (pedido.vendedora_id) {
-        await supabase.from("notificacoes").insert({
-          user_id: pedido.vendedora_id, pedido_id: pedido.id, tipo: "pedido_enviado",
-          titulo: "Pedido faturado e enviado! 🚚",
-          mensagem: `${pedido.cliente_nome} — ${nfLabel} — Prot. ${result.protocolo}`,
-        });
-      }
+      // Notifica vendedora + admins
+      await notificarPedidoEnviado(pedido, nfLabel, result.protocolo ?? "");
       toast.success(`✅ ${dados.tipoNota.toUpperCase()} autorizada! Protocolo ${result.protocolo}`, { duration: 6000 });
       onClose(); onSuccess();
     } catch (err) {
@@ -1398,7 +1564,7 @@ function SefazModal({
 
 // ─── PedidoCard ──────────────────────────────────────────────────────────────
 
-function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pedido) => void }) {
+function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirNF: (p: Pedido) => void; onVerNF: (p: Pedido) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [copied,   setCopied]   = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
@@ -1516,10 +1682,18 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
             </div>
           )}
           <div className="flex gap-2 pt-1">
+            {/* Botão Ver NF — aparece para pedidos faturados ou enviados com NF */}
+            {(isFaturado || isEnviado) && (
+              <button type="button" onClick={() => onVerNF(pedido)}
+                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors">
+                <FileCheck2 size={13} />Ver NF
+              </button>
+            )}
+            {/* Botão download XML */}
             {pedido.xml_nfe && (
               <button type="button" onClick={downloadXml}
-                className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 hover:bg-violet-200 transition-colors">
-                <Download size={13} />XML NF-e
+                className="h-9 px-3 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 hover:bg-violet-200 transition-colors">
+                <Download size={13} />XML
               </button>
             )}
             {isPronto && (
@@ -1530,8 +1704,8 @@ function PedidoCard({ pedido, onEmitirNF }: { pedido: Pedido; onEmitirNF: (p: Pe
               </button>
             )}
             {isEnviado && (
-              <div className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-green-50 dark:bg-green-500/10 text-green-800 dark:text-green-400 border border-green-200 dark:border-green-500/30">
-                <BadgeCheck size={14} />NF emitida e enviada
+              <div className="flex items-center justify-center gap-1.5 text-[10px] font-semibold text-green-700 dark:text-green-400">
+                <BadgeCheck size={12} />Enviado
               </div>
             )}
           </div>
@@ -2452,7 +2626,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
       .from("pedidos_comerciais")
       .select(`
         id, vendedora_id, vendedora_nome, status, frete, observacoes,
-        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, desconto_pct,
+        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, desconto_pct, xml_nfe,
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes(nome, documento),
         pedido_itens(id, stock_item_id, lote, quantidade,
@@ -2474,7 +2648,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
           nota_fiscal: p.nota_fiscal as string | null,
           protocolo_sefaz: p.protocolo_sefaz as string | null,
           chave_acesso_nfe: p.chave_acesso_nfe as string | null,
-          xml_nfe: null,
+          xml_nfe: (p.xml_nfe as string | null) ?? null,
           desconto_pct: (p.desconto_pct as number) ?? 0,
           created_at: p.created_at as string,
           separado_em: p.separado_em as string | null,
@@ -2995,6 +3169,7 @@ export default function Financeiro() {
   const { isAdmin, role } = useAuth();
 
   const [pedidos,       setPedidos]       = useState<Pedido[]>([]);
+  const [nfViewerPedido, setNfViewerPedido] = useState<Pedido | null>(null);
   const [loading,       setLoading]       = useState(true);
   const [filtroStatus,  setFiltroStatus]  = useState("pronto");
   const [sefazPedido,   setSefazPedido]   = useState<Pedido | null>(null);
@@ -3044,7 +3219,7 @@ export default function Financeiro() {
       .from("pedidos_comerciais")
       .select(`
         id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
-        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, desconto_pct,
+        nota_fiscal, protocolo_sefaz, chave_acesso_nfe, desconto_pct, xml_nfe,
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes(nome, documento, telefone, email, endereco),
         pedido_itens(
@@ -3084,7 +3259,7 @@ export default function Financeiro() {
           nota_fiscal:    p.nota_fiscal as string | null,
           protocolo_sefaz:  p.protocolo_sefaz as string | null,
           chave_acesso_nfe: p.chave_acesso_nfe as string | null,
-          xml_nfe: null,
+          xml_nfe: (p.xml_nfe as string | null) ?? null,
           desconto_pct:     (p.desconto_pct as number) ?? 0,
           created_at:   p.created_at as string,
           separado_em:  p.separado_em  as string | null,
@@ -3330,7 +3505,7 @@ export default function Financeiro() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {filtradosSearch.map(p => <PedidoCard key={p.id} pedido={p} onEmitirNF={setSefazPedido} />)}
+                {filtradosSearch.map(p => <PedidoCard key={p.id} pedido={p} onEmitirNF={setSefazPedido} onVerNF={setNfViewerPedido} />)}
               </div>
             )}
           </>
@@ -3456,6 +3631,10 @@ export default function Financeiro() {
         onClose={() => setSefazPedido(null)}
         onSuccess={loadPedidos}
         modoTeste={modoTeste}
+      />
+      <NFViewerModal
+        pedido={nfViewerPedido}
+        onClose={() => setNfViewerPedido(null)}
       />
       <HistoricoModal open={historicoOpen} onClose={() => setHistoricoOpen(false)} />
     </div>
