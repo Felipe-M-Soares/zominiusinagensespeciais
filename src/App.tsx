@@ -1,74 +1,70 @@
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { AppShell } from "@/components/AppShell";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense } from "react";
+import type { AppRole } from "@/types/roles";
 
 import Login from "./pages/Login";
 import SetPassword from "./pages/SetPassword";
 import PendingApproval from "./pages/PendingApproval";
 import NotFound from "./pages/NotFound";
 
-const Index      = lazy(() => import("./pages/Index"));
-const Admin      = lazy(() => import("./pages/Admin"));
+const Index       = lazy(() => import("./pages/Index"));
+const Admin       = lazy(() => import("./pages/Admin"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
-const Manuals    = lazy(() => import("./pages/Manuals"));
-const Estoque    = lazy(() => import("./pages/Estoque"));
-const Comercial  = lazy(() => import("./pages/Comercial"));
-const Financeiro = lazy(() => import("./pages/Financeiro"));
-const Producao   = lazy(() => import("./pages/Producao"));
+const Manuals     = lazy(() => import("./pages/Manuals"));
+const Estoque     = lazy(() => import("./pages/Estoque"));
+const Comercial   = lazy(() => import("./pages/Comercial"));
+const Financeiro  = lazy(() => import("./pages/Financeiro"));
+const Producao    = lazy(() => import("./pages/Producao"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 5 * 60 * 1000,
-      refetchOnWindowFocus: false,
-    },
+    queries: { retry: 1, staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false },
     mutations: { retry: 0 },
   },
 });
 
-// ── Guard unificado — substitui os 5 componentes de rota duplicados ──────────
-type Role = "admin" | "vendedora" | "financeiro" | "producao" | "estoque";
-
-interface RouteGuardProps {
-  children: React.ReactNode;
-  /** Roles permitidos; undefined = qualquer usuário aprovado */
-  roles?: Role[];
-  /** Se true, exige isAdmin independente do role */
-  adminOnly?: boolean;
-  /** Se false, rota é pública (redireciona para / quando autenticado) */
-  publicOnly?: boolean;
+// ── Rota pública: redireciona para / se já logado ─────────────────────────────
+function PublicGuard({ children }: { children: React.ReactNode }) {
+  const { user, loading, approved } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <>{children}</>;
+  if (approved === false) return <Navigate to="/pending-approval" replace />;
+  return <Navigate to="/" replace />;
 }
 
-function RouteGuard({ children, roles, adminOnly, publicOnly }: RouteGuardProps) {
-  const { user, loading, approved, blocked, isAdmin, role } = useAuth();
-
-  // Aguarda loading inicial — mas approved===null sem loading significa perfil ausente,
-  // não deve bloquear indefinidamente (useAuth já trata isso retornando approved=true)
+// ── Layout protegido: AppShell montado UMA vez para todas as rotas internas ───
+// Usa <Outlet /> do React Router — sem Routes aninhado, sem problema de matching.
+function ProtectedLayout() {
+  const { user, loading, approved, blocked } = useAuth();
   if (loading) return <LoadingScreen />;
-
-  if (publicOnly) {
-    if (!user) return <>{children}</>;
-    if (approved === false) return <Navigate to="/pending-approval" replace />;
-    return <Navigate to="/" replace />;
-  }
-
   if (!user) return <Navigate to="/login" replace />;
-  if (blocked) return <Navigate to="/pending-approval" replace />;
-  if (approved === false) return <Navigate to="/pending-approval" replace />;
-  // approved===null aqui não deve ocorrer após o fix do useAuth,
-  // mas se ocorrer deixa passar (melhor que loop infinito)
+  if (blocked || approved === false) return <Navigate to="/pending-approval" replace />;
+  return (
+    <AppShell>
+      <Suspense fallback={<LoadingScreen />}>
+        <Outlet />
+      </Suspense>
+    </AppShell>
+  );
+}
 
+// ── Guard de role dentro das rotas protegidas ─────────────────────────────────
+function RoleGuard({ children, roles, adminOnly }: {
+  children: React.ReactNode;
+  roles?: AppRole[];
+  adminOnly?: boolean;
+}) {
+  const { isAdmin, role } = useAuth();
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
-  if (roles && !isAdmin && !roles.includes(role as Role)) return <Navigate to="/" replace />;
-
-  return <AppShell>{children}</AppShell>;
+  if (roles && !isAdmin && !roles.includes(role as AppRole)) return <Navigate to="/" replace />;
+  return <>{children}</>;
 }
 
 function PendingApprovalRoute() {
@@ -92,34 +88,28 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
-          <Suspense fallback={<LoadingScreen />}>
-            <Routes>
-              {/* Públicas */}
-              <Route path="/login" element={<RouteGuard publicOnly><Login /></RouteGuard>} />
+          <Routes>
+            {/* Públicas */}
+            <Route path="/login" element={<PublicGuard><Login /></PublicGuard>} />
+            <Route path="/pending-approval" element={<PendingApprovalRoute />} />
 
-              {/* Aprovação pendente */}
-              <Route path="/pending-approval" element={<PendingApprovalRoute />} />
+            {/* Protegidas — AppShell renderizado uma única vez via Outlet */}
+            <Route element={<ProtectedLayout />}>
+              <Route path="/"           element={<ErrorBoundary><IndexRoute /></ErrorBoundary>} />
+              <Route path="/set-password" element={<ErrorBoundary><SetPassword /></ErrorBoundary>} />
+              <Route path="/settings"   element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
+              <Route path="/manuals"    element={<ErrorBoundary><Manuals /></ErrorBoundary>} />
+              <Route path="/estoque"    element={<ErrorBoundary><Estoque /></ErrorBoundary>} />
+              <Route path="/producao"   element={<ErrorBoundary><Producao /></ErrorBoundary>} />
+              <Route path="/comercial"  element={<ErrorBoundary><RoleGuard roles={["vendedora","admin"]}><Comercial /></RoleGuard></ErrorBoundary>} />
+              <Route path="/financeiro" element={<ErrorBoundary><RoleGuard roles={["financeiro","admin"]}><Financeiro /></RoleGuard></ErrorBoundary>} />
+              <Route path="/admin"      element={<ErrorBoundary><RoleGuard adminOnly><Admin /></RoleGuard></ErrorBoundary>} />
+            </Route>
 
-              {/* Protegidas — qualquer usuário aprovado */}
-              <Route path="/set-password" element={<ErrorBoundary><RouteGuard><SetPassword /></RouteGuard></ErrorBoundary>} />
-              <Route path="/"          element={<ErrorBoundary><RouteGuard><IndexRoute /></RouteGuard></ErrorBoundary>} />
-              <Route path="/settings"  element={<ErrorBoundary><RouteGuard><SettingsPage /></RouteGuard></ErrorBoundary>} />
-              <Route path="/manuals"   element={<ErrorBoundary><RouteGuard><Manuals /></RouteGuard></ErrorBoundary>} />
-              <Route path="/estoque"   element={<ErrorBoundary><RouteGuard><Estoque /></RouteGuard></ErrorBoundary>} />
-              <Route path="/producao"  element={<ErrorBoundary><RouteGuard><Producao /></RouteGuard></ErrorBoundary>} />
-
-              {/* Protegidas — roles específicos */}
-              <Route path="/comercial"  element={<ErrorBoundary><RouteGuard roles={["vendedora", "admin"]}><Comercial /></RouteGuard></ErrorBoundary>} />
-              <Route path="/financeiro" element={<ErrorBoundary><RouteGuard roles={["financeiro", "admin"]}><Financeiro /></RouteGuard></ErrorBoundary>} />
-
-              {/* Admin */}
-              <Route path="/admin" element={<ErrorBoundary><RouteGuard adminOnly><Admin /></RouteGuard></ErrorBoundary>} />
-
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

@@ -206,7 +206,7 @@ export function useDeviceOptions() {
     Promise.all([
       supabase.from("devices").select("primary_material").order("primary_material").limit(OPTS_LIMIT),
       supabase.from("devices").select("classification_code").order("classification_code").limit(OPTS_LIMIT),
-      supabase.from("devices").select("exocad_compatibility").not("exocad_compatibility", "is", null).limit(OPTS_LIMIT),
+      supabase.from("devices").select("exocad_compatibility").neq("exocad_compatibility", null).limit(OPTS_LIMIT),
       supabase.from("devices").select("model").order("model").limit(OPTS_LIMIT),
     ]).then(([matRes, classRes, exocadRes, modelRes]) => {
       if (cancelled) return;

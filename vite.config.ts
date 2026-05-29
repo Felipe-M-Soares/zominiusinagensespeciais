@@ -46,6 +46,9 @@ export default defineConfig(({ mode }) => ({
     },
     chunkSizeWarningLimit: 600,
   },
+  optimizeDeps: {
+    include: ["pdfjs-dist"],
+  },
   plugins: [
     react(),
     VitePWA({

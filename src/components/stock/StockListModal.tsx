@@ -83,7 +83,11 @@ export function StockListModal({ open, onClose, items }: Props) {
 </html>`;
 
     const win = window.open("", "_blank");
-    if (!win) return;
+    if (!win) {
+      // Popup blocker ativo — orientar o usuário
+      alert("Popup bloqueado pelo navegador. Permita popups para este site e tente novamente.");
+      return;
+    }
     win.document.write(html);
     win.document.close();
   }
@@ -115,8 +119,9 @@ export function StockListModal({ open, onClose, items }: Props) {
           )}
 
           {available.map((item) => {
-            const isLow = item.quantity <= item.min_quantity;
-            const isRetrabalho = item.fase === "retrabalho";
+            const isLow          = item.quantity <= item.min_quantity;
+            const isRetrabalho   = item.fase === "retrabalho";
+            const isIntermediaria = item.fase === "intermediaria";
             return (
               <div
                 key={item.id}
@@ -125,7 +130,12 @@ export function StockListModal({ open, onClose, items }: Props) {
                 {/* Indicador de status */}
                 {isLow
                   ? <TrendingDown className="h-3.5 w-3.5 text-warning shrink-0" />
-                  : <CheckCircle2  className={cn("h-3.5 w-3.5 shrink-0", isRetrabalho ? "text-orange-400" : "text-success")} />}
+                  : <CheckCircle2 className={cn(
+                      "h-3.5 w-3.5 shrink-0",
+                      isRetrabalho    ? "text-orange-400"
+                      : isIntermediaria ? "text-blue-500"
+                      : "text-success"
+                    )} />}
 
                 {/* Info da peça */}
                 <div className="min-w-0 flex-1">
@@ -139,6 +149,11 @@ export function StockListModal({ open, onClose, items }: Props) {
                         retrabalho
                       </span>
                     )}
+                    {isIntermediaria && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-blue-500 bg-blue-500/10 px-1 py-0.5 rounded">
+                        intermediário
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -149,7 +164,9 @@ export function StockListModal({ open, onClose, items }: Props) {
                     ? "bg-warning/10 text-warning"
                     : isRetrabalho
                       ? "bg-orange-500/10 text-orange-500"
-                      : "bg-success/10 text-success"
+                      : isIntermediaria
+                        ? "bg-blue-500/10 text-blue-500"
+                        : "bg-success/10 text-success"
                 )}>
                   <Package className="h-3 w-3" />
                   {item.quantity}

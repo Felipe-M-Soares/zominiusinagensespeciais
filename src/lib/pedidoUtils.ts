@@ -24,6 +24,7 @@ export interface CriarPedidoParams {
   vendedoraId: string | undefined;
   vendedoraNome: string;
   observacoes?: string | null;
+  descontoPct?: number;
 }
 
 export interface CriarPedidoResult {
@@ -39,7 +40,7 @@ export interface CriarPedidoResult {
 export async function criarPedidoComReserva(
   params: CriarPedidoParams
 ): Promise<CriarPedidoResult> {
-  const { clienteId, itens, vendedoraId, vendedoraNome, observacoes } = params;
+  const { clienteId, itens, vendedoraId, vendedoraNome, observacoes, descontoPct } = params;
 
   // 1. Cria o pedido
   const { data: pedido, error: pedidoErr } = await supabase
@@ -49,6 +50,7 @@ export async function criarPedidoComReserva(
       vendedora_id: vendedoraId,
       vendedora_nome: vendedoraNome,
       observacoes: observacoes ?? null,
+      desconto_pct: descontoPct ?? 0,
     })
     .select()
     .single();

@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
+import { sanitizeQuery } from "@/lib/sanitize";
 
 /**
  * CODE-001 FIX: Single shared implementation of paginated "fetch all" from Supabase.
@@ -62,13 +63,8 @@ export async function fetchDevicesPage<T>(
     .range(from, to);
 
   if (search.trim()) {
-    // SECURITY: sanitiza a busca antes de interpolar na string PostgREST.
-    // Caracteres como `,` `(` `)` têm significado sintático no parser e
-    // podem injetar condições adicionais na query se não forem removidos.
-    const safe = search.trim()
-      .slice(0, 200)
-      .replace(/[(),]/g, "")
-      .replace(/[%_\\]/g, "\\$&");
+    // DUP-02 FIX: sanitização centralizada em src/lib/sanitize.ts
+    const safe = sanitizeQuery(search);
 
     if (safe) {
       query = query.or(

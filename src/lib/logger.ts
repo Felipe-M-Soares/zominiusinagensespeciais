@@ -44,9 +44,13 @@ export const logger = {
   error: (...args: unknown[]) => {
     if (isDev) {
       console.error(...args);
-    } else {
-      // QUAL-04: Report to Sentry in production
+    } else if (SENTRY_DSN) {
+      // QUAL-04: Report to Sentry in production when DSN is configured
       captureError(args[0]);
+    } else {
+      // Fallback: log to console in production when Sentry is not configured
+      // so errors are never silently swallowed
+      console.error(...args);
     }
   },
 };

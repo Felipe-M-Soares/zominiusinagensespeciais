@@ -9,7 +9,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, ScanBarcode, CheckCircle } from "lucide-react";
+import { Plus, CheckCircle } from "lucide-react";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { supabase } from "@/integrations/supabase/client";
 import { addDeviceToStock } from "@/hooks/useStock";
 import type { Device } from "@/types/device";
@@ -104,20 +105,15 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
         </div>
 
         <div className="px-5 pb-2">
-          <div className="relative">
-            <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              ref={inputRef}
-              placeholder="Modelo, referência, UDI, código..."
-              value={search}
-              onChange={(e) => handleChange(e.target.value)}
-              onPaste={handlePaste}
-              onKeyDown={handleKeyDown}
-              onFocus={(e) => requestAnimationFrame(() => e.target.select())}
-              className="pl-10 h-10 rounded-xl text-sm bg-muted/20"
-              autoFocus
-            />
-          </div>
+          <SearchInputWithBarcode
+            value={search}
+            onChange={v => handleChange(v)}
+            onSearch={v => handleChange(v)}
+            placeholder="Modelo, referência, UDI ou bipe o código..."
+            height="h-10"
+            autoFocus
+            inputClass="bg-muted/20"
+          />
         </div>
 
         {/* Resultados */}

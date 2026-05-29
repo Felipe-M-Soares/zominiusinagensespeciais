@@ -44,9 +44,7 @@ import {
   Download,
   LayoutDashboard,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -58,6 +56,7 @@ import type { StockItem } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
 // ─── Lote helpers (formato DDMMYYS-NN ou DDMMYYS-NN/A) ───────────────────────
 const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
@@ -614,126 +613,111 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
   const [expanded, setExpanded] = useState(false);
 
   const statusConfig = {
-    pendente: {
-      color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25",
-      bar: "via-amber-500 opacity-70",
-      icon: <Clock className="h-3 w-3" />,
-      label: "Pendente",
-    },
-    faturado: {
-      color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25",
-      bar: "via-emerald-500 opacity-60",
-      icon: <CheckCircle2 className="h-3 w-3" />,
-      label: "Faturado",
-    },
-    cancelado: {
-      color: "text-muted-foreground bg-muted/20 border-border/40",
-      bar: "via-muted-foreground/40 opacity-30",
-      icon: <Ban className="h-3 w-3" />,
-      label: "Cancelado",
-    },
+    pendente:  { badge: "bg-amber-500/12 text-amber-600 border-amber-500/25",  accent: "from-amber-500",   icon: <Clock className="h-3 w-3" />,        label: "Pendente"  },
+    faturado:  { badge: "bg-emerald-500/12 text-emerald-600 border-emerald-500/25", accent: "from-emerald-500", icon: <CheckCircle2 className="h-3 w-3" />, label: "Faturado"  },
+    cancelado: { badge: "bg-muted/30 text-muted-foreground border-border/30",  accent: "from-border/60",  icon: <Ban className="h-3 w-3" />,          label: "Cancelado" },
   }[pedido.status] ?? {
-    color: "text-muted-foreground bg-muted/20 border-border/40",
-    bar: "via-muted-foreground/40 opacity-30",
-    icon: null,
-    label: pedido.status,
+    badge: "bg-muted/30 text-muted-foreground border-border/30", accent: "from-border/60", icon: null, label: pedido.status,
   };
 
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
-  const data = new Date(pedido.created_at).toLocaleDateString("pt-BR");
+  const data = new Date(pedido.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
   const hora = new Date(pedido.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div
-      className={cn(
-        "group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5",
-        pedido.status === "cancelado" && "opacity-60"
-      )}
-      style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}
-    >
-      {/* Status bar top */}
-      <div className={cn(
-        "h-0.5 bg-gradient-to-r from-transparent to-transparent transition-opacity group-hover:opacity-100",
-        statusConfig.bar
-      )} />
+    <div className={cn(
+      "relative rounded-2xl bg-card border overflow-hidden transition-all duration-200 hover:shadow-md",
+      pedido.status === "pendente"  ? "border-amber-500/25"   :
+      pedido.status === "faturado"  ? "border-emerald-500/25" :
+      pedido.status === "cancelado" ? "border-border/20 opacity-60" :
+      "border-border/30"
+    )}>
+      {/* Accent bar */}
+      <div className={cn("h-0.5 bg-gradient-to-r to-transparent", statusConfig.accent)} />
 
-      <div className="p-4 space-y-3">
-        {/* Cabeçalho: cliente + status */}
-        <div className="flex items-start justify-between gap-3">
+      <div className="p-3.5 space-y-3">
+        {/* Header: avatar + nome + badge */}
+        <div className="flex items-start gap-2.5">
+          <div className={cn(
+            "h-8 w-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5",
+            pedido.status === "pendente"  ? "bg-amber-500/10"   :
+            pedido.status === "faturado"  ? "bg-emerald-500/10" :
+            "bg-muted/30"
+          )}>
+            <User className={cn("h-3.5 w-3.5",
+              pedido.status === "pendente"  ? "text-amber-500"   :
+              pedido.status === "faturado"  ? "text-emerald-500" :
+              "text-muted-foreground"
+            )} />
+          </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <User className="h-3.5 w-3.5 text-violet-500 shrink-0" />
-              <h3 className="text-[14px] font-bold truncate leading-tight">{pedido.cliente_nome}</h3>
-            </div>
+            <p className="text-[13px] font-bold truncate leading-tight">{pedido.cliente_nome}</p>
             {pedido.vendedora_nome && (
-              <p className="text-[11px] text-muted-foreground/60 pl-5">{pedido.vendedora_nome}</p>
+              <p className="text-[11px] text-muted-foreground/60 truncate mt-0.5">{pedido.vendedora_nome}</p>
             )}
           </div>
-          <Badge variant="outline" className={cn("shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg flex items-center gap-1", statusConfig.color)}>
-            {statusConfig.icon} {statusConfig.label}
-          </Badge>
+          <span className={cn("shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg border flex items-center gap-1 leading-none", statusConfig.badge)}>
+            {statusConfig.icon}{statusConfig.label}
+          </span>
         </div>
 
-        {/* Resumo de peças — destaque visual */}
-        <div className="rounded-xl bg-violet-500/5 border border-violet-500/15 px-3 py-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-              <Package className="h-3.5 w-3.5 text-violet-500" />
+        {/* Metrics row */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 rounded-xl bg-muted/20 border border-border/20 px-3 py-2 flex items-center justify-between gap-2">
+            <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
+              <Package className="h-3 w-3 shrink-0" />
+              {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}
+            </span>
+            <div className="flex items-baseline gap-0.5">
+              <span className="text-[20px] font-bold tabular-nums leading-none text-violet-600 dark:text-violet-400">{totalItens}</span>
+              <span className="text-[10px] text-muted-foreground/50">un.</span>
             </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground/60 leading-none">tipos de peça</p>
-              <p className="text-[12px] font-semibold text-foreground">{pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] text-muted-foreground/60 leading-none">total</p>
-            <p className="text-[20px] font-bold tabular-nums text-violet-600 dark:text-violet-400 leading-tight">{totalItens}<span className="text-[11px] font-normal text-muted-foreground ml-1">un.</span></p>
           </div>
         </div>
 
-        {/* Data/hora */}
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50">
-          <Clock className="h-3 w-3" />
+        {/* Data + hora */}
+        <div className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
+          <Clock className="h-3 w-3 shrink-0" />
           <span>{data} às {hora}</span>
         </div>
 
         {/* Itens expandidos */}
         {expanded && (
-          <div className="space-y-1.5 pt-2 border-t border-border/20 animate-in fade-in slide-in-from-top-1 duration-150">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-0.5">Peças do pedido</p>
+          <div className="space-y-1.5 pt-2 border-t border-border/15 animate-in fade-in slide-in-from-top-1 duration-150">
+            <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Peças do pedido</p>
             {pedido.itens.map(it => (
-              <div key={it.id} className="flex items-center gap-2 rounded-xl bg-muted/20 border border-border/20 px-3 py-2">
-                <div className="h-6 w-6 rounded-lg bg-muted/40 flex items-center justify-center shrink-0">
-                  <Package className="h-3 w-3 text-muted-foreground/60" />
+              <div key={it.id} className="flex items-center gap-2 rounded-xl bg-muted/20 border border-border/15 px-3 py-2">
+                <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                  <Package className="h-3 w-3 text-violet-500/70" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-semibold truncate leading-tight">{it.device_model}</p>
-                  <p className="text-[10px] text-muted-foreground/60 font-mono">{it.device_reference}</p>
+                  <p className="text-[10px] text-muted-foreground/50 font-mono">{it.device_reference}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <span className="text-[14px] font-bold tabular-nums">{it.quantidade}</span>
-                  <span className="text-[10px] text-muted-foreground ml-0.5">un.</span>
+                  <span className="text-[10px] text-muted-foreground/50 ml-0.5">un.</span>
                 </div>
               </div>
             ))}
             {pedido.observacoes && (
-              <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground/70 bg-muted/10 border border-border/20 rounded-xl px-3 py-2 mt-1">
-                <FileText className="h-3 w-3 mt-0.5 shrink-0 text-violet-500/60" />
+              <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground/70 bg-violet-500/5 border border-violet-500/15 rounded-xl px-3 py-2">
+                <FileText className="h-3 w-3 mt-0.5 shrink-0 text-violet-500/50" />
                 <span className="italic">{pedido.observacoes}</span>
               </div>
             )}
           </div>
         )}
 
-        {/* Botões de ação */}
-        <div className="space-y-1.5 pt-1 border-t border-border/20">
+        {/* Ações */}
+        <div className="space-y-1.5 pt-0.5 border-t border-border/15">
           <button
             type="button"
             onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl bg-muted/20 hover:bg-muted/40 text-muted-foreground text-[11px] font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 h-7 rounded-xl bg-muted/20 hover:bg-muted/40 text-muted-foreground text-[11px] font-medium transition-colors"
           >
-            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            {expanded ? "Ocultar peças" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
+            {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {expanded ? "Ocultar" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
           </button>
 
           {pedido.status === "pendente" && isAdmin && (
@@ -742,15 +726,15 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
                 type="button"
                 onClick={() => { if (isConfirmado) return; onConfirmar(pedido.id); onFaturar(pedido); }}
                 disabled={isConfirmado}
-                className="flex-1 h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none border border-emerald-500/20"
+                className="flex-1 h-8 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none border border-emerald-500/20"
               >
                 {isConfirmado ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Receipt className="h-3.5 w-3.5" />}
-                {isConfirmado ? "Confirmado" : "Faturar pedido"}
+                {isConfirmado ? "Confirmado" : "Faturar"}
               </button>
               <button
                 type="button"
                 onClick={() => onCancelar(pedido)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl bg-muted/20 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors border border-border/20"
+                className="h-8 w-8 flex items-center justify-center rounded-xl bg-muted/20 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors border border-border/20"
                 title="Cancelar pedido"
               >
                 <Ban className="h-3.5 w-3.5" />
@@ -1630,55 +1614,70 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
   return (
     <div className="space-y-4">
-      {/* Info */}
-      <div className="rounded-xl border bg-violet-500/5 border-violet-500/20 text-violet-600 dark:text-violet-400 px-4 py-3 text-[12px]">
-        Área comercial — cadastre clientes, visualize peças disponíveis na expedição e registre pedidos. O estoque fatura e as peças saem automaticamente.
+      {/* Info banner */}
+      <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 flex items-center gap-3">
+        <div className="h-8 w-8 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+          <ShoppingBag className="h-4 w-4 text-violet-500" />
+        </div>
+        <p className="text-[12px] text-violet-600 dark:text-violet-400 leading-relaxed">
+          Cadastre clientes, visualize peças disponíveis na expedição e registre pedidos. O estoque fatura e as peças saem automaticamente.
+        </p>
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex items-center gap-1 bg-muted/30 rounded-xl p-1">
+      <div className="flex items-center gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5">
         {([
           { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, badge: 0 },
-          { id: "pedidos", label: "Pedidos", icon: ShoppingBag, badge: pedidosPendentes },
-          { id: "clientes", label: "Clientes", icon: User, badge: 0 },
+          { id: "pedidos",   label: "Pedidos",   icon: ShoppingBag,    badge: pedidosPendentes },
+          { id: "clientes",  label: "Clientes",  icon: User,           badge: 0 },
         ] as const).map(tab => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setSubTab(tab.id)}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-medium transition-all",
+              "relative flex flex-1 flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border transition-all duration-200",
               subTab === tab.id
-                ? "bg-card text-violet-600 dark:text-violet-400 shadow-sm border border-border/40"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-violet-500/10 border-violet-500/40"
+                : "border-transparent hover:bg-muted/30"
             )}
           >
-            <tab.icon className="h-3.5 w-3.5" />
-            {tab.label}
             {tab.badge > 0 && (
-              <span className="min-w-[16px] h-4 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[9px] font-bold px-1 flex items-center justify-center">
+              <span className={cn(
+                "absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center px-[3px] leading-none",
+                subTab === tab.id ? "bg-amber-500/20 text-amber-500" : "bg-muted/60 text-muted-foreground"
+              )}>
                 {tab.badge}
               </span>
             )}
+            <tab.icon className={cn("h-[18px] w-[18px] transition-colors",
+              subTab === tab.id ? "text-violet-500 scale-110" : "text-muted-foreground"
+            )} />
+            <span className={cn("text-[9px] font-medium leading-tight hidden sm:block",
+              subTab === tab.id ? "text-violet-500" : "text-muted-foreground"
+            )}>
+              {tab.label}
+            </span>
           </button>
         ))}
+        <div className="w-px h-8 bg-border/30 mx-0.5" />
         <button
           type="button"
           onClick={() => setHistoricoOpen(true)}
-          className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium text-muted-foreground hover:text-foreground transition-all"
+          className="flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl border border-transparent hover:bg-muted/30 transition-colors"
           title="Histórico Geral"
         >
-          <History className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Histórico</span>
+          <History className="h-[18px] w-[18px] text-muted-foreground" />
+          <span className="text-[9px] font-medium text-muted-foreground hidden sm:block">Histórico</span>
         </button>
         <button
           type="button"
           onClick={() => exportExcelMesVendedora(user?.id, currentUserName, isAdmin)}
-          className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-all"
-          title="Exportar pedidos do mês atual em Excel"
+          className="flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl border border-transparent hover:bg-emerald-500/10 transition-colors"
+          title="Exportar pedidos do mês"
         >
-          <Download className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Exportar Mês</span>
+          <Download className="h-[18px] w-[18px] text-emerald-600 dark:text-emerald-400" />
+          <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 hidden sm:block">Excel</span>
         </button>
       </div>
 
@@ -1699,20 +1698,20 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
             {/* Filtro status */}
             <div className="flex items-center gap-1 flex-wrap">
               {([
-                { value: "todos", label: "Todos" },
-                { value: "pendente", label: "⏳ Pendentes" },
-                { value: "faturado", label: "✅ Faturados" },
-                { value: "cancelado", label: "🚫 Cancelados" },
+                { value: "todos",     label: "Todos"      },
+                { value: "pendente",  label: "Pendentes"  },
+                { value: "faturado",  label: "Faturados"  },
+                { value: "cancelado", label: "Cancelados" },
               ] as const).map(opt => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => setFiltroStatus(opt.value)}
                   className={cn(
-                    "h-7 px-2.5 rounded-full text-[11px] font-medium border transition-colors",
+                    "h-7 px-3 rounded-lg text-[11px] font-medium border transition-colors",
                     filtroStatus === opt.value
                       ? "bg-violet-600 text-white border-violet-600"
-                      : "bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/60"
+                      : "bg-muted/20 text-muted-foreground border-border/40 hover:bg-muted/50"
                   )}
                 >
                   {opt.label}
@@ -1720,21 +1719,20 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
               ))}
             </div>
             <div className="flex items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1.5 text-xs rounded-lg border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10"
+              <button
+                type="button"
                 onClick={() => exportExcelComercial()}
+                className="h-8 px-3 flex items-center gap-1.5 rounded-xl border border-border/40 text-muted-foreground text-[11px] font-medium hover:bg-muted/30 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" /> Excel
-              </Button>
-              <Button
-                size="sm"
-                className="h-8 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500"
+              </button>
+              <button
+                type="button"
+                className="h-8 px-3 flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-semibold transition-colors"
                 onClick={() => setNovoPedidoOpen(true)}
               >
                 <Plus className="h-3.5 w-3.5" /> Novo Pedido
-              </Button>
+              </button>
             </div>
           </div>
 
@@ -1778,28 +1776,20 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <input
-                ref={clienteSearchRef}
-                type="text"
-                placeholder="Buscar cliente..."
-                defaultValue=""
-                onChange={e => {
-                  if (clienteSearchDebounce.current) clearTimeout(clienteSearchDebounce.current);
-                  const v = e.target.value;
-                  clienteSearchDebounce.current = setTimeout(() => setClienteSearchFilter(v), 300);
-                }}
-                className="pl-9 pr-8 h-9 w-full text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              <SearchInputWithBarcode
+                value={clienteSearchFilter}
+                onChange={setClienteSearchFilter}
+                onSearch={setClienteSearchFilter}
+                placeholder="Bipe o código ou busque por cliente..."
+                height="h-9"
               />
-              {clienteSearchFilter && (
-                <button type="button" onClick={() => { if (clienteSearchRef.current) clienteSearchRef.current.value = ""; setClienteSearchFilter(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            <Button size="sm" className="h-9 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setEditCliente(null); setClienteModal(true); }}>
+            <button
+              type="button"
+              className="h-9 px-3 flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-semibold transition-colors shrink-0"
+              onClick={() => { setEditCliente(null); setClienteModal(true); }}
+            >
               <UserPlus className="h-3.5 w-3.5" /> Novo
-            </Button>
+            </button>
           </div>
 
           {loadingClientes ? (
@@ -1825,49 +1815,55 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
               {clientesFiltrados.map(c => (
                 <div
                   key={c.id}
-                  className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
-                  style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}
+                  className="relative rounded-2xl bg-card border border-border/20 overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 hover:border-violet-500/30"
                 >
-                  <div className="h-0.5 bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
+                  <div className="h-[3px] bg-gradient-to-r from-violet-500 to-transparent opacity-60" />
                   <div className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h3 className="text-[13px] font-semibold truncate">{c.nome}</h3>
-                        {c.documento && <p className="text-[11px] text-muted-foreground/70 font-mono">{c.documento}</p>}
+                    {/* Header */}
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+                        <User className="h-5 w-5 text-violet-500" />
                       </div>
-                      <div className="h-8 w-8 rounded-full bg-violet-500/10 flex items-center justify-center shrink-0">
-                        <User className="h-4 w-4 text-violet-500" />
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-[13px] font-bold truncate leading-tight">{c.nome}</h3>
+                        {c.documento && <p className="text-[11px] text-muted-foreground/60 font-mono truncate">{c.documento}</p>}
                       </div>
                     </div>
-                    <div className="space-y-1">
-                      {c.telefone && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
-                          <Phone className="h-3 w-3" /><span>{c.telefone}</span>
-                        </div>
-                      )}
-                      {c.email && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
-                          <Mail className="h-3 w-3" /><span className="truncate">{c.email}</span>
-                        </div>
-                      )}
-                      {c.endereco && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
-                          <MapPin className="h-3 w-3 shrink-0" /><span className="truncate">{c.endereco}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5 pt-1 border-t border-border/20">
+
+                    {/* Contatos */}
+                    {(c.telefone || c.email || c.endereco) && (
+                      <div className="space-y-1.5 rounded-xl bg-muted/20 border border-border/15 px-3 py-2.5">
+                        {c.telefone && (
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                            <Phone className="h-3 w-3 shrink-0 text-muted-foreground/40" /><span>{c.telefone}</span>
+                          </div>
+                        )}
+                        {c.email && (
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                            <Mail className="h-3 w-3 shrink-0 text-muted-foreground/40" /><span className="truncate">{c.email}</span>
+                          </div>
+                        )}
+                        {c.endereco && (
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                            <MapPin className="h-3 w-3 shrink-0 text-muted-foreground/40" /><span className="truncate">{c.endereco}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Ações */}
+                    <div className="flex gap-1.5 pt-0.5 border-t border-border/15">
                       <button
                         type="button"
                         onClick={() => { setPedidoComCliente(c); setNovoPedidoOpen(true); setSubTab("pedidos"); }}
-                        className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[10px] font-medium transition-colors"
+                        className="flex-1 h-8 flex items-center justify-center gap-1.5 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[11px] font-semibold transition-colors"
                       >
                         <ShoppingCart className="h-3 w-3" /> Pedido
                       </button>
                       <button
                         type="button"
                         onClick={() => { setEditCliente(c); setClienteModal(true); }}
-                        className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
+                        className="flex-1 h-8 flex items-center justify-center rounded-xl bg-muted/25 hover:bg-muted/50 text-muted-foreground text-[11px] font-medium transition-colors"
                       >
                         Editar
                       </button>
@@ -1875,7 +1871,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                         <button
                           type="button"
                           onClick={() => setDeleteCliente(c)}
-                          className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                          className="h-8 w-8 flex items-center justify-center rounded-xl bg-muted/25 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
