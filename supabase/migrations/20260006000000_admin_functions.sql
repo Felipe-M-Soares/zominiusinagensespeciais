@@ -106,7 +106,7 @@ GRANT EXECUTE ON FUNCTION public.admin_reset_password TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_delete_user   TO authenticated;
 
 -- Conta admin padrão
-DO $admin$
+DO $$
 DECLARE
   v_uid  uuid;
   v_email text := 'admin@interno.conceptus';
@@ -120,7 +120,7 @@ BEGIN
     created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change
   ) VALUES (
     gen_random_uuid(), '00000000-0000-0000-0000-000000000000', v_email,
-    extensions.crypt('Admin@2024', extensions.gen_salt('bf')), now(),
+    crypt('Admin@2024', gen_salt('bf')), now(),
     jsonb_build_object('display_name', 'Administrador'),
     jsonb_build_object('provider', 'email', 'providers', ARRAY['email']),
     'authenticated', 'authenticated', now(), now(), '', '', '', ''
@@ -133,4 +133,4 @@ BEGIN
   INSERT INTO public.user_roles (user_id, role) VALUES (v_uid, 'admin')
   ON CONFLICT (user_id) DO UPDATE SET role = 'admin';
 END;
-$admin$;
+$$;
