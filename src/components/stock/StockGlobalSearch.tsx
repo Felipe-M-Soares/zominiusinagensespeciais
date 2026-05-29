@@ -465,6 +465,7 @@ export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: 
               placeholder="Bipe o código ou pesquise por modelo, referência..."
               height="h-10 sm:h-11"
             />
+          </div>
           <button
             type="button"
             onClick={handleSubmit}

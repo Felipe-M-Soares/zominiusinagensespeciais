@@ -1783,6 +1783,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                 placeholder="Bipe o código ou busque por cliente..."
                 height="h-9"
               />
+            </div>
             <button
               type="button"
               className="h-9 px-3 flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-semibold transition-colors shrink-0"

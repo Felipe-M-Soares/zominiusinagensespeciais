@@ -1960,6 +1960,7 @@ export default function Comercial() {
                       placeholder="Bipe o código ou busque por cliente..."
                       height="h-9"
                     />
+                  </div>
                   <Button size="sm" className="h-9 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setEditCliente(null); setClienteModal(true); }}>
                     <UserPlus className="h-3.5 w-3.5" /> Novo
                   </Button>
