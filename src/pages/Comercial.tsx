@@ -297,7 +297,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   // CODE-01 FIX: useDebounce substitui o padrão debounceRef inline duplicado
   const debouncedPecaSearch = useDebounce((v: string) => {
     const q = v.trim().toLowerCase();
-    const sugestoes = searchableItems.filter(i =>
+    const sugestoes = expedicaoItems.filter(i =>
       !q ||
       i.device?.model?.toLowerCase().includes(q) ||
       i.device?.reference?.toLowerCase().includes(q) ||
@@ -322,12 +322,12 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   function handlePecaFocus() {
     const q = pecaSearch.trim().toLowerCase();
     const lista = q
-      ? searchableItems.filter(i =>
+      ? expedicaoItems.filter(i =>
           i.device?.model?.toLowerCase().includes(q) ||
           i.device?.reference?.toLowerCase().includes(q) ||
           i.device?.internal_code?.toLowerCase().includes(q)
         )
-      : searchableItems;
+      : expedicaoItems;
     const vistos = new Set<string>();
     const deduped = lista.filter(i => {
       if (vistos.has(i.device_id)) return false;
