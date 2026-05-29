@@ -40,12 +40,15 @@ DROP POLICY IF EXISTS "backup_configs_admin" ON public.backup_configs;
 DROP POLICY IF EXISTS "stock_backups_admin"  ON public.stock_backups;
 DROP POLICY IF EXISTS "stock_backups_select" ON public.stock_backups;
 
+drop policy if exists "backup_configs_admin" on public.backup_configs;
 CREATE POLICY "backup_configs_admin" ON public.backup_configs
   FOR ALL USING (public.is_admin_user());
 
+drop policy if exists "stock_backups_select" on public.stock_backups;
 CREATE POLICY "stock_backups_select" ON public.stock_backups
   FOR SELECT USING (public.is_approved_user());
 
+drop policy if exists "stock_backups_admin" on public.stock_backups;
 CREATE POLICY "stock_backups_admin"  ON public.stock_backups
   FOR ALL USING (public.is_admin_user());
 

@@ -8,6 +8,7 @@ VALUES ('stock-backups', 'stock-backups', false)
 ON CONFLICT (id) DO NOTHING;
 
 -- RLS: only admins can read/write backups
+drop policy if exists "admin_backups_all" on storage.objects;
 CREATE POLICY "admin_backups_all" ON storage.objects
   FOR ALL TO authenticated
   USING (

@@ -66,44 +66,54 @@ AS $$
 $$;
 
 -- RLS: user_roles
+drop policy if exists "Users can view their own roles" on public.user_roles;
 CREATE POLICY "Users can view their own roles" ON public.user_roles
 FOR SELECT TO authenticated
 USING (auth.uid() = user_id);
 
+drop policy if exists "Admins can view all roles" on public.user_roles;
 CREATE POLICY "Admins can view all roles" ON public.user_roles
 FOR SELECT TO authenticated
 USING (public.has_role(auth.uid(), 'admin'));
 
+drop policy if exists "Admins can manage roles" on public.user_roles;
 CREATE POLICY "Admins can manage roles" ON public.user_roles
 FOR ALL TO authenticated
 USING (public.has_role(auth.uid(), 'admin'));
 
 -- RLS: profiles
+drop policy if exists "Users can view their own profile" on public.profiles;
 CREATE POLICY "Users can view their own profile" ON public.profiles
 FOR SELECT TO authenticated
 USING (auth.uid() = user_id);
 
+drop policy if exists "Admins can view all profiles" on public.profiles;
 CREATE POLICY "Admins can view all profiles" ON public.profiles
 FOR SELECT TO authenticated
 USING (public.has_role(auth.uid(), 'admin'));
 
+drop policy if exists "Users can update their own profile" on public.profiles;
 CREATE POLICY "Users can update their own profile" ON public.profiles
 FOR UPDATE TO authenticated
 USING (auth.uid() = user_id);
 
+drop policy if exists "Users can insert their own profile" on public.profiles;
 CREATE POLICY "Users can insert their own profile" ON public.profiles
 FOR INSERT TO authenticated
 WITH CHECK (auth.uid() = user_id);
 
+drop policy if exists "Admins can manage all profiles" on public.profiles;
 CREATE POLICY "Admins can manage all profiles" ON public.profiles
 FOR ALL TO authenticated
 USING (public.has_role(auth.uid(), 'admin'));
 
 -- RLS: devices - all authenticated users can read
+drop policy if exists "Authenticated users can view devices" on public.devices;
 CREATE POLICY "Authenticated users can view devices" ON public.devices
 FOR SELECT TO authenticated
 USING (true);
 
+drop policy if exists "Admins can manage devices" on public.devices;
 CREATE POLICY "Admins can manage devices" ON public.devices
 FOR ALL TO authenticated
 USING (public.has_role(auth.uid(), 'admin'));

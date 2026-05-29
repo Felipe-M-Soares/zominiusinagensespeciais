@@ -48,12 +48,16 @@ CREATE TABLE IF NOT EXISTS public.financeiro_lancamentos (
 
 ALTER TABLE public.financeiro_lancamentos ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "financeiro_lancamentos_select" on public.financeiro_lancamentos;
 CREATE POLICY "financeiro_lancamentos_select" ON public.financeiro_lancamentos
   FOR SELECT USING (true);
+drop policy if exists "financeiro_lancamentos_insert" on public.financeiro_lancamentos;
 CREATE POLICY "financeiro_lancamentos_insert" ON public.financeiro_lancamentos
   FOR INSERT WITH CHECK (true);
+drop policy if exists "financeiro_lancamentos_update" on public.financeiro_lancamentos;
 CREATE POLICY "financeiro_lancamentos_update" ON public.financeiro_lancamentos
   FOR UPDATE USING (true);
+drop policy if exists "financeiro_lancamentos_delete" on public.financeiro_lancamentos;
 CREATE POLICY "financeiro_lancamentos_delete" ON public.financeiro_lancamentos
   FOR DELETE USING (true);
 
@@ -76,12 +80,16 @@ CREATE TABLE IF NOT EXISTS public.financeiro_contas_bancarias (
 
 ALTER TABLE public.financeiro_contas_bancarias ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "financeiro_contas_select" on public.financeiro_contas_bancarias;
 CREATE POLICY "financeiro_contas_select" ON public.financeiro_contas_bancarias
   FOR SELECT USING (true);
+drop policy if exists "financeiro_contas_insert" on public.financeiro_contas_bancarias;
 CREATE POLICY "financeiro_contas_insert" ON public.financeiro_contas_bancarias
   FOR INSERT WITH CHECK (true);
+drop policy if exists "financeiro_contas_update" on public.financeiro_contas_bancarias;
 CREATE POLICY "financeiro_contas_update" ON public.financeiro_contas_bancarias
   FOR UPDATE USING (true);
+drop policy if exists "financeiro_contas_delete" on public.financeiro_contas_bancarias;
 CREATE POLICY "financeiro_contas_delete" ON public.financeiro_contas_bancarias
   FOR DELETE USING (true);
 

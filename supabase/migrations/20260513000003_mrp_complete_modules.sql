@@ -26,8 +26,10 @@ CREATE TABLE IF NOT EXISTS public.fornecedores (
 
 ALTER TABLE public.fornecedores ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "fornecedores_select" on public.fornecedores;
 CREATE POLICY "fornecedores_select" ON public.fornecedores
   FOR SELECT USING (public.is_approved_user());
+drop policy if exists "fornecedores_write" on public.fornecedores;
 CREATE POLICY "fornecedores_write" ON public.fornecedores
   FOR ALL USING (public.is_admin_user());
 
@@ -65,9 +67,13 @@ CREATE TABLE IF NOT EXISTS public.bom_items (
 ALTER TABLE public.bom_headers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bom_items   ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "bom_headers_select" on public.bom_headers;
 CREATE POLICY "bom_headers_select" ON public.bom_headers FOR SELECT USING (public.is_approved_user());
+drop policy if exists "bom_headers_write" on public.bom_headers;
 CREATE POLICY "bom_headers_write"  ON public.bom_headers FOR ALL USING (public.is_admin_user());
+drop policy if exists "bom_items_select" on public.bom_items;
 CREATE POLICY "bom_items_select"   ON public.bom_items   FOR SELECT USING (public.is_approved_user());
+drop policy if exists "bom_items_write" on public.bom_items;
 CREATE POLICY "bom_items_write"    ON public.bom_items   FOR ALL USING (public.is_admin_user());
 
 CREATE INDEX IF NOT EXISTS idx_bom_headers_device ON public.bom_headers(device_id);
@@ -130,11 +136,17 @@ ALTER TABLE public.ordens_producao   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.op_status_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.op_consumos       ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "op_select" on public.ordens_producao;
 CREATE POLICY "op_select"         ON public.ordens_producao   FOR SELECT USING (public.is_approved_user());
+drop policy if exists "op_write" on public.ordens_producao;
 CREATE POLICY "op_write"          ON public.ordens_producao   FOR ALL   USING (public.is_admin_user());
+drop policy if exists "op_hist_select" on public.op_status_history;
 CREATE POLICY "op_hist_select"    ON public.op_status_history FOR SELECT USING (public.is_approved_user());
+drop policy if exists "op_hist_insert" on public.op_status_history;
 CREATE POLICY "op_hist_insert"    ON public.op_status_history FOR INSERT WITH CHECK (public.is_approved_user());
+drop policy if exists "op_consumo_select" on public.op_consumos;
 CREATE POLICY "op_consumo_select" ON public.op_consumos       FOR SELECT USING (public.is_approved_user());
+drop policy if exists "op_consumo_write" on public.op_consumos;
 CREATE POLICY "op_consumo_write"  ON public.op_consumos       FOR ALL   USING (public.is_admin_user());
 
 CREATE INDEX IF NOT EXISTS idx_op_status    ON public.ordens_producao(status, created_at DESC);
@@ -215,7 +227,9 @@ CREATE TABLE IF NOT EXISTS public.nao_conformidades (
 );
 
 ALTER TABLE public.nao_conformidades ENABLE ROW LEVEL SECURITY;
+drop policy if exists "nc_select" on public.nao_conformidades;
 CREATE POLICY "nc_select" ON public.nao_conformidades FOR SELECT USING (public.is_approved_user());
+drop policy if exists "nc_write" on public.nao_conformidades;
 CREATE POLICY "nc_write"  ON public.nao_conformidades FOR ALL   USING (public.is_approved_user());
 
 CREATE INDEX IF NOT EXISTS idx_nc_status ON public.nao_conformidades(status, created_at DESC);
@@ -269,7 +283,9 @@ CREATE TABLE IF NOT EXISTS public.contas_receber (
 );
 
 ALTER TABLE public.contas_receber ENABLE ROW LEVEL SECURITY;
+drop policy if exists "cr_select" on public.contas_receber;
 CREATE POLICY "cr_select" ON public.contas_receber FOR SELECT USING (public.is_approved_user());
+drop policy if exists "cr_write" on public.contas_receber;
 CREATE POLICY "cr_write"  ON public.contas_receber FOR ALL USING (
   EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin','financeiro'))
 );

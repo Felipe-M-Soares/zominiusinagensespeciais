@@ -46,12 +46,15 @@ create table if not exists public.notificacoes (
 alter table public.notificacoes enable row level security;
 
 -- Cada usuário vê apenas as próprias notificações
+drop policy if exists "notif_select" on public.notificacoes;
 create policy "notif_select" on public.notificacoes
   for select to authenticated using (auth.uid() = user_id);
 
+drop policy if exists "notif_insert" on public.notificacoes;
 create policy "notif_insert" on public.notificacoes
   for insert to authenticated with check (true);
 
+drop policy if exists "notif_update" on public.notificacoes;
 create policy "notif_update" on public.notificacoes
   for update to authenticated using (auth.uid() = user_id);
 

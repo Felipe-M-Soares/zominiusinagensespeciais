@@ -40,21 +40,25 @@ CREATE TABLE IF NOT EXISTS public.financeiro_lancamentos (
 ALTER TABLE public.financeiro_lancamentos ENABLE ROW LEVEL SECURITY;
 
 -- Financeiro e admins têm acesso completo; outros usuários só lêem
+drop policy if exists "financeiro_lanc_select" on public.financeiro_lancamentos;
 CREATE POLICY "financeiro_lanc_select" ON public.financeiro_lancamentos
   FOR SELECT TO authenticated USING (true);
 
+drop policy if exists "financeiro_lanc_insert" on public.financeiro_lancamentos;
 CREATE POLICY "financeiro_lanc_insert" ON public.financeiro_lancamentos
   FOR INSERT TO authenticated WITH CHECK (
     auth.uid() = created_by OR
     EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'financeiro'))
   );
 
+drop policy if exists "financeiro_lanc_update" on public.financeiro_lancamentos;
 CREATE POLICY "financeiro_lanc_update" ON public.financeiro_lancamentos
   FOR UPDATE TO authenticated USING (
     auth.uid() = created_by OR
     EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'financeiro'))
   );
 
+drop policy if exists "financeiro_lanc_delete" on public.financeiro_lancamentos;
 CREATE POLICY "financeiro_lanc_delete" ON public.financeiro_lancamentos
   FOR DELETE TO authenticated USING (
     EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'financeiro'))
@@ -96,11 +100,13 @@ CREATE TABLE IF NOT EXISTS public.financeiro_contas_bancarias (
 
 ALTER TABLE public.financeiro_contas_bancarias ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "fin_contas_select" on public.financeiro_contas_bancarias;
 CREATE POLICY "fin_contas_select" ON public.financeiro_contas_bancarias
   FOR SELECT TO authenticated USING (
     EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'financeiro'))
   );
 
+drop policy if exists "fin_contas_write" on public.financeiro_contas_bancarias;
 CREATE POLICY "fin_contas_write" ON public.financeiro_contas_bancarias
   FOR ALL TO authenticated USING (
     EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'financeiro'))
@@ -129,6 +135,7 @@ CREATE TABLE IF NOT EXISTS public.nf_numero_controle (
 
 ALTER TABLE public.nf_numero_controle ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "nf_num_select" on public.nf_numero_controle;
 CREATE POLICY "nf_num_select" ON public.nf_numero_controle
   FOR SELECT TO authenticated USING (true);
 

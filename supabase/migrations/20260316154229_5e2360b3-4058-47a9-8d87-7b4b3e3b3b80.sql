@@ -9,14 +9,18 @@ CREATE TABLE public.catalogs (
 
 ALTER TABLE public.catalogs ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "Authenticated users can view catalogs" on public.catalogs;
 CREATE POLICY "Authenticated users can view catalogs" ON public.catalogs
   FOR SELECT TO authenticated USING (true);
 
+drop policy if exists "Admins can insert catalogs" on public.catalogs;
 CREATE POLICY "Admins can insert catalogs" ON public.catalogs
   FOR INSERT TO authenticated WITH CHECK (has_role(auth.uid(), 'admin'));
 
+drop policy if exists "Admins can delete catalogs" on public.catalogs;
 CREATE POLICY "Admins can delete catalogs" ON public.catalogs
   FOR DELETE TO authenticated USING (has_role(auth.uid(), 'admin'));
 
+drop policy if exists "Admins can update catalogs" on public.catalogs;
 CREATE POLICY "Admins can update catalogs" ON public.catalogs
   FOR UPDATE TO authenticated USING (has_role(auth.uid(), 'admin'));

@@ -71,10 +71,12 @@ DROP POLICY IF EXISTS "stock_items_select"      ON public.stock_items;
 DROP POLICY IF EXISTS "stock_items_write_admin" ON public.stock_items;
 
 -- Leitura: qualquer usuário aprovado
+drop policy if exists "stock_items_select" on public.stock_items;
 CREATE POLICY "stock_items_select" ON public.stock_items
   FOR SELECT USING (public.is_approved_user());
 
 -- Escrita (insert/update/delete): apenas admins
+drop policy if exists "stock_items_write_admin" on public.stock_items;
 CREATE POLICY "stock_items_write_admin" ON public.stock_items
   FOR ALL USING (public.is_admin_user());
 
@@ -84,10 +86,12 @@ DROP POLICY IF EXISTS "stock_movements_select" ON public.stock_movements;
 DROP POLICY IF EXISTS "stock_movements_insert" ON public.stock_movements;
 
 -- Leitura: qualquer aprovado
+drop policy if exists "stock_movements_select" on public.stock_movements;
 CREATE POLICY "stock_movements_select" ON public.stock_movements
   FOR SELECT USING (public.is_approved_user());
 
 -- Inserção: qualquer aprovado pode registrar movimentos
+drop policy if exists "stock_movements_insert" on public.stock_movements;
 CREATE POLICY "stock_movements_insert" ON public.stock_movements
   FOR INSERT WITH CHECK (public.is_approved_user());
 

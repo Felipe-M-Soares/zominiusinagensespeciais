@@ -33,14 +33,17 @@ CREATE POLICY "Admins can delete manuals"
   USING (has_role(auth.uid(), 'admin'::app_role));
 
 -- Storage policies for manuals bucket
+drop policy if exists "Anyone can read manuals" on storage.objects;
 CREATE POLICY "Anyone can read manuals" ON storage.objects
   FOR SELECT TO authenticated
   USING (bucket_id = 'manuals');
 
+drop policy if exists "Admins can upload manuals" on storage.objects;
 CREATE POLICY "Admins can upload manuals" ON storage.objects
   FOR INSERT TO authenticated
   WITH CHECK (bucket_id = 'manuals' AND public.has_role(auth.uid(), 'admin'::app_role));
 
+drop policy if exists "Admins can delete manuals" on storage.objects;
 CREATE POLICY "Admins can delete manuals" ON storage.objects
   FOR DELETE TO authenticated
   USING (bucket_id = 'manuals' AND public.has_role(auth.uid(), 'admin'::app_role));
