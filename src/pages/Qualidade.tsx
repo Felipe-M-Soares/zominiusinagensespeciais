@@ -654,7 +654,7 @@ const GtinPanel = memo(function GtinPanel() {
   const [devices, setDevices] = useState<{ id: string; model: string; udi_di: string | null }[]>([]);
   useEffect(() => {
     supabase.from("devices").select("id, model, udi_di").order("model").then(({ data }) => {
-      setDevices((data ?? []).filter((d: { udi_di: string | null }) => d.udi_di));
+      setDevices((data ?? []).filter((d: { udi_di: string | null }) => !d.udi_di));
     });
   }, []);
 
@@ -769,29 +769,35 @@ const GtinPanel = memo(function GtinPanel() {
       </div>
 
       {/* Dispositivos com UDI-DI cadastrado */}
-      {devices.length > 0 && (
-        <div className="rounded-2xl border border-border/40 bg-card overflow-hidden">
+      <div className="rounded-2xl border border-border/40 bg-card overflow-hidden">
           <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
-            <Hash className="h-4 w-4 text-violet-500" />
-            <p className="text-sm font-semibold">Peças com UDI-DI Cadastrado</p>
-            <span className="ml-auto text-[10px] text-muted-foreground/50">{devices.length} peças</span>
+            <AlertCircle className="h-4 w-4 text-amber-500" />
+            <p className="text-sm font-semibold">Peças pendentes de UDI-DI</p>
+            <span className="ml-auto text-[10px] text-muted-foreground/50">{devices.length} peças sem UDI-DI</span>
           </div>
           <div className="divide-y divide-border/20 max-h-72 overflow-y-auto">
             {devices.map(d => (
               <div key={d.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/10 transition-colors">
-                <p className="text-[13px] font-medium truncate flex-1 pr-4">{d.model}</p>
+                <div className="flex-1 min-w-0 pr-4">
+                  <p className="text-[13px] font-medium truncate">{d.model}</p>
+                  <p className="text-[10px] text-muted-foreground/60 font-mono">{d.reference}</p>
+                </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-[11px] font-mono text-violet-600 bg-violet-500/8 border border-violet-500/20 px-2 py-0.5 rounded-full">{d.udi_di}</span>
-                  <button onClick={() => copyToClipboard(d.udi_di!)}
-                    className="h-6 w-6 rounded-lg border border-border/40 flex items-center justify-center text-muted-foreground hover:text-violet-500 hover:border-violet-500/40 transition-colors">
-                    <Copy className="h-3 w-3" />
-                  </button>
+                  {d.anvisa_registration ? (
+                    <span className="flex items-center gap-1 text-[10px] bg-emerald-500/8 text-emerald-600 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                      <CheckCircle2 className="h-2.5 w-2.5" />ANVISA ok
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-600 bg-amber-500/8 border border-amber-500/20 px-2 py-0.5 rounded-full">Sem registro</span>
+                  )}
+                  <span className="text-[10px] text-destructive bg-destructive/8 border border-destructive/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <AlertCircle className="h-2.5 w-2.5" />Sem UDI-DI
+                  </span>
                 </div>
               </div>
             ))}
           </div>
         </div>
-      )}
     </div>
   );
 });
