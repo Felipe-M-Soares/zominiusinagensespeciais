@@ -76,7 +76,7 @@ const BackupPanel             = lazy(() => import("@/components/stock/BackupPane
 const ComercialPanelLazy      = lazy(() => import("@/components/stock/ComercialPanel").then(m => ({ default: m.ComercialPanel })));
 const PedidosEstoquePanel     = lazy(() => import("@/components/stock/PedidosEstoquePanel").then(m => ({ default: m.PedidosEstoquePanel })));
 import { supabase } from "@/integrations/supabase/client";
-import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
+import { deleteStockItem } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
@@ -665,7 +665,6 @@ export default function Estoque() {
   const [transferItem, setTransferItem] = useState<StockItem | null>(null);
   const [retrabalhoItem, setRetrabalhoItem] = useState<StockItem | null>(null);
   const [concluirRetrabalhoItem, setConcluirRetrabalhoItem] = useState<StockItem | null>(null);
-  const [lotesSummary, setLotesSummary] = useState<Map<string, number>>(new Map());
   const [resetItem, setResetItem] = useState<StockItem | null>(null);
   const [resetting, setResetting] = useState(false);
 
@@ -679,7 +678,7 @@ export default function Estoque() {
   const adminMenuRef = useRef<HTMLDivElement>(null);
 
   // ── Dados do servidor ─────────────────────────────────────────────────────
-  const { items: allItems, totalCount, loading, error, refetch } = useStock(querySearch);
+  const { items: allItems, totalCount, loteMap, loading, error, refetch } = useStock(querySearch);
 
   // Derivados dos dados (não são hooks — apenas cálculos puros)
   const intermediariaItemsAll = allItems.filter((i) => i.fase === "intermediaria");
@@ -826,23 +825,8 @@ export default function Estoque() {
     [filteredItems, visibleCount]
   );
 
-  const pagedItemIds = useMemo(
-    () => pagedItems.map((i) => i.id),
-    [pagedItems] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  // Busca contagem de lotes em UMA única query batch (evita N requests simultâneas).
-  // PERF: só executa nas abas que mostram lotes (intermediaria/expedicao/retrabalho).
-  // Em dashboard/recebimento/pedidos não há cards com badge de lote.
-  const viewHasLotes = activeView === "intermediaria" || activeView === "expedicao" || activeView === "retrabalho";
-  useEffect(() => {
-    if (!viewHasLotes || pagedItemIds.length === 0) { setLotesSummary(new Map()); return; }
-    let cancelled = false;
-    fetchLotesSummaryBatch(pagedItemIds).then((result) => {
-      if (!cancelled) setLotesSummary(result);
-    });
-    return () => { cancelled = true; };
-  }, [pagedItemIds, viewHasLotes]);
+  // PERF: loteMap vem diretamente do RPC load_stock_page embutido no useStock.
+  // Não há mais useEffect nem request extra pós-render para buscar contagem de lotes.
 
   async function handleDeleteAll() {
     setDeletingAll(true);
@@ -1266,7 +1250,7 @@ export default function Estoque() {
                     onDelete={handleDelete}
                     onLotes={handleLotes}
                     onReset={handleReset}
-                    loteCount={lotesSummary.get(item.id) ?? 0}
+                    loteCount={loteMap.get(item.id) ?? 0}
                     isAdmin={isAdmin}
                   />
                 ) : activeView === "retrabalho" ? (
@@ -1276,7 +1260,7 @@ export default function Estoque() {
                     onConcluir={handleConcluir}
                     onHistory={handleHistory}
                     onLotes={handleLotes}
-                    loteCount={lotesSummary.get(item.id) ?? 0}
+                    loteCount={loteMap.get(item.id) ?? 0}
                   />
                 ) : (
                   <ExpedicaoCard
@@ -1288,7 +1272,7 @@ export default function Estoque() {
                     onLotes={handleLotes}
                     onRetrabalho={handleRetrabalho}
                     onReset={handleReset}
-                    loteCount={lotesSummary.get(item.id) ?? 0}
+                    loteCount={loteMap.get(item.id) ?? 0}
                     isAdmin={isAdmin}
                   />
                 )
