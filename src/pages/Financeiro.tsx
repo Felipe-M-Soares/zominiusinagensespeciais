@@ -906,7 +906,7 @@ async function notificarPedidoEnviado(
 ): Promise<void> {
   try {
     const { data: admins } = await supabase
-      .from("profiles")
+      .from("user_roles")
       .select("user_id")
       .eq("role", "admin");
 

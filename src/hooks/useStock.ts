@@ -65,16 +65,14 @@ export function useStock(search: string) {
       let query = supabase
         .from("stock_items")
         .select(
-          // PERF: campos restritos ao que os cards realmente exibem.
-          // Campos de detalhe (sterile, implantable, etc.) carregam sob demanda no DeviceDetail.
-          // count:"planned" usa estimativa do planner em vez de COUNT(*) completo — muito mais rápido.
+          // PERF: só campos usados nos cards — detalhes carregam sob demanda no DeviceDetail
           `id, device_id, quantity, quantity_reserved, min_quantity, location, notes, fase, created_at, updated_at,
            device:devices(
              id, udi_di, reference, model, brand_name, internal_code,
              anvisa_registration, manufacturer_country, classification_code,
              risk_class, icon_url
            )`,
-          { count: "planned" }
+          { count: "exact" }
         )
         .order("updated_at", { ascending: false });
 
@@ -123,21 +121,17 @@ export function useStock(search: string) {
         }
       }
 
-      // PERF: busca a primeira página e o total simultaneamente.
-      // Se houver mais páginas, dispara todas em paralelo com Promise.all.
+      // PERF: busca primeira página e dispara demais em paralelo
       const PAGE_SIZE = 1000;
       let allRows: Record<string, unknown>[] = [];
 
-      // Página 0 — também obtém o count total
       const { data: page0, count: totalRows, error: err0 } = await query.range(0, PAGE_SIZE - 1);
       if (err0) throw err0;
       allRows = page0 ?? [];
       const fetchedCount = totalRows ?? allRows.length;
 
       if (allRows.length === PAGE_SIZE && fetchedCount > PAGE_SIZE) {
-        // Calcula quantas páginas adicionais são necessárias (máx 9 = 10k itens total)
         const extraPages = Math.min(9, Math.ceil((fetchedCount - PAGE_SIZE) / PAGE_SIZE));
-        // Dispara todas as páginas extras em paralelo
         const extraResults = await Promise.all(
           Array.from({ length: extraPages }, (_, i) => {
             const from = (i + 1) * PAGE_SIZE;
@@ -837,29 +831,33 @@ export async function fetchLotesSummaryBatch(
 ): Promise<Map<string, number>> {
   if (stockItemIds.length === 0) return new Map();
 
-  // PERF: exclui movimentos "espelho" diretamente no servidor (not.in) — menos dados transferidos.
-  // Isso reduz significativamente o payload quando há muitos itens visíveis.
-  const IGNORE_REASONS = [
-    "Recebido de Intermediário",
-    "Retrabalho concluído — recebido do Retrabalho",
-    "Rollback — falha ao criar item de retrabalho",
-    "Rollback — falha ao criar item de expedição",
-    "Rollback — falha ao registrar entrada na expedição",
-  ];
-
   const { data } = await supabase
     .from("stock_movements")
-    .select("stock_item_id, lote, type, quantity")
+    .select("stock_item_id, lote, type, quantity, reason")
     .in("stock_item_id", stockItemIds)
-    .neq("lote", null)
-    .not("reason", "in", `(${IGNORE_REASONS.map(r => `"${r}"`).join(",")})`);
+    .neq("lote", null);
 
   if (!data || data.length === 0) return new Map();
 
+  // Movimentos que são apenas "ruído" contábil entre fases — nunca representam
+  // estoque real em nenhum dos dois lados, portanto devem ser ignorados no cômputo.
+  // ATENÇÃO: "Transferência para Expedição" e "Enviado para Retrabalho" são saídas
+  // REAIS da intermediária/expedição e NÃO devem ser ignoradas — caso contrário o
+  // saldo da intermediária fica positivo mesmo com estoque zerado (bug dos "2 lotes").
+  // Só ignoramos entradas-espelho que duplicariam o saldo no destino.
+  const IGNORE_REASONS = new Set([
+    "Recebido de Intermediário",                         // entrada na expedição — já contada como saída na intermediária
+    "Retrabalho concluído — recebido do Retrabalho",     // entrada na expedição — já contada como saída no retrabalho
+    "Rollback — falha ao criar item de retrabalho",
+    "Rollback — falha ao criar item de expedição",
+    "Rollback — falha ao registrar entrada na expedição",
+  ]);
+
   // Agrupa por (stock_item_id, lote) e calcula saldo real
-  type Row = { stock_item_id: string; lote: string; type: string; quantity: number };
+  type Row = { stock_item_id: string; lote: string; type: string; quantity: number; reason: string | null };
   const saldos = new Map<string, number>(); // chave: "itemId|lote"
   for (const row of data as Row[]) {
+    if (row.reason && IGNORE_REASONS.has(row.reason)) continue;
     const key = `${row.stock_item_id}|${row.lote.toUpperCase()}`;
     const current = saldos.get(key) ?? 0;
     saldos.set(key, row.type === "entrada" ? current + row.quantity : current - row.quantity);

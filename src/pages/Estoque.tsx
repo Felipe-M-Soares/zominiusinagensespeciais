@@ -720,8 +720,7 @@ export default function Estoque() {
       .channel("estoque-low-stock-watch")
       .on(
         "postgres_changes",
-        // PERF: filtro por fase=expedicao no server — reduz eventos desnecessários
-        { event: "UPDATE", schema: "public", table: "stock_items", filter: "fase=eq.expedicao" },
+        { event: "UPDATE", schema: "public", table: "stock_items" },
         (payload) => {
           const updated = payload.new as { quantity?: number; fase?: string; device_id?: string };
           if (
