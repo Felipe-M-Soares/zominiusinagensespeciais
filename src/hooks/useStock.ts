@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import type { Device } from "@/types/device";
 import { sanitizeQuery } from "@/lib/sanitize";
+
+// Cache key factory
+const stockKey = (search: string) => ["stock", search] as const;
 
 // ─── Tipos locais ────────────────────────────────────────────────────────────
 
@@ -48,12 +52,15 @@ export interface LoteSummary {
 // ─── Hook principal de estoque ────────────────────────────────────────────────
 
 export function useStock(search: string) {
-  const [items, setItems] = useState<StockItem[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const cacheKey = stockKey(search);
+
+  // Inicia com dados cacheados (navegação de volta instantânea)
+  const cached = queryClient.getQueryData<{ items: StockItem[]; totalCount: number }>(cacheKey);
+  const [items, setItems] = useState<StockItem[]>(cached?.items ?? []);
+  const [totalCount, setTotalCount] = useState(cached?.totalCount ?? 0);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
-  // Padrão de cancelamento por geração — Supabase JS não aceita AbortSignal,
-  // então usamos um contador: se a geração mudou ao terminar a query, descartamos.
   const genRef = useRef<number>(0);
 
   const loadItems = useCallback(async (q: string) => {
@@ -199,6 +206,8 @@ export function useStock(search: string) {
       setItems(normalized);
       setTotalCount(fetchedCount);
       lastLoadRef.current = Date.now();
+      // Persiste no cache React Query — navegação de volta é instantânea (sem spinner)
+      queryClient.setQueryData(cacheKey, { items: normalized, totalCount: fetchedCount });
     } catch (e: unknown) {
       if ((e as { name?: string })?.name !== "AbortError") {
         setError("Erro ao carregar estoque.");

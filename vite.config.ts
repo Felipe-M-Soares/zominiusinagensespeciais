@@ -14,40 +14,57 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     sourcemap: false,
+    // Aumenta limite pois chunks grandes são esperados em app monolítico
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
         manualChunks(id: string) {
+          // pdfjs — biblioteca enorme (~3MB), só usada no ExcelStockImport (lazy)
+          if (id.includes("pdfjs-dist")) return "pdfjs";
+
+          // ExcelJS — pesado, só usado em ExcelStockImport e BackupPanel (lazy)
+          if (id.includes("exceljs") || id.includes("node_modules/exceljs")) return "exceljs";
+
+          // Recharts + D3 — só usados em DashboardPanel de Produção (lazy)
+          if (id.includes("node_modules/recharts") ||
+              id.includes("node_modules/d3-") ||
+              id.includes("node_modules/victory-vendor")) return "charts";
+
           // Supabase SDK — carregado em todas as páginas autenticadas
           if (id.includes("node_modules/@supabase")) return "supabase";
 
-          // React core + router — crítico, mas pequeno
+          // Tanstack Query — usado em todas as páginas
+          if (id.includes("node_modules/@tanstack")) return "query";
+
+          // Radix UI + Shadcn — UI components
+          if (id.includes("node_modules/@radix-ui")) return "ui";
+
+          // React core + router
           if (
             id.includes("node_modules/react/") ||
             id.includes("node_modules/react-dom/") ||
             id.includes("node_modules/react-router-dom/") ||
             id.includes("node_modules/scheduler/")
           ) return "vendor";
-
-          // Radix UI + Shadcn — UI components grandes
-          if (id.includes("node_modules/@radix-ui")) return "ui";
-
-          // Recharts — só usado no DashboardPanel de Produção
-          if (id.includes("node_modules/recharts") ||
-              id.includes("node_modules/d3-") ||
-              id.includes("node_modules/victory-vendor")) return "charts";
-
-          // Tanstack Query — usado em todas as páginas
-          if (id.includes("node_modules/@tanstack")) return "query";
-
-          // ExcelJS é lazy (dynamic import) — ficará em chunk separado automático
-          // Não precisa de entrada aqui; o Vite cria chunk on-demand.
         },
       },
     },
-    chunkSizeWarningLimit: 600,
   },
   optimizeDeps: {
-    include: ["pdfjs-dist"],
+    // Pré-bundling no dev server — evita cascata de requests no primeiro load
+    include: [
+      "@supabase/supabase-js",
+      "@tanstack/react-query",
+      "react",
+      "react-dom",
+      "react-router-dom",
+      "lucide-react",
+      "sonner",
+      "clsx",
+      "tailwind-merge",
+    ],
+    // pdfjs tem worker próprio — excluir do pré-bundling evita erros de worker
+    exclude: ["pdfjs-dist"],
   },
   plugins: [
     react(),

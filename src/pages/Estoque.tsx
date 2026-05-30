@@ -53,29 +53,28 @@ import {
   Archive,
   FileSpreadsheet,
 } from "lucide-react";
-import { MovementModal } from "@/components/stock/MovementModal";
 import { PageSkeleton } from "@/components/PageSkeleton";
-import { StockHistoryPanel } from "@/components/stock/StockHistoryPanel";
-import { AddToStockModal } from "@/components/stock/AddToStockModal";
-import { StockListModal } from "@/components/stock/StockListModal";
-import { LotesPanel } from "@/components/stock/LotesPanel";
-import { IntermediaryLotesModal } from "@/components/stock/IntermediaryLotesModal";
-import { StockCsvImport } from "@/components/stock/StockCsvImport";
-import { ExcelStockImport } from "@/components/stock/ExcelStockImport";
-import { AllMovementsModal } from "@/components/stock/AllMovementsModal";
-import { TransferirExpedicaoModal } from "@/components/stock/TransferirExpedicaoModal";
-import { RetrabalhoModal } from "@/components/stock/RetrabalhoModal";
-import { ConcluirRetrabalhoModal } from "@/components/stock/ConcluirRetrabalhoModal";
-import { StockDashboard } from "@/components/stock/StockDashboard";
 import { StockNav } from "@/components/stock/StockNav";
-import { RecebimentoPanel } from "@/components/stock/RecebimentoPanel";
-// PERF-01: BackupPanel, ComercialPanel e PedidosEstoquePanel são os maiores componentes
-// do bundle (~400KB juntos). Lazy load evita carregá-los no render inicial da página.
+// Lazy: todos os modais e painéis pesados só carregam quando abertos/acessados
 import { lazy, Suspense } from "react";
 import { LoadingScreen } from "@/components/LoadingScreen";
-const BackupPanel         = lazy(() => import("@/components/stock/BackupPanel").then(m => ({ default: m.BackupPanel })));
-const ComercialPanelLazy = lazy(() => import("@/components/stock/ComercialPanel").then(m => ({ default: m.ComercialPanel })));
-const PedidosEstoquePanel = lazy(() => import("@/components/stock/PedidosEstoquePanel").then(m => ({ default: m.PedidosEstoquePanel })));
+const MovementModal           = lazy(() => import("@/components/stock/MovementModal").then(m => ({ default: m.MovementModal })));
+const StockHistoryPanel       = lazy(() => import("@/components/stock/StockHistoryPanel").then(m => ({ default: m.StockHistoryPanel })));
+const AddToStockModal         = lazy(() => import("@/components/stock/AddToStockModal").then(m => ({ default: m.AddToStockModal })));
+const StockListModal          = lazy(() => import("@/components/stock/StockListModal").then(m => ({ default: m.StockListModal })));
+const LotesPanel              = lazy(() => import("@/components/stock/LotesPanel").then(m => ({ default: m.LotesPanel })));
+const IntermediaryLotesModal  = lazy(() => import("@/components/stock/IntermediaryLotesModal").then(m => ({ default: m.IntermediaryLotesModal })));
+const StockCsvImport          = lazy(() => import("@/components/stock/StockCsvImport").then(m => ({ default: m.StockCsvImport })));
+const ExcelStockImport        = lazy(() => import("@/components/stock/ExcelStockImport").then(m => ({ default: m.ExcelStockImport })));
+const AllMovementsModal       = lazy(() => import("@/components/stock/AllMovementsModal").then(m => ({ default: m.AllMovementsModal })));
+const TransferirExpedicaoModal= lazy(() => import("@/components/stock/TransferirExpedicaoModal").then(m => ({ default: m.TransferirExpedicaoModal })));
+const RetrabalhoModal         = lazy(() => import("@/components/stock/RetrabalhoModal").then(m => ({ default: m.RetrabalhoModal })));
+const ConcluirRetrabalhoModal = lazy(() => import("@/components/stock/ConcluirRetrabalhoModal").then(m => ({ default: m.ConcluirRetrabalhoModal })));
+const StockDashboard          = lazy(() => import("@/components/stock/StockDashboard").then(m => ({ default: m.StockDashboard })));
+const RecebimentoPanel        = lazy(() => import("@/components/stock/RecebimentoPanel").then(m => ({ default: m.RecebimentoPanel })));
+const BackupPanel             = lazy(() => import("@/components/stock/BackupPanel").then(m => ({ default: m.BackupPanel })));
+const ComercialPanelLazy      = lazy(() => import("@/components/stock/ComercialPanel").then(m => ({ default: m.ComercialPanel })));
+const PedidosEstoquePanel     = lazy(() => import("@/components/stock/PedidosEstoquePanel").then(m => ({ default: m.PedidosEstoquePanel })));
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem, fetchLotesSummaryBatch } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
@@ -1006,6 +1005,7 @@ export default function Estoque() {
           onViewChange={(view) => {
             setActiveView(view);
             setVisibleCount(ITEMS_PER_PAGE);
+            refetch(); // BUG-FIX-3: atualiza dados ao mudar de aba
           }}
           intermediariaItems={intermediariaItems}
           expedicaoItems={expedicaoItems}
@@ -1314,48 +1314,45 @@ export default function Estoque() {
 
       {/* ─── Modais ──────────────────────────────────────────────────────────── */}
 
-      <MovementModal
-        item={movementState?.item ?? null}
-        open={!!movementState}
-        initialType={movementState?.type ?? "entrada"}
-        lockedType={movementState?.lockedType}
-        onClose={() => setMovementState(null)}
-        onSuccess={refetch}
-      />
-
-      <TransferirExpedicaoModal
-        item={transferItem}
-        open={!!transferItem}
-        onClose={() => setTransferItem(null)}
-        onSuccess={refetch}
-      />
-
-      <RetrabalhoModal
-        item={retrabalhoItem}
-        open={!!retrabalhoItem}
-        onClose={() => setRetrabalhoItem(null)}
-        onSuccess={refetch}
-      />
-
-      <ConcluirRetrabalhoModal
-        item={concluirRetrabalhoItem}
-        open={!!concluirRetrabalhoItem}
-        onClose={() => setConcluirRetrabalhoItem(null)}
-        onSuccess={refetch}
-      />
-
-      <StockHistoryPanel
-        item={historyItem}
-        open={!!historyItem}
-        onClose={() => setHistoryItem(null)}
-        onSuccess={refetch}
-      />
-
-      <AddToStockModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSuccess={refetch}
-      />
+      <Suspense fallback={null}>
+        <MovementModal
+          item={movementState?.item ?? null}
+          open={!!movementState}
+          initialType={movementState?.type ?? "entrada"}
+          lockedType={movementState?.lockedType}
+          onClose={() => setMovementState(null)}
+          onSuccess={refetch}
+        />
+        <TransferirExpedicaoModal
+          item={transferItem}
+          open={!!transferItem}
+          onClose={() => setTransferItem(null)}
+          onSuccess={refetch}
+        />
+        <RetrabalhoModal
+          item={retrabalhoItem}
+          open={!!retrabalhoItem}
+          onClose={() => setRetrabalhoItem(null)}
+          onSuccess={refetch}
+        />
+        <ConcluirRetrabalhoModal
+          item={concluirRetrabalhoItem}
+          open={!!concluirRetrabalhoItem}
+          onClose={() => setConcluirRetrabalhoItem(null)}
+          onSuccess={refetch}
+        />
+        <StockHistoryPanel
+          item={historyItem}
+          open={!!historyItem}
+          onClose={() => setHistoryItem(null)}
+          onSuccess={refetch}
+        />
+        <AddToStockModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onSuccess={refetch}
+        />
+      </Suspense>
 
       {/* Modal Estoque Baixo */}
       {baixoOpen && (() => {
@@ -1394,47 +1391,41 @@ export default function Estoque() {
         );
       })()}
 
-      <StockListModal
-        open={listOpen}
-        onClose={() => setListOpen(false)}
-        items={allItems}
-      />
-
-      <AllMovementsModal
-        open={allMovOpen}
-        onClose={() => setAllMovOpen(false)}
-        fase={activeView === "expedicao" || activeView === "intermediaria" || activeView === "retrabalho" ? activeView : undefined}
-      />
-
       <Suspense fallback={null}>
+        <StockListModal
+          open={listOpen}
+          onClose={() => setListOpen(false)}
+          items={allItems}
+        />
+        <AllMovementsModal
+          open={allMovOpen}
+          onClose={() => setAllMovOpen(false)}
+          fase={activeView === "expedicao" || activeView === "intermediaria" || activeView === "retrabalho" ? activeView : undefined}
+        />
         <BackupPanel
           open={backupOpen}
           onClose={() => setBackupOpen(false)}
         />
+        <LotesPanel
+          item={lotesItem}
+          open={!!lotesItem}
+          onClose={() => setLotesItem(null)}
+        />
+        <IntermediaryLotesModal
+          open={intermediaryLotesOpen}
+          onClose={() => setIntermediaryLotesOpen(false)}
+        />
+        <StockCsvImport
+          open={csvOpen}
+          onClose={() => setCsvOpen(false)}
+          onSuccess={refetch}
+        />
+        <ExcelStockImport
+          open={excelImportOpen}
+          onClose={() => setExcelImportOpen(false)}
+          onSuccess={refetch}
+        />
       </Suspense>
-
-      <LotesPanel
-        item={lotesItem}
-        open={!!lotesItem}
-        onClose={() => setLotesItem(null)}
-      />
-
-      <IntermediaryLotesModal
-        open={intermediaryLotesOpen}
-        onClose={() => setIntermediaryLotesOpen(false)}
-      />
-
-      <StockCsvImport
-        open={csvOpen}
-        onClose={() => setCsvOpen(false)}
-        onSuccess={refetch}
-      />
-
-      <ExcelStockImport
-        open={excelImportOpen}
-        onClose={() => setExcelImportOpen(false)}
-        onSuccess={refetch}
-      />
 
       {/* Excluir todo o estoque */}
       <AlertDialog
