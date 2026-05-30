@@ -122,24 +122,21 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
   const q = sanitizeQuery(query);
   if (!q || q.length < 2) return { suggestions: [], results: [] };
 
-  // ── Detecta busca por lote (padrão com traço numérico) ────────────────────
+  // ── Detecta busca por lote ────────────────────────────────────────────────
   const isLoteSearch = /\d{2,6}-\d{0,2}/.test(q);
 
   if (isLoteSearch) {
     const { data: loteMov } = await supabase.from("stock_movements")
       .select("stock_item_id, lote").ilike("lote", `%${q}%`).limit(200);
     if (!loteMov || loteMov.length === 0) return { suggestions: [], results: [] };
-
     const itemIds = [...new Set((loteMov as { stock_item_id: string }[]).map(m => m.stock_item_id))];
     const { data: stockFromLote } = await supabase.from("stock_items")
       .select("id, device_id, quantity, quantity_reserved, location, fase").in("id", itemIds);
     if (!stockFromLote || stockFromLote.length === 0) return { suggestions: [], results: [] };
-
     const devIds = [...new Set((stockFromLote as { device_id: string }[]).map(s => s.device_id))];
     const { data: devFromLote } = await supabase.from("devices")
       .select("id, model, reference, internal_code").in("id", devIds);
     if (!devFromLote) return { suggestions: [], results: [] };
-
     const devRows = devFromLote as { id: string; model: string; reference: string; internal_code: string | null }[];
     const stockItems = stockFromLote as { id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: StockFase }[];
     const { data: movData } = await supabase.from("stock_movements")
@@ -155,35 +152,56 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     };
   }
 
-  // ── Busca por nome / referência / código ──────────────────────────────────
+  // ── Busca por nome: 2 etapas para garantir que peças com estoque aparecem ─
+  // Etapa 1: devices que batem com a busca E têm stock_items com qty > 0
+  const { data: stockComQty } = await supabase.from("stock_items")
+    .select("id, device_id, quantity, quantity_reserved, location, fase")
+    .gt("quantity", 0);
+
+  const devIdsComQty = new Set(
+    (stockComQty ?? []).map((s: { device_id: string }) => s.device_id)
+  );
+
+  // Busca devices pelo nome (sem limite restrito)
   const { data: devData } = await supabase.from("devices")
     .select("id, model, reference, internal_code")
     .or(`model.ilike.%${q}%,reference.ilike.%${q}%,internal_code.ilike.%${q}%`)
-    .limit(60);
+    .limit(200);
   if (!devData || devData.length === 0) return { suggestions: [], results: [] };
 
-  const devRows = devData as { id: string; model: string; reference: string; internal_code: string | null }[];
+  const allDevs = devData as { id: string; model: string; reference: string; internal_code: string | null }[];
+
+  // Ordena: primeiro os que TÊM estoque, depois os sem
+  const devsOrdenados = [
+    ...allDevs.filter(d => devIdsComQty.has(d.id)),
+    ...allDevs.filter(d => !devIdsComQty.has(d.id)),
+  ];
+
+  // Busca stock_items para todos os devices encontrados
   const { data: stockData } = await supabase.from("stock_items")
     .select("id, device_id, quantity, quantity_reserved, location, fase")
-    .in("device_id", devRows.map(d => d.id));
-  if (!stockData || stockData.length === 0) return { suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })), results: [] };
+    .in("device_id", devsOrdenados.map(d => d.id))
+    .limit(2000);
 
-  const stockItems = stockData as { id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: StockFase }[];
+  const stockItems = (stockData ?? []) as { id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: StockFase }[];
+
+  // Busca movimentos de lote
   const { data: movData } = await supabase.from("stock_movements")
     .select("stock_item_id, lote, type, quantity, created_at")
     .in("stock_item_id", stockItems.map(s => s.id))
     .not("lote", "is", null).limit(3000);
   const lotesByItem = buildLoteMap(movData ?? []);
 
-  const results = devRows
+  const results = devsOrdenados
     .map(dev => buildResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
     .sort((a, b) => totalQty(b) - totalQty(a));
 
   return {
-    suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })),
+    suggestions: allDevs.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })),
     results,
   };
 }
+
 
 // ── Sub-componentes ────────────────────────────────────────────────────────────
 

@@ -817,16 +817,26 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
   const { data: devData } = await supabase.from("devices")
     .select("id, model, reference, internal_code, udi_di, anvisa_registration, classification_code")
     .or(`model.ilike.%${q}%,reference.ilike.%${q}%,internal_code.ilike.%${q}%,udi_di.ilike.%${q}%,anvisa_registration.ilike.%${q}%`)
-    .limit(60);
+    .limit(200);
   if (!devData || devData.length === 0) return { suggestions: [], results: [] };
 
-  const devRows = devData as DevRow[];
-  const suggestions: Suggestion[] = devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference }));
-  const top = devRows;
+  const allDevs = devData as DevRow[];
+
+  // Etapa: ordenar devices — primeiro os que têm stock_items com qty > 0
+  const { data: stockComQty } = await supabase.from("stock_items")
+    .select("device_id").gt("quantity", 0);
+  const devIdsComQty = new Set((stockComQty ?? []).map((s: { device_id: string }) => s.device_id));
+  const devsOrdenados = [
+    ...allDevs.filter(d => devIdsComQty.has(d.id)),
+    ...allDevs.filter(d => !devIdsComQty.has(d.id)),
+  ];
+
+  const suggestions: Suggestion[] = allDevs.map(d => ({ device_id: d.id, model: d.model, reference: d.reference }));
 
   const { data: stockData } = await supabase.from("stock_items")
     .select("id, device_id, quantity, quantity_reserved, location, fase")
-    .in("device_id", top.map(d => d.id));
+    .in("device_id", devsOrdenados.map(d => d.id))
+    .limit(2000);
   if (!stockData || stockData.length === 0) return { suggestions, results: [] };
 
   type StockRow = { id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: StockFase };
@@ -837,9 +847,9 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     .not("lote", "is", null).order("created_at", { ascending: false }).limit(2000);
 
   const lotesByItem = buildLotesByItem(movData ?? []);
-  const results: PecaResult[] = top
+  const results: PecaResult[] = devsOrdenados
     .map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
-    .sort((a, b) => a.fases.reduce((s,f)=>s+f.quantity,0) < b.fases.reduce((s,f)=>s+f.quantity,0) ? 1 : -1);
+    .sort((a, b) => totalQty(b) - totalQty(a));
   return { suggestions, results };
 }
 
