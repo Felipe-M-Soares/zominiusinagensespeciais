@@ -3788,15 +3788,6 @@ export default function Financeiro() {
             <PainelBancos modoTeste={modoTeste} onToggleModoTeste={toggleModoTeste} />
           </div>
         )}
-      </div>
-      </main>
-
-      <NotaManualModal
-        open={notaManualOpen}
-        onClose={() => setNotaManualOpen(false)}
-        modoTeste={modoTeste}
-      />
-
         {activeTab === "precos" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -3813,6 +3804,14 @@ export default function Financeiro() {
             <PainelTabelaPrecos modoTeste={modoTeste} />
           </div>
         )}
+      </div>
+      </main>
+
+      <NotaManualModal
+        open={notaManualOpen}
+        onClose={() => setNotaManualOpen(false)}
+        modoTeste={modoTeste}
+      />
 
       <SefazModal
         pedido={sefazPedido}
