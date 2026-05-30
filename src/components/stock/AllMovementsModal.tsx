@@ -117,13 +117,9 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
 
         {/* Filtros */}
         <div className="flex flex-wrap items-center gap-2 px-4 pb-3 border-b border-border/20">
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar peça, lote, usuário..."
-            className="flex-1 min-w-[140px] h-8 rounded-lg border border-border/50 bg-background text-[11px] px-3 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
-          />
+            className="flex-1 min-w-[140px] h-8 rounded-lg border border-border/50 bg-background text-[11px] px-3 focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
           <input type="date" value={filtroInicio} onChange={e => setFiltroInicio(e.target.value)}
             className="h-8 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
           <span className="text-[10px] text-muted-foreground">–</span>
