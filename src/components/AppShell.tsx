@@ -17,6 +17,7 @@ import {
   X,
   Factory,
   Cpu,
+  ShieldCheck,
 } from "lucide-react";
 
 interface NavItem {
@@ -29,7 +30,8 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Componentes", icon: Cpu, path: "/" },
-  { label: "Estoque", icon: Boxes, path: "/estoque" },
+  { label: "Estoque",   icon: Boxes,       path: "/estoque" },
+  { label: "Qualidade", icon: ShieldCheck, path: "/qualidade" },
   { label: "Comercial", icon: ShoppingBag, path: "/comercial", roles: ["vendedora", "admin"] },
   { label: "Financeiro", icon: Receipt, path: "/financeiro", roles: ["financeiro", "admin"] },
   { label: "Produção", icon: Factory, path: "/producao" },

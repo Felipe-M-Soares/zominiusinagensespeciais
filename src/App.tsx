@@ -22,6 +22,7 @@ const Estoque     = lazy(() => import("./pages/Estoque"));
 const Comercial   = lazy(() => import("./pages/Comercial"));
 const Financeiro  = lazy(() => import("./pages/Financeiro"));
 const Producao    = lazy(() => import("./pages/Producao"));
+const Qualidade   = lazy(() => import("./pages/Qualidade"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -103,6 +104,7 @@ const App = () => (
               <Route path="/manuals"    element={<ErrorBoundary><Manuals /></ErrorBoundary>} />
               <Route path="/estoque"    element={<ErrorBoundary><Estoque /></ErrorBoundary>} />
               <Route path="/producao"   element={<ErrorBoundary><Producao /></ErrorBoundary>} />
+              <Route path="/qualidade"  element={<ErrorBoundary><Qualidade /></ErrorBoundary>} />
               <Route path="/comercial"  element={<ErrorBoundary><RoleGuard roles={["vendedora","admin"]}><Comercial /></RoleGuard></ErrorBoundary>} />
               <Route path="/financeiro" element={<ErrorBoundary><RoleGuard roles={["financeiro","admin"]}><Financeiro /></RoleGuard></ErrorBoundary>} />
               <Route path="/admin"      element={<ErrorBoundary><RoleGuard adminOnly><Admin /></RoleGuard></ErrorBoundary>} />
