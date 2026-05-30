@@ -1481,7 +1481,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           pedido_itens(
             id, stock_item_id, lote, quantidade,
             stock_items!inner(
-              stock_item_id:id,
+              id,
               devices!inner(model, reference)
             )
           )
