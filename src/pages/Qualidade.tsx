@@ -774,6 +774,8 @@ function buildPecaResult(
   };
 }
 
+function totalQty(p: PecaResult): number { return p.fases.reduce((s, f) => s + f.quantity, 0); }
+
 async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; results: PecaResult[] }> {
   const q = sanitizeQuery(query);
   if (!q || q.length < 2) return { suggestions: [], results: [] };
@@ -805,7 +807,9 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
       .select("stock_item_id, lote, type, quantity, created_at")
       .in("stock_item_id", itemIds).not("lote", "is", null).order("created_at", { ascending: false }).limit(2000);
     const lotesByItem = buildLotesByItem(movData ?? []);
-    const results: PecaResult[] = devRows.map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem));
+    const results: PecaResult[] = devRows
+      .map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
+      .sort((a, b) => a.fases.reduce((s,f)=>s+f.quantity,0) < b.fases.reduce((s,f)=>s+f.quantity,0) ? 1 : -1);
     return { suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })), results };
   }
 
@@ -813,12 +817,12 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
   const { data: devData } = await supabase.from("devices")
     .select("id, model, reference, internal_code, udi_di, anvisa_registration, classification_code")
     .or(`model.ilike.%${q}%,reference.ilike.%${q}%,internal_code.ilike.%${q}%,udi_di.ilike.%${q}%,anvisa_registration.ilike.%${q}%`)
-    .limit(20);
+    .limit(60);
   if (!devData || devData.length === 0) return { suggestions: [], results: [] };
 
   const devRows = devData as DevRow[];
   const suggestions: Suggestion[] = devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference }));
-  const top = devRows.slice(0, 20);
+  const top = devRows;
 
   const { data: stockData } = await supabase.from("stock_items")
     .select("id, device_id, quantity, quantity_reserved, location, fase")
@@ -833,7 +837,9 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     .not("lote", "is", null).order("created_at", { ascending: false }).limit(2000);
 
   const lotesByItem = buildLotesByItem(movData ?? []);
-  const results: PecaResult[] = top.map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem));
+  const results: PecaResult[] = top
+    .map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
+    .sort((a, b) => a.fases.reduce((s,f)=>s+f.quantity,0) < b.fases.reduce((s,f)=>s+f.quantity,0) ? 1 : -1);
   return { suggestions, results };
 }
 
@@ -963,7 +969,7 @@ const RastreamentoPanel = memo(function RastreamentoPanel() {
             </div>
           : <div className="space-y-2">
               <p className="text-[10px] text-muted-foreground/50 px-0.5">{results.length} resultado{results.length !== 1 ? "s" : ""}</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {results.map(p => <PecaCard key={p.device_id} peca={p} />)}
               </div>
             </div>

@@ -116,21 +116,25 @@ function buildResult(
   };
 }
 
+function totalQty(p: PecaResult): number { return p.fases.reduce((s, f) => s + f.quantity, 0); }
+
 async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; results: PecaResult[] }> {
   const q = sanitizeQuery(query);
   if (!q || q.length < 2) return { suggestions: [], results: [] };
 
-  // Detecta busca por lote: contém padrão com traço numérico
+  // ── Detecta busca por lote (padrão com traço numérico) ────────────────────
   const isLoteSearch = /\d{2,6}-\d{0,2}/.test(q);
 
   if (isLoteSearch) {
     const { data: loteMov } = await supabase.from("stock_movements")
       .select("stock_item_id, lote").ilike("lote", `%${q}%`).limit(200);
     if (!loteMov || loteMov.length === 0) return { suggestions: [], results: [] };
+
     const itemIds = [...new Set((loteMov as { stock_item_id: string }[]).map(m => m.stock_item_id))];
     const { data: stockFromLote } = await supabase.from("stock_items")
       .select("id, device_id, quantity, quantity_reserved, location, fase").in("id", itemIds);
     if (!stockFromLote || stockFromLote.length === 0) return { suggestions: [], results: [] };
+
     const devIds = [...new Set((stockFromLote as { device_id: string }[]).map(s => s.device_id))];
     const { data: devFromLote } = await supabase.from("devices")
       .select("id, model, reference, internal_code").in("id", devIds);
@@ -140,127 +144,47 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     const stockItems = stockFromLote as { id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: StockFase }[];
     const { data: movData } = await supabase.from("stock_movements")
       .select("stock_item_id, lote, type, quantity, created_at")
-      .in("stock_item_id", itemIds).not("lote", "is", null).order("created_at", { ascending: false }).limit(2000);
-
+      .in("stock_item_id", itemIds).not("lote", "is", null).limit(2000);
     const lotesByItem = buildLoteMap(movData ?? []);
-    const results: PecaResult[] = devRows.map(dev => buildResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem));
+    const results = devRows
+      .map(dev => buildResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
+      .filter(r => r.fases.length > 0)
+      .sort((a, b) => totalQty(b) - totalQty(a));
     return {
       suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })),
-      results: results.filter(r => r.fases.length > 0),
+      results,
     };
   }
 
-  // 1. Busca devices que casam com a query
-  const { data: devData } = await supabase
-    .from("devices")
+  // ── Busca por nome / referência / código ──────────────────────────────────
+  const { data: devData } = await supabase.from("devices")
     .select("id, model, reference, internal_code")
     .or(`model.ilike.%${q}%,reference.ilike.%${q}%,internal_code.ilike.%${q}%`)
-    .limit(20);
-
+    .limit(60);
   if (!devData || devData.length === 0) return { suggestions: [], results: [] };
 
-  const suggestions: Suggestion[] = (devData as { id: string; model: string; reference: string }[]).map(d => ({
-    device_id: d.id,
-    model: d.model,
-    reference: d.reference,
-  }));
-
-  // Para até 5 resultados, busca detalhes completos
-  const topDevices = (devData as { id: string; model: string; reference: string; internal_code: string | null }[]).slice(0, 5);
-  const deviceIds = topDevices.map(d => d.id);
-
-  // 2. Busca todos os stock_items para esses devices
-  const { data: stockData } = await supabase
-    .from("stock_items")
+  const devRows = devData as { id: string; model: string; reference: string; internal_code: string | null }[];
+  const { data: stockData } = await supabase.from("stock_items")
     .select("id, device_id, quantity, quantity_reserved, location, fase")
-    .in("device_id", deviceIds);
+    .in("device_id", devRows.map(d => d.id));
+  if (!stockData || stockData.length === 0) return { suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })), results: [] };
 
-  if (!stockData || stockData.length === 0) {
-    return { suggestions, results: [] };
-  }
+  const stockItems = stockData as { id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: StockFase }[];
+  const { data: movData } = await supabase.from("stock_movements")
+    .select("stock_item_id, lote, type, quantity, created_at")
+    .in("stock_item_id", stockItems.map(s => s.id))
+    .not("lote", "is", null).limit(3000);
+  const lotesByItem = buildLoteMap(movData ?? []);
 
-  const stockItems = stockData as {
-    id: string; device_id: string; quantity: number;
-    quantity_reserved: number; location: string | null; fase: StockFase;
-  }[];
+  const results = devRows
+    .map(dev => buildResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
+    .filter(r => r.fases.length > 0)
+    .sort((a, b) => totalQty(b) - totalQty(a));
 
-  const allItemIds = stockItems.map(s => s.id);
-
-  // 3. Busca lotes com saldo (movimentações agrupadas por lote)
-  const PAGE_SIZE = 1000;
-  const loteMov: { stock_item_id: string; lote: string; type: string; quantity: number; created_at: string }[] = [];
-  let page = 0;
-  while (true) {
-    const { data: movData } = await supabase
-      .from("stock_movements")
-      .select("stock_item_id, lote, type, quantity, created_at")
-      .in("stock_item_id", allItemIds)
-      .not("lote", "is", null)
-      .order("created_at", { ascending: false })
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-    if (!movData || movData.length === 0) break;
-    loteMov.push(...(movData as typeof loteMov));
-    if (movData.length < PAGE_SIZE) break;
-    page++;
-  }
-
-  // Agrupa lotes por stock_item_id
-  const lotesByItem = new Map<string, Map<string, { saldo: number; last_movement: string }>>();
-  for (const m of loteMov) {
-    if (!m.lote) continue;
-    if (!lotesByItem.has(m.stock_item_id)) lotesByItem.set(m.stock_item_id, new Map());
-    const loteMap = lotesByItem.get(m.stock_item_id)!;
-    const key = m.lote.toUpperCase();
-    const existing = loteMap.get(key);
-    const delta = m.type === "entrada" ? m.quantity : -m.quantity;
-    loteMap.set(key, {
-      saldo: (existing?.saldo ?? 0) + delta,
-      last_movement: existing?.last_movement ?? m.created_at,
-    });
-  }
-
-  // 4. Monta resultados por device
-  const results: PecaResult[] = topDevices.map(dev => {
-    const devItems = stockItems.filter(s => s.device_id === dev.id);
-
-    const fases: FaseInfo[] = devItems.map(item => {
-      const lotesMap = lotesByItem.get(item.id);
-      const lotes: LoteInfo[] = lotesMap
-        ? Array.from(lotesMap.entries())
-          .filter(([, v]) => v.saldo > 0)
-          .map(([lote, v]) => ({ lote, saldo: v.saldo, last_movement: v.last_movement }))
-          .sort((a, b) => b.saldo - a.saldo)
-        : [];
-
-      return {
-        fase: item.fase,
-        stock_item_id: item.id,
-        quantity: item.quantity,
-        quantity_reserved: item.quantity_reserved,
-        quantity_available: item.quantity - item.quantity_reserved,
-        location: item.location,
-        lotes,
-      };
-    });
-
-    const em_retrabalho = fases.some(f => f.fase === "retrabalho" && f.quantity > 0);
-    const tem_reservas = fases.some(f => f.quantity_reserved > 0);
-
-    return {
-      device_id: dev.id,
-      model: dev.model,
-      reference: dev.reference,
-      internal_code: dev.internal_code,
-      fases: fases.filter(f => f.quantity > 0 || f.lotes.length > 0),
-      em_retrabalho,
-      tem_reservas,
-    };
-  });
-
-  // Remove peças sem estoque ativo em nenhuma fase
-  const activeResults = results.filter(r => r.fases.length > 0);
-
-  return { suggestions, results: activeResults };
+  return {
+    suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })),
+    results,
+  };
 }
 
 // ── Sub-componentes ────────────────────────────────────────────────────────────
@@ -421,7 +345,7 @@ export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: 
               {results.length} {results.length === 1 ? "resultado" : "resultados"} para{" "}
               <span className="font-medium text-foreground/60">"{query}"</span>
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {results.map(peca => (
                 <PecaCard key={peca.device_id} peca={peca} />
               ))}
