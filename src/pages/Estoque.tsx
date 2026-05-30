@@ -1006,7 +1006,6 @@ export default function Estoque() {
           onViewChange={(view) => {
             setActiveView(view);
             setVisibleCount(ITEMS_PER_PAGE);
-            refetch(); // BUG-FIX-3: atualiza dados ao mudar de aba
           }}
           intermediariaItems={intermediariaItems}
           expedicaoItems={expedicaoItems}

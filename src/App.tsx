@@ -88,7 +88,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Sonner />
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter future={{ v7_relativeSplatPath: true }}>
         <AuthProvider>
           <Routes>
             {/* Públicas */}
