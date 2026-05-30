@@ -69,6 +69,7 @@ import {
   Star,
 } from "lucide-react";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
+import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { Logo } from "@/components/Logo";
 
@@ -2209,7 +2210,7 @@ export default function Comercial() {
   }, [isDark]);
 
   // Sub-tabs
-  type SubTab = "dashboard" | "pedidos" | "clientes";
+  type SubTab = "dashboard" | "pedidos" | "clientes" | "historico";
   const [subTab, setSubTab] = useState<SubTab>("pedidos");
   const [historicoOpen, setHistoricoOpen] = useState(false);
 
@@ -2371,36 +2372,66 @@ export default function Comercial() {
     (c.telefone ?? "").includes(clienteSearchFilter)
   );
 
+  const COMERCIAL_TABS = [
+    {
+      id: "dashboard" as SubTab,
+      label: "Dashboard",
+      Icon: LayoutDashboard,
+      activeColor: "text-primary",
+      activeBg: "bg-primary/10",
+      activeBorder: "border-primary/40",
+      badgeBg: "bg-primary/15",
+      badgeText: "text-primary",
+    },
+    {
+      id: "pedidos" as SubTab,
+      label: "Pedidos",
+      Icon: ShoppingBag,
+      badge: pedidosPendentes,
+      activeColor: "text-amber-600 dark:text-amber-400",
+      activeBg: "bg-amber-500/10",
+      activeBorder: "border-amber-500/40",
+      badgeBg: "bg-amber-500/15",
+      badgeText: "text-amber-600 dark:text-amber-400",
+    },
+    {
+      id: "clientes" as SubTab,
+      label: "Clientes",
+      Icon: User,
+      activeColor: "text-violet-600 dark:text-violet-400",
+      activeBg: "bg-violet-500/10",
+      activeBorder: "border-violet-500/40",
+      badgeBg: "bg-violet-500/15",
+      badgeText: "text-violet-600 dark:text-violet-400",
+    },
+    {
+      id: "historico" as SubTab,
+      label: "Histórico",
+      Icon: History,
+      activeColor: "text-cyan-600 dark:text-cyan-400",
+      activeBg: "bg-cyan-500/10",
+      activeBorder: "border-cyan-500/40",
+      badgeBg: "bg-cyan-500/15",
+      badgeText: "text-cyan-600 dark:text-cyan-400",
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-transparent">
+    <div className="flex flex-col bg-transparent">
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
+      <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-
-            <div className="flex items-center gap-2">
-              <ShoppingBag className="h-4 w-4 text-violet-500" />
-              <h1 className="text-sm font-semibold">Comercial</h1>
-              {!loadingPedidos && pedidosPendentes > 0 && (
-                <span className="flex items-center gap-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  <Clock className="h-2.5 w-2.5" />
-                  {pedidosPendentes}
-                </span>
-              )}
-            </div>
+            <ShoppingBag className="h-4 w-4 text-violet-500" />
+            <h1 className="text-sm font-semibold">Comercial</h1>
+            {!loadingPedidos && pedidosPendentes > 0 && (
+              <span className="flex items-center gap-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                <Clock className="h-2.5 w-2.5" />
+                {pedidosPendentes}
+              </span>
+            )}
           </div>
-
           <div className="flex items-center gap-1.5">
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={signOut}
-              className="h-8 gap-1.5 text-xs"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
             {user && <NotificacoesBell userId={user.id} />}
           </div>
         </div>
@@ -2420,43 +2451,16 @@ export default function Comercial() {
               Cadastre clientes, visualize peças disponíveis na expedição e crie pedidos de venda. O estoque fatura e as peças saem automaticamente.
             </div>
 
-            {/* Sub-tabs */}
-            <div className="flex items-center gap-1 bg-muted/30 rounded-xl p-1">
-              {([
-                { id: "dashboard" as SubTab, label: "Dashboard", icon: LayoutDashboard, badge: 0 },
-                { id: "pedidos" as SubTab, label: "Pedidos", icon: ShoppingBag, badge: pedidosPendentes },
-                { id: "clientes" as SubTab, label: "Clientes", icon: User, badge: 0 },
-              ]).map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setSubTab(tab.id)}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-medium transition-all",
-                    subTab === tab.id
-                      ? "bg-card text-violet-600 dark:text-violet-400 shadow-sm border border-border/40"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <tab.icon className="h-3.5 w-3.5" />
-                  {tab.label}
-                  {tab.badge > 0 && (
-                    <span className="min-w-[16px] h-4 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[9px] font-bold px-1 flex items-center justify-center">
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setHistoricoOpen(true)}
-                className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium text-muted-foreground hover:text-foreground transition-all"
-                title="Histórico Geral"
-              >
-                <History className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Histórico</span>
-              </button>
-            </div>
+            {/* Nav harmonizada */}
+            <PageNav
+              tabs={COMERCIAL_TABS}
+              activeTab={subTab}
+              onTabChange={(tab) => {
+                if (tab === "historico") { setHistoricoOpen(true); return; }
+                setSubTab(tab);
+              }}
+              loading={loadingPedidos}
+            />
 
             {/* ── Aba Dashboard ── */}
             {subTab === "dashboard" && (

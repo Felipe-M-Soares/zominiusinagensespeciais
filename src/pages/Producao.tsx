@@ -1,24 +1,20 @@
 /**
  * Produção — Hub de Controle Industrial
- * Módulos: Dashboard, Controle de Produção, Planejamento, Máquinas,
- * Produtos, Paradas, Refugo/Qualidade, Matéria-Prima, Relatórios
- * ✓ Sem logo Concept
- * ✓ Sem aba Funcionalidades Futuras
- * ✓ Banner offline + sincronização automática
+ * Layout harmonizado com Estoque (PageNav + cards clicáveis)
  */
 
 import { useState, useEffect, lazy, Suspense } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
 import {
-  ArrowLeft, ChevronRight, LayoutDashboard, ClipboardList, CalendarClock,
+  ChevronRight, LayoutDashboard, ClipboardList, CalendarClock,
   Settings2, Package, OctagonPause, ShieldAlert, Boxes, FileBarChart2,
-  Factory, WifiOff, RefreshCw,
+  Factory, WifiOff, RefreshCw, ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { PageNav } from "@/components/PageNav";
 
 const DashboardPanel    = lazy(() => import("@/components/producao/DashboardPanel").then(m => ({ default: m.DashboardPanel })));
 const ControlePanel     = lazy(() => import("@/components/producao/ControlePanel").then(m => ({ default: m.ControlePanel })));
@@ -50,6 +46,18 @@ const MODULES: ProdModule[] = [
   { id:"relatorios",  label:"Relatórios",                 sublabel:"Produção diária/mensal, eficiência, paradas, exportação PDF/Excel",   Icon:FileBarChart2,   color:"text-indigo-600 dark:text-indigo-400",bg:"bg-indigo-500/10", border:"border-indigo-500/20" },
 ];
 
+// Nav tabs para módulos de Produção (só aparece quando dentro de um módulo)
+const PROD_TABS = MODULES.map(m => ({
+  id: m.id,
+  label: m.label.split(" ")[0], // primeira palavra pra ficar curto
+  Icon: m.Icon,
+  activeColor: m.color,
+  activeBg: m.bg,
+  activeBorder: m.border.replace("border-", "border-").replace("/20", "/40"),
+  badgeBg: m.bg,
+  badgeText: m.color,
+}));
+
 function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:boolean; onSync:()=>void }) {
   const offline = !navigator.onLine;
   if (!offline && pending === 0) return null;
@@ -72,25 +80,30 @@ function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:b
   );
 }
 
+// Menu principal de produção — grade de cards clicáveis (igual ao padrão Estoque)
 function ProdMenu({ isAdmin, onSelect }: { isAdmin:boolean; onSelect:(v:ProdView)=>void }) {
   const visible = MODULES.filter(m => !m.adminOnly || isAdmin);
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      <div className="rounded-2xl border bg-card/60 p-4">
-        <div className="flex items-center gap-3 mb-1">
-          <Factory className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold">Controle Industrial de Produção</h2>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Sistema completo de manufatura: dashboard em tempo real, apontamento, planejamento,
-          qualidade, matéria-prima, relatórios e muito mais.
-        </p>
+      <div className="rounded-xl border bg-primary/5 border-primary/20 text-primary/80 px-4 py-3 text-[12px]">
+        Sistema completo de manufatura: dashboard em tempo real, apontamento, planejamento, qualidade, matéria-prima e relatórios.
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {visible.map(m => (
-          <button key={m.id} onClick={() => onSelect(m.id)}
-            className={cn("rounded-2xl border p-4 text-left flex items-center gap-4 transition-all hover:shadow-sm active:scale-[0.99]", m.bg, m.border)}>
-            <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center shrink-0", m.bg)}>
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => onSelect(m.id)}
+            className={cn(
+              "group rounded-2xl border p-4 text-left flex items-center gap-4",
+              "transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.99]",
+              m.bg, m.border
+            )}
+            style={{
+              boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15)",
+            }}
+          >
+            <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110", m.bg)}>
               <m.Icon className={cn("h-5 w-5", m.color)} />
             </div>
             <div className="flex-1 min-w-0">
@@ -102,7 +115,7 @@ function ProdMenu({ isAdmin, onSelect }: { isAdmin:boolean; onSelect:(v:ProdView
               </div>
               <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">{m.sublabel}</p>
             </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+            <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0 transition-transform group-hover:translate-x-0.5" />
           </button>
         ))}
       </div>
@@ -111,7 +124,6 @@ function ProdMenu({ isAdmin, onSelect }: { isAdmin:boolean; onSelect:(v:ProdView
 }
 
 export default function Producao() {
-  const navigate = useNavigate();
   const { profile, role } = useAuth();
   const { isOnline, pendingCount, syncing, syncQueue } = useOfflineSync();
   const isAdmin = role === "admin";
@@ -120,23 +132,25 @@ export default function Producao() {
   useEffect(() => { applyTheme(getStoredTheme()); }, []);
 
   const currentModule = MODULES.find(m => m.id === view);
-  function goBack() { if (view !== "menu") setView("menu"); else navigate(-1); }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/95 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={goBack}
-            className="h-8 w-8 rounded-xl flex items-center justify-center hover:bg-muted/40 transition-colors shrink-0">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <div className="h-5 w-px bg-border/50" />
-          <div className="flex items-center gap-2 min-w-0">
-            <Factory className="h-4 w-4 text-primary shrink-0" />
-            <span className="font-semibold text-sm truncate">
-              {view === "menu" ? "Produção" : currentModule?.label ?? "Produção"}
-            </span>
-          </div>
+    <div className="flex flex-col bg-transparent">
+      {/* Header harmonizado */}
+      <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
+        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
+          {view !== "menu" && (
+            <button
+              type="button"
+              onClick={() => setView("menu")}
+              className="h-8 w-8 rounded-xl flex items-center justify-center hover:bg-muted/40 transition-colors shrink-0 text-muted-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          )}
+          <Factory className="h-4 w-4 text-primary shrink-0" />
+          <span className="font-semibold text-sm truncate">
+            {view === "menu" ? "Produção" : currentModule?.label ?? "Produção"}
+          </span>
           <div className="flex-1" />
           {!isOnline && (
             <div className="flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
@@ -153,7 +167,7 @@ export default function Producao() {
         <OfflineBanner pending={pendingCount} syncing={syncing} onSync={syncQueue} />
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-4">
+      <main className="max-w-7xl mx-auto w-full px-4 py-4 space-y-4">
         {view === "menu" && <ProdMenu isAdmin={isAdmin} onSelect={setView} />}
         {view !== "menu" && (
           <Suspense fallback={<LoadingScreen />}>

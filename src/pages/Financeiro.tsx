@@ -16,6 +16,7 @@ import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
+import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import {
   ArrowLeft, Receipt, CheckCircle2, Package, User, Clock, Printer,
@@ -3550,29 +3551,30 @@ export default function Financeiro() {
     { id: "precos",           label: "Tabela de Preços",  icon: Tag         },
   ];
 
+  const PAGE_NAV_TABS = TABS.map((tab, i) => {
+    const colors = [
+      { activeColor: "text-primary", activeBg: "bg-primary/10", activeBorder: "border-primary/40", badgeBg: "bg-primary/15", badgeText: "text-primary" },
+      { activeColor: "text-emerald-600 dark:text-emerald-400", activeBg: "bg-emerald-500/10", activeBorder: "border-emerald-500/40", badgeBg: "bg-emerald-500/15", badgeText: "text-emerald-600 dark:text-emerald-400" },
+      { activeColor: "text-amber-600 dark:text-amber-400", activeBg: "bg-amber-500/10", activeBorder: "border-amber-500/40", badgeBg: "bg-amber-500/15", badgeText: "text-amber-600 dark:text-amber-400" },
+      { activeColor: "text-blue-600 dark:text-blue-400", activeBg: "bg-blue-500/10", activeBorder: "border-blue-500/40", badgeBg: "bg-blue-500/15", badgeText: "text-blue-600 dark:text-blue-400" },
+      { activeColor: "text-orange-600 dark:text-orange-400", activeBg: "bg-orange-500/10", activeBorder: "border-orange-500/40", badgeBg: "bg-orange-500/15", badgeText: "text-orange-600 dark:text-orange-400" },
+      { activeColor: "text-cyan-600 dark:text-cyan-400", activeBg: "bg-cyan-500/10", activeBorder: "border-cyan-500/40", badgeBg: "bg-cyan-500/15", badgeText: "text-cyan-600 dark:text-cyan-400" },
+      { activeColor: "text-violet-600 dark:text-violet-400", activeBg: "bg-violet-500/10", activeBorder: "border-violet-500/40", badgeBg: "bg-violet-500/15", badgeText: "text-violet-600 dark:text-violet-400" },
+    ];
+    return { id: tab.id, label: tab.label, Icon: tab.icon, badge: tab.badge, ...colors[i % colors.length] };
+  });
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/60"
-        style={{ boxShadow: "0 1px 0 hsl(var(--border)/0.5)" }}>
+    <div className="flex flex-col bg-transparent">
+      <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => navigate("/")}
-              className="h-8 w-8 flex items-center justify-center rounded-lg border border-border/50 hover:bg-muted/40 transition-colors">
-              <ArrowLeft size={15} />
-            </button>
-            <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-xl flex items-center justify-center bg-violet-500/15">
-                <Receipt size={16} className="text-violet-600" />
-              </div>
-              <div>
-                <h1 className="text-[13px] font-bold text-foreground leading-tight">Financeiro</h1>
-                <p className="text-[10px] text-muted-foreground/70 leading-tight">Gestão fiscal · Zomini</p>
-              </div>
-              <TestBadge modoTeste={modoTeste} />
-            </div>
+          <div className="flex items-center gap-2">
+            <Receipt size={16} className="text-violet-600 dark:text-violet-400" />
+            <h1 className="text-sm font-semibold">Financeiro</h1>
+            <TestBadge modoTeste={modoTeste} />
             {prontos > 0 && (
-              <span className="hidden sm:flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
-                <Receipt size={10} />{prontos} aguardando NF
+              <span className="hidden sm:flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                <Receipt size={10} />{prontos} NF
               </span>
             )}
           </div>
@@ -3581,7 +3583,7 @@ export default function Financeiro() {
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground">
               {isDark ? <Sun size={15} /> : <Moon size={15} />}
             </button>
-<button type="button" onClick={() => setHistoricoOpen(true)}
+            <button type="button" onClick={() => setHistoricoOpen(true)}
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground"
               title="Histórico de NFs">
               <History size={15} />
@@ -3593,37 +3595,14 @@ export default function Financeiro() {
             </button>
           </div>
         </div>
-
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center gap-0 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-            {TABS.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-                  className="flex items-center gap-1.5 h-10 px-3 sm:px-4 text-[11px] font-semibold whitespace-nowrap transition-all shrink-0 border-b-2"
-                  style={{
-                    color: isActive ? "#7c3aed" : "hsl(var(--muted-foreground))",
-                    borderBottomColor: isActive ? "#7c3aed" : "transparent",
-                  }}>
-                  <Icon size={13} />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  {tab.badge && tab.badge > 0 ? (
-                    <span className="min-w-[16px] h-4 rounded-full text-[9px] font-bold px-1 flex items-center justify-center"
-                      style={isActive
-                        ? { background: "#ede9fe", color: "#7c3aed" }
-                        : { background: "#dcfce7", color: "#15803d" }}>
-                      {tab.badge}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-5 space-y-5">
+      <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+        <PageNav
+          tabs={PAGE_NAV_TABS}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
 
         {activeTab === "dashboard" && (
           <div className="space-y-5">
