@@ -236,7 +236,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const userEmail = user?.email ?? "";
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen bg-background">
       {/* ── Desktop Sidebar ─────────────────────────────────────── */}
       <aside
         className={cn(
@@ -418,7 +418,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ── Main content ────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Mobile topbar */}
         <header className="md:hidden flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card/90 backdrop-blur-md shrink-0 z-30">
           <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" />
@@ -432,7 +432,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">{children}</main>
       </div>
     </div>
   );
