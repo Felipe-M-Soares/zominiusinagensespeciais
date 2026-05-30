@@ -2417,7 +2417,7 @@ export default function Comercial() {
   ];
 
   return (
-    <div className="flex flex-col bg-transparent">
+    <div className="flex flex-col h-full bg-transparent">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
@@ -2437,7 +2437,7 @@ export default function Comercial() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+      <main className="flex-1 overflow-y-auto"><div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
         {!canAccess ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
             <ShoppingBag className="h-12 w-12 text-muted-foreground/20" />
@@ -2581,6 +2581,7 @@ export default function Comercial() {
             )}
           </>
         )}
+      </div>
       </main>
 
       {/* ── Modais ── */}

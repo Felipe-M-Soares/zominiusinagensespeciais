@@ -134,7 +134,7 @@ export default function Producao() {
   const currentModule = MODULES.find(m => m.id === view);
 
   return (
-    <div className="flex flex-col bg-transparent">
+    <div className="flex flex-col h-full bg-transparent">
       {/* Header harmonizado */}
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
@@ -167,7 +167,8 @@ export default function Producao() {
         <OfflineBanner pending={pendingCount} syncing={syncing} onSync={syncQueue} />
       </header>
 
-      <main className="max-w-7xl mx-auto w-full px-4 py-4 space-y-4">
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-7xl mx-auto w-full px-4 py-4 space-y-4">
         {view === "menu" && <ProdMenu isAdmin={isAdmin} onSelect={setView} />}
         {view !== "menu" && (
           <Suspense fallback={<LoadingScreen />}>
@@ -182,6 +183,7 @@ export default function Producao() {
             {view === "relatorios"   && <RelatoriosPanel isAdmin={isAdmin} />}
           </Suspense>
         )}
+        </div>
       </main>
     </div>
   );

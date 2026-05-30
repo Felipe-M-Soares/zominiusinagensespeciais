@@ -3565,7 +3565,7 @@ export default function Financeiro() {
   });
 
   return (
-    <div className="flex flex-col bg-transparent">
+    <div className="flex flex-col h-full bg-transparent">
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -3597,7 +3597,7 @@ export default function Financeiro() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+      <main className="flex-1 overflow-y-auto"><div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
         <PageNav
           tabs={PAGE_NAV_TABS}
           activeTab={activeTab}
@@ -3788,6 +3788,7 @@ export default function Financeiro() {
             <PainelBancos modoTeste={modoTeste} onToggleModoTeste={toggleModoTeste} />
           </div>
         )}
+      </div>
       </main>
 
       <NotaManualModal

@@ -47,7 +47,7 @@ export default function Admin() {
   }, [isDark]);
 
   return (
-    <div className="flex flex-col bg-transparent">
+    <div className="flex flex-col h-full bg-transparent">
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -70,7 +70,8 @@ export default function Admin() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto w-full px-4 py-4 space-y-4">
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-4 py-4 space-y-4 h-full flex flex-col">
         <div className="rounded-xl border bg-primary/5 border-primary/20 text-primary/80 px-4 py-3 text-[12px]">
           Gerencie dispositivos cadastrados no sistema e controle o acesso dos usuários.
         </div>
@@ -83,6 +84,7 @@ export default function Admin() {
 
         {activeTab === "devices" && <AdminDevices />}
         {activeTab === "users"   && <AdminUsers />}
+        </div>
       </main>
     </div>
   );
