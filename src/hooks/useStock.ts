@@ -51,21 +51,15 @@ export interface LoteSummary {
 
 // ─── Hook principal de estoque ────────────────────────────────────────────────
 //
-// PERF: usa o RPC load_stock_page que retorna em UMA chamada ao banco:
-//   • items paginados com device join
-//   • quantity_reserved recalculada dos pedidos ativos
-//   • lote_count (nº de lotes com saldo > 0) por item
-//   • total_count para paginação no cliente
-//
-// Antes: 4–13 requests HTTP. Agora: 1 (ou 2 se houver search text).
-// O loteMap é exposto para o Estoque.tsx usar diretamente — elimina o
-// useEffect extra que chamava fetchLotesSummaryBatch pós-render.
+// PERF: usa o RPC load_stock_page — retorna em 1 chamada ao banco o que antes
+// exigia 4–13 requests HTTP. Também expõe loteMap diretamente, eliminando o
+// useEffect pós-render que chamava fetchLotesSummaryBatch.
 
 export function useStock(search: string) {
   const queryClient = useQueryClient();
   const cacheKey = stockKey(search);
 
-  // Inicia com dados cacheados (navegação de volta instantânea)
+  // Inicia com dados cacheados (navegação de volta instantânea, sem spinner)
   const cached = queryClient.getQueryData<{
     items: StockItem[];
     totalCount: number;
@@ -87,16 +81,14 @@ export function useStock(search: string) {
 
     try {
       const s = sanitizeQuery(q);
-
-      // ── Passo 1 (opcional): resolve device_ids se há busca textual ───────
-      // Busca de lote: usa formato DDMMYY-NN ou DDMMYYY-NN
       let deviceIds: string[] | null = null;
 
+      // ── Passo 1 (apenas se há busca): resolve device_ids ─────────────────
       if (s) {
         const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase());
 
         if (isLoteSearch) {
-          // Busca pelo lote diretamente nos movimentos
+          // Busca pelo lote nos movimentos → device_ids dos stock_items correspondentes
           const { data: loteMov } = await supabase
             .from("stock_movements")
             .select("stock_item_id")
@@ -107,53 +99,55 @@ export function useStock(search: string) {
             setItems([]);
             setTotalCount(0);
             setLoteMap(new Map());
-            setLoading(false);
             return;
           }
-          // Para busca de lote, passa stock_item_ids diretamente — o RPC
-          // aceita device_ids, então precisamos buscar os device_ids desses items
-          const itemIds = [...new Set(loteMov.map((m: { stock_item_id: string }) => m.stock_item_id))];
+
+          const itemIds = [...new Set(
+            loteMov.map((m: { stock_item_id: string }) => m.stock_item_id)
+          )];
           const { data: siRows } = await supabase
             .from("stock_items")
             .select("device_id")
             .in("id", itemIds);
-          deviceIds = [...new Set((siRows ?? []).map((r: { device_id: string }) => r.device_id))];
+
+          deviceIds = [...new Set(
+            (siRows ?? []).map((r: { device_id: string }) => r.device_id)
+          )];
+
           if (deviceIds.length === 0) {
             if (gen !== genRef.current) return;
             setItems([]);
             setTotalCount(0);
             setLoteMap(new Map());
-            setLoading(false);
             return;
           }
         } else {
-          // Busca textual: resolve device_ids no servidor (usa índices GIN trgm)
+          // Busca textual: RPC usa índices GIN trgm no servidor
           const { data: ids } = await supabase.rpc("search_devices_for_stock", {
             p_search: s,
           });
           deviceIds = (ids as string[] | null) ?? [];
+
           if (deviceIds.length === 0) {
             if (gen !== genRef.current) return;
             setItems([]);
             setTotalCount(0);
             setLoteMap(new Map());
-            setLoading(false);
             return;
           }
         }
       }
 
-      // ── Passo 2: chama o RPC principal ───────────────────────────────────
-      // Carrega TUDO em uma única chamada: items + reservas + loteMap
+      // ── Passo 2: RPC principal — 1 chamada, tudo incluído ─────────────────
       const { data: rpcResult, error: rpcError } = await supabase.rpc("load_stock_page", {
-        p_search:     null,          // busca textual já foi resolvida acima
-        p_limit:      10000,         // carrega tudo — o JS faz paginação virtual
+        p_search:     null,
+        p_limit:      500,       // máximo permitido pelo RPC (clampado no servidor)
         p_offset:     0,
-        p_device_ids: deviceIds,     // null = sem filtro
+        p_device_ids: deviceIds, // null = sem filtro (carrega todos)
       });
 
       if (rpcError) throw rpcError;
-      if (gen !== genRef.current) return;
+      if (gen !== genRef.current) return; // carga obsoleta — descarta
 
       const payload = rpcResult as {
         total_count:  number;
@@ -163,22 +157,22 @@ export function useStock(search: string) {
       };
 
       const reservedMap = payload.reserved_map ?? {};
-      const loteMapRaw  = payload.lote_map ?? {};
+      const loteMapRaw  = payload.lote_map     ?? {};
 
       const normalized: StockItem[] = (payload.items ?? [])
         .map((row: Record<string, unknown>) => {
           const qty      = (row.quantity as number) ?? 0;
+          // reserved_map sobrescreve o valor do banco para itens da expedição
           const reserved = reservedMap[row.id as string] ?? (row.quantity_reserved as number) ?? 0;
-          const dev      = row.device as Record<string, unknown> | null;
           return {
             ...row,
-            quantity_reserved: reserved,
+            quantity_reserved:  reserved,
             quantity_available: Math.max(0, qty - reserved),
-            fase: (row.fase as StockFase) ?? "intermediaria",
-            device: dev,
+            fase:               (row.fase as StockFase) ?? "intermediaria",
+            device:             row.device as Record<string, unknown> | null,
           } as StockItem;
         })
-        .filter((item) => item.device != null);
+        .filter((item) => item.device != null); // descarta órfãos sem device
 
       const newLoteMap = new Map<string, number>(
         Object.entries(loteMapRaw).map(([k, v]) => [k, v as number])
@@ -189,7 +183,7 @@ export function useStock(search: string) {
       setLoteMap(newLoteMap);
       lastLoadRef.current = Date.now();
 
-      // Persiste no cache React Query — navegação de volta é instantânea
+      // Persiste no cache — navegação de volta é instantânea (sem spinner)
       queryClient.setQueryData(cacheKey, {
         items:      normalized,
         totalCount: payload.total_count ?? normalized.length,
@@ -201,22 +195,23 @@ export function useStock(search: string) {
         setError("Erro ao carregar estoque.");
       }
     } finally {
-      if (genRef.current === (genRef.current)) setLoading(false);
+      // Fix: usa a variável `gen` capturada no closure, não genRef.current
+      // (genRef.current === genRef.current é sempre true — bug da versão anterior)
+      if (gen === genRef.current) setLoading(false);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadItems(search);
     const ref = genRef;
-    return () => { ref.current++; };
+    return () => { ref.current++; }; // cancela cargas em voo ao desmontar
   }, [search, loadItems]);
 
-  // Recarrega quando o usuário volta à aba após pelo menos 60s de ausência.
+  // Recarrega quando o usuário volta à aba após 60s de ausência.
   useEffect(() => {
     function handleVisibility() {
       if (document.visibilityState !== "visible") return;
-      const now = Date.now();
-      if (now - lastLoadRef.current < 60_000) return;
+      if (Date.now() - lastLoadRef.current < 60_000) return;
       loadItems(search);
     }
     document.addEventListener("visibilitychange", handleVisibility);
@@ -224,7 +219,6 @@ export function useStock(search: string) {
   }, [search, loadItems]);
 
   return { items, totalCount, loteMap, loading, error, refetch: () => loadItems(search) };
-}
 }
 
 // ─── Hook de movimentos de um item ────────────────────────────────────────────
