@@ -165,3 +165,24 @@ CREATE INDEX IF NOT EXISTS idx_devices_vencimento
   WHERE data_vencimento_anvisa IS NOT NULL;
 
 ANALYZE public.devices;
+-- ── 9. Aprovar todas as peças existentes como conformes ──────────────────────
+-- Todas as peças que já estão no app estão em conformidade com a ANVISA.
+-- Isso as coloca na Fase 5 (Concluído) no pipeline de qualidade.
+UPDATE public.devices
+  SET empresa_lf  = true,
+      empresa_afe = true,
+      empresa_bpf = true,
+      status_regularizacao =
+        CASE
+          WHEN risk_class IN ('I', 'II')   THEN 'notificado'
+          WHEN risk_class IN ('III', 'IV') THEN 'registrado'
+          ELSE 'registrado'  -- fallback: trata como registrado se classe não definida
+        END,
+      rotulo_udi_ok = CASE WHEN udi_di IS NOT NULL AND udi_di != '' THEN true ELSE rotulo_udi_ok END
+  WHERE true;  -- aplica a todas as linhas
+
+-- Garante que peças sem risk_class definida também ficam como aprovadas
+UPDATE public.devices
+  SET risk_class = 'III',  -- classe padrão para usinagens ortopédicas
+      status_regularizacao = 'registrado'
+  WHERE risk_class IS NULL OR risk_class = '';

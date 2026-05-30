@@ -8,9 +8,9 @@
  *  - Indicadores de retrabalho e reservas ativas
  */
 
-import { useState, useRef, useCallback, memo } from "react";
+import { useState, memo } from "react";
 import {
-  Search, X, Package, Truck, Wrench, Tag, AlertCircle,
+  Search, Package, Truck, Wrench, Tag, AlertCircle,
   ChevronDown, ChevronUp, MapPin, ShieldAlert, Clock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -81,9 +81,75 @@ const FASE_CONFIG: Record<StockFase, { label: string; Icon: React.ElementType; c
   },
 };
 
+// ─── Helpers de busca ────────────────────────────────────────────────────────
+
+function buildLoteMap(movData: unknown[]): Map<string, Map<string, { saldo: number; last_movement: string }>> {
+  const map = new Map<string, Map<string, { saldo: number; last_movement: string }>>();
+  for (const m of movData as { stock_item_id: string; lote: string; type: string; quantity: number; created_at: string }[]) {
+    if (!m.lote) continue;
+    if (!map.has(m.stock_item_id)) map.set(m.stock_item_id, new Map());
+    const lm = map.get(m.stock_item_id)!;
+    const key = m.lote.toUpperCase();
+    const ex = lm.get(key);
+    lm.set(key, { saldo: (ex?.saldo ?? 0) + (m.type === "entrada" ? m.quantity : -m.quantity), last_movement: ex?.last_movement ?? m.created_at });
+  }
+  return map;
+}
+
+function buildResult(
+  dev: { id: string; model: string; reference: string; internal_code: string | null },
+  devItems: { id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: StockFase }[],
+  lotesByItem: Map<string, Map<string, { saldo: number; last_movement: string }>>
+): PecaResult {
+  const fases: FaseInfo[] = devItems.map(item => {
+    const lm = lotesByItem.get(item.id);
+    const lotes: LoteInfo[] = lm
+      ? Array.from(lm.entries()).filter(([, v]) => v.saldo > 0)
+        .map(([lote, v]) => ({ lote, saldo: v.saldo, last_movement: v.last_movement })).sort((a, b) => b.saldo - a.saldo)
+      : [];
+    return { fase: item.fase, stock_item_id: item.id, quantity: item.quantity, quantity_reserved: item.quantity_reserved, quantity_available: item.quantity - item.quantity_reserved, location: item.location, lotes };
+  });
+  return {
+    device_id: dev.id, model: dev.model, reference: dev.reference, internal_code: dev.internal_code,
+    fases: fases.filter(f => f.quantity > 0 || f.lotes.length > 0),
+    em_retrabalho: fases.some(f => f.fase === "retrabalho" && f.quantity > 0),
+    tem_reservas: fases.some(f => f.quantity_reserved > 0),
+  };
+}
+
 async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; results: PecaResult[] }> {
   const q = sanitizeQuery(query);
   if (!q || q.length < 2) return { suggestions: [], results: [] };
+
+  // Detecta busca por lote: contém padrão com traço numérico
+  const isLoteSearch = /\d{2,6}-\d{0,2}/.test(q);
+
+  if (isLoteSearch) {
+    const { data: loteMov } = await supabase.from("stock_movements")
+      .select("stock_item_id, lote").ilike("lote", `%${q}%`).limit(200);
+    if (!loteMov || loteMov.length === 0) return { suggestions: [], results: [] };
+    const itemIds = [...new Set((loteMov as { stock_item_id: string }[]).map(m => m.stock_item_id))];
+    const { data: stockFromLote } = await supabase.from("stock_items")
+      .select("id, device_id, quantity, quantity_reserved, location, fase").in("id", itemIds);
+    if (!stockFromLote || stockFromLote.length === 0) return { suggestions: [], results: [] };
+    const devIds = [...new Set((stockFromLote as { device_id: string }[]).map(s => s.device_id))];
+    const { data: devFromLote } = await supabase.from("devices")
+      .select("id, model, reference, internal_code").in("id", devIds);
+    if (!devFromLote) return { suggestions: [], results: [] };
+
+    const devRows = devFromLote as { id: string; model: string; reference: string; internal_code: string | null }[];
+    const stockItems = stockFromLote as { id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: StockFase }[];
+    const { data: movData } = await supabase.from("stock_movements")
+      .select("stock_item_id, lote, type, quantity, created_at")
+      .in("stock_item_id", itemIds).not("lote", "is", null).order("created_at", { ascending: false }).limit(2000);
+
+    const lotesByItem = buildLoteMap(movData ?? []);
+    const results: PecaResult[] = devRows.map(dev => buildResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem));
+    return {
+      suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })),
+      results: results.filter(r => r.fases.length > 0),
+    };
+  }
 
   // 1. Busca devices que casam com a query
   const { data: devData } = await supabase
@@ -366,144 +432,47 @@ interface StockGlobalSearchProps {
 
 export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: StockGlobalSearchProps) {
   const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [results, setResults] = useState<PecaResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useClickOutside(containerRef, () => setShowSuggestions(false));
-
-  const doSearch = useCallback(async (q: string) => {
+  // Busca automática com debounce — sem botão nem dropdown de sugestões
+  const debouncedSearch = useDebounce(async (q: string) => {
     const trimmed = q.trim();
-    if (!trimmed || trimmed.length < 2) {
-      setSuggestions([]);
-      setResults([]);
-      setSearched(false);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
+    if (!trimmed || trimmed.length < 2) { setResults([]); setSearched(false); setLoading(false); return; }
+    setLoading(true); setError(null);
     try {
-      const { suggestions: sugs, results: res } = await searchPecas(trimmed);
-      setSuggestions(sugs);
-      setResults(res);
-      setSearched(true);
-    } catch (e) {
-      setError("Erro ao pesquisar. Tente novamente.");
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Sugestões com debounce rápido (300ms)
-  const debouncedSuggestions = useDebounce(async (q: string) => {
-    if (!q.trim() || q.trim().length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    const { data } = await supabase
-      .from("devices")
-      .select("id, model, reference")
-      .or(`model.ilike.%${sanitizeQuery(q)}%,reference.ilike.%${sanitizeQuery(q)}%`)
-      .limit(6);
-    setSuggestions((data ?? []) as Suggestion[]);
-    setShowSuggestions(true);
-  }, 300);
+      const { results: res } = await searchPecas(trimmed);
+      setResults(res); setSearched(true);
+    } catch { setError("Erro ao pesquisar. Tente novamente."); }
+    finally { setLoading(false); }
+  }, 400);
 
   function handleChange(v: string) {
     setQuery(v);
-    if (!v.trim()) {
-      setSuggestions([]);
-      setResults([]);
-      setSearched(false);
-      setShowSuggestions(false);
-      return;
-    }
-    debouncedSuggestions(v);
-  }
-
-  function handleClear() {
-    setQuery("");
-    setSuggestions([]);
-    setResults([]);
-    setSearched(false);
-    setShowSuggestions(false);
-    setError(null);
-    inputRef.current?.focus();
-  }
-
-  function handleSelectSuggestion(s: Suggestion) {
-    setQuery(s.model);
-    if (inputRef.current) inputRef.current.value = s.model;
-    setShowSuggestions(false);
-    doSearch(s.model);
-  }
-
-  function handleSubmit() {
-    setShowSuggestions(false);
-    doSearch(query);
+    if (!v.trim()) { setResults([]); setSearched(false); setError(null); return; }
+    setLoading(true);
+    debouncedSearch(v);
   }
 
   return (
     <div className={cn("space-y-3", className)}>
-      {/* Barra de pesquisa */}
-      <div className="relative" ref={containerRef}>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <SearchInputWithBarcode
-              value={query}
-              onChange={v => handleChange(v)}
-              onSearch={v => { handleChange(v); setTimeout(handleSubmit, 50); }}
-              placeholder="Bipe o código ou pesquise por modelo, referência..."
-              height="h-10 sm:h-11"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!query.trim() || loading}
-            className={cn(
-              "h-10 sm:h-11 px-4 rounded-xl text-sm font-medium transition-all shrink-0",
-              "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.98]",
-              "disabled:opacity-40 disabled:cursor-not-allowed"
-            )}
-          >
-            {loading ? (
-              <span className="flex items-center gap-1.5">
-                <span className="h-3.5 w-3.5 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
-                Buscando
-              </span>
-            ) : "Buscar"}
-          </button>
-        </div>
-
-        {/* Dropdown de sugestões */}
-        {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute top-full mt-1.5 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-            {suggestions.map(s => (
-              <button
-                key={s.device_id}
-                type="button"
-                onMouseDown={e => { e.preventDefault(); handleSelectSuggestion(s); }}
-                className="w-full text-left px-4 py-2.5 hover:bg-muted/60 transition-colors border-b border-border/30 last:border-0 flex items-center justify-between gap-2"
-              >
-                <span className="text-[13px] font-medium truncate">{s.model}</span>
-                <span className="text-[11px] text-muted-foreground/60 font-mono shrink-0">{s.reference}</span>
-              </button>
-            ))}
+      <div className="relative">
+        <SearchInputWithBarcode
+          value={query}
+          onChange={v => handleChange(v)}
+          onSearch={v => { setQuery(v); debouncedSearch(v); }}
+          placeholder="Modelo, referência, lote (ex: 010125-01) ou código..."
+          height="h-10 sm:h-11"
+        />
+        {loading && (
+          <div className="absolute right-10 top-1/2 -translate-y-1/2">
+            <span className="h-3.5 w-3.5 rounded-full border-2 border-primary/30 border-t-primary animate-spin block" />
           </div>
         )}
       </div>
 
-      {/* Resultados */}
       {error && (
         <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
           <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
@@ -512,31 +481,29 @@ export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: 
       )}
 
       {searched && !loading && !error && (
-        <>
-          {results.length === 0 ? (
-            <div className="rounded-2xl border border-border/30 bg-muted/10 py-10 text-center">
-              <Package className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-[13px] text-muted-foreground/60">
-                Nenhuma peça encontrada para <span className="font-medium text-foreground/60">"{query}"</span>
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-[11px] text-muted-foreground/60 px-0.5">
-                {results.length} {results.length === 1 ? "resultado" : "resultados"} para{" "}
-                <span className="font-medium text-foreground/70">"{query}"</span>
-              </p>
-              {results.map(peca => (
-                <PecaCard key={peca.device_id} peca={peca} />
-              ))}
-            </div>
-          )}
-        </>
+        results.length === 0 ? (
+          <div className="rounded-2xl border border-border/30 bg-muted/10 py-10 text-center">
+            <Package className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-[13px] text-muted-foreground/60">
+              Nenhuma peça encontrada para <span className="font-medium text-foreground/60">"{query}"</span>
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-[11px] text-muted-foreground/60 px-0.5">
+              {results.length} {results.length === 1 ? "resultado" : "resultados"} para{" "}
+              <span className="font-medium text-foreground/70">"{query}"</span>
+            </p>
+            {results.map(peca => (
+              <PecaCard key={peca.device_id} peca={peca} />
+            ))}
+          </div>
+        )
       )}
 
-      {!searched && !loading && (
+      {!searched && !loading && !query && (
         <p className="text-[11px] text-muted-foreground/50 text-center py-1">
-          Digite o nome, referência ou código da peça para ver sua localização e lotes no estoque
+          Digite o nome, referência, lote ou código da peça
         </p>
       )}
     </div>
