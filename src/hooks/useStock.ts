@@ -65,7 +65,6 @@ export function useStock(search: string) {
       let query = supabase
         .from("stock_items")
         .select(
-          // PERF: só campos usados nos cards — detalhes carregam sob demanda no DeviceDetail
           `id, device_id, quantity, quantity_reserved, min_quantity, location, notes, fase, created_at, updated_at,
            device:devices(
              id, udi_di, reference, model, brand_name, internal_code,
@@ -121,7 +120,6 @@ export function useStock(search: string) {
         }
       }
 
-      // PERF: busca primeira página e dispara demais em paralelo
       const PAGE_SIZE = 1000;
       let allRows: Record<string, unknown>[] = [];
 

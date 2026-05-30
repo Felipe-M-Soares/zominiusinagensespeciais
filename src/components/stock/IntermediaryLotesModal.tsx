@@ -72,17 +72,24 @@ function buildZpl(model: string, reference: string, lote: string): string {
   ].join("\n");
 }
 
-// Envia ZPL direto para a ZD220 via Zebra Browser Print (localhost:9100)
-async function sendToPrinter(zpl: string): Promise<boolean> {
-  try {
-    const res = await fetch("http://127.0.0.1:9100", {
-      method: "POST",
-      body: zpl,
-    });
-    return res.ok || res.status === 0;
-  } catch {
-    return false;
-  }
+function sendToPrinter(zpl: string) {
+  // Tenta Zebra Browser Print (porta padrão 9100)
+  fetch("http://127.0.0.1:9100", {
+    method: "POST",
+    body: zpl,
+  }).catch(() => {
+    // Browser Print não disponível — faz download do arquivo ZPL
+  });
+}
+
+function downloadZpl(zpl: string, lote: string) {
+  const blob = new Blob([zpl], { type: "text/plain" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `etiqueta-${lote.replace(/\//g, "-")}.zpl`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ─── Preview da Etiqueta (canvas SVG) ─────────────────────────────────────────
@@ -158,17 +165,14 @@ interface PrintPreviewModalProps {
 
 function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
   const [printing, setPrinting] = useState(false);
-
   if (!row) return null;
-
   async function handlePrint() {
     if (printing) return;
     setPrinting(true);
-    const zpl = buildZpl(row!.model, row!.reference, row!.lote);
-    const ok = await sendToPrinter(zpl);
+    const ok = await sendToPrinter(buildZpl(row!.model, row!.reference, row!.lote));
     setPrinting(false);
     if (ok) { toast.success("Etiqueta enviada para a ZD220 — 2 cópias"); onClose(); }
-    else toast.error("Impressora não encontrada. Verifique se o Zebra Browser Print está aberto.", { duration: 6000 });
+    else toast.error("Impressora não encontrada. Verifique o Zebra Browser Print.", { duration: 6000 });
   }
 
   return (
@@ -219,16 +223,8 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
           >
             Cancelar
           </button>
-          <button
-            type="button"
-            onClick={handlePrint}
-            disabled={printing}
-            className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
-          >
-            {printing
-              ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              : <Printer className="h-3.5 w-3.5" />
-            }
+          <button type="button" onClick={handlePrint} disabled={printing} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60">
+            {printing ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
             {printing ? "Enviando..." : "Imprimir (2 cópias)"}
           </button>
         </div>
