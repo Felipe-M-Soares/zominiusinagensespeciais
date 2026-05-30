@@ -855,34 +855,28 @@ function LoteRow({ lote }: { lote: LoteInfo }) {
 function FaseCard({ fase }: { fase: FaseInfo }) {
   const cfg = FASE_CONFIG[fase.fase];
   return (
-    <div className={cn("rounded-xl border overflow-hidden", cfg.border)}>
-      {/* linha compacta: ícone + label + lotes inline + qtd */}
-      <div className={cn("flex items-center gap-2 px-3 py-2", cfg.bg)}>
-        <cfg.Icon className={cn("h-3.5 w-3.5 shrink-0", cfg.color)} />
-        <span className={cn("text-[12px] font-semibold shrink-0", cfg.color)}>{cfg.label}</span>
+    <div className={cn("rounded-lg border overflow-hidden", cfg.border)}>
+      <div className={cn("flex items-center gap-1.5 px-2 py-1.5", cfg.bg)}>
+        <cfg.Icon className={cn("h-3 w-3 shrink-0", cfg.color)} />
+        <span className={cn("text-[11px] font-semibold shrink-0", cfg.color)}>{cfg.label}</span>
         {fase.location && (
-          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/60 shrink-0">
-            <MapPin className="h-2.5 w-2.5" />{fase.location}
-          </span>
+          <span className="text-[10px] text-muted-foreground/50 shrink-0 truncate">· {fase.location}</span>
         )}
-        {/* lotes em linha */}
         {fase.lotes.length > 0 && (
-          <div className="flex-1 flex flex-wrap gap-1 overflow-hidden">
+          <div className="flex-1 flex flex-wrap gap-1 min-w-0 overflow-hidden">
             {fase.lotes.map(l => (
-              <span key={l.lote} className="flex items-center gap-1 text-[10px] font-mono bg-background/60 border border-border/30 px-1.5 py-0.5 rounded-md">
-                <Tag className="h-2.5 w-2.5 text-muted-foreground/50 shrink-0" />
-                {l.lote}
-                <span className="text-muted-foreground/60 font-sans font-medium">{l.saldo}</span>
+              <span key={l.lote} className="flex items-center gap-0.5 text-[9px] font-mono bg-background/60 border border-border/30 px-1 py-0.5 rounded">
+                {l.lote} <span className="text-muted-foreground/60 font-sans">{l.saldo}</span>
               </span>
             ))}
           </div>
         )}
-        <div className="flex items-center gap-2 shrink-0 ml-auto">
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
           {fase.quantity_reserved > 0 && (
-            <span className="text-[11px] font-semibold tabular-nums text-blue-500">{fase.quantity_reserved} res.</span>
+            <span className="text-[10px] font-semibold tabular-nums text-blue-500">{fase.quantity_reserved}r</span>
           )}
-          <span className={cn("text-[14px] font-bold tabular-nums", cfg.color)}>{fase.quantity.toLocaleString("pt-BR")}</span>
-          <span className="text-[9px] text-muted-foreground/60">un.</span>
+          <span className={cn("text-[12px] font-bold tabular-nums", cfg.color)}>{fase.quantity.toLocaleString("pt-BR")}</span>
+          <span className="text-[9px] text-muted-foreground/50">un.</span>
         </div>
       </div>
     </div>
@@ -892,26 +886,21 @@ function FaseCard({ fase }: { fase: FaseInfo }) {
 function PecaCard({ peca }: { peca: PecaResult }) {
   const totalQty = peca.fases.reduce((s, f) => s + f.quantity, 0);
   return (
-    <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
-      {/* Header compacto */}
-      <div className="px-3 py-2.5 flex items-center gap-3 border-b border-border/20 bg-muted/10">
+    <div className="rounded-xl border border-border/40 bg-card overflow-hidden hover:border-border/70 transition-colors">
+      <div className="px-3 py-2.5 flex items-center gap-2 border-b border-border/20 bg-muted/10">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-[13px] font-semibold truncate">{peca.model}</p>
-            <span className="text-[10px] text-muted-foreground/60 font-mono shrink-0">{peca.reference}</span>
-            {peca.internal_code && <span className="text-[10px] text-muted-foreground/40 shrink-0">{peca.internal_code}</span>}
-          </div>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            {peca.udi_di && <span className="flex items-center gap-0.5 text-[10px] text-violet-600 font-mono"><Hash className="h-2.5 w-2.5" />{peca.udi_di}</span>}
-            {peca.anvisa_registration && <span className="flex items-center gap-0.5 text-[10px] text-blue-600"><ShieldCheck className="h-2.5 w-2.5" />{peca.anvisa_registration}</span>}
-            {peca.em_retrabalho && <span className="flex items-center gap-0.5 text-[10px] text-amber-500"><Wrench className="h-2.5 w-2.5" />Retrab.</span>}
-            {peca.tem_reservas && <span className="flex items-center gap-0.5 text-[10px] text-blue-500"><ShieldAlert className="h-2.5 w-2.5" />Reserv.</span>}
+          <p className="text-[12px] font-semibold truncate leading-tight">{peca.model}</p>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <span className="text-[10px] text-muted-foreground/60 font-mono">{peca.reference}</span>
+            {peca.udi_di && <span className="flex items-center gap-0.5 text-[9px] text-violet-600 font-mono"><Hash className="h-2.5 w-2.5" />{peca.udi_di}</span>}
+            {peca.anvisa_registration && <span className="flex items-center gap-0.5 text-[9px] text-blue-600"><ShieldCheck className="h-2.5 w-2.5" />{peca.anvisa_registration}</span>}
+            {peca.em_retrabalho && <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">Retrab.</span>}
+            {peca.tem_reservas && <span className="text-[9px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">Reserv.</span>}
           </div>
         </div>
-        <span className="text-[13px] font-bold tabular-nums text-muted-foreground shrink-0">{totalQty.toLocaleString("pt-BR")} un.</span>
+        <span className="text-[13px] font-bold tabular-nums text-foreground shrink-0">{totalQty.toLocaleString("pt-BR")}<span className="text-[9px] font-normal text-muted-foreground/60 ml-0.5">un.</span></span>
       </div>
-      {/* Fases compactas */}
-      <div className="px-2 py-2 space-y-1.5">
+      <div className="px-2 py-1.5 space-y-1">
         {peca.fases.map(fase => <FaseCard key={`${fase.fase}-${fase.stock_item_id}`} fase={fase} />)}
       </div>
     </div>
@@ -974,7 +963,9 @@ const RastreamentoPanel = memo(function RastreamentoPanel() {
             </div>
           : <div className="space-y-2">
               <p className="text-[10px] text-muted-foreground/50 px-0.5">{results.length} resultado{results.length !== 1 ? "s" : ""}</p>
-              {results.map(p => <PecaCard key={p.device_id} peca={p} />)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {results.map(p => <PecaCard key={p.device_id} peca={p} />)}
+              </div>
             </div>
       )}
       {!searched && !loading && !query && (

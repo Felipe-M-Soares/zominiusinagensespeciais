@@ -287,31 +287,31 @@ function LoteRow({ lote }: { lote: LoteInfo }) {
 function FaseRow({ fase }: { fase: FaseInfo }) {
   const cfg = FASE_CONFIG[fase.fase];
   return (
-    <div className={cn("rounded-xl border overflow-hidden", cfg.border)}>
-      <div className={cn("flex items-center gap-2 px-3 py-2", cfg.bg)}>
-        <cfg.Icon className={cn("h-3.5 w-3.5 shrink-0", cfg.color)} />
-        <span className={cn("text-[12px] font-semibold shrink-0", cfg.color)}>{cfg.label}</span>
+    <div className={cn("rounded-lg border overflow-hidden", cfg.border)}>
+      <div className={cn("flex items-center gap-1.5 px-2 py-1.5", cfg.bg)}>
+        <cfg.Icon className={cn("h-3 w-3 shrink-0", cfg.color)} />
+        <span className={cn("text-[11px] font-semibold shrink-0", cfg.color)}>{cfg.label}</span>
         {fase.location && (
-          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/60 shrink-0">
-            <MapPin className="h-2.5 w-2.5" />{fase.location}
-          </span>
+          <span className="text-[10px] text-muted-foreground/50 shrink-0 truncate">· {fase.location}</span>
         )}
-        <div className="flex-1" />
-        {fase.quantity_reserved > 0 && (
-          <span className="text-[11px] font-semibold tabular-nums text-blue-500 shrink-0">
-            {fase.quantity_reserved} res.
-          </span>
+        {/* lotes inline */}
+        {fase.lotes.length > 0 && (
+          <div className="flex-1 flex flex-wrap gap-1 min-w-0 overflow-hidden">
+            {fase.lotes.map(l => (
+              <span key={l.lote} className="flex items-center gap-0.5 text-[9px] font-mono bg-background/60 border border-border/30 px-1 py-0.5 rounded">
+                {l.lote} <span className="text-muted-foreground/60 font-sans">{l.saldo}</span>
+              </span>
+            ))}
+          </div>
         )}
-        <span className={cn("text-[14px] font-bold tabular-nums shrink-0", cfg.color)}>
-          {fase.quantity.toLocaleString("pt-BR")}
-        </span>
-        <span className="text-[10px] text-muted-foreground/60">un.</span>
-      </div>
-      {fase.lotes.length > 0 && (
-        <div className="px-2 pb-2 pt-1 space-y-1 border-t border-border/20 bg-background/40">
-          {fase.lotes.map(l => <LoteRow key={l.lote} lote={l} />)}
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
+          {fase.quantity_reserved > 0 && (
+            <span className="text-[10px] font-semibold tabular-nums text-blue-500">{fase.quantity_reserved}r</span>
+          )}
+          <span className={cn("text-[12px] font-bold tabular-nums", cfg.color)}>{fase.quantity.toLocaleString("pt-BR")}</span>
+          <span className="text-[9px] text-muted-foreground/50">un.</span>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -319,81 +319,33 @@ function FaseRow({ fase }: { fase: FaseInfo }) {
 // Card no mesmo tamanho e estilo dos cards de componentes
 function PecaCard({ peca }: { peca: PecaResult }) {
   const totalQty = peca.fases.reduce((s, f) => s + f.quantity, 0);
-  const totalLotes = peca.fases.reduce((s, f) => s + f.lotes.length, 0);
-
   return (
-    <div
-      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
-      style={{
-        boxShadow:
-          "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
-      }}
-    >
-      {/* Accent bar igual ao DeviceCard */}
-      <div className="h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
-
-      <div className="p-4 space-y-3">
-        {/* Header: nome + referência + badges */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
-            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">
-              {peca.model}
-            </h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{peca.reference}</p>
-            {peca.internal_code && (
-              <p className="text-[10px] text-muted-foreground/50">{peca.internal_code}</p>
-            )}
-          </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
+    <div className="rounded-xl border border-border/40 bg-card overflow-hidden hover:border-border/70 transition-colors">
+      {/* Header compacto */}
+      <div className="px-3 py-2.5 flex items-center gap-2 border-b border-border/20 bg-muted/10">
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-semibold truncate leading-tight">{peca.model}</p>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <span className="text-[10px] text-muted-foreground/60 font-mono">{peca.reference}</span>
             {peca.em_retrabalho && (
-              <span className="flex items-center gap-1 text-[10px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
-                <Wrench className="h-2.5 w-2.5" />Retrabalho
-              </span>
+              <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">Retrab.</span>
             )}
             {peca.tem_reservas && (
-              <span className="flex items-center gap-1 text-[10px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
-                <ShieldAlert className="h-2.5 w-2.5" />Reservado
-              </span>
+              <span className="text-[9px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">Reserv.</span>
             )}
           </div>
         </div>
-
-        {/* Resumo: total + locais + lotes */}
-        <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground/70">
-          <span className="flex items-center gap-1">
-            <Package className="h-3 w-3 text-muted-foreground/50" />
-            <span className="font-bold text-foreground">{totalQty.toLocaleString("pt-BR")}</span> un.
-          </span>
-          <span className="text-muted-foreground/30">·</span>
-          <span className="flex items-center gap-1">
-            <MapPin className="h-3 w-3 text-muted-foreground/50" />
-            <span className="font-bold text-foreground">{peca.fases.length}</span>
-            {peca.fases.length === 1 ? " local" : " locais"}
-          </span>
-          {totalLotes > 0 && (
-            <>
-              <span className="text-muted-foreground/30">·</span>
-              <span className="flex items-center gap-1">
-                <Tag className="h-3 w-3 text-muted-foreground/50" />
-                <span className="font-bold text-foreground">{totalLotes}</span>
-                {totalLotes === 1 ? " lote" : " lotes"}
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Fases — separador + linhas compactas */}
-        <div className="border-t border-border/20 pt-3 space-y-1.5">
-          {peca.fases.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground/40 text-center py-2">
-              Sem estoque ativo
-            </p>
-          ) : (
-            peca.fases.map(fase => (
-              <FaseRow key={`${fase.fase}-${fase.stock_item_id}`} fase={fase} />
-            ))
-          )}
-        </div>
+        <span className="text-[13px] font-bold tabular-nums text-foreground shrink-0">{totalQty.toLocaleString("pt-BR")}<span className="text-[9px] font-normal text-muted-foreground/60 ml-0.5">un.</span></span>
+      </div>
+      {/* Fases compactas */}
+      <div className="px-2 py-1.5 space-y-1">
+        {peca.fases.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground/40 text-center py-1.5">Sem estoque ativo</p>
+        ) : (
+          peca.fases.map(fase => (
+            <FaseRow key={`${fase.fase}-${fase.stock_item_id}`} fase={fase} />
+          ))
+        )}
       </div>
     </div>
   );
@@ -464,14 +416,16 @@ export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: 
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            <p className="text-[11px] text-muted-foreground/60 px-0.5">
+          <div className="space-y-2">
+            <p className="text-[10px] text-muted-foreground/50 px-0.5">
               {results.length} {results.length === 1 ? "resultado" : "resultados"} para{" "}
-              <span className="font-medium text-foreground/70">"{query}"</span>
+              <span className="font-medium text-foreground/60">"{query}"</span>
             </p>
-            {results.map(peca => (
-              <PecaCard key={peca.device_id} peca={peca} />
-            ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {results.map(peca => (
+                <PecaCard key={peca.device_id} peca={peca} />
+              ))}
+            </div>
           </div>
         )
       )}
