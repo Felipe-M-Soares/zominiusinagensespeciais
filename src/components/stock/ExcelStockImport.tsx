@@ -23,10 +23,11 @@ import {
   X, Eye, ArrowRight, RefreshCw, FileText, PlusCircle,
 } from "lucide-react";
 
-// SEG-03: pdfjs v4 worker — CVE-2024-4367 corrigido na v4.2.67+
-// v4 usa ESM worker; importado via ?url para compatibilidade Vite
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+// Worker do pdfjs — usa o worker incluído no pacote via blob
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.js",
+  import.meta.url
+).toString();
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 
@@ -292,17 +293,6 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
 
   const parseExcel = useCallback(async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls)$/i)) { toast.error("Use .xlsx ou .xls"); return; }
-    // SEG-05: MIME check para xlsx/xls
-    const EXCEL_MIMES = [
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // xlsx
-      "application/vnd.ms-excel", // xls
-      "application/octet-stream", // fallback alguns browsers
-      "", // vazio em alguns SOs
-    ];
-    if (file.type !== "" && !EXCEL_MIMES.includes(file.type)) {
-      toast.error("Tipo de arquivo inválido. Use .xlsx ou .xls.");
-      return;
-    }
     try {
       const buf = await file.arrayBuffer();
       const wb  = new ExcelJS.Workbook();
