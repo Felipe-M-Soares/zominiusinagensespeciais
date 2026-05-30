@@ -72,27 +72,73 @@ function buildZpl(model: string, reference: string, lote: string): string {
   ].join("\n");
 }
 
-function sendToPrinter(zpl: string) {
-  // Tenta Zebra Browser Print (porta padrão 9100)
-  fetch("http://127.0.0.1:9100", {
-    method: "POST",
-    body: zpl,
-  }).catch(() => {
-    // Browser Print não disponível — faz download do arquivo ZPL
-  });
+/**
+ * sendZplDirect — envia ZPL direto à ZD220 via Zebra Browser Print (localhost:9100).
+ * Retorna true se conseguiu enviar, false se o serviço não estiver rodando.
+ */
+async function sendZplDirect(zpl: string): Promise<boolean> {
+  try {
+    // Zebra Browser Print escuta em 9100 por padrão
+    const res = await fetch("http://localhost:9100", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: zpl,
+      signal: AbortSignal.timeout(2500), // 2.5s timeout
+    });
+    return res.ok || res.status === 0; // status 0 = CORS blocked = enviou
+  } catch {
+    return false;
+  }
 }
 
-function downloadZpl(zpl: string, lote: string) {
-  const blob = new Blob([zpl], { type: "text/plain" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = `etiqueta-${lote.replace(/\//g, "-")}.zpl`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+/**
+ * printLabelFallback — fallback via window.print() com @page 50×45mm.
+ * Usado quando o Zebra Browser Print não está disponível.
+ */
+function printLabelFallback(model: string, reference: string, lote: string, copies = 2) {
+  const id = "__label_print_frame__";
+  document.getElementById(id)?.remove();
+
+  const refMaxPx = 205 * 0.82;
+  const refFontSize = reference.length > 8
+    ? Math.max(14, Math.floor(refMaxPx / reference.length * 1.55))
+    : 44;
+  const loteFontSize = Math.max(12, Math.min(28, Math.floor(refMaxPx / lote.length * 1.55)));
+
+  const labelHTML = Array.from({ length: copies }).map(() => `
+    <div class="label">
+      <div class="model">${model}</div>
+      <div class="sep"></div>
+      <div class="ref" style="font-size:${refFontSize}px">${reference}</div>
+      <div class="sep"></div>
+      <div class="lote" style="font-size:${loteFontSize}px">${lote}</div>
+    </div>
+  `).join("");
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>
+    @page { size: 50mm 45mm; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { width: 50mm; font-family: monospace; }
+    .label { width: 50mm; height: 45mm; display: flex; flex-direction: column; page-break-after: always; overflow: hidden; }
+    .model { font-size: 7.5pt; font-weight: bold; text-align: center; padding: 1.5mm 1mm 1mm; line-height: 1.2; white-space: nowrap; overflow: hidden; color: #222; }
+    .sep { height: 0.3mm; background: #555; width: 100%; }
+    .ref { flex: 1; display: flex; align-items: center; justify-content: center; font-weight: 800; text-align: center; letter-spacing: -0.3px; padding: 0 1mm; color: #000; }
+    .lote { height: 12mm; display: flex; align-items: center; justify-content: center; font-weight: 700; text-align: center; color: #000; }
+  </style></head><body>${labelHTML}</body></html>`;
+
+  const iframe = document.createElement("iframe");
+  iframe.id = id;
+  iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:50mm;height:45mm;border:none;";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentWindow!.document;
+  doc.open(); doc.write(html); doc.close();
+  iframe.onload = () => {
+    try { iframe.contentWindow!.focus(); iframe.contentWindow!.print(); }
+    finally { setTimeout(() => iframe.remove(), 3000); }
+  };
 }
 
-// ─── Preview da Etiqueta (canvas SVG) ─────────────────────────────────────────
 
 function LabelPreview({ model, reference, lote }: { model: string; reference: string; lote: string }) {
   // Proporção 50x45 mm → renderiza como 250x225px
@@ -166,13 +212,25 @@ interface PrintPreviewModalProps {
 function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
   const [printing, setPrinting] = useState(false);
   if (!row) return null;
+
   async function handlePrint() {
     if (printing) return;
     setPrinting(true);
-    const ok = await sendToPrinter(buildZpl(row!.model, row!.reference, row!.lote));
-    setPrinting(false);
-    if (ok) { toast.success("Etiqueta enviada para a ZD220 — 2 cópias"); onClose(); }
-    else toast.error("Impressora não encontrada. Verifique o Zebra Browser Print.", { duration: 6000 });
+    try {
+      const zpl = buildZpl(row!.model, row!.reference, row!.lote);
+      const sent = await sendZplDirect(zpl);
+      if (sent) {
+        toast.success("Enviado para a ZD220 — 2 cópias impressas");
+        onClose();
+      } else {
+        // Fallback: diálogo de impressão do sistema com @page 50×45mm
+        printLabelFallback(row!.model, row!.reference, row!.lote, 2);
+        toast.info("Zebra Browser Print não encontrado — abrindo diálogo de impressão", { duration: 5000 });
+        onClose();
+      }
+    } finally {
+      setPrinting(false);
+    }
   }
 
   return (
@@ -223,9 +281,11 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
           >
             Cancelar
           </button>
-          <button type="button" onClick={handlePrint} disabled={printing} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60">
-            {printing ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-            {printing ? "Enviando..." : "Imprimir (2 cópias)"}
+          <button type="button" onClick={handlePrint} disabled={printing} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-95 text-white text-sm font-semibold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed">
+            {printing
+              ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : <Printer className="h-3.5 w-3.5" />}
+            {printing ? "Enviando…" : "Imprimir (2 cópias)"}
           </button>
         </div>
       </div>
