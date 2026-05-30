@@ -110,7 +110,7 @@ function buildResult(
   });
   return {
     device_id: dev.id, model: dev.model, reference: dev.reference, internal_code: dev.internal_code,
-    fases: fases.filter(f => f.quantity > 0 || f.lotes.length > 0),
+    fases, // todas as fases — filtragem feita no sort/display
     em_retrabalho: fases.some(f => f.fase === "retrabalho" && f.quantity > 0),
     tem_reservas: fases.some(f => f.quantity_reserved > 0),
   };
@@ -148,7 +148,6 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     const lotesByItem = buildLoteMap(movData ?? []);
     const results = devRows
       .map(dev => buildResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
-      .filter(r => r.fases.length > 0)
       .sort((a, b) => totalQty(b) - totalQty(a));
     return {
       suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })),
@@ -178,7 +177,6 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
 
   const results = devRows
     .map(dev => buildResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
-    .filter(r => r.fases.length > 0)
     .sort((a, b) => totalQty(b) - totalQty(a));
 
   return {

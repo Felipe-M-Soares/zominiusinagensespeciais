@@ -809,7 +809,7 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     const lotesByItem = buildLotesByItem(movData ?? []);
     const results: PecaResult[] = devRows
       .map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
-      .sort((a, b) => a.fases.reduce((s,f)=>s+f.quantity,0) < b.fases.reduce((s,f)=>s+f.quantity,0) ? 1 : -1);
+      .sort((a, b) => totalQty(b) - totalQty(a));
     return { suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })), results };
   }
 
