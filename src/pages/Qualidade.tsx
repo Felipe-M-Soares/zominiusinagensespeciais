@@ -641,7 +641,8 @@ const PipelinePanel = memo(function PipelinePanel() {
       .from("devices_regularizacao")
       .select("*")
       .order("fase_atual", { ascending: true })
-      .order("model", { ascending: true });
+      .order("model", { ascending: true })
+      .limit(10000);
     if (!error) setDevices((data ?? []) as DeviceReg[]);
     setLoading(false);
   }, []);
@@ -767,7 +768,7 @@ function buildPecaResult(
   return {
     device_id: dev.id, model: dev.model, reference: dev.reference, internal_code: dev.internal_code,
     udi_di: dev.udi_di, anvisa_registration: dev.anvisa_registration, classification_code: dev.classification_code,
-    fases: fases.filter(f => f.quantity > 0 || f.lotes.length > 0),
+    fases, // todas as fases, mesmo zeradas
     em_retrabalho: fases.some(f => f.fase === "retrabalho" && f.quantity > 0),
     tem_reservas: fases.some(f => f.quantity_reserved > 0),
   };
@@ -805,7 +806,7 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
       .in("stock_item_id", itemIds).not("lote", "is", null).order("created_at", { ascending: false }).limit(2000);
     const lotesByItem = buildLotesByItem(movData ?? []);
     const results: PecaResult[] = devRows.map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem));
-    return { suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })), results: results.filter(r => r.fases.length > 0) };
+    return { suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })), results };
   }
 
   type DevRow = { id: string; model: string; reference: string; internal_code: string | null; udi_di: string | null; anvisa_registration: string | null; classification_code: string | null };
@@ -817,7 +818,7 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
 
   const devRows = devData as DevRow[];
   const suggestions: Suggestion[] = devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference }));
-  const top = devRows.slice(0, 5);
+  const top = devRows.slice(0, 20);
 
   const { data: stockData } = await supabase.from("stock_items")
     .select("id, device_id, quantity, quantity_reserved, location, fase")
@@ -833,7 +834,7 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
 
   const lotesByItem = buildLotesByItem(movData ?? []);
   const results: PecaResult[] = top.map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem));
-  return { suggestions, results: results.filter(r => r.fases.length > 0) };
+  return { suggestions, results };
 }
 
 function LoteRow({ lote }: { lote: LoteInfo }) {
