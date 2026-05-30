@@ -662,61 +662,35 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           {/* ── Desconto do Pedido ── */}
           <div className="space-y-2">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto por Peça</label>
-            <div className="grid grid-cols-5 gap-1.5">
-              {[0, 5, 10, 15, 20].map(pct => (
-                <button
-                  key={pct}
-                  type="button"
-                  onClick={() => setDesconto(pct)}
-                  className={cn(
-                    "h-10 rounded-xl text-[13px] font-bold border transition-all active:scale-95",
-                    desconto === pct
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
-                      : "bg-muted/30 text-muted-foreground border-border hover:border-emerald-400 hover:text-emerald-700"
-                  )}
-                >
-                  {pct === 0 ? "—" : `${pct}%`}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-5 gap-1.5">
-              {[25, 30, 40, 50, "outro"].map(pct => (
-                pct === "outro" ? (
-                  <div key="outro" className="relative">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      placeholder="Outro"
-                      value={![0,5,10,15,20,25,30,40,50].includes(desconto) && desconto > 0 ? desconto : ""}
-                      onChange={e => {
-                        const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                        setDesconto(v);
-                      }}
-                      className={cn(
-                        "w-full h-10 rounded-xl text-[12px] font-bold border text-center focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all",
-                        ![0,5,10,15,20,25,30,40,50].includes(desconto) && desconto > 0
-                          ? "bg-emerald-600 text-white border-emerald-600"
-                          : "bg-muted/30 text-muted-foreground border-border"
-                      )}
-                    />
-                  </div>
-                ) : (
-                  <button
-                    key={pct}
-                    type="button"
-                    onClick={() => setDesconto(pct as number)}
-                    className={cn(
-                      "h-10 rounded-xl text-[13px] font-bold border transition-all active:scale-95",
-                      desconto === pct
-                        ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
-                        : "bg-muted/30 text-muted-foreground border-border hover:border-emerald-400 hover:text-emerald-700"
-                    )}
-                  >
-                    {`${pct}%`}
-                  </button>
-                )
-              ))}
+            <div className="flex items-center gap-2">
+              <select
+                value={![0,5,10,15,20,25,30,40,50].includes(desconto) && desconto > 0 ? "outro" : String(desconto)}
+                onChange={e => {
+                  if (e.target.value !== "outro") setDesconto(Number(e.target.value));
+                }}
+                className="flex-1 h-10 rounded-xl border border-border bg-muted/30 px-3 text-[13px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all"
+              >
+                <option value="0">Sem desconto</option>
+                <option value="5">5%</option>
+                <option value="10">10%</option>
+                <option value="15">15%</option>
+                <option value="20">20%</option>
+                <option value="25">25%</option>
+                <option value="30">30%</option>
+                <option value="40">40%</option>
+                <option value="50">50%</option>
+                <option value="outro">Outro...</option>
+              </select>
+              {(![0,5,10,15,20,25,30,40,50].includes(desconto) && desconto > 0) && (
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={desconto}
+                  onChange={e => setDesconto(Math.min(99, Math.max(1, parseInt(e.target.value) || 1)))}
+                  className="w-20 h-10 rounded-xl border border-emerald-500 bg-emerald-600 text-white text-center text-[13px] font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                />
+              )}
             </div>
             {desconto > 0 && (
               <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 px-1">
