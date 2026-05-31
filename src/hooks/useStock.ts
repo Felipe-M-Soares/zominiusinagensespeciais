@@ -313,7 +313,7 @@ export async function registerMovement(
   userDisplayName?: string | null,
   lote?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  // BUG-01 / BUG-04: Use atomic RPC — eliminates read-modify-write race condition
+  // / BUG-04: Use atomic RPC — eliminates read-modify-write race condition
   // and fragile manual rollback. The DB function handles quantity update + movement
   // insert in a single transaction.
   const { data, error } = await supabase.rpc("stock_movement_atomic", {
@@ -386,7 +386,7 @@ export async function transferToExpedicao(
   if (!saidaResult.ok) return saidaResult;
 
   // 1b. Se sobrou algo do lote, renomeia o restante com sufixo /A, /B, /C...
-  //     Regra: lote original sem sufixo → /A; já em /A → /B; /B → /C; etc.
+  // Regra: lote original sem sufixo → /A; já em /A → /B; /B → /C; etc.
   if (sobra > 0) {
     // Determina o próximo sufixo
     function nextLoteSuffix(base: string): string {
@@ -652,7 +652,7 @@ export async function transferRetrabalhoToExpedicao(
 
 // ─── Lotes de um item de estoque ─────────────────────────────────────────────
 /**
- * PERF-01: Batch version — fetches lote balances for many stock_item_ids in ONE query.
+ * Batch version — fetches lote balances for many stock_item_ids in ONE query.
  * Returns Map<stock_item_id, Record<lote, saldo>>
  */
 /**
@@ -704,8 +704,8 @@ export async function fetchLotesDisponivelBatch(
   }
 
   // 2. Desconta reservas de pedidos ativos (pendente/separando) por lote.
-  //    Prioridade: lotes_separados (distribuição real por lote quando separação foi iniciada)
-  //    Fallback:   pedido_itens.lote (só lote principal — usado para pedidos pendentes)
+  // Prioridade: lotes_separados (distribuição real por lote quando separação foi iniciada)
+  // Fallback:   pedido_itens.lote (só lote principal — usado para pedidos pendentes)
   try {
     const { data: pedidosAtivos } = await supabase
       .from("pedidos_comerciais")
@@ -978,7 +978,7 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
   // Deduz reservas de pedidos (pendente e separando) dos saldos dos lotes.
   // - lote definido: deduz diretamente daquele lote
   // - lote null (pedido criado sem lote): deduz do mais antigo primeiro (FIFO),
-  //   completando com o próximo se necessário — idêntico ao que o separador fará
+  // completando com o próximo se necessário — idêntico ao que o separador fará
   //
   // Lotes ordenados do mais antigo ao mais novo para FIFO correto
   function lotesOrdenadosFIFO(): string[] {
@@ -993,7 +993,7 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
 
   for (const pi of pedidoItensReservados) {
     const loteRaw = pi.lote?.trim() ?? "";
-    // BUG-FIX: pedidos criados antes da correção usam "a-definir" como placeholder.
+    // pedidos criados antes da correção usam "a-definir" como placeholder.
     // Esses também devem cair no FIFO — caso contrário a dedução tenta descontar
     // do lote literal "A-DEFINIR" que não existe no map e a reserva nunca é aplicada.
     const loteEhIndefinido = !loteRaw || LOTE_INDEFINIDO.has(loteRaw.toLowerCase());
@@ -1130,7 +1130,7 @@ export async function runBackup(
     recent_movements: movRes.data ?? [],
   };
 
-  // PERF-03: Store backup JSON in Storage instead of JSONB column to avoid row bloat
+  // Store backup JSON in Storage instead of JSONB column to avoid row bloat
   const fileName = `backup_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
   const filePath = `backups/${fileName}`;
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
@@ -1169,7 +1169,7 @@ export async function listBackups(limit = 20): Promise<StockBackup[]> {
 }
 
 export async function downloadBackup(backupId: string): Promise<object | null> {
-  // PERF-03: Fetch from Storage using file_path stored in DB record
+  // Fetch from Storage using file_path stored in DB record
   const { data: row } = await supabase
     .from("stock_backups")
     .select("file_path, payload, created_at")

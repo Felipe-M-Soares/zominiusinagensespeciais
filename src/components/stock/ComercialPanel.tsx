@@ -143,7 +143,7 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
 
   async function handleSave() {
     if (!nome.trim()) { toast.error("Nome obrigatório"); return; }
-    // SEG-06: Validate document and email format before persisting
+    // Validate document and email format before persisting
     if (documento && !validarDocumento(documento)) {
       toast.error("CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos.");
       return;
@@ -294,7 +294,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setClientes((data as Cliente[]) ?? []);
   }
 
-  // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
+  // FIX: useClickOutside substitui document.addEventListener duplicado
   useClickOutside(dropRef,    () => setShowClienteDrop(false));
   useClickOutside(pecaDropRef, () => setShowPecaDrop(false));
 
@@ -348,7 +348,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (itens.length === 0) { toast.error("Adicione ao menos uma peça"); return; }
     setSaving(true);
     try {
-      // COD-01 FIX: Usa criarPedidoComReserva de pedidoUtils — elimina duplicação e
+      // FIX: Usa criarPedidoComReserva de pedidoUtils — elimina duplicação e
       // garante a mesma lógica atômica de reserva de estoque usada em Comercial.tsx.
       const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
       const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
@@ -1456,7 +1456,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
   const loadPedidosAbortRef = useRef<AbortController | null>(null);
   const loadPedidos = useCallback(async () => {
-    // PERF-05: Cancel any in-flight request before starting a new one
+    // Cancel any in-flight request before starting a new one
     loadPedidosAbortRef.current?.abort();
     const ctrl = new AbortController();
     loadPedidosAbortRef.current = ctrl;
@@ -1551,7 +1551,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
   useEffect(() => { loadPedidos(); loadClientes(); }, [loadPedidos, loadClientes]);
 
-  // PERF-04: useMemo must be called before any early returns (rules of hooks)
+  // useMemo must be called before any early returns (rules of hooks)
   const pedidosFiltrados = useMemo(
     () => pedidos.filter(p => filtroStatus === "todos" || p.status === filtroStatus),
     [pedidos, filtroStatus]
@@ -1581,7 +1581,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     if (!cancelarPedido) return;
     setCancelando(true);
     try {
-      // BUG-05: Use atomic RPC to cancel pedido + release reservations in one transaction
+      // Use atomic RPC to cancel pedido + release reservations in one transaction
       const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
       if (error) { toast.error("Erro ao cancelar."); return; }
       toast.success("Pedido cancelado.");

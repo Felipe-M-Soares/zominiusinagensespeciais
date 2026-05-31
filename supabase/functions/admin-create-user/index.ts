@@ -12,12 +12,36 @@ function loginToEmail(login: string): string {
   return `${login.toLowerCase().trim()}@interno.conceptus`;
 }
 
+// Rate limiting: max 10 requests per minute per IP for admin operations
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function checkRateLimit(ip: string, maxReq = 10, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxReq) return false;
+  entry.count++;
+  return true;
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = getCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Rate limit by IP (DDoS / brute-force protection)
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? req.headers.get("cf-connecting-ip")
+    ?? "unknown";
+  if (!checkRateLimit(clientIp)) {
+    return new Response(JSON.stringify({ error: "Muitas requisições. Aguarde 1 minuto." }), {
+      status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "60" },
     });
   }
 
@@ -55,8 +79,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const { login, password, display_name, role: newRole } = body as Record<string, string>;
+    // DDoS protection: limit body to 8KB (login+password+name+role = ~400 bytes max)
+    const MAX_BODY = 8 * 1024;
+    const rawBuf = await req.arrayBuffer();
+    if (rawBuf.byteLength > MAX_BODY) {
+      return new Response(JSON.stringify({ error: "Requisição muito grande." }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    let body: Record<string, string> = {};
+    try { body = JSON.parse(new TextDecoder().decode(rawBuf)); } catch { /* invalid json = empty body */ }
+    const { login, password, display_name, role: newRole } = body;
 
     // Valida login (username)
     if (!login || typeof login !== "string" || login.trim().length < 2) {

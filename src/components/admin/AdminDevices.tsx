@@ -206,7 +206,7 @@ export function AdminDevices() {
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
-    // SEG-05: valida MIME além da extensão — impede renomear arquivo malicioso
+    // valida MIME além da extensão — impede renomear arquivo malicioso
     const ALLOWED_MIMES = [
       "application/json", "text/json",
       "text/csv", "text/plain",
@@ -269,8 +269,8 @@ export function AdminDevices() {
       toast.info(`Importando ${deduped.length} dispositivos...`);
 
       // 4. Apaga catálogo atual e insere em batches diretamente via supabase client.
-      //    O RLS já garante que só admins conseguem fazer DELETE e INSERT na tabela devices.
-      //    Isso elimina a dependência da Edge Function (que estava causando erros de CORS/rede).
+      // O RLS já garante que só admins conseguem fazer DELETE e INSERT na tabela devices.
+      // Isso elimina a dependência da Edge Function (que estava causando erros de CORS/rede).
       const { error: deleteError } = await supabase
         .from("devices")
         .delete()
@@ -309,8 +309,8 @@ export function AdminDevices() {
       }
 
       // 5. Cria stock_item na fase "intermediaria" para cada device importado que ainda não tem.
-      //    Busca os que já existem e insere apenas os novos — evita conflito com o
-      //    partial unique index (stock_items_device_intermediaria_unique).
+      // Busca os que já existem e insere apenas os novos — evita conflito com o
+      // partial unique index (stock_items_device_intermediaria_unique).
       let stockCreated = 0;
       if (insertedDeviceIds.length > 0) {
         for (let i = 0; i < insertedDeviceIds.length; i += BATCH) {

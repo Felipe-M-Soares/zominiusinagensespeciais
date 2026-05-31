@@ -168,14 +168,14 @@ export default function Producao() {
         {view !== "menu" && (
           <Suspense fallback={<LoadingScreen />}>
             {view === "dashboard"    && <DashboardPanel />}
-            {view === "controle"     && <ControlePanel isAdmin={isAdmin} />}
+            {view === "controle"     && <ControlePanel />}
             {view === "planejamento" && <PlanejamentoPanel isAdmin={isAdmin} />}
             {view === "maquinas"     && <MaquinasPanel isAdmin={isAdmin} />}
             {view === "produtos"     && <ProdutosPanel isAdmin={isAdmin} />}
             {view === "paradas"      && <ParadasPanel />}
             {view === "qualidade"    && <QualidadePanel />}
             {view === "materiaprima" && <MateriaPrimaPanel />}
-            {view === "relatorios"   && <RelatoriosPanel isAdmin={isAdmin} />}
+            {view === "relatorios"   && <RelatoriosPanel />}
           </Suspense>
         )}
         </div>

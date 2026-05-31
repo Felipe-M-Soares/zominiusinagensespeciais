@@ -1,25 +1,20 @@
 /**
- * Sanitização centralizada de strings para queries PostgREST / Supabase.
+ * sanitize — Sanitização centralizada de strings para queries Supabase/PostgREST
  *
- * DUP-02 FIX: Antes havia duas implementações ligeiramente diferentes em
- * supabaseUtils.ts e useStock.ts. Agora há uma fonte única aqui.
+ * Todas as buscas de texto livre passam por sanitizeQuery antes de ir ao banco.
+ * Isso evita injeção de sintaxe PostgREST e wildcards inesperados no ILIKE.
  *
- * O que esta função faz:
- *  1. Trim e limite de comprimento (200 chars) — evita strings absurdamente longas
- *  2. Remove caracteres de controle (< 0x20) e DEL (0x7F) — evita inputs malformados
- *  3. Remove caracteres com significado sintático no parser PostgREST: () , ; ' " `
- *  4. Escapa %, _ e \ que têm significado no operador ILIKE do PostgreSQL
- *
- * Referência: https://postgrest.org/en/stable/references/api/tables_views.html
+ * O que é feito:
+ *  1. Trim + limite de 200 chars
+ *  2. Remove caracteres de controle (< 0x20) e DEL (0x7F)
+ *  3. Remove caracteres com significado no parser PostgREST: () , ; ' " `
+ *  4. Escapa %, _ e \ que têm significado especial no operador ILIKE do PostgreSQL
  */
 export function sanitizeQuery(raw: string): string {
   return raw
     .trim()
     .slice(0, 200)
-    // Remove control characters and DEL
     .split("").filter(ch => ch.charCodeAt(0) > 31 && ch.charCodeAt(0) !== 127).join("")
-    // Remove PostgREST/SQL syntax chars
     .replace(/[(),;'"`]/g, "")
-    // Escape ILIKE wildcards and backslash
     .replace(/[%_\\]/g, "\\$&");
 }

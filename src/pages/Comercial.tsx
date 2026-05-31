@@ -178,13 +178,13 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
 
   async function handleSave() {
     if (!nome.trim()) { toast.error("Nome obrigatório"); return; }
-    // SEG-05 FIX: validação de e-mail antes de persistir
+    // FIX: validação de e-mail antes de persistir
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       toast.error("E-mail inválido."); return;
     }
     setSaving(true);
     try {
-      // SEG-05 FIX: slice garante que nenhum campo ultrapasse o limite antes de chegar ao banco
+      // FIX: slice garante que nenhum campo ultrapasse o limite antes de chegar ao banco
       const payload = {
         nome:        nome.trim().slice(0, 200),
         documento:   documento.trim().slice(0, 20)  || null,
@@ -328,7 +328,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const pecaDropRef = useRef<HTMLDivElement>(null);
   const pecaInputRef = useRef<HTMLInputElement>(null);
 
-  // CODE-04 FIX: useClickOutside substitui o padrão document.addEventListener duplicado
+  // FIX: useClickOutside substitui o padrão document.addEventListener duplicado
   useClickOutside(clienteDropRef, () => setShowClienteDrop(false));
   useClickOutside(pecaDropRef,    () => setShowAutocomp(false));
 
@@ -362,7 +362,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setClientes((data as Cliente[]) ?? []);
   }
 
-  // CODE-01 FIX: useDebounce substitui o padrão debounceRef inline duplicado
+  // FIX: useDebounce substitui o padrão debounceRef inline duplicado
   const debouncedPecaSearch = useDebounce((v: string) => {
     const q = v.trim().toLowerCase();
     const sugestoes = expedicaoItems.filter(i =>
@@ -440,7 +440,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       toast.error(`Disponível na expedição: ${maxDisponivel} un.`);
       return;
     }
-    // DEDUP-FIX: se a peça já está no pedido, soma a quantidade em vez de criar linha duplicada.
+    // se a peça já está no pedido, soma a quantidade em vez de criar linha duplicada.
     // Duplicatas causavam snapshot dobrado: dois pedido_itens com mesmo stock_item_id
     // → dois conjuntos de entradas de lote no snapshot → quantidades duplicadas na impressão.
     setItens(prev => {
@@ -471,7 +471,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
       // Cria o pedido
 
-      // COD-01 FIX: usa criarPedidoComReserva para garantir que reserve_stock
+      // FIX: usa criarPedidoComReserva para garantir que reserve_stock
       // seja chamado e quantity_reserved seja incrementado corretamente no banco.
       // Antes: inseria pedido_itens com quantidade_reservada: 0 e nunca chamava reserve_stock.
       const result = await criarPedidoComReserva({
@@ -1101,7 +1101,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
     if (pedido) { setSearch(""); setSelectedPeca(null); setQtd(1); setTimeout(() => inputRef.current?.focus(), 100); }
   }, [pedido]);
 
-  // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
+  // FIX: useClickOutside substitui document.addEventListener duplicado
   useClickOutside(dropRef, () => setShowAutocomp(false));
 
   // Calcula quantas unidades de cada stock_item já estão no pedido atual (ainda não reservadas)
@@ -1117,7 +1117,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
     return Math.max(0, bruto - jaAdicionado);
   }
 
-  // CODE-01 FIX: useDebounce substitui debounceRef inline
+  // FIX: useDebounce substitui debounceRef inline
   const debouncedInput = useDebounce((v: string) => {
     const q = v.trim().toLowerCase();
     const vistos = new Set<string>();
@@ -1161,7 +1161,7 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
     });
     if (error) { setSaving(false); toast.error("Erro ao adicionar peça."); return; }
 
-    // COD-01 FIX: chama reserve_stock para incrementar quantity_reserved no banco.
+    // FIX: chama reserve_stock para incrementar quantity_reserved no banco.
     // Antes: inseria com quantidade_reservada: 0 e nunca chamava reserve_stock.
     const { data: reserved, error: reserveErr } = await supabase.rpc("reserve_stock", {
       p_item_id: selectedPeca.id,
@@ -1657,7 +1657,7 @@ function NotificacoesBell({ userId }: { userId: string }) {
     return () => { supabase.removeChannel(channel); };
   }, [userId, load]);
 
-  // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
+  // FIX: useClickOutside substitui document.addEventListener duplicado
   useClickOutside(ref, () => setOpen(false));
 
   async function marcarLidas() {
@@ -2226,7 +2226,7 @@ export default function Comercial() {
   }
 
   const loadPedidos = useCallback(async () => {
-    // PERF-05: Cancel any in-flight request before starting a new one
+    // Cancel any in-flight request before starting a new one
     loadPedidosAbortRef.current?.abort();
     const ctrl = new AbortController();
     loadPedidosAbortRef.current = ctrl;
@@ -2297,7 +2297,7 @@ export default function Comercial() {
     if (!cancelarPedido) return;
     setCancelando(true);
     try {
-      // BUG-05: Use atomic RPC — cancels pedido + releases all reservations in one transaction
+      // Use atomic RPC — cancels pedido + releases all reservations in one transaction
       const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
       if (error) { toast.error("Erro ao cancelar."); return; }
       await logAudit(user?.id, currentUserName, "cancel_pedido", "pedido_comercial", cancelarPedido.id, { cliente: cancelarPedido.cliente_nome });

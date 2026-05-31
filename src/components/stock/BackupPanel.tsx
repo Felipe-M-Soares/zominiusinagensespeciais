@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 
 
 // ─── Apagar todo o histórico ─────────────────────────────────────────────────
-// SEG-02: usa a RPC server-side admin_clear_history que:
+// usa a RPC server-side admin_clear_history que:
 // 1. Verifica role admin no banco (não pode ser bypassado pelo frontend)
 // 2. Executa todas as deleções em uma única transação atômica
 async function clearAllHistory(): Promise<{ ok: boolean; error?: string }> {

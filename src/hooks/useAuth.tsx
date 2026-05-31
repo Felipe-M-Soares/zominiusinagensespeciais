@@ -112,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, [fetchRoleAndApproval]);
 
-  // PERF-01 FIX: Substituído polling a cada 15s por canal Realtime (WebSocket).
+  // FIX: Substituído polling a cada 15s por canal Realtime (WebSocket).
   // Dispara somente quando o dado muda no banco, eliminando N×4 queries/min.
   useEffect(() => {
     if (!user?.id) return;
@@ -149,7 +149,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (signInAttemptsRef.current > MAX_ATTEMPTS) {
         const elapsed = now - signInWindowStartRef.current;
         const waitSec = Math.ceil((WINDOW_MS - elapsed) / 1000);
-        return { error: `Muitas tentativas de login. Aguarde ${Math.max(waitSec, 1)} segundos.` };
+        // Exponential backoff: after MAX_ATTEMPTS, each extra attempt doubles wait
+        const extra = signInAttemptsRef.current - MAX_ATTEMPTS;
+        const backoffSec = Math.min(Math.pow(2, extra) * 5, 300); // cap at 5 min
+        return { error: `Muitas tentativas de login. Aguarde ${Math.max(waitSec, backoffSec)} segundos.` };
       }
 
       const email = `${trimmedLogin.toLowerCase()}@interno.conceptus`;

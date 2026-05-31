@@ -1,6 +1,6 @@
-// CODE-01 FIX: Substituído padrão debounceRef inline (que era copiado do Estoque)
+// Substituído padrão debounceRef inline (que era copiado do Estoque)
 // pelo hook useDebounce compartilhado.
-// CODE-04 FIX: Substituído document.addEventListener("mousedown") pelo useClickOutside.
+// Substituído document.addEventListener("mousedown") pelo useClickOutside.
 import { useState, useRef, memo } from "react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -32,10 +32,10 @@ const SearchBar = memo(function SearchBar({
   const containerRef = useRef<HTMLDivElement>(null);
   const [localHasValue, setLocalHasValue] = useState(false);
 
-  // CODE-01 FIX: useDebounce substitui debounceRef inline
+  // useDebounce substitui debounceRef inline
   const debouncedSearch = useDebounce((v: string) => onSearch(v), 400);
 
-  // CODE-04 FIX: useClickOutside substitui document.addEventListener
+  // useClickOutside substitui document.addEventListener
   useClickOutside(containerRef, onCloseSuggestions);
 
   function handleChange(v: string) {

@@ -21,7 +21,7 @@ interface Props {
 export function LotesPanel({ item, open, onClose }: Props) {
   const [lotes, setLotes] = useState<LoteSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  // BUG-FIX-2: valores ao vivo buscados do banco ao abrir o painel, evitando
+  // valores ao vivo buscados do banco ao abrir o painel, evitando
   // exibir o quantity_available stale que vem das props (calculado no mount).
   const [liveReserved, setLiveReserved] = useState<number | null>(null);
   const [liveQty, setLiveQty] = useState<number | null>(null);
@@ -123,7 +123,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
 
   // ── Expedição: mostra nome, lotes com saldo e quantidade total ───────────
   if (isExpedicao) {
-    // BUG-FIX-2: usa valores ao vivo (refreshLive) quando disponíveis;
+    // usa valores ao vivo (refreshLive) quando disponíveis;
     // cai back nos props enquanto o fetch ainda está em curso.
     const qty = liveQty !== null ? liveQty : item.quantity;
     const reserved = liveReserved !== null ? liveReserved : item.quantity_reserved;

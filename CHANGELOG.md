@@ -1,34 +1,71 @@
 # Changelog — Zomini Usinagens Especiais
 
-## [Auditoria 2026-05-31]
+Todas as mudanças significativas são documentadas aqui.
+Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 
-### Críticos corrigidos
-- **P0-01**: Edge function `admin-create-user` não inseria `user_roles` para roles != "admin"
-- **P0-02**: Rollback parcial adicionado em `pedidoUtils.ts` quando insert de itens falha
-- **BUG-03**: `prazoEntrega` faltava no destructuring de `pedidoUtils.ts` causando ReferenceError
-- **BUG-02**: `profile` não existia em `useAuth()` mas era usado em `Producao.tsx` causando crash
+---
 
-### Segurança corrigida
-- **SEC-03**: Validação de CPF/CNPJ agora verifica dígitos verificadores (algoritmo Receita Federal)
-- **SEC-01**: Comentário de segurança adicionado ao CORS — ALLOWED_ORIGIN deve ser configurado
+## [2.0.0] — 2026-05-31
 
-### Qualidade corrigida
-- **DUP-01**: Funções `esc()` locais substituídas por import de `escHtml` centralizado
-- **DUP-02**: Loops de paginação inline em `Qualidade.tsx` usam helpers centralizados
-- **QUA-03**: `finally { setLoading(false) }` adicionado onde ausente
-- **ARQ-03**: Aviso de sincronização adicionado em `supabase/types.ts`
+### Adicionado
+- Sistema de roles com 6 perfis: `admin`, `estoque`, `qualidade`, `comercial`, `financeiro`, `producao`
+- Aba GS1 no módulo Qualidade com links diretos ao portal CNP e verificação de GTIN
+- KPI "Total de Peças" no pipeline de qualidade (soma real do estoque via paginação)
+- Rate limiting por IP nas Edge Functions (`admin-create-user`, `auto-approve`)
+- Backoff exponencial no login após 5 tentativas (dobra a cada falha, cap 5 min)
+- Cabeçalhos `Cross-Origin-Opener-Policy` e `Cross-Origin-Resource-Policy` contra XS-Leaks
+- Limite de 20MB por arquivo e 10.000 linhas por importação Excel/PDF
+- 29 testes de segurança cobrindo XSS, injeção, timing attacks, CPF/CNPJ
+- Migrations SQL com funções aggregate `get_total_stock_quantity()` e `get_devices_regularizacao_counts()`
+- Documentação completa: README, SECURITY, ARCHITECTURE, DEPLOY, CONTRIBUTING
 
-### Performance
-- **PERF-04**: Migration SQL criada com funções aggregate `get_total_stock_quantity()` e `get_devices_regularizacao_counts()`
+### Corrigido
+- **Crítico**: Edge function não inseria role no banco para usuários não-admin (apenas admin era salvo)
+- **Crítico**: Timing attack em HMAC do webhook — substituído `===` por `crypto.subtle.verify()`
+- **Crítico**: Body sem limite de tamanho nas Edge Functions (DDoS)
+- CPF/CNPJ agora valida dígitos verificadores (algoritmo Receita Federal)
+- Produção não carregava para admin (referência a `profile` inexistente em `useAuth`)
+- Paginação Supabase em Qualidade.tsx mostrava exatamente 1000 peças (limite padrão)
+- Campo prazo de entrega removido do modal de pedido (não era necessário)
 
-### Roles
-- Roles antigos (`funcionario`, `vendedora`) substituídos pelos novos 6 roles em todos os arquivos
-- Navegação filtrada por role em `AppShell.tsx`
-- Redirecionamento automático por role em `App.tsx`
+### Removido
+- Roles antigos: `funcionario`, `vendedora` — substituídos pelos 6 novos roles
+- Comentários de tracking interno (BUG-XX, CODE-XX, PERF-XX) — movidos para este changelog
+- Props `isAdmin` não utilizadas em `ControlePanel` e `RelatoriosPanel`
+- Campo "Prazo de entrega" no modal de criação de pedido
 
-## Pendente (requer ação manual)
-- Configurar `ALLOWED_ORIGIN` no painel do Supabase
-- Mover `token_api` de NF-e para Supabase Vault
-- Executar migration SQL no Supabase para funções aggregate
-- Deploy de `admin-create-user` edge function após correção P0-01
-- Atualizar `pdfjs-dist` de 3.11 para 4.x+
+### Segurança
+- CORS `ALLOWED_ORIGIN` documentado como obrigatório (não deixar `*` em produção)
+- Todas as funções `esc()` locais substituídas por `escHtml()` centralizado
+- Loops de paginação duplicados substituídos por `fetchAllPages()` compartilhado
+- Rollback parcial adicionado na criação de pedido (evita pedidos órfãos no banco)
+
+---
+
+## [1.5.0] — 2026-05-29
+
+### Adicionado
+- Validação de dígitos verificadores CPF/CNPJ
+- Proteção SSRF no webhook financeiro (`isWebhookUrlSafe`)
+- Limite de 5MB no upload de CSV (`StockCsvImport`)
+- Rate limiting client-side no login (5 tentativas/60s)
+
+### Corrigido
+- `prazoEntrega` faltava no destructuring de `pedidoUtils.ts` — crash ao criar pedido
+- `profile` não existia em `useAuth()` — crash em `Producao.tsx`
+- Links GS1 com 404 — substituídos pelas URLs corretas do portal
+
+---
+
+## [1.0.0] — 2026-01-01
+
+### Adicionado
+- Módulo de componentes ANVISA com pipeline de regularização (fases 1-5)
+- Módulo de estoque com controle por lote e fase
+- Módulo comercial com reserva atômica de estoque
+- Módulo financeiro com emissão NF-e
+- Módulo de produção com apontamento offline (IndexedDB)
+- PWA instalável com sincronização offline
+- Autenticação por login interno (sem email externo)
+- Importação de dispositivos via CSV, Excel e JSON ANVISA
+

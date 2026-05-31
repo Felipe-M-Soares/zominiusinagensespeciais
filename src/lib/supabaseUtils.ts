@@ -1,23 +1,28 @@
+/**
+ * supabaseUtils — Utilitários de acesso ao banco de dados
+ *
+ * Funções reutilizáveis para paginação, busca e agregação via Supabase/PostgREST.
+ * Centralizam lógica comum para evitar duplicação em páginas e hooks.
+ */
+
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import { sanitizeQuery } from "@/lib/sanitize";
 
 /**
- * CODE-001 FIX: Single shared implementation of paginated "fetch all" from Supabase.
+ * Busca todos os registros de uma tabela paginando de 1000 em 1000.
  *
- * PERF-001 NOTE: For large datasets (10 000+ records) prefer server-side pagination
- * with fetchDevicesPage() below. Use this only when you need all records in memory.
+ * O Supabase retorna no máximo 1000 rows por requisição por padrão.
+ * Esta função itera até obter todos, com proteção contra loop infinito (MAX_PAGES).
  *
- * FIX: Adicionado limite MAX_PAGES para evitar loop infinito caso o Supabase retorne
- * dados corrompidos ou a paginação falhe silenciosamente (ex.: sempre retorna batchSize
- * rows mesmo na última página).
+ * Para datasets muito grandes (100k+), prefira uma RPC SQL com aggregate.
  */
 export async function fetchAllPages<T>(
   table: string,
   orderBy = "model",
   batchSize = 1000
 ): Promise<T[]> {
-  const MAX_PAGES = 100; // proteção contra loop infinito: máximo 100.000 registros
+  const MAX_PAGES = 100; // cap: 100.000 registros
   let all: T[] = [];
   let from = 0;
   let page = 0;
@@ -38,15 +43,15 @@ export async function fetchAllPages<T>(
   }
 
   if (page >= MAX_PAGES) {
-    logger.warn(`fetchAllPages: limite de ${MAX_PAGES} páginas atingido para tabela "${table}". Dados podem estar incompletos.`);
+    logger.warn(`fetchAllPages: limite de ${MAX_PAGES} páginas atingido para "${table}".`);
   }
 
   return all;
 }
 
 /**
- * PERF-001 / PERF-003 FIX: Server-side paginated fetch with optional search filter.
- * Use this in AdminDevices instead of loading everything into memory.
+ * Busca uma página de dispositivos com filtro de texto e contagem total.
+ * Usado em AdminDevices para paginação server-side (evita carregar tudo em memória).
  */
 export async function fetchDevicesPage<T>(
   search: string,
@@ -63,9 +68,7 @@ export async function fetchDevicesPage<T>(
     .range(from, to);
 
   if (search.trim()) {
-    // DUP-02 FIX: sanitização centralizada em src/lib/sanitize.ts
     const safe = sanitizeQuery(search);
-
     if (safe) {
       query = query.or(
         [
@@ -87,9 +90,11 @@ export async function fetchDevicesPage<T>(
 }
 
 /**
- * Soma todos os valores de uma coluna numérica em uma tabela,
- * paginando para contornar o limite de 1000 rows do Supabase.
- * Usar preferencialmente uma RPC SQL quando disponível.
+ * Soma todos os valores de uma coluna numérica paginando para contornar
+ * o limite de 1000 rows do Supabase por requisição.
+ *
+ * Prefira uma RPC SQL com SUM() quando disponível — é muito mais eficiente.
+ * Esta função é o fallback quando não há RPC disponível.
  */
 export async function sumColumnPaginated(
   table: string,

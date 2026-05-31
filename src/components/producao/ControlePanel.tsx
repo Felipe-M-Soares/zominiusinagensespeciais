@@ -174,7 +174,7 @@ function ApontamentoCard({ ap, onConcluir }: { ap: Apontamento; onConcluir: (id:
   );
 }
 
-export function ControlePanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
+export function ControlePanel() {
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
   const [maquinas, setMaquinas] = useState<string[]>([]);
   const [produtos, setProdutos] = useState<string[]>([]);

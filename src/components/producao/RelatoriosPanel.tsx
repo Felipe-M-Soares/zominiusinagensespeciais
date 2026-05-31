@@ -30,7 +30,7 @@ interface RelData {
   refugo?: {tipo:string;quantidade:number}[];
 }
 
-export function RelatoriosPanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
+export function RelatoriosPanel() {
   const [relatorio,setRelatorio]=useState<RelatorioTipo|null>(null);
   const [dataInicio,setDataInicio]=useState(()=>{const d=new Date();d.setDate(d.getDate()-14);return d.toISOString().split("T")[0];});
   const [dataFim,setDataFim]=useState(()=>new Date().toISOString().split("T")[0]);

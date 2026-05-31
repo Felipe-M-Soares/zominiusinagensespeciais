@@ -69,13 +69,18 @@ async function verifyStandardWebhook(
     const payload = `${webhookId}.${timestamp}.${body}`
     const signatureBytes = encoder.encode(payload)
     const computedSig = await crypto.subtle.sign('HMAC', key, signatureBytes)
-    const computedSigBase64 = btoa(String.fromCharCode(...new Uint8Array(computedSig)))
 
-    // Signature header can have multiple values like "v1,<sig1> v1,<sig2>"
+    // SECURITY: use crypto.subtle.verify for constant-time comparison
+    // to prevent timing attacks. Never use string equality (===) for HMAC.
     const signatures = signature.split(' ')
     for (const sig of signatures) {
       const sigValue = sig.replace(/^v1,/, '')
-      if (sigValue === computedSigBase64) return true
+      try {
+        const sigBytes = Uint8Array.from(atob(sigValue), c => c.charCodeAt(0))
+        // crypto.subtle.verify performs constant-time comparison
+        const valid = await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(payload))
+        if (valid) return true
+      } catch { /* invalid base64 - skip */ }
     }
     return false
   } catch (e) {

@@ -227,8 +227,8 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       setLotesDisp(newLotesDisp);
 
       // 3. Initialize selection:
-      //    - separando: restore from lotes_separados snapshot (per expId)
-      //    - pendente:  auto-distribute FIFO by item.quantidade
+      // - separando: restore from lotes_separados snapshot (per expId)
+      // - pendente:  auto-distribute FIFO by item.quantidade
       const newSel: LoteSelecao = {};
 
       if (pedido.status === "separando" && (pedido.lotes_separados ?? []).length > 0) {
@@ -947,7 +947,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
       if (!pedido) return;
       const itemIds = pedido.itens.map(i => i.stock_item_id);
 
-      // PERF-01: Batch query for all stock items
+      // Batch query for all stock items
       const { data: siRows } = await supabase
         .from("stock_items")
         .select("id, device_id, quantity, fase")
@@ -986,7 +986,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
         }
       }
 
-      // PERF-01: Single batch query for all lotes
+      // Single batch query for all lotes
       // Passa pedido.id para excluir as próprias reservas do pedido — o separador
       // vê o saldo disponível para outros pedidos + o que já reservou para este.
       const lotesMap = await fetchLotesDisponivelBatch([...new Set(expedicaoIds)], pedido.id);
@@ -1420,7 +1420,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     expIdByItem: Record<string, string>   // item.id → expedicao stock_item_id
   ) {
     if (!user) return;
-    // DEDUP-FIX: merge entradas com mesmo (expId, lote) — evita dobrar quantidades
+    // merge entradas com mesmo (expId, lote) — evita dobrar quantidades
     // quando dois pedido_itens diferentes resolvem para o mesmo item de expedição.
     const snapshotMap = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
     for (const item of pedido.itens) {
@@ -1563,7 +1563,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     expIdByItem: Record<string, string>   // item.id → expedicao stock_item_id
   ) {
     if (!user) return;
-    // DEDUP-FIX: merge entradas com mesmo (expId, lote)
+    // merge entradas com mesmo (expId, lote)
     const snapshotMap = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
     for (const item of pedido.itens) {
       const sel = lotesSelecionados[item.id] ?? {};
@@ -1616,7 +1616,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     if (!user) return;
     try {
       // 1. Monta snapshot de lotes_separados a partir da seleção atual
-      //    (mesma lógica do handleSalvarSeparacao — merge por expId+lote)
+      // (mesma lógica do handleSalvarSeparacao — merge por expId+lote)
       const snapshotMap = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
       for (const item of pedido.itens) {
         const sel = lotesSelecionados[item.id] ?? {};

@@ -2489,7 +2489,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
 
   async function handleSaveConta() {
     if (!banco || !agencia || !contaNum) { toast.error("Banco, agência e conta são obrigatórios."); return; }
-    // SEG-01: valida webhook URL antes de salvar
+    // valida webhook URL antes de salvar
     if (webhook.trim() && !isWebhookUrlSafe(webhook.trim())) {
       toast.error("URL do webhook inválida. Use HTTPS com domínio público.");
       return;
@@ -2515,7 +2515,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
     finally { setSaving(false); }
   }
 
-  // SEG-01: valida que a URL é HTTPS e não aponta para IPs privados/loopback
+  // valida que a URL é HTTPS e não aponta para IPs privados/loopback
   function isWebhookUrlSafe(url: string): boolean {
     try {
       const u = new URL(url);

@@ -1,12 +1,8 @@
 /**
- * COD-01 FIX: Lógica de criação de pedido extraída para módulo compartilhado.
+ * pedidoUtils — Criação atômica de pedidos comerciais
  *
- * Antes, o loop de criação de pedido + reserva de estoque estava duplicado em:
- *  - src/components/stock/ComercialPanel.tsx
- *  - src/pages/Comercial.tsx
- *
- * Qualquer correção precisava ser aplicada nos dois locais.
- * O bug BUG-01 (checagem incorreta de reserve_stock) existia em ambos.
+ * Centraliza a lógica de criação de pedido + reserva de estoque,
+ * garantindo rollback parcial se qualquer etapa falhar.
  */
 
 import { supabase } from "@/integrations/supabase/client";
@@ -35,15 +31,19 @@ export interface CriarPedidoResult {
 }
 
 /**
- * Cria um pedido comercial e reserva o estoque atomicamente.
- * BUG-01: reserve_stock retorna boolean — false = estoque insuficiente.
+ * Cria um pedido comercial e reserva o estoque em três etapas:
+ *  1. INSERT pedidos_comerciais
+ *  2. INSERT pedido_itens (com rollback do pedido se falhar)
+ *  3. RPC reserve_stock para cada item (decrementa quantity_available atomicamente)
+ *
+ * A RPC reserve_stock é atômica no banco — não há race condition no decremento.
+ * O rollback entre etapas 1 e 2 é manual (limitação do cliente JS sem transações).
  */
 export async function criarPedidoComReserva(
   params: CriarPedidoParams
 ): Promise<CriarPedidoResult> {
   const { clienteId, itens, vendedoraId, vendedoraNome, observacoes, descontoPct, prazoEntrega } = params;
 
-  // 1. Cria o pedido
   const { data: pedido, error: pedidoErr } = await supabase
     .from("pedidos_comerciais")
     .insert({
@@ -61,7 +61,6 @@ export async function criarPedidoComReserva(
 
   const pedidoId = (pedido as { id: string }).id;
 
-  // 2. Insere os itens
   const itensInsert = itens.map((i) => ({
     pedido_id: pedidoId,
     stock_item_id: i.stock_item_id,
@@ -75,13 +74,13 @@ export async function criarPedidoComReserva(
     .insert(itensInsert);
 
   if (itensErr) {
-    // Rollback parcial: remove o pedido criado para evitar registro órfão
+    // Rollback: remove o pedido para evitar registro órfão no banco
     await supabase.from("pedidos_comerciais").delete().eq("id", pedidoId);
     return { ok: false, error: "Erro ao inserir itens do pedido." };
   }
 
-  // 3. Reserva estoque atomicamente para cada item
-  // reserve_stock retorna jsonb { ok, error? } — verifica falha de negócio E de rede
+  // Reserva estoque via RPC atômica para cada item
+  // reserve_stock retorna { ok: boolean, error?: string }
   for (const item of itens) {
     const { data: reserved, error: reserveErr } = await supabase.rpc("reserve_stock", {
       p_item_id: item.stock_item_id,

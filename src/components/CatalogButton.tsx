@@ -203,7 +203,7 @@ export function CatalogButton() {
     const cat = deleteTarget;
     setDeleteTarget(null);
 
-    // BUG-14: Delete DB record first — if it fails, storage file stays intact (no broken links)
+    // Delete DB record first — if it fails, storage file stays intact (no broken links)
     const { error: dbErr } = await supabase.from("catalogs").delete().eq("id", cat.id);
     if (dbErr) {
       toast.error("Erro ao excluir catálogo: " + dbErr.message);

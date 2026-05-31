@@ -758,7 +758,7 @@ export default function Estoque() {
     return () => clearTimeout(timer);
   }, [search, allItems]);
 
-  // CODE-04 FIX: useClickOutside substitui document.addEventListener duplicado
+  // FIX: useClickOutside substitui document.addEventListener duplicado
   useClickOutside(autocompleteRef, () => setShowAutocomplete(false));
   useClickOutside(adminMenuRef,    () => { if (adminMenuOpen) setAdminMenuOpen(false); });
 
@@ -846,7 +846,7 @@ export default function Estoque() {
     if (!resetItem) return;
     setResetting(true);
 
-    // BUG-13: Check for active orders referencing this item before deleting
+    // Check for active orders referencing this item before deleting
     const { data: ativos } = await supabase
       .from("pedido_itens")
       .select("pedido_id, pedidos_comerciais!inner(status, cliente_nome)")
@@ -989,7 +989,7 @@ export default function Estoque() {
           onViewChange={(view) => {
             setActiveView(view);
             setVisibleCount(ITEMS_PER_PAGE);
-            refetch(); // BUG-FIX-3: atualiza dados ao mudar de aba
+            refetch(); // atualiza dados ao mudar de aba
           }}
           intermediariaItems={intermediariaItems}
           expedicaoItems={expedicaoItems}

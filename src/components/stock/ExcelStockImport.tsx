@@ -291,8 +291,12 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
 
   // ── Parse Excel ─────────────────────────────────────────────────────────────
 
+  const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB max (zip bomb / DDoS protection)
+  const MAX_ROWS = 10_000; // max rows to process (memory exhaustion protection)
+
   const parseExcel = useCallback(async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls)$/i)) { toast.error("Use .xlsx ou .xls"); return; }
+    if (file.size > MAX_FILE_BYTES) { toast.error("Arquivo muito grande. Limite: 20MB."); return; }
     try {
       const buf = await file.arrayBuffer();
       const wb  = new ExcelJS.Workbook();
@@ -326,6 +330,10 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
       });
 
       if (!rows.length) { toast.error("Nenhuma linha encontrada."); return; }
+      if (rows.length > MAX_ROWS) {
+        toast.error(`Arquivo com muitas linhas (${rows.length.toLocaleString("pt-BR")}). Limite: ${MAX_ROWS.toLocaleString("pt-BR")} linhas por importação.`);
+        return;
+      }
       setFileMode("excel"); setParsedRows(rows); setStep("preview");
     } catch (e) { toast.error("Erro ao ler planilha."); console.error(e); }
   }, []);
@@ -333,6 +341,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
   // ── Parse PDF ────────────────────────────────────────────────────────────────
 
   const parsePdf = useCallback(async (file: File) => {
+    if (file.size > MAX_FILE_BYTES) { toast.error("Arquivo muito grande. Limite: 20MB."); return; }
     setFileMode("pdf"); setStep("parsing-pdf"); setPdfPct(0);
     try {
       const rows = await parsePdfSaldo(file, setPdfPct);

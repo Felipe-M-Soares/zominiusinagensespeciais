@@ -1,6 +1,20 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 
+// Rate limiting: max 5 auto-approve attempts per IP per 5 minutes
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function checkRateLimit(ip: string, maxReq = 5, windowMs = 300_000): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxReq) return false;
+  entry.count++;
+  return true;
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = getCorsHeaders(req);
 
@@ -12,6 +26,16 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Rate limit by IP
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? req.headers.get("cf-connecting-ip")
+    ?? "unknown";
+  if (!checkRateLimit(clientIp)) {
+    return new Response(JSON.stringify({ error: "Muitas tentativas. Aguarde 5 minutos." }), {
+      status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "300" },
     });
   }
 
@@ -54,10 +78,16 @@ Deno.serve(async (req) => {
     }
 
     // Lê o user_id do body
+    // DDoS protection: limit body to 4KB (only user_id UUID needed)
+    const MAX_BODY = 4 * 1024;
+    const rawBuf = await req.arrayBuffer();
+    if (rawBuf.byteLength > MAX_BODY) {
+      return new Response(JSON.stringify({ error: "Requisição muito grande." }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     let body: Record<string, unknown> = {};
-    try {
-      body = await req.json();
-    } catch { /* ok */ }
+    try { body = JSON.parse(new TextDecoder().decode(rawBuf)); } catch { /* ok */ }
 
     const targetUserId = body.user_id;
     if (!targetUserId || typeof targetUserId !== "string") {
