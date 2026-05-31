@@ -41,7 +41,7 @@ export interface CriarPedidoResult {
 export async function criarPedidoComReserva(
   params: CriarPedidoParams
 ): Promise<CriarPedidoResult> {
-  const { clienteId, itens, vendedoraId, vendedoraNome, observacoes, descontoPct } = params;
+  const { clienteId, itens, vendedoraId, vendedoraNome, observacoes, descontoPct, prazoEntrega } = params;
 
   // 1. Cria o pedido
   const { data: pedido, error: pedidoErr } = await supabase
