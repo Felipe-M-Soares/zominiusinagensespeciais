@@ -85,3 +85,35 @@ export async function fetchDevicesPage<T>(
   if (error) throw error;
   return { data: (data ?? []) as T[], count: count ?? 0 };
 }
+
+/**
+ * Soma todos os valores de uma coluna numérica em uma tabela,
+ * paginando para contornar o limite de 1000 rows do Supabase.
+ * Usar preferencialmente uma RPC SQL quando disponível.
+ */
+export async function sumColumnPaginated(
+  table: string,
+  column: string,
+  filter?: { column: string; operator: "gt" | "gte" | "lt" | "lte"; value: number }
+): Promise<number> {
+  const MAX_PAGES = 200;
+  const PAGE_SIZE = 1000;
+  let soma = 0;
+  let from = 0;
+  let page = 0;
+
+  while (page < MAX_PAGES) {
+    let query = supabase.from(table).select(column).range(from, from + PAGE_SIZE - 1);
+    if (filter) {
+      query = query[filter.operator](filter.column, filter.value) as typeof query;
+    }
+    const { data, error } = await query;
+    if (error) { logger.error("sumColumnPaginated error:", error); break; }
+    const rows = (data ?? []) as Record<string, number>[];
+    soma += rows.reduce((s, r) => s + (r[column] ?? 0), 0);
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+    page++;
+  }
+  return soma;
+}

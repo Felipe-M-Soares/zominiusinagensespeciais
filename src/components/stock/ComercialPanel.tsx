@@ -55,6 +55,7 @@ import { validarEmail, validarDocumento } from "@/lib/validators";
 import type { StockItem } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
+import { escHtml } from "@/lib/escHtml";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
@@ -863,7 +864,7 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
     }
     const pecasList = Object.values(pecas).sort((a, b) => b.total - a.total);
     // XSS: escape all user-supplied values injected into the HTML blob
-    const esc = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const esc = escHtml;
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório — ${esc(currentUserName ?? "")}</title>
     <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin-bottom:4px}p.sub{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padding:8px 10px;background:#f3f0ff;color:#5b21b6;border-bottom:2px solid #ddd6fe}td{padding:7px 10px;border-bottom:1px solid #eee}.total{font-weight:bold;font-size:15px;color:#5b21b6}.footer{margin-top:20px;font-size:11px;color:#999}</style></head><body>
     <h1>📊 Relatório de Vendas</h1>

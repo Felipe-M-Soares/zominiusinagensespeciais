@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllPages, sumColumnPaginated } from "@/lib/supabaseUtils";
 import { sanitizeQuery } from "@/lib/sanitize";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -637,26 +638,28 @@ const PipelinePanel = memo(function PipelinePanel() {
   const [editDevice, setEditDevice] = useState<DeviceReg | null>(null);
   const load = useCallback(async () => {
     setLoading(true);
-
-    // Busca paginada só de peças que ainda precisam de ação (fase < 5)
-    const all: DeviceReg[] = [];
-    let from = 0;
-    const pageSize = 1000;
-    while (true) {
-      const { data: page, error } = await supabase
-        .from("devices_regularizacao")
-        .select("*")
-        .lt("fase_atual", 5)
-        .order("fase_atual", { ascending: true })
-        .order("model", { ascending: true })
-        .range(from, from + pageSize - 1);
-      if (error || !page) break;
-      all.push(...(page as DeviceReg[]));
-      if (page.length < pageSize) break;
-      from += pageSize;
+    try {
+      // Usa fetchAllPages (paginação segura) filtrando só fase < 5 via query manual
+      const all: DeviceReg[] = [];
+      let from = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data: page, error } = await supabase
+          .from("devices_regularizacao")
+          .select("*")
+          .lt("fase_atual", 5)
+          .order("fase_atual", { ascending: true })
+          .order("model", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error || !page) break;
+        all.push(...(page as DeviceReg[]));
+        if (page.length < PAGE) break;
+        from += PAGE;
+      }
+      setDevices(all);
+    } finally {
+      setLoading(false);
     }
-    setDevices(all);
-    setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -1120,25 +1123,13 @@ const GS1Panel = memo(function GS1Panel() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    async function loadAll() {
-      const all: typeof devices = [];
-      let from = 0;
-      const pageSize = 1000;
-      while (true) {
-        const { data: page, error } = await supabase
-          .from("devices_regularizacao")
-          .select("id, model, reference, gtin, udi_di")
-          .order("model")
-          .range(from, from + pageSize - 1);
-        if (error || !page) break;
-        all.push(...(page as typeof devices));
-        if (page.length < pageSize) break;
-        from += pageSize;
-      }
-      setDevices(all);
-      setLoading(false);
-    }
-    loadAll();
+    fetchAllPages<typeof devices[0]>("devices_regularizacao", "model")
+      .then(all => setDevices(all.map(d => ({
+        id: d.id, model: d.model, reference: d.reference,
+        gtin: d.gtin ?? null, udi_di: d.udi_di ?? null,
+      }))))
+      .catch(() => {/* silently handled — setLoading false in finally */})
+      .finally(() => setLoading(false));
   }, []);
 
   const filtered = useMemo(() => {

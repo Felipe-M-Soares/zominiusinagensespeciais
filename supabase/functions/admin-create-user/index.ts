@@ -142,13 +142,11 @@ Deno.serve(async (req) => {
       { onConflict: "user_id" }
     );
 
-    // Role
-    if (validRole === "admin") {
-      await adminClient.from("user_roles").upsert(
-        { user_id: newUserId, role: "admin" },
-        { onConflict: "user_id" }
-      );
-    }
+    // Role — inserido para TODOS os roles, não apenas admin
+    await adminClient.from("user_roles").upsert(
+      { user_id: newUserId, role: validRole },
+      { onConflict: "user_id" }
+    );
 
     return new Response(JSON.stringify({ success: true, user_id: newUserId, login: cleanLogin }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

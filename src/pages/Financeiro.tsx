@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { TableSkeleton } from "@/components/PageSkeleton";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
+import { escHtml } from "@/lib/escHtml";
 import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
@@ -1059,7 +1060,7 @@ function NFViewerModal({ pedido, onClose }: NFViewerModalProps) {
   }
 
   function viewDanfe() {
-    const esc = (s?: string | null) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const esc = escHtml;
     const itensRows = (pedido?.itens ?? []).map((i, idx) =>
       `<tr><td>${idx + 1}</td><td>${esc(i.device_model)}</td><td style="text-align:center">${i.quantidade}</td></tr>`
     ).join("");
@@ -2971,7 +2972,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
   }
 
   function printTabelaPrecos() {
-    const esc = (s?: string | null) => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const esc = escHtml;
     const rows = filtered.map(d => {
       const margem = d.preco_venda > 0
         ? ((d.preco_venda - d.preco_custo) / d.preco_venda * 100).toFixed(1) + "%"

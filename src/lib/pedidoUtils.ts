@@ -74,7 +74,11 @@ export async function criarPedidoComReserva(
     .from("pedido_itens")
     .insert(itensInsert);
 
-  if (itensErr) return { ok: false, error: "Erro ao inserir itens do pedido." };
+  if (itensErr) {
+    // Rollback parcial: remove o pedido criado para evitar registro órfão
+    await supabase.from("pedidos_comerciais").delete().eq("id", pedidoId);
+    return { ok: false, error: "Erro ao inserir itens do pedido." };
+  }
 
   // 3. Reserva estoque atomicamente para cada item
   // reserve_stock retorna jsonb { ok, error? } — verifica falha de negócio E de rede

@@ -75,6 +75,7 @@ import { Logo } from "@/components/Logo";
 
 import { formatLote, loteValido, displayLote } from "@/lib/lote";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
+import { escHtml } from "@/lib/escHtml";
 
 
 // ─── Audit log helper ─────────────────────────────────────────────────────────
@@ -1967,7 +1968,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
       .sort((a, b) => b.total - a.total);
 
     // XSS: escape all user-supplied values before injecting into HTML blob
-    const esc = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const esc = escHtml;
 
     // Monta HTML para impressão
     const html = `

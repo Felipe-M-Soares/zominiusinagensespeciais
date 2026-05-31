@@ -34,4 +34,20 @@ describe("validarDocumento", () => {
   it("accepts empty string (field is optional)", () => {
     expect(validarDocumento("")).toBe(true);
   });
+  it("rejects CPF with all same digits (000...0)", () => {
+    expect(validarDocumento("00000000000")).toBe(false);
+    expect(validarDocumento("11111111111")).toBe(false);
+  });
+  it("rejects CPF with wrong check digits", () => {
+    expect(validarDocumento("12345678900")).toBe(false); // wrong check digits
+  });
+  it("accepts a valid CPF", () => {
+    expect(validarDocumento("529.982.247-25")).toBe(true);
+  });
+  it("accepts a valid CNPJ", () => {
+    expect(validarDocumento("11.222.333/0001-81")).toBe(true);
+  });
+  it("rejects CNPJ with all same digits", () => {
+    expect(validarDocumento("00000000000000")).toBe(false);
+  });
 });

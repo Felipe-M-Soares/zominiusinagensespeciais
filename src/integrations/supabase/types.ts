@@ -235,6 +235,8 @@ export type Database = {
       }
     }
     Enums: {
+      /** SYNC: Manter sincronizado com src/types/roles.ts e supabase/functions/admin-create-user/index.ts
+       *  Para gerar automaticamente: npx supabase gen types typescript --local > src/integrations/supabase/types.ts */
       app_role: "admin" | "estoque" | "qualidade" | "comercial" | "financeiro" | "producao"
     }
     CompositeTypes: {
