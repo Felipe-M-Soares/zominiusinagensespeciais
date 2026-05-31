@@ -19,12 +19,13 @@ describe("validarEmail", () => {
 
 describe("validarDocumento", () => {
   it("accepts valid 11-digit CPF", () => {
-    expect(validarDocumento("12345678901")).toBe(true);
-    expect(validarDocumento("123.456.789-01")).toBe(true); // with formatting
+    expect(validarDocumento("12345678909")).toBe(true);           // valid CPF
+    expect(validarDocumento("123.456.789-09")).toBe(true);        // formatted
+    expect(validarDocumento("529.982.247-25")).toBe(true);        // another valid CPF
   });
   it("accepts valid 14-digit CNPJ", () => {
-    expect(validarDocumento("12345678000195")).toBe(true);
-    expect(validarDocumento("12.345.678/0001-95")).toBe(true);
+    expect(validarDocumento("11222333000181")).toBe(true);         // valid CNPJ
+    expect(validarDocumento("11.222.333/0001-81")).toBe(true);    // formatted
   });
   it("rejects invalid lengths", () => {
     expect(validarDocumento("123")).toBe(false);
