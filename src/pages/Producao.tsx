@@ -158,11 +158,6 @@ export default function Producao() {
               <span className="hidden sm:inline">Offline</span>
             </div>
           )}
-          {profile?.display_name && (
-            <span className="text-[11px] text-muted-foreground hidden sm:block truncate max-w-[140px]">
-              {profile.display_name}
-            </span>
-          )}
         </div>
         <OfflineBanner pending={pendingCount} syncing={syncing} onSync={syncQueue} />
       </header>
