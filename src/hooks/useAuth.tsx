@@ -24,7 +24,6 @@ interface AuthContext {
   isProducao: boolean;
   isQualidade: boolean;
   isEstoque: boolean;
-  isUsuarios: boolean;
   approved: boolean | null;
   blocked: boolean;
   signIn: (login: string, password: string) => Promise<{ error: string | null }>;
@@ -55,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
         supabase.from("profiles").select("approved, blocked").eq("user_id", userId).maybeSingle(),
       ]);
-      setRole((roleData?.role as AppRole) ?? "usuarios");
+      setRole((roleData?.role as AppRole) ?? "estoque");
       if (profileError) {
         logger.error("fetchRoleAndApproval profiles error:", profileError.message);
         setApproved(true);
@@ -71,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       logger.error("Failed to fetch role/approval:", err);
-      setRole("usuarios");
+      setRole("estoque");
       setApproved(true);
       setBlocked(false);
     }
@@ -190,7 +189,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isProducao:   role === "producao",
       isQualidade:  role === "qualidade",
       isEstoque:    role === "estoque",
-      isUsuarios:   role === "usuarios",
       approved, blocked, signIn, signOut, refreshApproval,
     }}>
       {children}

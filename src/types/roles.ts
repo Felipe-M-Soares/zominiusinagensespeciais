@@ -3,7 +3,6 @@
  * Importar daqui em vez de duplicar a union em cada arquivo.
  *
  * Permissões por role:
- *  usuarios   → Componentes, Estoque
  *  estoque    → Componentes, Estoque
  *  qualidade  → Componentes, Estoque, Qualidade
  *  comercial  → Comercial (isolado por conta)
@@ -13,7 +12,6 @@
  */
 export type AppRole =
   | "admin"
-  | "usuarios"
   | "estoque"
   | "qualidade"
   | "comercial"
@@ -22,7 +20,6 @@ export type AppRole =
 
 export const APP_ROLES: AppRole[] = [
   "admin",
-  "usuarios",
   "estoque",
   "qualidade",
   "comercial",
@@ -32,7 +29,6 @@ export const APP_ROLES: AppRole[] = [
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   admin:      "Admin",
-  usuarios:   "Usuários",
   estoque:    "Estoque",
   qualidade:  "Qualidade",
   comercial:  "Comercial",
@@ -43,7 +39,6 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 /** Rotas acessíveis por role (além do admin que acessa tudo) */
 export const ROLE_ROUTES: Record<AppRole, string[]> = {
   admin:      ["/", "/estoque", "/qualidade", "/comercial", "/financeiro", "/producao", "/admin"],
-  usuarios:   ["/", "/estoque"],
   estoque:    ["/", "/estoque"],
   qualidade:  ["/", "/estoque", "/qualidade"],
   comercial:  ["/comercial"],

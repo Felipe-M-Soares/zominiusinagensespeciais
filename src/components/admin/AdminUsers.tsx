@@ -92,7 +92,7 @@ export function AdminUsers() {
   const [newUserLogin, setNewUserLogin]     = useState("");
   const [newUserName, setNewUserName]       = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole]       = useState<AppRole>("usuarios");
+  const [newUserRole, setNewUserRole]       = useState<AppRole>("estoque");
   const [creatingUser, setCreatingUser]     = useState(false);
 
   const [downgradeConfirm, setDowngradeConfirm] = useState<{ userId: string; userName: string } | null>(null);
@@ -117,7 +117,7 @@ export function AdminUsers() {
         display_name:         p.display_name,
         login:                (p as { login?: string | null }).login ?? null,
         created_at:           p.created_at,
-        role:                 (roleMap.get(p.user_id) as AppRole) ?? "usuarios",
+        role:                 (roleMap.get(p.user_id) as AppRole) ?? "estoque",
         approved:             p.approved ?? false,
         blocked:              (p as { blocked?: boolean }).blocked ?? false,
         must_change_password: (p as { must_change_password?: boolean }).must_change_password ?? false,
@@ -227,7 +227,7 @@ export function AdminUsers() {
   };
 
   const resetCreateForm = () => {
-    setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("usuarios");
+    setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("estoque");
   };
 
   const createUser = async () => {
@@ -468,7 +468,7 @@ export function AdminUsers() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (downgradeConfirm) {
-                  await applyRoleChange(downgradeConfirm.userId, "usuarios");
+                  await applyRoleChange(downgradeConfirm.userId, "estoque");
                   setDowngradeConfirm(null);
                 }
               }}>

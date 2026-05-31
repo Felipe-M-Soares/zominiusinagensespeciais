@@ -103,7 +103,7 @@ const App = () => (
               <Route path="/set-password" element={<ErrorBoundary><SetPassword /></ErrorBoundary>} />
               <Route path="/settings"   element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
               <Route path="/manuals"    element={<ErrorBoundary><Manuals /></ErrorBoundary>} />
-              <Route path="/estoque"    element={<ErrorBoundary><RoleGuard roles={["usuarios","estoque","qualidade","admin"]}><Estoque /></RoleGuard></ErrorBoundary>} />
+              <Route path="/estoque"    element={<ErrorBoundary><RoleGuard roles={["estoque","qualidade","admin"]}><Estoque /></RoleGuard></ErrorBoundary>} />
               <Route path="/producao"   element={<ErrorBoundary><RoleGuard roles={["producao","admin"]}><Producao /></RoleGuard></ErrorBoundary>} />
               <Route path="/qualidade"  element={<ErrorBoundary><RoleGuard roles={["qualidade","admin"]}><Qualidade /></RoleGuard></ErrorBoundary>} />
               <Route path="/comercial"  element={<ErrorBoundary><RoleGuard roles={["comercial","admin"]}><Comercial /></RoleGuard></ErrorBoundary>} />

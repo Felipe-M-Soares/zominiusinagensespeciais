@@ -31,8 +31,8 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Componentes", icon: Cpu,        path: "/",          roles: ["admin","usuarios","estoque","qualidade","producao"] },
-  { label: "Estoque",     icon: Boxes,       path: "/estoque",   roles: ["admin","usuarios","estoque","qualidade"] },
+  { label: "Componentes", icon: Cpu,        path: "/",          roles: ["admin","estoque","qualidade","producao"] },
+  { label: "Estoque",     icon: Boxes,       path: "/estoque",   roles: ["admin","estoque","qualidade"] },
   { label: "Qualidade",   icon: ShieldCheck, path: "/qualidade", roles: ["admin","qualidade"] },
   { label: "Comercial",   icon: ShoppingBag, path: "/comercial", roles: ["admin","comercial"] },
   { label: "Financeiro",  icon: Receipt,     path: "/financeiro",roles: ["admin","financeiro"] },

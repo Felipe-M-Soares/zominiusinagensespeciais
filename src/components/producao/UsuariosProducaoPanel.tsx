@@ -28,7 +28,6 @@ interface UsuarioSistema {
 
 const ROLE_CFG: Record<AppRole,{label:string;color:string;bg:string;border:string;Icon:React.ElementType}> = {
   admin:      {label:"Administrador", color:"text-purple-600 dark:text-purple-400", bg:"bg-purple-500/10",  border:"border-purple-500/20",  Icon:Shield},
-  usuarios:   {label:"Usuários",      color:"text-blue-600 dark:text-blue-400",     bg:"bg-blue-500/10",    border:"border-blue-500/20",    Icon:Users},
   estoque:    {label:"Estoque",       color:"text-orange-600 dark:text-orange-400", bg:"bg-orange-500/10",  border:"border-orange-500/20",  Icon:CheckCircle2},
   qualidade:  {label:"Qualidade",     color:"text-teal-600 dark:text-teal-400",     bg:"bg-teal-500/10",    border:"border-teal-500/20",    Icon:Shield},
   comercial:  {label:"Comercial",     color:"text-cyan-600 dark:text-cyan-400",     bg:"bg-cyan-500/10",    border:"border-cyan-500/20",    Icon:Users},
@@ -60,7 +59,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
         username:p.username,
         approved:p.approved,
         blocked:p.blocked,
-        role:rolesMap[p.user_id]||"usuarios",
+        role:rolesMap[p.user_id]||"estoque",
         created_at:p.created_at,
       }));
       setUsuarios(users);
@@ -135,7 +134,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
       ) : (
         <div className="space-y-3">
           {filtered.map(u=>{
-            const cfg=ROLE_CFG[u.role]||ROLE_CFG.usuarios;
+            const cfg=ROLE_CFG[u.role]||ROLE_CFG.estoque;
             const nome=u.display_name||u.username||"Usuário";
             return (
               <div key={u.user_id} className={cn("rounded-2xl border p-4 space-y-3 transition-all", u.blocked?"bg-red-500/5 border-red-500/20":"bg-card/60")}>
