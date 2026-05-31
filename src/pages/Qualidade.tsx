@@ -639,21 +639,38 @@ const PipelinePanel = memo(function PipelinePanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data, error }, { data: stockData }] = await Promise.all([
+
+    // Busca total real de peças somando quantity em páginas de 1000
+    // (o Supabase retorna no máximo 1000 rows por query por padrão)
+    async function fetchTotalPecas(): Promise<number> {
+      let soma = 0;
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: page, error: pageErr } = await supabase
+          .from("stock_items")
+          .select("quantity")
+          .gt("quantity", 0)
+          .range(from, from + pageSize - 1);
+        if (pageErr || !page) break;
+        soma += page.reduce((s, i: { quantity: number }) => s + (i.quantity ?? 0), 0);
+        if (page.length < pageSize) break; // última página
+        from += pageSize;
+      }
+      return soma;
+    }
+
+    const [{ data, error }, total] = await Promise.all([
       supabase
         .from("devices_regularizacao")
         .select("*")
         .order("fase_atual", { ascending: true })
         .order("model", { ascending: true })
         .limit(10000),
-      supabase
-        .from("stock_items")
-        .select("quantity")
-        .gt("quantity", 0),
+      fetchTotalPecas(),
     ]);
     if (!error) setDevices((data ?? []) as DeviceReg[]);
-    const soma = (stockData ?? []).reduce((s: number, i: { quantity: number }) => s + (i.quantity ?? 0), 0);
-    setTotalPecas(soma);
+    setTotalPecas(total);
     setLoading(false);
   }, []);
 
@@ -1122,12 +1139,25 @@ const GS1Panel = memo(function GS1Panel() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    supabase
-      .from("devices_regularizacao")
-      .select("id, model, reference, gtin, udi_di")
-      .order("model")
-      .limit(5000)
-      .then(({ data }) => { setDevices((data ?? []) as typeof devices); setLoading(false); });
+    async function loadAll() {
+      const all: typeof devices = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: page, error } = await supabase
+          .from("devices_regularizacao")
+          .select("id, model, reference, gtin, udi_di")
+          .order("model")
+          .range(from, from + pageSize - 1);
+        if (error || !page) break;
+        all.push(...(page as typeof devices));
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+      setDevices(all);
+      setLoading(false);
+    }
+    loadAll();
   }, []);
 
   const filtered = useMemo(() => {
@@ -1158,31 +1188,31 @@ const GS1Panel = memo(function GS1Panel() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <a
-            href="https://www.gs1br.org/servicos/cadastro-de-produtos"
+            href="https://cnp.gs1br.org"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500 hover:bg-teal-400 text-white text-[12px] font-semibold transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            Portal GS1 — Cadastro de Produtos
+            CNP — Cadastro Nacional de Produtos
           </a>
           <a
-            href="https://www.gs1br.org/servicos/gtin"
+            href="https://www.gs1br.org/consulta-gtin"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[12px] font-semibold border border-teal-500/30 transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            Atribuição de GTIN
+            Verificar / Consultar GTIN
           </a>
           <a
-            href="https://www.gs1br.org/servicos/verificacao-de-gtin"
+            href="https://www.gs1br.org"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[12px] font-semibold border border-teal-500/30 transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            Verificar GTIN
+            Portal GS1 Brasil
           </a>
         </div>
       </div>
@@ -1253,7 +1283,7 @@ const GS1Panel = memo(function GS1Panel() {
             <div className="col-span-1 flex justify-center">
               {d.gtin ? (
                 <a
-                  href={`https://www.gs1br.org/busca-de-produto?q=${d.gtin}`}
+                  href={`https://www.gs1br.org/consulta-gtin?gtin=${d.gtin}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="h-6 w-6 flex items-center justify-center rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 transition-colors"
@@ -1263,11 +1293,11 @@ const GS1Panel = memo(function GS1Panel() {
                 </a>
               ) : (
                 <a
-                  href="https://www.gs1br.org/servicos/gtin"
+                  href="https://cnp.gs1br.org"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 transition-colors"
-                  title="Cadastrar GTIN no GS1"
+                  title="Cadastrar no CNP"
                 >
                   <ExternalLink className="h-3 w-3" />
                 </a>
