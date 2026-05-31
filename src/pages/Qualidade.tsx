@@ -635,55 +635,27 @@ const PipelinePanel = memo(function PipelinePanel() {
   const [search, setSearch] = useState("");
   const [faseFilter, setFaseFilter] = useState<"all" | "1" | "2" | "3" | "4" | "5">("all");
   const [editDevice, setEditDevice] = useState<DeviceReg | null>(null);
-  const [totalPecas, setTotalPecas] = useState(0);
-
   const load = useCallback(async () => {
     setLoading(true);
 
-    // Busca paginada — Supabase limita a 1000 rows por query por padrão
-    async function fetchAllDevices(): Promise<DeviceReg[]> {
-      const all: DeviceReg[] = [];
-      let from = 0;
-      const pageSize = 1000;
-      while (true) {
-        const { data: page, error } = await supabase
-          .from("devices_regularizacao")
-          .select("*")
-          .order("fase_atual", { ascending: true })
-          .order("model", { ascending: true })
-          .range(from, from + pageSize - 1);
-        if (error || !page) break;
-        all.push(...(page as DeviceReg[]));
-        if (page.length < pageSize) break;
-        from += pageSize;
-      }
-      return all;
+    // Busca paginada só de peças que ainda precisam de ação (fase < 5)
+    const all: DeviceReg[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data: page, error } = await supabase
+        .from("devices_regularizacao")
+        .select("*")
+        .lt("fase_atual", 5)
+        .order("fase_atual", { ascending: true })
+        .order("model", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error || !page) break;
+      all.push(...(page as DeviceReg[]));
+      if (page.length < pageSize) break;
+      from += pageSize;
     }
-
-    async function fetchTotalPecas(): Promise<number> {
-      let soma = 0;
-      let from = 0;
-      const pageSize = 1000;
-      while (true) {
-        const { data: page, error: pageErr } = await supabase
-          .from("stock_items")
-          .select("quantity")
-          .gt("quantity", 0)
-          .range(from, from + pageSize - 1);
-        if (pageErr || !page) break;
-        soma += page.reduce((s, i: { quantity: number }) => s + (i.quantity ?? 0), 0);
-        if (page.length < pageSize) break;
-        from += pageSize;
-      }
-      return soma;
-    }
-
-    const [allDevices, total] = await Promise.all([
-      fetchAllDevices(),
-      fetchTotalPecas(),
-    ]);
-    setDevices(allDevices);
-    setTotalPecas(total);
+    setDevices(all);
     setLoading(false);
   }, []);
 
@@ -703,24 +675,21 @@ const PipelinePanel = memo(function PipelinePanel() {
     });
   }, [devices, faseFilter, search]);
 
-  // KPIs
+  // KPIs — só peças que precisam de ação (fase < 5 já filtrado na query)
   const kpis = useMemo(() => ({
-    concluidas:  devices.filter(d => d.fase_atual === 5).length,
-    emProcesso:  devices.filter(d => d.fase_atual === 3 && d.status_regularizacao === "em_processo").length,
-    pendentes:   devices.filter(d => d.fase_atual < 5).length,
-    vencendo:    devices.filter(d => d.dias_ate_vencer !== null && d.dias_ate_vencer < 365).length,
+    emProcesso: devices.filter(d => d.fase_atual === 3 && d.status_regularizacao === "em_processo").length,
+    pendentes:  devices.length,
+    vencendo:   devices.filter(d => d.dias_ate_vencer !== null && d.dias_ate_vencer < 365).length,
   }), [devices]);
 
   return (
     <div className="space-y-4">
       {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Total de Peças", value: totalPecas.toLocaleString("pt-BR"), Icon: Package,       color: "text-violet-500",  bg: "bg-violet-500/8",  border: "border-violet-500/20"  },
-          { label: "Conformes",      value: kpis.concluidas,                     Icon: BadgeCheck,    color: "text-emerald-500", bg: "bg-emerald-500/8", border: "border-emerald-500/20" },
-          { label: "Pendentes",      value: kpis.pendentes,                      Icon: AlertCircle,   color: "text-amber-500",   bg: "bg-amber-500/8",   border: "border-amber-500/20"   },
-          { label: "Em processo",    value: kpis.emProcesso,                     Icon: ClipboardCheck,color: "text-blue-500",    bg: "bg-blue-500/8",    border: "border-blue-500/20"    },
-          { label: "Vence em 1a",    value: kpis.vencendo,                       Icon: CalendarClock, color: "text-red-500",     bg: "bg-red-500/8",     border: "border-red-500/20"     },
+          { label: "A regularizar", value: kpis.pendentes,  Icon: AlertCircle,   color: "text-amber-500", bg: "bg-amber-500/8", border: "border-amber-500/20" },
+          { label: "Em processo",   value: kpis.emProcesso, Icon: ClipboardCheck,color: "text-blue-500",  bg: "bg-blue-500/8", border: "border-blue-500/20"  },
+          { label: "Vence em 1a",   value: kpis.vencendo,   Icon: CalendarClock, color: "text-red-500",   bg: "bg-red-500/8",  border: "border-red-500/20"   },
         ].map(k => (
           <div key={k.label} className={cn("rounded-2xl border p-3 flex items-center gap-3", k.bg, k.border)}>
             <k.Icon className={cn("h-5 w-5 shrink-0", k.color)} />
@@ -744,7 +713,6 @@ const PipelinePanel = memo(function PipelinePanel() {
           <option value="2">Fase 2 — Classificação</option>
           <option value="3">Fase 3 — ANVISA</option>
           <option value="4">Fase 4 — UDI/GTIN</option>
-          <option value="5">Fase 5 — Concluído</option>
         </select>
         <button onClick={load} className="h-9 w-9 rounded-xl border border-border/40 flex items-center justify-center text-muted-foreground hover:bg-muted/40 transition-colors">
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
