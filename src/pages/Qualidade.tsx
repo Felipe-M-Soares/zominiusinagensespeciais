@@ -39,7 +39,7 @@ import { toast } from "sonner";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type QualidadeView = "pipeline" | "rastreamento" | "historico";
+type QualidadeView = "pipeline" | "rastreamento" | "historico" | "gs1";
 
 type FaseNum = 1 | 2 | 3 | 4 | 5;
 type StatusReg =
@@ -94,6 +94,7 @@ const TABS: PageNavTab<QualidadeView>[] = [
   { id: "pipeline",     label: "Pipeline",     Icon: ClipboardCheck, activeColor: "text-violet-500",  activeBg: "bg-violet-500/10",  activeBorder: "border-violet-500/40" },
   { id: "rastreamento", label: "Rastreamento", Icon: Search,         activeColor: "text-blue-500",    activeBg: "bg-blue-500/10",    activeBorder: "border-blue-500/40"   },
   { id: "historico",    label: "Histórico",    Icon: History,        activeColor: "text-amber-500",   activeBg: "bg-amber-500/10",   activeBorder: "border-amber-500/40"  },
+  { id: "gs1",          label: "GS1",          Icon: Barcode,        activeColor: "text-teal-500",    activeBg: "bg-teal-500/10",    activeBorder: "border-teal-500/40"   },
 ];
 
 const FASE_CONFIG: Record<StockFase, { label: string; Icon: React.ElementType; color: string; bg: string; border: string }> = {
@@ -634,16 +635,25 @@ const PipelinePanel = memo(function PipelinePanel() {
   const [search, setSearch] = useState("");
   const [faseFilter, setFaseFilter] = useState<"all" | "1" | "2" | "3" | "4" | "5">("all");
   const [editDevice, setEditDevice] = useState<DeviceReg | null>(null);
+  const [totalPecas, setTotalPecas] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("devices_regularizacao")
-      .select("*")
-      .order("fase_atual", { ascending: true })
-      .order("model", { ascending: true })
-      .limit(10000);
+    const [{ data, error }, { data: stockData }] = await Promise.all([
+      supabase
+        .from("devices_regularizacao")
+        .select("*")
+        .order("fase_atual", { ascending: true })
+        .order("model", { ascending: true })
+        .limit(10000),
+      supabase
+        .from("stock_items")
+        .select("quantity")
+        .gt("quantity", 0),
+    ]);
     if (!error) setDevices((data ?? []) as DeviceReg[]);
+    const soma = (stockData ?? []).reduce((s: number, i: { quantity: number }) => s + (i.quantity ?? 0), 0);
+    setTotalPecas(soma);
     setLoading(false);
   }, []);
 
@@ -674,12 +684,13 @@ const PipelinePanel = memo(function PipelinePanel() {
   return (
     <div className="space-y-4">
       {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: "Conformes",    value: kpis.concluidas, Icon: BadgeCheck,    color: "text-emerald-500", bg: "bg-emerald-500/8", border: "border-emerald-500/20" },
-          { label: "Pendentes",    value: kpis.pendentes,  Icon: AlertCircle,   color: "text-amber-500",   bg: "bg-amber-500/8",   border: "border-amber-500/20"   },
-          { label: "Em processo",  value: kpis.emProcesso, Icon: ClipboardCheck,color: "text-blue-500",    bg: "bg-blue-500/8",    border: "border-blue-500/20"    },
-          { label: "Vence em 1a",  value: kpis.vencendo,   Icon: CalendarClock, color: "text-red-500",     bg: "bg-red-500/8",     border: "border-red-500/20"     },
+          { label: "Total de Peças", value: totalPecas.toLocaleString("pt-BR"), Icon: Package,       color: "text-violet-500",  bg: "bg-violet-500/8",  border: "border-violet-500/20"  },
+          { label: "Conformes",      value: kpis.concluidas,                     Icon: BadgeCheck,    color: "text-emerald-500", bg: "bg-emerald-500/8", border: "border-emerald-500/20" },
+          { label: "Pendentes",      value: kpis.pendentes,                      Icon: AlertCircle,   color: "text-amber-500",   bg: "bg-amber-500/8",   border: "border-amber-500/20"   },
+          { label: "Em processo",    value: kpis.emProcesso,                     Icon: ClipboardCheck,color: "text-blue-500",    bg: "bg-blue-500/8",    border: "border-blue-500/20"    },
+          { label: "Vence em 1a",    value: kpis.vencendo,                       Icon: CalendarClock, color: "text-red-500",     bg: "bg-red-500/8",     border: "border-red-500/20"     },
         ].map(k => (
           <div key={k.label} className={cn("rounded-2xl border p-3 flex items-center gap-3", k.bg, k.border)}>
             <k.Icon className={cn("h-5 w-5 shrink-0", k.color)} />
@@ -1103,6 +1114,175 @@ const HistoricoPanel = memo(function HistoricoPanel() {
   );
 });
 
+// ─── GS1 Panel ───────────────────────────────────────────────────────────────
+
+const GS1Panel = memo(function GS1Panel() {
+  const [devices, setDevices] = useState<{ id: string; model: string; reference: string; gtin: string | null; udi_di: string | null }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    supabase
+      .from("devices_regularizacao")
+      .select("id, model, reference, gtin, udi_di")
+      .order("model")
+      .limit(5000)
+      .then(({ data }) => { setDevices((data ?? []) as typeof devices); setLoading(false); });
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return devices;
+    return devices.filter(d =>
+      d.model.toLowerCase().includes(q) ||
+      (d.reference ?? "").toLowerCase().includes(q) ||
+      (d.gtin ?? "").includes(q)
+    );
+  }, [devices, search]);
+
+  const semGtin   = devices.filter(d => !d.gtin).length;
+  const comGtin   = devices.filter(d => !!d.gtin).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Header informativo */}
+      <div className="rounded-2xl border border-teal-500/20 bg-teal-500/5 p-4 space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-teal-500/10 flex items-center justify-center shrink-0">
+            <Barcode className="h-5 w-5 text-teal-500" />
+          </div>
+          <div>
+            <p className="text-sm font-bold">Cadastro GS1 Brasil</p>
+            <p className="text-[11px] text-muted-foreground/70">Gerencie GTINs e acesse o portal GS1 para registro de produtos médicos</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <a
+            href="https://www.gs1br.org/servicos/cadastro-de-produtos"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500 hover:bg-teal-400 text-white text-[12px] font-semibold transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Portal GS1 — Cadastro de Produtos
+          </a>
+          <a
+            href="https://www.gs1br.org/servicos/gtin"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[12px] font-semibold border border-teal-500/30 transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Atribuição de GTIN
+          </a>
+          <a
+            href="https://www.gs1br.org/servicos/verificacao-de-gtin"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[12px] font-semibold border border-teal-500/30 transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Verificar GTIN
+          </a>
+        </div>
+      </div>
+
+      {/* KPIs GTIN */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-3 flex items-center gap-3">
+          <Hash className="h-5 w-5 text-violet-500 shrink-0" />
+          <div>
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Total Peças</p>
+            <p className="text-2xl font-bold tabular-nums text-violet-500">{devices.length}</p>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 flex items-center gap-3">
+          <BadgeCheck className="h-5 w-5 text-emerald-500 shrink-0" />
+          <div>
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Com GTIN</p>
+            <p className="text-2xl font-bold tabular-nums text-emerald-500">{comGtin}</p>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3">
+          <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
+          <div>
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Sem GTIN</p>
+            <p className="text-2xl font-bold tabular-nums text-amber-500">{semGtin}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Busca */}
+      <input
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder="Buscar peça por modelo, referência ou GTIN..."
+        className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-teal-500/30"
+      />
+
+      {/* Lista */}
+      <div className="rounded-2xl border border-border/30 overflow-hidden">
+        <div className="px-4 py-2.5 bg-muted/20 border-b border-border/20 grid grid-cols-12 gap-2">
+          <p className="col-span-5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Modelo</p>
+          <p className="col-span-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Referência</p>
+          <p className="col-span-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">GTIN-13</p>
+          <p className="col-span-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide text-center">GS1</p>
+        </div>
+        {loading && (
+          <div className="flex items-center justify-center py-10">
+            <div className="h-5 w-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {!loading && filtered.length === 0 && (
+          <div className="text-center py-10 text-sm text-muted-foreground">Nenhuma peça encontrada</div>
+        )}
+        {!loading && filtered.map((d, idx) => (
+          <div
+            key={d.id}
+            className={cn("grid grid-cols-12 gap-2 px-4 py-2.5 items-center border-b border-border/10 last:border-0 hover:bg-muted/20 transition-colors", idx % 2 === 0 ? "" : "bg-muted/5")}
+          >
+            <p className="col-span-5 text-[12px] font-medium truncate">{d.model}</p>
+            <p className="col-span-3 text-[11px] text-muted-foreground font-mono truncate">{d.reference}</p>
+            <div className="col-span-3 flex items-center gap-1">
+              {d.gtin ? (
+                <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{d.gtin}</span>
+              ) : (
+                <span className="text-[10px] text-amber-500 font-medium italic">Não cadastrado</span>
+              )}
+            </div>
+            <div className="col-span-1 flex justify-center">
+              {d.gtin ? (
+                <a
+                  href={`https://www.gs1br.org/busca-de-produto?q=${d.gtin}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-6 w-6 flex items-center justify-center rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 transition-colors"
+                  title="Verificar no GS1"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <a
+                  href="https://www.gs1br.org/servicos/gtin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 transition-colors"
+                  title="Cadastrar GTIN no GS1"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      {!loading && filtered.length > 0 && (
+        <p className="text-[10px] text-muted-foreground/50 text-right">{filtered.length} peça{filtered.length !== 1 ? "s" : ""} exibida{filtered.length !== 1 ? "s" : ""}</p>
+      )}
+    </div>
+  );
+});
+
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function Qualidade() {
@@ -1117,7 +1297,7 @@ export default function Qualidade() {
           </div>
           <div>
             <h1 className="text-[15px] font-bold leading-tight">Qualidade</h1>
-            <p className="text-[11px] text-muted-foreground/60">Pipeline ANVISA · Rastreabilidade · Histórico</p>
+            <p className="text-[11px] text-muted-foreground/60">Pipeline ANVISA · Rastreabilidade · Histórico · GS1</p>
           </div>
         </div>
         <PageNav tabs={TABS} activeTab={activeView} onTabChange={setActiveView} />
@@ -1126,6 +1306,7 @@ export default function Qualidade() {
         {activeView === "pipeline"     && <PipelinePanel />}
         {activeView === "rastreamento" && <RastreamentoPanel />}
         {activeView === "historico"    && <HistoricoPanel />}
+        {activeView === "gs1"          && <GS1Panel />}
       </div>
     </div>
   );
