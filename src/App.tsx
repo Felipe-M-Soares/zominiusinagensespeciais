@@ -80,8 +80,9 @@ function PendingApprovalRoute() {
 function IndexRoute() {
   const { role, loading, approved } = useAuth();
   if (loading || approved === null) return <LoadingScreen />;
-  if (role === "vendedora") return <Navigate to="/comercial" replace />;
+  if (role === "comercial")  return <Navigate to="/comercial"  replace />;
   if (role === "financeiro") return <Navigate to="/financeiro" replace />;
+  if (role === "producao")   return <Navigate to="/producao"   replace />;
   return <Index />;
 }
 
@@ -102,10 +103,10 @@ const App = () => (
               <Route path="/set-password" element={<ErrorBoundary><SetPassword /></ErrorBoundary>} />
               <Route path="/settings"   element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
               <Route path="/manuals"    element={<ErrorBoundary><Manuals /></ErrorBoundary>} />
-              <Route path="/estoque"    element={<ErrorBoundary><Estoque /></ErrorBoundary>} />
-              <Route path="/producao"   element={<ErrorBoundary><Producao /></ErrorBoundary>} />
-              <Route path="/qualidade"  element={<ErrorBoundary><Qualidade /></ErrorBoundary>} />
-              <Route path="/comercial"  element={<ErrorBoundary><RoleGuard roles={["vendedora","admin"]}><Comercial /></RoleGuard></ErrorBoundary>} />
+              <Route path="/estoque"    element={<ErrorBoundary><RoleGuard roles={["usuarios","estoque","qualidade","admin"]}><Estoque /></RoleGuard></ErrorBoundary>} />
+              <Route path="/producao"   element={<ErrorBoundary><RoleGuard roles={["producao","admin"]}><Producao /></RoleGuard></ErrorBoundary>} />
+              <Route path="/qualidade"  element={<ErrorBoundary><RoleGuard roles={["qualidade","admin"]}><Qualidade /></RoleGuard></ErrorBoundary>} />
+              <Route path="/comercial"  element={<ErrorBoundary><RoleGuard roles={["comercial","admin"]}><Comercial /></RoleGuard></ErrorBoundary>} />
               <Route path="/financeiro" element={<ErrorBoundary><RoleGuard roles={["financeiro","admin"]}><Financeiro /></RoleGuard></ErrorBoundary>} />
               <Route path="/admin"      element={<ErrorBoundary><RoleGuard adminOnly><Admin /></RoleGuard></ErrorBoundary>} />
             </Route>

@@ -2,7 +2,7 @@
  * Comercial — Página exclusiva para vendedoras (e admins)
  *
  * Rota: /comercial
- * Acesso: role === "vendedora" | "admin"
+ * Acesso: role === "comercial" | "admin"
  *
  * Fluxo:
  *  1. Vendedora seleciona ou cadastra cliente
@@ -2150,7 +2150,7 @@ export default function Comercial() {
   const navigate = useNavigate();
   const { signOut, isAdmin, role, user } = useAuth();
 
-  const isVendedora = role === "vendedora";
+  const isVendedora = role === "comercial";
   const canAccess = isAdmin || isVendedora;
 
   // Nome da usuária logada

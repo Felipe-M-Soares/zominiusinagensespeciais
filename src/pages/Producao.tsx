@@ -124,7 +124,7 @@ function ProdMenu({ isAdmin, onSelect }: { isAdmin:boolean; onSelect:(v:ProdView
 }
 
 export default function Producao() {
-  const { profile, role } = useAuth();
+  const { role } = useAuth();
   const { isOnline, pendingCount, syncing, syncQueue } = useOfflineSync();
   const isAdmin = role === "admin";
   const [view, setView] = useState<ProdView>("menu");

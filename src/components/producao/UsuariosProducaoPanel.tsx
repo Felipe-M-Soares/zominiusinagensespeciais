@@ -13,8 +13,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
-
-type AppRole = "admin"|"producao"|"funcionario"|"financeiro"|"comercial";
+import { APP_ROLES, ROLE_LABELS } from "@/types/roles";
+import type { AppRole } from "@/types/roles";
 
 interface UsuarioSistema {
   user_id: string;
@@ -27,11 +27,13 @@ interface UsuarioSistema {
 }
 
 const ROLE_CFG: Record<AppRole,{label:string;color:string;bg:string;border:string;Icon:React.ElementType}> = {
-  admin:       {label:"Administrador", color:"text-purple-600 dark:text-purple-400", bg:"bg-purple-500/10", border:"border-purple-500/20", Icon:Shield},
-  producao:    {label:"Produção",      color:"text-green-600 dark:text-green-400",   bg:"bg-green-500/10",  border:"border-green-500/20",  Icon:CheckCircle2},
-  funcionario: {label:"Funcionário",   color:"text-blue-600 dark:text-blue-400",     bg:"bg-blue-500/10",   border:"border-blue-500/20",   Icon:Users},
-  financeiro:  {label:"Financeiro",    color:"text-amber-600 dark:text-amber-400",   bg:"bg-amber-500/10",  border:"border-amber-500/20",  Icon:Eye},
-  comercial:   {label:"Comercial",     color:"text-cyan-600 dark:text-cyan-400",     bg:"bg-cyan-500/10",   border:"border-cyan-500/20",   Icon:Users},
+  admin:      {label:"Administrador", color:"text-purple-600 dark:text-purple-400", bg:"bg-purple-500/10",  border:"border-purple-500/20",  Icon:Shield},
+  usuarios:   {label:"Usuários",      color:"text-blue-600 dark:text-blue-400",     bg:"bg-blue-500/10",    border:"border-blue-500/20",    Icon:Users},
+  estoque:    {label:"Estoque",       color:"text-orange-600 dark:text-orange-400", bg:"bg-orange-500/10",  border:"border-orange-500/20",  Icon:CheckCircle2},
+  qualidade:  {label:"Qualidade",     color:"text-teal-600 dark:text-teal-400",     bg:"bg-teal-500/10",    border:"border-teal-500/20",    Icon:Shield},
+  comercial:  {label:"Comercial",     color:"text-cyan-600 dark:text-cyan-400",     bg:"bg-cyan-500/10",    border:"border-cyan-500/20",    Icon:Users},
+  financeiro: {label:"Financeiro",    color:"text-amber-600 dark:text-amber-400",   bg:"bg-amber-500/10",   border:"border-amber-500/20",   Icon:Eye},
+  producao:   {label:"Produção",      color:"text-green-600 dark:text-green-400",   bg:"bg-green-500/10",   border:"border-green-500/20",   Icon:CheckCircle2},
 };
 
 export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
@@ -58,7 +60,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
         username:p.username,
         approved:p.approved,
         blocked:p.blocked,
-        role:rolesMap[p.user_id]||"funcionario",
+        role:rolesMap[p.user_id]||"usuarios",
         created_at:p.created_at,
       }));
       setUsuarios(users);
@@ -133,7 +135,7 @@ export function UsuariosProducaoPanel({ isAdmin }: { isAdmin: boolean }) {
       ) : (
         <div className="space-y-3">
           {filtered.map(u=>{
-            const cfg=ROLE_CFG[u.role]||ROLE_CFG.funcionario;
+            const cfg=ROLE_CFG[u.role]||ROLE_CFG.usuarios;
             const nome=u.display_name||u.username||"Usuário";
             return (
               <div key={u.user_id} className={cn("rounded-2xl border p-4 space-y-3 transition-all", u.blocked?"bg-red-500/5 border-red-500/20":"bg-card/60")}>

@@ -92,7 +92,7 @@ export function AdminUsers() {
   const [newUserLogin, setNewUserLogin]     = useState("");
   const [newUserName, setNewUserName]       = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole]       = useState<AppRole>("funcionario");
+  const [newUserRole, setNewUserRole]       = useState<AppRole>("usuarios");
   const [creatingUser, setCreatingUser]     = useState(false);
 
   const [downgradeConfirm, setDowngradeConfirm] = useState<{ userId: string; userName: string } | null>(null);
@@ -117,7 +117,7 @@ export function AdminUsers() {
         display_name:         p.display_name,
         login:                (p as { login?: string | null }).login ?? null,
         created_at:           p.created_at,
-        role:                 (roleMap.get(p.user_id) as AppRole) ?? "funcionario",
+        role:                 (roleMap.get(p.user_id) as AppRole) ?? "usuarios",
         approved:             p.approved ?? false,
         blocked:              (p as { blocked?: boolean }).blocked ?? false,
         must_change_password: (p as { must_change_password?: boolean }).must_change_password ?? false,
@@ -227,7 +227,7 @@ export function AdminUsers() {
   };
 
   const resetCreateForm = () => {
-    setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("funcionario");
+    setNewUserLogin(""); setNewUserName(""); setNewUserPassword(""); setNewUserRole("usuarios");
   };
 
   const createUser = async () => {
@@ -459,7 +459,7 @@ export function AdminUsers() {
             <AlertDialogDescription>
               Você está prestes a remover o acesso de administrador de{" "}
               <strong>{downgradeConfirm?.userName}</strong>. O usuário passará a ter perfil de
-              Funcionário e perderá acesso ao painel Admin imediatamente.
+              Usuário e perderá acesso ao painel Admin imediatamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -468,7 +468,7 @@ export function AdminUsers() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (downgradeConfirm) {
-                  await applyRoleChange(downgradeConfirm.userId, "funcionario");
+                  await applyRoleChange(downgradeConfirm.userId, "usuarios");
                   setDowngradeConfirm(null);
                 }
               }}>

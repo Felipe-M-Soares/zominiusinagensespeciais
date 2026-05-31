@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { ROLE_LABELS } from "@/types/roles";
+import type { AppRole } from "@/types/roles";
 import logoZomini from "@/assets/logo_zomini.png";
 import {
   Boxes,
@@ -29,12 +31,12 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Componentes", icon: Cpu, path: "/" },
-  { label: "Estoque",   icon: Boxes,       path: "/estoque" },
-  { label: "Qualidade", icon: ShieldCheck, path: "/qualidade" },
-  { label: "Comercial", icon: ShoppingBag, path: "/comercial", roles: ["vendedora", "admin"] },
-  { label: "Financeiro", icon: Receipt, path: "/financeiro", roles: ["financeiro", "admin"] },
-  { label: "Produção", icon: Factory, path: "/producao" },
+  { label: "Componentes", icon: Cpu,        path: "/",          roles: ["admin","usuarios","estoque","qualidade","producao"] },
+  { label: "Estoque",     icon: Boxes,       path: "/estoque",   roles: ["admin","usuarios","estoque","qualidade"] },
+  { label: "Qualidade",   icon: ShieldCheck, path: "/qualidade", roles: ["admin","qualidade"] },
+  { label: "Comercial",   icon: ShoppingBag, path: "/comercial", roles: ["admin","comercial"] },
+  { label: "Financeiro",  icon: Receipt,     path: "/financeiro",roles: ["admin","financeiro"] },
+  { label: "Produção",    icon: Factory,     path: "/producao",  roles: ["admin","producao"] },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
@@ -229,8 +231,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   const visibleItems = NAV_ITEMS.filter((item) => {
-    if (!item.roles) return true;
     if (isAdmin) return true;
+    if (!item.roles) return true;
     return item.roles.includes(role ?? "");
   });
 
@@ -338,7 +340,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-foreground truncate">{userEmail}</p>
-                    <p className="text-[10px] text-muted-foreground capitalize">{role ?? "funcionário"}</p>
+                    <p className="text-[10px] text-muted-foreground capitalize">{role ? (ROLE_LABELS[role as AppRole] ?? role) : "Usuário"}</p>
                   </div>
                   <button
                     onClick={() => signOut()}
@@ -405,7 +407,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground truncate">{userEmail}</p>
-                <p className="text-[10px] text-muted-foreground capitalize">{role ?? "funcionário"}</p>
+                <p className="text-[10px] text-muted-foreground capitalize">{role ? (ROLE_LABELS[role as AppRole] ?? role) : "Usuário"}</p>
               </div>
               <button
                 onClick={() => signOut()}
