@@ -640,8 +640,26 @@ const PipelinePanel = memo(function PipelinePanel() {
   const load = useCallback(async () => {
     setLoading(true);
 
-    // Busca total real de peças somando quantity em páginas de 1000
-    // (o Supabase retorna no máximo 1000 rows por query por padrão)
+    // Busca paginada — Supabase limita a 1000 rows por query por padrão
+    async function fetchAllDevices(): Promise<DeviceReg[]> {
+      const all: DeviceReg[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: page, error } = await supabase
+          .from("devices_regularizacao")
+          .select("*")
+          .order("fase_atual", { ascending: true })
+          .order("model", { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (error || !page) break;
+        all.push(...(page as DeviceReg[]));
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+      return all;
+    }
+
     async function fetchTotalPecas(): Promise<number> {
       let soma = 0;
       let from = 0;
@@ -654,22 +672,17 @@ const PipelinePanel = memo(function PipelinePanel() {
           .range(from, from + pageSize - 1);
         if (pageErr || !page) break;
         soma += page.reduce((s, i: { quantity: number }) => s + (i.quantity ?? 0), 0);
-        if (page.length < pageSize) break; // última página
+        if (page.length < pageSize) break;
         from += pageSize;
       }
       return soma;
     }
 
-    const [{ data, error }, total] = await Promise.all([
-      supabase
-        .from("devices_regularizacao")
-        .select("*")
-        .order("fase_atual", { ascending: true })
-        .order("model", { ascending: true })
-        .limit(10000),
+    const [allDevices, total] = await Promise.all([
+      fetchAllDevices(),
       fetchTotalPecas(),
     ]);
-    if (!error) setDevices((data ?? []) as DeviceReg[]);
+    setDevices(allDevices);
     setTotalPecas(total);
     setLoading(false);
   }, []);
