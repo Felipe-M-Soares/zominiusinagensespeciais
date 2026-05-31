@@ -373,6 +373,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     const vistos = new Set<string>();
     const deduped = sugestoes.filter(i => {
       if (vistos.has(i.device_id)) return false;
+      if (Math.max(0, i.quantity_available - itens.filter(it => it.stock_item_id === i.id).reduce((s, it) => s + it.quantidade, 0)) <= 0) return false;
       vistos.add(i.device_id); return true;
     }).slice(0, 20);
     setAutocomplete(deduped);
@@ -387,6 +388,11 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     debouncedPecaSearch(v);
   }
 
+  // Disponível real descontando o que já está no carrinho local (itens ainda não salvos)
+  function dispRealCarrinho(item: ReturnType<typeof useStock>["items"][0]) {
+    return Math.max(0, item.quantity_available - qtdJaNoCarrinho(item.id));
+  }
+
   function buildSugestoes(q: string, items: typeof expedicaoItems) {
     const lista = q
       ? items.filter(i =>
@@ -398,6 +404,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     const vistos = new Set<string>();
     return lista.filter(i => {
       if (vistos.has(i.device_id)) return false;
+      if (dispRealCarrinho(i) <= 0) return false; // oculta peças sem saldo real
       vistos.add(i.device_id); return true;
     }).slice(0, 20);
   }
@@ -423,9 +430,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   }
 
   // Máximo disponível = qty na expedição - já no carrinho
-  const maxDisponivel = selectedPeca
-    ? Math.max(0, selectedPeca.quantity_available - qtdJaNoCarrinho(selectedPeca.id))
-    : 0;
+  const maxDisponivel = selectedPeca ? dispRealCarrinho(selectedPeca) : 0;
 
   function addItem() {
     if (!selectedPeca) return;
@@ -588,8 +593,8 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                             </div>
                             <div className="shrink-0 text-right">
                               <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded-lg",
-                                i.quantity_available > 0 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" : "bg-red-50 dark:bg-red-950/40 text-red-600")}>
-                                {i.quantity_available} un.
+                                dispRealCarrinho(i) > 0 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" : "bg-red-50 dark:bg-red-950/40 text-red-600")}>
+                                {dispRealCarrinho(i)} un.
                               </span>
                             </div>
                           </div>
@@ -698,14 +703,6 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 {desconto}% aplicado individualmente em cada peça
               </p>
             )}
-          </div>
-
-          {/* ── Prazo de entrega ── */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Prazo de entrega</label>
-            <input type="date" value={prazoEntrega} onChange={e => setPrazoEntrega(e.target.value)}
-              min={new Date().toISOString().split("T")[0]}
-              className="w-full h-9 rounded-xl border border-border/50 bg-background text-sm px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50" />
           </div>
 
           {/* ── Observações ── */}
