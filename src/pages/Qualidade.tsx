@@ -769,14 +769,42 @@ function buildPecaResult(
   devItems: { id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: StockFase }[],
   lotesByItem: Map<string, Map<string, { saldo: number; last_movement: string }>>
 ): PecaResult {
-  const fases: FaseInfo[] = devItems.map(item => {
+  // Agrupar por fase: unifica múltiplos stock_items da mesma fase em uma única linha
+  const faseMap = new Map<StockFase, FaseInfo>();
+  for (const item of devItems) {
     const lm = lotesByItem.get(item.id);
-    const lotes: LoteInfo[] = lm
+    const itemLotes: LoteInfo[] = lm
       ? Array.from(lm.entries()).filter(([, v]) => v.saldo > 0)
-        .map(([lote, v]) => ({ lote, saldo: v.saldo, last_movement: v.last_movement })).sort((a, b) => b.saldo - a.saldo)
+        .map(([lote, v]) => ({ lote, saldo: v.saldo, last_movement: v.last_movement }))
       : [];
-    return { fase: item.fase, stock_item_id: item.id, quantity: item.quantity, quantity_reserved: item.quantity_reserved, quantity_available: item.quantity - item.quantity_reserved, location: item.location, lotes };
-  });
+    if (faseMap.has(item.fase)) {
+      const ex = faseMap.get(item.fase)!;
+      const merged = new Map(ex.lotes.map(l => [l.lote, l]));
+      for (const l of itemLotes) {
+        const e = merged.get(l.lote);
+        merged.set(l.lote, e ? { ...e, saldo: e.saldo + l.saldo } : l);
+      }
+      faseMap.set(item.fase, {
+        ...ex,
+        quantity: ex.quantity + item.quantity,
+        quantity_reserved: ex.quantity_reserved + item.quantity_reserved,
+        quantity_available: ex.quantity_available + (item.quantity - item.quantity_reserved),
+        lotes: Array.from(merged.values()).sort((a, b) => b.saldo - a.saldo),
+      });
+    } else {
+      faseMap.set(item.fase, {
+        fase: item.fase,
+        stock_item_id: item.id,
+        quantity: item.quantity,
+        quantity_reserved: item.quantity_reserved,
+        quantity_available: item.quantity - item.quantity_reserved,
+        location: item.location,
+        lotes: itemLotes.sort((a, b) => b.saldo - a.saldo),
+      });
+    }
+  }
+  const FASE_ORDER: StockFase[] = ["retrabalho", "intermediaria", "expedicao"];
+  const fases: FaseInfo[] = FASE_ORDER.filter(f => faseMap.has(f)).map(f => faseMap.get(f)!);
   return {
     device_id: dev.id, model: dev.model, reference: dev.reference, internal_code: dev.internal_code,
     udi_di: dev.udi_di, anvisa_registration: dev.anvisa_registration, classification_code: dev.classification_code,
@@ -894,7 +922,7 @@ function FaseCard({ fase }: { fase: FaseInfo }) {
           <div className="flex-1 flex flex-wrap gap-1 min-w-0 overflow-hidden">
             {fase.lotes.map(l => (
               <span key={l.lote} className="flex items-center gap-0.5 text-[9px] font-mono bg-background/60 border border-border/30 px-1 py-0.5 rounded">
-                {l.lote} <span className="text-muted-foreground/60 font-sans">{l.saldo}</span>
+                {l.lote}
               </span>
             ))}
           </div>
