@@ -253,7 +253,7 @@ export function AdminDevices() {
 
     // Cria mapa ref_normalizada → device_id para lookup rápido
     const normalizeRef = (s: string) =>
-      s.toLowerCase().replace(/[\s_\-\.]+/g, "").replace(/[^a-z0-9]/g, "");
+      s.toLowerCase().replace(/[\s_\-.]+/g, "").replace(/[^a-z0-9]/g, "");
 
     const refMap = new Map<string, string>();
     for (const d of allDevices) {
@@ -733,7 +733,7 @@ export function AdminDevices() {
           {/* Input para seleção de pasta com WebP — webkitdirectory permite navegar subpastas */}
           <input
             type="file"
-            // @ts-ignore — webkitdirectory não está nos tipos oficiais mas é suportado em todos os browsers modernos
+            // @ts-expect-error — webkitdirectory não está nos tipos oficiais mas é suportado em todos os browsers modernos
             webkitdirectory=""
             multiple
             accept=".webp,image/webp"
