@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert, Images, CheckCircle2, AlertCircle, ImageOff } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { logger } from "@/lib/logger";
@@ -91,6 +91,20 @@ export function AdminDevices() {
   const [importing, setImporting] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Estado para importação de fotos WebP ─────────────────────────────────
+  const [importingPhotos, setImportingPhotos] = useState(false);
+  const [photoProgress, setPhotoProgress] = useState<{ done: number; total: number; matched: number; skipped: number } | null>(null);
+  const photoDirInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Estado para exclusão de fotos ────────────────────────────────────────
+  const [deleteAllPhotosConfirm, setDeleteAllPhotosConfirm] = useState(false);
+  const [deletingAllPhotos, setDeletingAllPhotos] = useState(false);
+  const [deleteAllPhotosProgress, setDeleteAllPhotosProgress] = useState<{ done: number; total: number } | null>(null);
+  const [deletePhotoDeviceId, setDeletePhotoDeviceId] = useState<string | null>(null);
+  const [deletingPhoto, setDeletingPhoto] = useState(false);
+  // Contagem de fotos cadastradas (devices com icon_url preenchido)
+  const photoCount = devices.filter(d => !!(d as typeof d & { icon_url?: string | null }).icon_url).length;
 
   // ── helpers de parse (mesmo padrão da Edge Function, mas no browser) ─────────
   const readFileWithEncoding = (f: File, encoding: string): Promise<string> =>
@@ -187,7 +201,131 @@ export function AdminDevices() {
     };
   }
 
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ── Importar fotos WebP por referência ───────────────────────────────────
+  // Lê uma pasta (e subpastas via webkitRelativePath), ignora paths que contenham
+  // "obsoleto" (case-insensitive), faz match pelo nome do arquivo vs campo "reference"
+  // do device, faz upload para storage "device-images" e atualiza icon_url no banco.
+  const handleImportPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    if (importingPhotos) return;
+
+    // Filtra: apenas .webp e ignora pastas/arquivos com "obsoleto" no path
+    const webpFiles = files.filter(f => {
+      const path = (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name;
+      const pathLower = path.toLowerCase();
+      if (pathLower.includes("obsoleto")) return false;
+      return f.name.toLowerCase().endsWith(".webp");
+    });
+
+    if (webpFiles.length === 0) {
+      toast.error("Nenhum arquivo .webp encontrado (ou todos estão em pastas 'obsoleto').");
+      if (photoDirInputRef.current) photoDirInputRef.current.value = "";
+      return;
+    }
+
+    setImportingPhotos(true);
+    setPhotoProgress({ done: 0, total: webpFiles.length, matched: 0, skipped: 0 });
+
+    // Busca todos os devices do banco para fazer o match por referência
+    let allDevices: Array<{ id: string; reference: string }> = [];
+    try {
+      let from = 0;
+      const batchSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("devices")
+          .select("id, reference")
+          .range(from, from + batchSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allDevices = allDevices.concat(data as Array<{ id: string; reference: string }>);
+        if (data.length < batchSize) break;
+        from += batchSize;
+      }
+    } catch (err) {
+      toast.error("Erro ao buscar dispositivos do banco.");
+      setImportingPhotos(false);
+      setPhotoProgress(null);
+      if (photoDirInputRef.current) photoDirInputRef.current.value = "";
+      return;
+    }
+
+    // Cria mapa ref_normalizada → device_id para lookup rápido
+    const normalizeRef = (s: string) =>
+      s.toLowerCase().replace(/[\s_\-\.]+/g, "").replace(/[^a-z0-9]/g, "");
+
+    const refMap = new Map<string, string>();
+    for (const d of allDevices) {
+      if (d.reference) refMap.set(normalizeRef(d.reference), d.id);
+    }
+
+    let matched = 0;
+    let skipped = 0;
+
+    for (let i = 0; i < webpFiles.length; i++) {
+      const file = webpFiles[i];
+      // Nome do arquivo sem extensão = referência esperada
+      const baseName = file.name.replace(/\.webp$/i, "");
+      const normBase = normalizeRef(baseName);
+
+      const deviceId = refMap.get(normBase);
+      if (!deviceId) {
+        skipped++;
+        setPhotoProgress({ done: i + 1, total: webpFiles.length, matched, skipped });
+        continue;
+      }
+
+      try {
+        // Upload para bucket "device-images" (path: device-images/<deviceId>.webp)
+        const storagePath = \`\${deviceId}.webp\`;
+        const { error: uploadErr } = await supabase.storage
+          .from("device-images")
+          .upload(storagePath, file, { upsert: true, contentType: "image/webp" });
+
+        if (uploadErr) {
+          logger.warn(\`Photo upload error (\${file.name}):\`, uploadErr.message);
+          skipped++;
+          setPhotoProgress({ done: i + 1, total: webpFiles.length, matched, skipped });
+          continue;
+        }
+
+        // Obtém URL pública
+        const { data: urlData } = supabase.storage
+          .from("device-images")
+          .getPublicUrl(storagePath);
+
+        const publicUrl = urlData?.publicUrl ?? null;
+
+        if (publicUrl) {
+          await supabase
+            .from("devices")
+            .update({ icon_url: publicUrl })
+            .eq("id", deviceId);
+          matched++;
+        } else {
+          skipped++;
+        }
+      } catch (err) {
+        logger.warn(\`Photo error (\${file.name}):\`, err);
+        skipped++;
+      }
+
+      setPhotoProgress({ done: i + 1, total: webpFiles.length, matched, skipped });
+    }
+
+    const msg = matched > 0
+      ? \`\${matched} foto\${matched !== 1 ? "s" : ""} importada\${matched !== 1 ? "s" : ""}\${skipped > 0 ? \` · \${skipped} sem correspondência\` : ""}\`
+      : \`Nenhuma foto correspondeu a referências cadastradas (\${skipped} ignoradas)\`;
+    if (matched > 0) toast.success(msg); else toast.warning(msg);
+
+    setImportingPhotos(false);
+    setPhotoProgress(null);
+    fetchDevices(debouncedSearch, page);
+    if (photoDirInputRef.current) photoDirInputRef.current.value = "";
+  };
+
+    const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (importing) return;
@@ -365,6 +503,82 @@ export function AdminDevices() {
     }
   };
 
+  // ── Excluir foto individual ───────────────────────────────────────────────
+  const handleDeletePhoto = async (deviceId: string) => {
+    setDeletingPhoto(true);
+    try {
+      const storagePath = `${deviceId}.webp`;
+      await supabase.storage.from("device-images").remove([storagePath]);
+      const { error } = await supabase
+        .from("devices")
+        .update({ icon_url: null })
+        .eq("id", deviceId);
+      if (error) { toast.error("Erro ao remover foto."); return; }
+      toast.success("Foto removida.");
+      fetchDevices(debouncedSearch, page);
+    } catch {
+      toast.error("Erro ao remover foto.");
+    } finally {
+      setDeletingPhoto(false);
+      setDeletePhotoDeviceId(null);
+    }
+  };
+
+  // ── Excluir TODAS as fotos ────────────────────────────────────────────────
+  const handleDeleteAllPhotos = async () => {
+    setDeletingAllPhotos(true);
+    setDeleteAllPhotosProgress({ done: 0, total: 0 });
+    try {
+      // 1. Lista todos os arquivos no bucket device-images (paginado, 1000 por vez)
+      const allPaths: string[] = [];
+      let offset = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: files, error } = await supabase.storage
+          .from("device-images")
+          .list("", { limit: pageSize, offset });
+        if (error) { toast.error("Erro ao listar fotos: " + error.message); break; }
+        if (!files || files.length === 0) break;
+        allPaths.push(...files.map(f => f.name));
+        if (files.length < pageSize) break;
+        offset += pageSize;
+      }
+
+      setDeleteAllPhotosProgress({ done: 0, total: allPaths.length });
+
+      // 2. Remove do storage em batches de 100
+      const BATCH = 100;
+      for (let i = 0; i < allPaths.length; i += BATCH) {
+        const batch = allPaths.slice(i, i + BATCH);
+        await supabase.storage.from("device-images").remove(batch);
+        setDeleteAllPhotosProgress({ done: Math.min(i + BATCH, allPaths.length), total: allPaths.length });
+      }
+
+      // 3. Zera icon_url em TODOS os devices em batches
+      const { data: allDevIds } = await supabase
+        .from("devices")
+        .select("id")
+        .not("icon_url", "is", null);
+
+      if (allDevIds && allDevIds.length > 0) {
+        for (let i = 0; i < allDevIds.length; i += BATCH) {
+          const ids = allDevIds.slice(i, i + BATCH).map((d: { id: string }) => d.id);
+          await supabase.from("devices").update({ icon_url: null }).in("id", ids);
+        }
+      }
+
+      toast.success(`${allPaths.length} foto${allPaths.length !== 1 ? "s" : ""} excluída${allPaths.length !== 1 ? "s" : ""}.`);
+      fetchDevices(debouncedSearch, page);
+    } catch (err) {
+      logger.error("deleteAllPhotos error:", err);
+      toast.error("Erro ao excluir fotos.");
+    } finally {
+      setDeletingAllPhotos(false);
+      setDeleteAllPhotosProgress(null);
+      setDeleteAllPhotosConfirm(false);
+    }
+  };
+
   const fetchAbortDevicesRef = useRef<AbortController | null>(null);
 
   const fetchDevices = useCallback(async (searchQuery: string, currentPage: number) => {
@@ -516,9 +730,54 @@ export function AdminDevices() {
         <div className="flex items-center gap-2">
           {/* FIX CSV: aceita apenas .json e .csv */}
           <input type="file" accept=".json,.csv" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
+          {/* Input para seleção de pasta com WebP — webkitdirectory permite navegar subpastas */}
+          <input
+            type="file"
+            // @ts-ignore — webkitdirectory não está nos tipos oficiais mas é suportado em todos os browsers modernos
+            webkitdirectory=""
+            multiple
+            accept=".webp,image/webp"
+            ref={photoDirInputRef}
+            onChange={handleImportPhotos}
+            className="hidden"
+          />
           <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
             {importing ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
             {importing ? "Importando..." : "Importar"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => photoDirInputRef.current?.click()}
+            disabled={importingPhotos}
+            className="gap-1.5 relative"
+            title="Importar fotos WebP de uma pasta (e subpastas). Ignora pastas 'obsoleto'. Faz match pelo nome do arquivo vs referência da peça."
+          >
+            {importingPhotos
+              ? <RefreshCw className="h-4 w-4 animate-spin" />
+              : <Images className="h-4 w-4" />}
+            {importingPhotos && photoProgress
+              ? `Fotos ${photoProgress.done}/${photoProgress.total}`
+              : "Importar Fotos"}
+            {importingPhotos && photoProgress && (
+              <span className="absolute -top-1.5 -right-1.5 h-4 min-w-[16px] rounded-full bg-brand text-[9px] font-bold text-white flex items-center justify-center px-1 leading-none">
+                {photoProgress.matched}
+              </span>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            className="text-orange-600 border-orange-500/40 hover:bg-orange-500/10 gap-1.5 relative"
+            onClick={() => setDeleteAllPhotosConfirm(true)}
+            disabled={deletingAllPhotos || photoCount === 0}
+            title="Excluir todas as fotos do catálogo (não remove as peças)"
+          >
+            <ImageOff className="h-4 w-4" />
+            Excluir Fotos
+            {photoCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 h-4 min-w-[16px] rounded-full bg-orange-500 text-[9px] font-bold text-white flex items-center justify-center px-1 leading-none">
+                {photoCount}
+              </span>
+            )}
           </Button>
           <Button
             variant="outline"
@@ -538,6 +797,52 @@ export function AdminDevices() {
 
       <p className="text-xs text-muted-foreground">{totalCount.toLocaleString("pt-BR")} dispositivos cadastrados</p>
 
+      {/* Banner de progresso da EXCLUSÃO de fotos */}
+      {deletingAllPhotos && deleteAllPhotosProgress && (
+        <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 px-4 py-3 flex items-center gap-3">
+          <RefreshCw className="h-4 w-4 text-orange-500 animate-spin shrink-0" />
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-orange-600 dark:text-orange-400 font-medium">
+                Excluindo fotos… {deleteAllPhotosProgress.done}/{deleteAllPhotosProgress.total}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-orange-500 to-red-400 transition-all duration-300"
+                style={{ width: deleteAllPhotosProgress.total > 0 ? `${Math.round((deleteAllPhotosProgress.done / deleteAllPhotosProgress.total) * 100)}%` : "0%" }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Banner de progresso da importação de fotos */}
+      {importingPhotos && photoProgress && (
+        <div className="rounded-xl border border-brand/20 bg-brand/5 px-4 py-3 flex items-center gap-3">
+          <RefreshCw className="h-4 w-4 text-brand animate-spin shrink-0" />
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-brand font-medium">
+                Importando fotos… {photoProgress.done}/{photoProgress.total}
+              </span>
+              <span className="text-muted-foreground">
+                <CheckCircle2 className="inline h-3 w-3 text-success mr-0.5" />{photoProgress.matched} vinculadas
+                {photoProgress.skipped > 0 && (
+                  <> · <AlertCircle className="inline h-3 w-3 text-muted-foreground/60 mx-0.5" />{photoProgress.skipped} sem match</>
+                )}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-brand to-violet-400 transition-all duration-300"
+                style={{ width: `${Math.round((photoProgress.done / photoProgress.total) * 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-10"><div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" /></div>
       ) : (
@@ -545,17 +850,35 @@ export function AdminDevices() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[52px]">Foto</TableHead>
                 <TableHead>Modelo</TableHead>
                 <TableHead>Referência</TableHead>
                 <TableHead>UDI-DI</TableHead>
                 <TableHead>Material</TableHead>
                 <TableHead>Classe</TableHead>
-                <TableHead className="w-[100px]">Ações</TableHead>
+                <TableHead className="w-[120px]">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map(d => (
                 <TableRow key={d.id}>
+                  {/* Thumbnail 40×40 — quadrado, object-contain, fundo muted */}
+                  <TableCell>
+                    {(d as typeof d & { icon_url?: string | null }).icon_url ? (
+                      <div className="h-10 w-10 rounded-lg overflow-hidden border border-border/30 bg-muted/20 flex items-center justify-center shrink-0">
+                        <img
+                          src={(d as typeof d & { icon_url?: string | null }).icon_url!}
+                          alt={d.reference}
+                          className="h-full w-full object-contain p-0.5"
+                          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-10 w-10 rounded-lg border border-border/20 bg-muted/10 flex items-center justify-center shrink-0">
+                        <ImageOff className="h-3.5 w-3.5 text-muted-foreground/25" />
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell className="font-medium text-sm max-w-[200px] truncate">{d.model}</TableCell>
                   <TableCell className="text-sm font-mono">{d.reference}</TableCell>
                   <TableCell className="text-xs font-mono">{d.udi_di}</TableCell>
@@ -566,6 +889,17 @@ export function AdminDevices() {
                       <Button variant="ghost" size="icon" onClick={() => { setEditDevice({ ...d }); setIsNew(false); }}>
                         <Pencil className="h-4 w-4" />
                       </Button>
+                      {/* Excluir foto individual — só aparece se o device tem foto */}
+                      {(d as typeof d & { icon_url?: string | null }).icon_url && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Remover foto desta peça"
+                          onClick={() => setDeletePhotoDeviceId(d.id)}
+                        >
+                          <ImageOff className="h-4 w-4 text-orange-500" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" onClick={() => setDeleteConfirmId(d.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -621,6 +955,53 @@ export function AdminDevices() {
               {deletingAll
                 ? "Excluindo..."
                 : `Excluir tudo (${totalCount.toLocaleString("pt-BR")})`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal: confirmar exclusão de TODAS as fotos */}
+      <AlertDialog open={deleteAllPhotosConfirm} onOpenChange={open => { if (!deletingAllPhotos) setDeleteAllPhotosConfirm(open); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir todas as fotos?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso removerá <strong>{photoCount} foto{photoCount !== 1 ? "s" : ""}</strong> do storage e limpará o campo{" "}
+              <code className="font-mono text-xs bg-muted px-1 rounded">icon_url</code> de todos os dispositivos.
+              As peças <strong>não</strong> serão excluídas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAllPhotos}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAllPhotos}
+              disabled={deletingAllPhotos}
+              className="bg-orange-600 text-white hover:bg-orange-500"
+            >
+              {deletingAllPhotos ? "Excluindo..." : `Excluir ${photoCount} foto${photoCount !== 1 ? "s" : ""}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal: confirmar exclusão de foto individual */}
+      <AlertDialog open={!!deletePhotoDeviceId} onOpenChange={open => { if (!deletingPhoto) setDeletePhotoDeviceId(open ? deletePhotoDeviceId : null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover foto desta peça?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A imagem será removida do storage e o campo de foto desta peça será limpo.
+              A peça em si <strong>não</strong> será excluída.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingPhoto}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletePhotoDeviceId && handleDeletePhoto(deletePhotoDeviceId)}
+              disabled={deletingPhoto}
+              className="bg-orange-600 text-white hover:bg-orange-500"
+            >
+              {deletingPhoto ? "Removendo..." : "Remover foto"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

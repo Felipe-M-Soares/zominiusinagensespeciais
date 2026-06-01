@@ -674,7 +674,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 onChange={e => {
                   if (e.target.value !== "outro") setDesconto(Number(e.target.value));
                 }}
-                className="flex-1 h-10 rounded-xl border border-border bg-muted/30 px-3 text-[13px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all"
+                className="flex-1 h-10 rounded-xl border border-border bg-background px-3 text-[13px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all [color-scheme:light_dark]"
               >
                 <option value="0">Sem desconto</option>
                 <option value="5">5%</option>
@@ -911,15 +911,11 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca, o
 
             {/* Desconto — destaque se tiver */}
             {temDesconto ? (
-              <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2 border min-w-[54px]"
-                style={{
-                  background: "linear-gradient(135deg, #d1fae5, #a7f3d0)",
-                  borderColor: "#6ee7b7",
-                }}>
-                <span className="text-[17px] font-black text-emerald-800 leading-none tabular-nums">
+              <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2 border border-emerald-500/40 bg-emerald-500/15 min-w-[54px]">
+                <span className="text-[17px] font-black text-emerald-600 dark:text-emerald-400 leading-none tabular-nums">
                   {pedido.desconto_pct}%
                 </span>
-                <span className="text-[8px] font-bold text-emerald-700 uppercase tracking-widest leading-none mt-0.5">
+                <span className="text-[8px] font-bold text-emerald-600/70 dark:text-emerald-400/70 uppercase tracking-widest leading-none mt-0.5">
                   desc.
                 </span>
               </div>
