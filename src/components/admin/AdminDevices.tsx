@@ -278,13 +278,13 @@ export function AdminDevices() {
 
       try {
         // Upload para bucket "device-images" (path: device-images/<deviceId>.webp)
-        const storagePath = \`\${deviceId}.webp\`;
+        const storagePath = `${deviceId}.webp`;
         const { error: uploadErr } = await supabase.storage
           .from("device-images")
           .upload(storagePath, file, { upsert: true, contentType: "image/webp" });
 
         if (uploadErr) {
-          logger.warn(\`Photo upload error (\${file.name}):\`, uploadErr.message);
+          logger.warn(`Photo upload error (${file.name}):`, uploadErr.message);
           skipped++;
           setPhotoProgress({ done: i + 1, total: webpFiles.length, matched, skipped });
           continue;
@@ -307,7 +307,7 @@ export function AdminDevices() {
           skipped++;
         }
       } catch (err) {
-        logger.warn(\`Photo error (\${file.name}):\`, err);
+        logger.warn(`Photo error (${file.name}):`, err);
         skipped++;
       }
 
@@ -315,8 +315,8 @@ export function AdminDevices() {
     }
 
     const msg = matched > 0
-      ? \`\${matched} foto\${matched !== 1 ? "s" : ""} importada\${matched !== 1 ? "s" : ""}\${skipped > 0 ? \` · \${skipped} sem correspondência\` : ""}\`
-      : \`Nenhuma foto correspondeu a referências cadastradas (\${skipped} ignoradas)\`;
+      ? `${matched} foto${matched !== 1 ? "s" : ""} importada${matched !== 1 ? "s" : ""}${skipped > 0 ? ` · ${skipped} sem correspondência` : ""}`
+      : `Nenhuma foto correspondeu a referências cadastradas (${skipped} ignoradas)`;
     if (matched > 0) toast.success(msg); else toast.warning(msg);
 
     setImportingPhotos(false);
