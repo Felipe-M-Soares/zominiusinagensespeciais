@@ -849,6 +849,7 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     const lotesByItem = buildLotesByItem(movData ?? []);
     const results: PecaResult[] = devRows
       .map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
+      .filter(r => totalQty(r) > 0)
       .sort((a, b) => totalQty(b) - totalQty(a));
     return { suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })), results };
   }
@@ -889,6 +890,7 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
   const lotesByItem = buildLotesByItem(movData ?? []);
   const results: PecaResult[] = devsOrdenados
     .map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
+    .filter(r => totalQty(r) > 0)
     .sort((a, b) => totalQty(b) - totalQty(a));
   return { suggestions, results };
 }
@@ -1145,6 +1147,124 @@ const HistoricoPanel = memo(function HistoricoPanel() {
 
 // ─── GS1 Panel ───────────────────────────────────────────────────────────────
 
+// ─── GS1 Portal integrado ──────────────────────────────────────────────────────
+// Permite acessar CNP, consulta GTIN e Portal GS1 direto do app via iframe.
+// Fallback para link externo caso o site bloqueie iframe (X-Frame-Options).
+
+type GS1Site = "cnp" | "consulta" | "portal";
+
+const GS1_SITES: Record<GS1Site, { label: string; url: string; color: string }> = {
+  cnp:      { label: "CNP — Cadastro Nacional de Produtos", url: "https://cnp.gs1br.org",                color: "bg-teal-500" },
+  consulta: { label: "Verificar / Consultar GTIN",          url: "https://www.gs1br.org/consulta-gtin",  color: "bg-teal-500/10 border border-teal-500/30 text-teal-600 dark:text-teal-400" },
+  portal:   { label: "Portal GS1 Brasil",                   url: "https://www.gs1br.org",                color: "bg-teal-500/10 border border-teal-500/30 text-teal-600 dark:text-teal-400" },
+};
+
+function GS1PortalSelector() {
+  const [active, setActive] = useState<GS1Site | null>(null);
+  const [blocked, setBlocked] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  function open(site: GS1Site) {
+    setBlocked(false);
+    setActive(site);
+  }
+
+  // Detectar se o iframe foi bloqueado (X-Frame-Options / CSP)
+  function handleIframeLoad() {
+    try {
+      // Se conseguir acessar contentDocument, não foi bloqueado
+      const doc = iframeRef.current?.contentDocument;
+      if (!doc || doc.URL === "about:blank") setBlocked(true);
+    } catch {
+      setBlocked(true);
+    }
+  }
+
+  const site = active ? GS1_SITES[active] : null;
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {(Object.entries(GS1_SITES) as [GS1Site, typeof GS1_SITES[GS1Site]][]).map(([key, s]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => open(key)}
+            className={cn(
+              "flex items-center justify-center gap-2 h-9 rounded-xl text-[12px] font-semibold transition-all",
+              key === "cnp" ? "bg-teal-500 hover:bg-teal-400 text-white" : "bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 text-teal-600 dark:text-teal-400",
+              active === key && "ring-2 ring-teal-500/50 ring-offset-1 ring-offset-transparent"
+            )}
+          >
+            <Layers className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{s.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {active && site && (
+        <div className="rounded-xl border border-teal-500/20 overflow-hidden">
+          {/* Barra do iframe */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-muted/20 border-b border-border/30">
+            <div className="flex gap-1">
+              <div className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
+              <div className="h-2.5 w-2.5 rounded-full bg-amber-400/70" />
+              <div className="h-2.5 w-2.5 rounded-full bg-teal-400/70" />
+            </div>
+            <span className="text-[10px] text-muted-foreground/60 font-mono truncate flex-1">{site.url}</span>
+            <a
+              href={site.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 hover:underline shrink-0"
+              title="Abrir em nova aba"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Nova aba
+            </a>
+            <button
+              type="button"
+              onClick={() => setActive(null)}
+              className="h-5 w-5 flex items-center justify-center rounded hover:bg-muted/50 text-muted-foreground/60 transition-colors shrink-0"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          {blocked ? (
+            /* Fallback: o site bloqueou o iframe */
+            <div className="flex flex-col items-center justify-center gap-3 py-12 bg-muted/5 text-center px-6">
+              <ExternalLink className="h-8 w-8 text-teal-500/50" />
+              <p className="text-sm font-medium text-foreground">Este portal não permite incorporação</p>
+              <p className="text-[11px] text-muted-foreground/70">O GS1 Brasil bloqueia exibição em apps externos por segurança.</p>
+              <a
+                href={site.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 h-9 px-5 rounded-xl bg-teal-500 hover:bg-teal-400 text-white text-[12px] font-semibold transition-colors"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Abrir {site.label}
+              </a>
+            </div>
+          ) : (
+            <iframe
+              ref={iframeRef}
+              src={site.url}
+              className="w-full h-[560px] bg-white"
+              onLoad={handleIframeLoad}
+              onError={() => setBlocked(true)}
+              title={site.label}
+              sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 const GS1Panel = memo(function GS1Panel() {
   const [devices, setDevices] = useState<{ id: string; model: string; reference: string; gtin: string | null; udi_di: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1186,35 +1306,8 @@ const GS1Panel = memo(function GS1Panel() {
             <p className="text-[11px] text-muted-foreground/70">Gerencie GTINs e acesse o portal GS1 para registro de produtos médicos</p>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <a
-            href="https://cnp.gs1br.org"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500 hover:bg-teal-400 text-white text-[12px] font-semibold transition-colors"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            CNP — Cadastro Nacional de Produtos
-          </a>
-          <a
-            href="https://www.gs1br.org/consulta-gtin"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[12px] font-semibold border border-teal-500/30 transition-colors"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Verificar / Consultar GTIN
-          </a>
-          <a
-            href="https://www.gs1br.org"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[12px] font-semibold border border-teal-500/30 transition-colors"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Portal GS1 Brasil
-          </a>
-        </div>
+        {/* Seletor de portal integrado */}
+        <GS1PortalSelector />
       </div>
 
       {/* KPIs GTIN */}

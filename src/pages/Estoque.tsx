@@ -748,7 +748,7 @@ export default function Estoque() {
       const q = search.trim().toLowerCase();
       // Usa allItems diretamente — filteredItems não é estável (nova referência a cada render)
       const suggestions = allItems
-        .filter(i => i.device?.model)
+        .filter(i => i.device?.model && i.quantity > 0)
         .map(i => i.device.model)
         .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
         .slice(0, 6);
