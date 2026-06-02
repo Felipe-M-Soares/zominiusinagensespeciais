@@ -98,7 +98,7 @@ export function DeviceCard({ device, onClick }: Props) {
             src={device.icon_url!}
             alt={device.model}
             onError={() => setImgError(true)}
-            className="w-full h-full object-contain p-2"
+            className="w-full h-full object-contain p-2 mix-blend-multiply dark:mix-blend-screen"
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 select-none">
