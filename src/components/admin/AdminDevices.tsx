@@ -279,17 +279,17 @@ export function AdminDevices() {
     //     "BMUI38163N"       → não é prefixo/sufixo limpo → REJEITA ✗
     // Isso evita que "bmue" bata com "mue" ou "mue1234" bata com "mue".
     const fuzzyMatch = (normName: string): string | null => {
-      // Pass 1: prefixo exato — nome começa com ref (sem dígito imediatamente após)
+      // Pass 1: prefixo — nome começa com a ref (sem dígito imediatamente após)
       for (const [key, id] of refEntries) {
         if (key.length < 4) continue;
         if (normName.startsWith(key) && (normName.length === key.length || /^[0-9]/.test(normName[key.length]) === false)) return id;
       }
-      // Pass 2: sufixo exato — nome termina com ref
+      // Pass 2: sufixo — nome termina com a ref
       for (const [key, id] of refEntries) {
         if (key.length < 4) continue;
         if (normName.endsWith(key)) return id;
       }
-      // Pass 3: contém ref como substring (apenas para refs longas ≥ 6 chars)
+      // Pass 3: contém a ref como substring (apenas refs >= 6 chars para evitar falsos positivos)
       for (const [key, id] of refEntries) {
         if (key.length < 6) continue;
         if (normName.includes(key)) return id;

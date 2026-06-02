@@ -331,8 +331,8 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   });
 
   // All items confirmed (used to enable "Marcar como Pronto" in separando mode)
-  // For single-item orders: require that total selected equals required quantity
-  // For multi-item orders: require each item individually confirmed via "Confirmar Item"
+  // Single-item: exige que a quantidade total selecionada bata com a pedida
+  // Multi-item: exige confirmação individual de cada item
   const allSelectionComplete = isSeparando && pedido.itens.every(item => totalSel(item.id) === item.quantidade);
   const allItemsConfirmed = isSeparando && pedido.itens.length > 1
     ? pedido.itens.every(item => confirmedItems.has(item.id))
@@ -1735,7 +1735,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   ) {
     if (!user) return;
 
-    // Validação: todos os itens devem ter a quantidade completa selecionada
+    // Validação: todos os itens devem ter quantidade completa selecionada
     const itensFaltando = pedido.itens.filter(item => {
       const selected = Object.values(lotesSelecionados[item.id] ?? {}).reduce((s, q) => s + q, 0);
       return selected < item.quantidade;
