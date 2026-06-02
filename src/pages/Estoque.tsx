@@ -700,13 +700,16 @@ export default function Estoque() {
 
   const filteredItems = useMemo(() => rawItems.filter(item => {
     if (!item.device) return false; // item órfão sem device associado
+    // Quando há busca ativa e o usuário não pediu explicitamente ver zerados,
+    // esconder itens sem estoque (igual ao comportamento do rastreamento)
+    if (querySearch.trim() && filterStatus !== "zerado" && item.quantity === 0) return false;
     if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
     if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
     if (filterStatus === "zerado" && item.quantity !== 0) return false;
     if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
     if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
     return true;
-  }), [rawItems, filterStatus, filterLocation, filterBrand]);
+  }), [rawItems, querySearch, filterStatus, filterLocation, filterBrand]);
 
   // ── useEffect ─────────────────────────────────────────────────────────────
 
