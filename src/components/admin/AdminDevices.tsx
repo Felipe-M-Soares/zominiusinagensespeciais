@@ -201,20 +201,19 @@ export function AdminDevices() {
     };
   }
 
-  // ── Importar fotos WebP por referência ───────────────────────────────────
-  // Lê uma pasta (e subpastas via webkitRelativePath), ignora paths que contenham
-  // "obsoleto" (case-insensitive), faz match pelo nome do arquivo vs campo "reference"
-  // do device, faz upload para storage "device-images" e atualiza icon_url no banco.
+  // ── Importar fotos WebP por referência ───────────────────────────────────────
+  // Suporta 5000+ arquivos: uploads paralelos em batches de 8, update de DB
+  // em batch por lote. Match normalizado + fallback fuzzy para referências
+  // fora do padrão (espaços, maiúsculas, separadores variados).
   const handleImportPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
     if (importingPhotos) return;
 
-    // Filtra: apenas .webp e ignora pastas/arquivos com "obsoleto" no path
+    // Filtra: apenas .webp, ignora paths com "obsoleto"
     const webpFiles = files.filter(f => {
       const path = (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name;
-      const pathLower = path.toLowerCase();
-      if (pathLower.includes("obsoleto")) return false;
+      if (path.toLowerCase().includes("obsoleto")) return false;
       return f.name.toLowerCase().endsWith(".webp");
     });
 
@@ -227,23 +226,22 @@ export function AdminDevices() {
     setImportingPhotos(true);
     setPhotoProgress({ done: 0, total: webpFiles.length, matched: 0, skipped: 0 });
 
-    // Busca todos os devices do banco para fazer o match por referência
+    // ── 1. Buscar todos os devices do banco (paginado) ──────────────────────
     let allDevices: Array<{ id: string; reference: string }> = [];
     try {
       let from = 0;
-      const batchSize = 1000;
       while (true) {
         const { data, error } = await supabase
           .from("devices")
           .select("id, reference")
-          .range(from, from + batchSize - 1);
+          .range(from, from + 999);
         if (error) throw error;
         if (!data || data.length === 0) break;
         allDevices = allDevices.concat(data as Array<{ id: string; reference: string }>);
-        if (data.length < batchSize) break;
-        from += batchSize;
+        if (data.length < 1000) break;
+        from += 1000;
       }
-    } catch (err) {
+    } catch {
       toast.error("Erro ao buscar dispositivos do banco.");
       setImportingPhotos(false);
       setPhotoProgress(null);
@@ -251,256 +249,132 @@ export function AdminDevices() {
       return;
     }
 
-    // Cria mapa ref_normalizada → device_id para lookup rápido
-    const normalizeRef = (s: string) =>
-      s.toLowerCase().replace(/[\s_\-.]+/g, "").replace(/[^a-z0-9]/g, "");
+    // ── 2. Normalização robusta ─────────────────────────────────────────────
+    // Remove acentos (NFD), ø→o, æ→ae, todos separadores e símbolos.
+    const normalizeRef = (s: string): string =>
+      s
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/ø/gi, "o")
+        .replace(/æ/gi, "ae")
+        .replace(/[\s_\-./()\[\]\\,;:°®™#@!?]+/g, "")
+        .replace(/[^a-z0-9]/g, "");
 
+    // ── 3. Mapa exato: ref_normalizada → deviceId ───────────────────────────
     const refMap = new Map<string, string>();
     for (const d of allDevices) {
-      if (d.reference) refMap.set(normalizeRef(d.reference), d.id);
+      if (!d.reference) continue;
+      const key = normalizeRef(d.reference);
+      if (key) refMap.set(key, d.id);
     }
 
-    let matched = 0;
-    let skipped = 0;
+    // Array ordenado por tamanho decrescente para o fuzzy match preferir
+    // referências mais específicas (mais longas) sobre genéricas
+    const refEntries = Array.from(refMap.entries()).sort((a, b) => b[0].length - a[0].length);
 
-    for (let i = 0; i < webpFiles.length; i++) {
-      const file = webpFiles[i];
-      // Nome do arquivo sem extensão = referência esperada
+    // ── 4. Fuzzy match ──────────────────────────────────────────────────────
+    // Quando o match exato falha, testa se o nome do arquivo CONTÉM a ref
+    // (ex: "UCIR 3818IMS frente" → contém "ucir3818ims") ou vice-versa.
+    // Exige mínimo de 4 chars para evitar falsos positivos.
+    const fuzzyMatch = (normName: string): string | null => {
+      for (const [key, id] of refEntries) {
+        if (key.length >= 4 && normName.includes(key)) return id;
+      }
+      for (const [key, id] of refEntries) {
+        if (normName.length >= 4 && key.includes(normName)) return id;
+      }
+      return null;
+    };
+
+    // ── 5. Mapear arquivos → deviceId ───────────────────────────────────────
+    type WorkItem = { file: File; deviceId: string; storagePath: string };
+    const workItems: WorkItem[] = [];
+    let skippedCount = 0;
+
+    for (const file of webpFiles) {
       const baseName = file.name.replace(/\.webp$/i, "");
       const normBase = normalizeRef(baseName);
-
-      const deviceId = refMap.get(normBase);
-      if (!deviceId) {
-        skipped++;
-        setPhotoProgress({ done: i + 1, total: webpFiles.length, matched, skipped });
-        continue;
-      }
-
-      try {
-        // Upload para bucket "device-images" (path: device-images/<deviceId>.webp)
-        const storagePath = `${deviceId}.webp`;
-        const { error: uploadErr } = await supabase.storage
-          .from("device-images")
-          .upload(storagePath, file, { upsert: true, contentType: "image/webp" });
-
-        if (uploadErr) {
-          logger.warn(`Photo upload error (${file.name}):`, uploadErr.message);
-          skipped++;
-          setPhotoProgress({ done: i + 1, total: webpFiles.length, matched, skipped });
-          continue;
-        }
-
-        // Obtém URL pública
-        const { data: urlData } = supabase.storage
-          .from("device-images")
-          .getPublicUrl(storagePath);
-
-        const publicUrl = urlData?.publicUrl ?? null;
-
-        if (publicUrl) {
-          await supabase
-            .from("devices")
-            .update({ icon_url: publicUrl })
-            .eq("id", deviceId);
-          matched++;
-        } else {
-          skipped++;
-        }
-      } catch (err) {
-        logger.warn(`Photo error (${file.name}):`, err);
-        skipped++;
-      }
-
-      setPhotoProgress({ done: i + 1, total: webpFiles.length, matched, skipped });
+      const deviceId = refMap.get(normBase) ?? fuzzyMatch(normBase);
+      if (!deviceId) { skippedCount++; continue; }
+      workItems.push({ file, deviceId, storagePath: `${deviceId}.webp` });
     }
 
+    setPhotoProgress({ done: 0, total: webpFiles.length, matched: 0, skipped: skippedCount });
+
+    // ── 6. Uploads paralelos (8 simultâneos) + DB batch ────────────────────
+    const PARALLEL = 8;   // 8 uploads ao mesmo tempo — saturação sem throttling
+    const DB_BATCH  = 50; // flush de DB a cada 50 matches
+    let matched = 0;
+    let uploadFailed = 0;
+    let done = 0;
+    const dbQueue: Array<{ id: string; url: string }> = [];
+
+    const flushDbQueue = async () => {
+      if (dbQueue.length === 0) return;
+      const rows = dbQueue.splice(0, dbQueue.length);
+      await Promise.allSettled(
+        rows.map(({ id, url }) =>
+          supabase.from("devices").update({ icon_url: url }).eq("id", id)
+        )
+      );
+    };
+
+    for (let i = 0; i < workItems.length; i += PARALLEL) {
+      const batch = workItems.slice(i, i + PARALLEL);
+
+      await Promise.allSettled(
+        batch.map(async ({ file, deviceId, storagePath }) => {
+          try {
+            const { error: uploadErr } = await supabase.storage
+              .from("device-images")
+              .upload(storagePath, file, { upsert: true, contentType: "image/webp" });
+            if (uploadErr) {
+              logger.warn(`Upload error (${file.name}):`, uploadErr.message);
+              uploadFailed++;
+              return;
+            }
+            const { data: urlData } = supabase.storage
+              .from("device-images")
+              .getPublicUrl(storagePath);
+            const publicUrl = urlData?.publicUrl;
+            if (publicUrl) {
+              dbQueue.push({ id: deviceId, url: publicUrl });
+              matched++;
+            } else {
+              uploadFailed++;
+            }
+          } catch (err) {
+            logger.warn(`Photo error (${file.name}):`, err);
+            uploadFailed++;
+          } finally {
+            done++;
+          }
+        })
+      );
+
+      if (dbQueue.length >= DB_BATCH) await flushDbQueue();
+
+      setPhotoProgress({
+        done: done + skippedCount,
+        total: webpFiles.length,
+        matched,
+        skipped: skippedCount + uploadFailed,
+      });
+    }
+
+    await flushDbQueue();
+
+    const totalSkipped = skippedCount + uploadFailed;
     const msg = matched > 0
-      ? `${matched} foto${matched !== 1 ? "s" : ""} importada${matched !== 1 ? "s" : ""}${skipped > 0 ? ` · ${skipped} sem correspondência` : ""}`
-      : `Nenhuma foto correspondeu a referências cadastradas (${skipped} ignoradas)`;
+      ? `${matched} foto${matched !== 1 ? "s" : ""} importada${matched !== 1 ? "s" : ""}${totalSkipped > 0 ? ` · ${totalSkipped} sem correspondência` : ""}`
+      : `Nenhuma foto correspondeu (${totalSkipped} ignoradas)`;
     if (matched > 0) toast.success(msg); else toast.warning(msg);
 
     setImportingPhotos(false);
     setPhotoProgress(null);
     fetchDevices(debouncedSearch, page);
     if (photoDirInputRef.current) photoDirInputRef.current.value = "";
-  };
-
-    const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (importing) return;
-
-    const MAX_FILE_SIZE_MB = 10;
-    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      toast.error(`Arquivo muito grande. Máximo: ${MAX_FILE_SIZE_MB}MB`);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-
-    const isJson = file.name.toLowerCase().endsWith(".json");
-    const isCsv  = file.name.toLowerCase().endsWith(".csv");
-    if (!isJson && !isCsv) {
-      toast.error("Tipo de arquivo inválido. Aceitos: .json, .csv");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-    // valida MIME além da extensão — impede renomear arquivo malicioso
-    const ALLOWED_MIMES = [
-      "application/json", "text/json",
-      "text/csv", "text/plain",
-      "application/octet-stream", // alguns browsers enviam isso para ambos
-      "", // file.type pode ser vazio em alguns sistemas operacionais
-    ];
-    if (file.type !== "" && !ALLOWED_MIMES.includes(file.type)) {
-      toast.error("Tipo MIME inválido. Aceitos: JSON ou CSV.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-
-    setImporting(true);
-    try {
-      // 1. Lê arquivo com encoding correto (UTF-8, fallback windows-1252/ISO-8859-1)
-      let text = await readFileWithEncoding(file, "UTF-8");
-      if (looksCorrupted(text)) {
-        const w = await readFileWithEncoding(file, "windows-1252");
-        text = looksCorrupted(w) ? await readFileWithEncoding(file, "ISO-8859-1") : w;
-      }
-
-      // 2. Parse → array de dispositivos mapeados (tudo no browser, sem Edge Function)
-      type DeviceInsert = ReturnType<typeof mapRow>;
-      let mapped: DeviceInsert[] = [];
-
-      if (isCsv) {
-        const rows = parseCSVBrowser(text);
-        if (rows.length === 0) { toast.error("CSV vazio ou sem dados."); return; }
-
-        const firstRow = rows[0];
-        const hasUdi   = Object.keys(firstRow).some(k => ["udi_di","udidi","udi","udi-di"].includes(normalizeKey(k)));
-        const hasModel = Object.keys(firstRow).some(k => ["model","modelo","nome"].includes(normalizeKey(k)));
-        if (!hasUdi || !hasModel) {
-          toast.error(`CSV inválido. Necessário: 'udi_di' e 'model'. Detectado: ${Object.keys(firstRow).filter((_, i) => i < 8).join(", ")}`);
-          return;
-        }
-        mapped = rows.map(mapRow).filter(d => d.udi_di.length > 0);
-      } else {
-        let parsed: unknown;
-        try { parsed = JSON.parse(text); } catch { toast.error("Arquivo JSON inválido."); return; }
-        const safe = parsed as Record<string, unknown>;
-        const list = (Array.isArray(safe.devices) ? safe.devices :
-                      Array.isArray(safe.dispositivos_medicos) ? safe.dispositivos_medicos : null) as Record<string,unknown>[] | null;
-        if (!list) { toast.error("JSON deve ter campo 'devices' ou 'dispositivos_medicos'."); return; }
-        mapped = list.map(d => mapRow(d as Record<string, string>)).filter(d => d.udi_di.length > 0);
-      }
-
-      if (mapped.length === 0) { toast.error("Nenhum dispositivo válido encontrado."); return; }
-
-      // 3. Deduplicar por udi_di
-      const seen = new Map<string, number>();
-      for (const d of mapped) {
-        const orig = d.udi_di;
-        const cnt = seen.get(orig) ?? 0;
-        seen.set(orig, cnt + 1);
-        if (cnt > 0) d.udi_di = `${orig}-${d.internal_code || cnt}`;
-      }
-      const deduped = Array.from(new Map(mapped.map(d => [d.udi_di, d])).values());
-
-      toast.info(`Importando ${deduped.length} dispositivos...`);
-
-      // 4. Apaga catálogo atual e insere em batches diretamente via supabase client.
-      // O RLS já garante que só admins conseguem fazer DELETE e INSERT na tabela devices.
-      // Isso elimina a dependência da Edge Function (que estava causando erros de CORS/rede).
-      const { error: deleteError } = await supabase
-        .from("devices")
-        .delete()
-        .neq("id", "00000000-0000-0000-0000-000000000000");
-
-      if (deleteError) {
-        toast.error("Erro ao limpar catálogo: " + deleteError.message);
-        return;
-      }
-
-      const BATCH = 500;
-      let inserted = 0;
-      let skipped  = 0;
-      // Coleta os IDs dos devices inseridos para criar stock_items depois
-      const insertedDeviceIds: string[] = [];
-
-      for (let i = 0; i < deduped.length; i += BATCH) {
-        const batch = deduped.slice(i, i + BATCH);
-        const { data: upserted, error } = await supabase
-          .from("devices")
-          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
-          .select("id");
-
-        if (error) {
-          logger.error(`Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
-          skipped += batch.length;
-        } else {
-          inserted += batch.length;
-          if (upserted) insertedDeviceIds.push(...upserted.map((d: { id: string }) => d.id));
-        }
-      }
-
-      if (inserted === 0) {
-        toast.error("Nenhum dispositivo foi importado. Verifique o arquivo e tente novamente.");
-        return;
-      }
-
-      // 5. Cria stock_item na fase "intermediaria" para cada device importado que ainda não tem.
-      // Busca os que já existem e insere apenas os novos — evita conflito com o
-      // partial unique index (stock_items_device_intermediaria_unique).
-      let stockCreated = 0;
-      if (insertedDeviceIds.length > 0) {
-        for (let i = 0; i < insertedDeviceIds.length; i += BATCH) {
-          const idBatch = insertedDeviceIds.slice(i, i + BATCH);
-
-          // Descobre quais já têm stock_item intermediaria
-          const { data: existing } = await supabase
-            .from("stock_items")
-            .select("device_id")
-            .in("device_id", idBatch)
-            .eq("fase", "intermediaria");
-
-          const existingIds = new Set((existing ?? []).map((r: { device_id: string }) => r.device_id));
-          const toInsert = idBatch
-            .filter(id => !existingIds.has(id))
-            .map(device_id => ({
-              device_id,
-              quantity: 0,
-              quantity_reserved: 0,
-              min_quantity: 0,
-              fase: "intermediaria" as const,
-            }));
-
-          if (toInsert.length > 0) {
-            const { data: stockInserted, error: stockErr } = await supabase
-              .from("stock_items")
-              .insert(toInsert)
-              .select("id");
-
-            if (stockErr) {
-              logger.warn(`Stock insert batch warning:`, stockErr.message);
-            } else {
-              stockCreated += stockInserted?.length ?? 0;
-            }
-          }
-        }
-      }
-
-      const stockMsg = stockCreated > 0
-        ? ` · ${stockCreated} adicionados ao estoque intermediário`
-        : "";
-      toast.success(`Importação concluída: ${inserted} dispositivos${skipped > 0 ? ` (${skipped} com erro)` : ""}${stockMsg}`);
-      setPage(0);
-      fetchDevices(debouncedSearch, 0);
-
-    } catch (err) {
-      logger.error("Import error:", err);
-      toast.error("Erro ao processar arquivo.");
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
   };
 
   // ── Excluir foto individual ───────────────────────────────────────────────
@@ -529,45 +403,54 @@ export function AdminDevices() {
     setDeletingAllPhotos(true);
     setDeleteAllPhotosProgress({ done: 0, total: 0 });
     try {
-      // 1. Lista todos os arquivos no bucket device-images (paginado, 1000 por vez)
-      const allPaths: string[] = [];
-      let offset = 0;
-      const pageSize = 1000;
+      // 1. Lista TODOS os arquivos do bucket de forma exaustiva.
+      //    Estratégia: deletar em lotes enquanto lista, sem depender de offset
+      //    (o offset do Supabase Storage não é confiável com volumes > 1000).
+      //    A cada iteração: lista os primeiros 500, deleta, repete até lista vazia.
+      const DEL_BATCH = 500;
+      let totalDeleted = 0;
+      setDeleteAllPhotosProgress({ done: 0, total: -1 }); // -1 = indeterminado
+
       while (true) {
-        const { data: files, error } = await supabase.storage
+        const { data: files, error: listErr } = await supabase.storage
           .from("device-images")
-          .list("", { limit: pageSize, offset });
-        if (error) { toast.error("Erro ao listar fotos: " + error.message); break; }
-        if (!files || files.length === 0) break;
-        allPaths.push(...files.map(f => f.name));
-        if (files.length < pageSize) break;
-        offset += pageSize;
-      }
+          .list("", { limit: DEL_BATCH, offset: 0 }); // sempre offset 0 — deleta e relista
+        if (listErr) { toast.error("Erro ao listar fotos: " + listErr.message); break; }
+        if (!files || files.length === 0) break; // bucket vazio — fim
 
-      setDeleteAllPhotosProgress({ done: 0, total: allPaths.length });
+        const batch = files
+          .filter(f => f.name && f.name !== ".emptyFolderPlaceholder")
+          .map(f => f.name);
 
-      // 2. Remove do storage em batches de 100
-      const BATCH = 100;
-      for (let i = 0; i < allPaths.length; i += BATCH) {
-        const batch = allPaths.slice(i, i + BATCH);
-        await supabase.storage.from("device-images").remove(batch);
-        setDeleteAllPhotosProgress({ done: Math.min(i + BATCH, allPaths.length), total: allPaths.length });
-      }
+        if (batch.length === 0) break;
 
-      // 3. Zera icon_url em TODOS os devices em batches
-      const { data: allDevIds } = await supabase
-        .from("devices")
-        .select("id")
-        .not("icon_url", "is", null);
-
-      if (allDevIds && allDevIds.length > 0) {
-        for (let i = 0; i < allDevIds.length; i += BATCH) {
-          const ids = allDevIds.slice(i, i + BATCH).map((d: { id: string }) => d.id);
-          await supabase.from("devices").update({ icon_url: null }).in("id", ids);
+        const { error: removeErr } = await supabase.storage.from("device-images").remove(batch);
+        if (removeErr) {
+          logger.warn("Batch delete error:", removeErr.message);
+          // não quebra — tenta continuar para deletar os demais
         }
+        totalDeleted += batch.length;
+        setDeleteAllPhotosProgress({ done: totalDeleted, total: -1 });
       }
 
-      toast.success(`${allPaths.length} foto${allPaths.length !== 1 ? "s" : ""} excluída${allPaths.length !== 1 ? "s" : ""}.`);
+      // 2. Zera icon_url em TODOS os devices com foto (paginado)
+      const DB_BATCH = 200;
+      let dbFrom = 0;
+      while (true) {
+        const { data: chunk } = await supabase
+          .from("devices")
+          .select("id")
+          .not("icon_url", "is", null)
+          .range(dbFrom, dbFrom + DB_BATCH - 1);
+        if (!chunk || chunk.length === 0) break;
+        const ids = chunk.map((d: { id: string }) => d.id);
+        await supabase.from("devices").update({ icon_url: null }).in("id", ids);
+        dbFrom += chunk.length;
+        if (chunk.length < DB_BATCH) break;
+      }
+      const totalDeleted_ = totalDeleted;
+
+      toast.success(`${totalDeleted_} foto${totalDeleted_ !== 1 ? "s" : ""} excluída${totalDeleted_ !== 1 ? "s" : ""}.`);
       fetchDevices(debouncedSearch, page);
     } catch (err) {
       logger.error("deleteAllPhotos error:", err);
@@ -804,13 +687,13 @@ export function AdminDevices() {
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-orange-600 dark:text-orange-400 font-medium">
-                Excluindo fotos… {deleteAllPhotosProgress.done}/{deleteAllPhotosProgress.total}
+                Excluindo fotos… {deleteAllPhotosProgress.done}{deleteAllPhotosProgress.total >= 0 ? `/${deleteAllPhotosProgress.total}` : ""}
               </span>
             </div>
             <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-orange-500 to-red-400 transition-all duration-300"
-                style={{ width: deleteAllPhotosProgress.total > 0 ? `${Math.round((deleteAllPhotosProgress.done / deleteAllPhotosProgress.total) * 100)}%` : "0%" }}
+                style={{ width: deleteAllPhotosProgress.total > 0 ? `${Math.round((deleteAllPhotosProgress.done / deleteAllPhotosProgress.total) * 100)}%` : deleteAllPhotosProgress.done > 0 ? "100%" : "0%" }}
               />
             </div>
           </div>
