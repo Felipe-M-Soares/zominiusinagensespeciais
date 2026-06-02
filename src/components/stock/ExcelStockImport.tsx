@@ -366,6 +366,9 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
   }
 
   // ── Importar ─────────────────────────────────────────────────────────────────
+  // CORREÇÃO: importação em bulk via RPC bulk_stock_movements para evitar o
+  // rate limit do stock_movement_atomic (60 req/60s). Com 5000+ linhas o loop
+  // linha-a-linha estourava o limite silenciosamente.
 
   async function handleImport() {
     const valid = parsedRows.filter(r => !r.parseError);
@@ -381,43 +384,84 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
 
     let ok = 0, created = 0, err = res.filter(r => r.status === "error").length;
 
-    for (let i = 0; i < valid.length; i++) {
-      const row = valid[i];
-      const idx = res.findIndex(r => r.line === row.line);
-      try {
-        const found = await findOrCreateStockItem(row.nome, row.referencia ?? "", row.lote, row.fase!);
+    // ── Fase 1: resolve/cria todos os stock_items em batches paralelos ────────
+    // (SELECT/UPSERT não têm rate limit — apenas o RPC de movimento tem)
+    const BATCH = 20;
+    type ResolvedItem = { validIndex: number; found: { id: string; model: string; created: boolean } };
+    const resolvedItems: ResolvedItem[] = [];
+
+    for (let i = 0; i < valid.length; i += BATCH) {
+      const batch = valid.slice(i, i + BATCH);
+      const batchResults = await Promise.all(
+        batch.map(row => findOrCreateStockItem(row.nome, row.referencia ?? "", row.lote, row.fase!))
+      );
+      for (let j = 0; j < batch.length; j++) {
+        const globalIdx = i + j;
+        const row = batch[j];
+        const resIdx = res.findIndex(r => r.line === row.line);
+        const found = batchResults[j];
         if (!found) {
-          res[idx] = { ...res[idx], status: "error",
-            message: `Não foi possível criar "${row.nome}"` };
+          res[resIdx] = { ...res[resIdx], status: "error", message: `Não foi possível criar "${row.nome}"` };
           err++;
         } else {
-          const mv = await registerMovement(
-            found.id, "entrada", row.quantidade!,
-            `Importação ${fileMode === "pdf" ? "PDF Saldo" : "Excel"} — lote: ${row.lote}`,
-            user?.id ?? null, null, row.lote
-          );
-          if (mv.ok) {
-            if (found.created) {
-              res[idx] = { ...res[idx], status: "created", deviceModel: found.model,
-                message: `Peça criada e +${row.quantidade} un. registradas` };
-              created++;
-            } else {
-              res[idx] = { ...res[idx], status: "ok", deviceModel: found.model,
-                message: `+${row.quantidade} un. em "${found.model}"` };
-              ok++;
-            }
-          } else {
-            res[idx] = { ...res[idx], status: "error", message: mv.error ?? "Erro" };
-            err++;
-          }
+          resolvedItems.push({ validIndex: globalIdx, found });
         }
-      } catch {
-        res[idx] = { ...res[idx], status: "error", message: "Erro inesperado" };
-        err++;
       }
       setResults([...res]);
-      setProgress({ current: i + 1, total: valid.length });
-      if (i < valid.length - 1) await new Promise(r => setTimeout(r, 60));
+      setProgress({ current: Math.min(i + BATCH, valid.length), total: valid.length });
+      await new Promise(r => setTimeout(r, 30));
+    }
+
+    // ── Fase 2: envia TODAS as movimentações em uma única chamada bulk ────────
+    if (resolvedItems.length > 0) {
+      const SOURCE = fileMode === "pdf" ? "PDF Saldo" : "Excel";
+      const bulkPayload = resolvedItems.map(({ validIndex, found }) => {
+        const row = valid[validIndex];
+        return {
+          stock_item_id: found.id,
+          type: "entrada",
+          quantity: row.quantidade ?? 1,
+          reason: `Importação ${SOURCE} — lote: ${row.lote ?? ""}`,
+          lote: row.lote ?? null,
+        };
+      });
+
+      const { data: bulkResult, error: bulkError } = await supabase.rpc("bulk_stock_movements", {
+        p_movements: bulkPayload,
+        p_user_id:   user?.id ?? null,
+        p_user_name: user?.email ?? null,
+      });
+
+      if (bulkError) {
+        toast.error("Erro ao registrar movimentações: " + bulkError.message);
+        setStep("done");
+        return;
+      }
+
+      const result = bulkResult as { ok: boolean; inserted: number; errors: { item_id: string; error: string }[] };
+      const bulkErrors = new Map((result.errors ?? []).map(e => [e.item_id, e.error]));
+
+      // Atualiza status de cada linha com base no resultado
+      for (const { validIndex, found } of resolvedItems) {
+        const row = valid[validIndex];
+        const resIdx = res.findIndex(r => r.line === row.line);
+        const errMsg = bulkErrors.get(found.id);
+        if (errMsg) {
+          res[resIdx] = { ...res[resIdx], status: "error", message: errMsg };
+          err++;
+        } else if (found.created) {
+          res[resIdx] = { ...res[resIdx], status: "created", deviceModel: found.model,
+            message: `Peça criada e +${row.quantidade} un. registradas` };
+          created++;
+        } else {
+          res[resIdx] = { ...res[resIdx], status: "ok", deviceModel: found.model,
+            message: `+${row.quantidade} un. em "${found.model}"` };
+          ok++;
+        }
+      }
+
+      setResults([...res]);
+      setProgress({ current: valid.length, total: valid.length });
     }
 
     setStep("done");
@@ -431,6 +475,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
     }
     if (err > 0) toast.error(`${err} com erro.`);
   }
+
 
   if (!open) return null;
 
