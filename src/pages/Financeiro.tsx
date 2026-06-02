@@ -1259,7 +1259,7 @@ function SefazModal({
         await notificarPedidoEnviado(pedido, nfLabel, fake.protocolo ?? "");
         toast.success(`[TESTE] NF-e simulada! Protocolo ${fake.protocolo}`, { duration: 5000 });
         setLastResult(fake);
-        onSuccess(); return;
+        onClose(); onSuccess(); return;
       }
       const { data, error } = await supabase.functions.invoke("sefaz-emitir", {
         body: { pedidoId: pedido.id, dadosFiscais: dados, modoTeste },
