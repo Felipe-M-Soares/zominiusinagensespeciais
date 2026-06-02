@@ -272,27 +272,39 @@ export function AdminDevices() {
     // Array ordenado por tamanho decrescente — referências mais longas têm prioridade
     const refEntries = Array.from(refMap.entries()).sort((a, b) => b[0].length - a[0].length);
 
-    // ── 4. Fuzzy match conservador ──────────────────────────────────────────
-    // Aceita APENAS se o nome do arquivo começa ou termina com a ref normalizada.
-    // Ex: "MUI38163N_frente" → começa com "mui38163n" ✓
-    //     "foto_MUI38163N"   → termina com "mui38163n" ✓
-    //     "BMUI38163N"       → não é prefixo/sufixo limpo → REJEITA ✗
-    // Isso evita que "bmue" bata com "mue" ou "mue1234" bata com "mue".
+    // ── 4. Fuzzy match por prefixo/sufixo ──────────────────────────────────
+    // Regra: o nome do arquivo (normalizado) deve começar OU terminar
+    // EXATAMENTE com a ref normalizada — sem caracteres extras imediatamente
+    // adjacentes que sejam alfanuméricos (evita "BUCERZ3517T" bater em "UCERZ3517T").
+    //
+    // NÃO usa "contains" — causava matches falsos em refs curtas.
+    // Maiúsculo/minúsculo e espaços já são normalizados antes do match.
+    //
+    // Exemplos com ref "UCERZ 3517T" → normalizada "ucerz3517t":
+    //   "UCERZ3517T.webp"       → normBase "ucerz3517t"       → match exato ✓
+    //   "ucerz 3517t.webp"      → normBase "ucerz3517t"       → match exato ✓
+    //   "UCERZ3517T_foto.webp"  → normBase "ucerz3517tfoto"   → prefixo ✓
+    //   "foto_UCERZ3517T.webp"  → normBase "fotoucerz3517t"   → sufixo ✓
+    //   "BUCERZ3517T.webp"      → normBase "bucerz3517t"      → não é prefixo/sufixo limpo ✗
     const fuzzyMatch = (normName: string): string | null => {
-      // Pass 1: prefixo — nome começa com a ref (sem dígito imediatamente após)
+      // Pass 1: prefixo — normName começa com a ref
+      // O caractere logo após a ref (se houver) não pode ser alfanumérico
+      // (garante que "ucerz3517tabc" não bata em "ucerz3517t" se "abc" é parte da ref)
       for (const [key, id] of refEntries) {
         if (key.length < 4) continue;
-        if (normName.startsWith(key) && (normName.length === key.length || /^[0-9]/.test(normName[key.length]) === false)) return id;
+        if (normName.startsWith(key)) {
+          const after = normName[key.length];
+          if (after === undefined || !/[a-z0-9]/.test(after)) return id;
+        }
       }
-      // Pass 2: sufixo — nome termina com a ref
+      // Pass 2: sufixo — normName termina com a ref
+      // O caractere logo antes da ref (se houver) não pode ser alfanumérico
       for (const [key, id] of refEntries) {
         if (key.length < 4) continue;
-        if (normName.endsWith(key)) return id;
-      }
-      // Pass 3: contém a ref como substring (apenas refs >= 6 chars para evitar falsos positivos)
-      for (const [key, id] of refEntries) {
-        if (key.length < 6) continue;
-        if (normName.includes(key)) return id;
+        if (normName.endsWith(key)) {
+          const before = normName[normName.length - key.length - 1];
+          if (before === undefined || !/[a-z0-9]/.test(before)) return id;
+        }
       }
       return null;
     };
