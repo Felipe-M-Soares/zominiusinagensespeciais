@@ -31,30 +31,24 @@ interface Props {
 // 203 dpi → 1mm = 8 dots
 // 50mm = 400 dots largura | 45mm = 360 dots altura
 
-function buildZpl(model: string, reference: string, lote: string): string {
+function buildZpl(model: string, reference: string, _lote: string): string {
   const labelW = 400;
   const labelH = 360;
 
+  // Linha do modelo no topo (pequena, centralizada)
+  // Referência centralizada ocupando toda a área útil
   const refText = reference;
-  const refMaxW = Math.round(labelW * 0.90);
-  const refH = 110;
+  const refMaxW = Math.round(labelW * 0.92);
+  const refH = 130;
   const refCharW = Math.round(refH * 0.6);
   const refFitsChars = Math.floor(refMaxW / refCharW);
   const refW = refText.length <= refFitsChars
     ? refCharW
     : Math.floor(refMaxW / refText.length);
   const refFontH = Math.round(refW / 0.6);
+  // Centralizar verticalmente entre a linha separadora e o fim da etiqueta
+  const refY = Math.round((labelH - 38 - refFontH) / 2) + 38;
   const refX = Math.round((labelW - refText.length * refW) / 2);
-
-  const loteText = lote;
-  const loteH = 70;
-  const loteCharW = Math.round(loteH * 0.6);
-  const loteFitsChars = Math.floor(refMaxW / loteCharW);
-  const loteW = loteText.length <= loteFitsChars
-    ? loteCharW
-    : Math.floor(refMaxW / loteText.length);
-  const loteFontH = Math.round(loteW / 0.6);
-  const loteX = Math.round((labelW - loteText.length * loteW) / 2);
 
   return [
     "^XA",
@@ -62,11 +56,12 @@ function buildZpl(model: string, reference: string, lote: string): string {
     `^LL${labelH}`,
     "^CI28",
     "^LH0,0",
-    `^FO10,8^A0N,22,13^FB${labelW - 20},2,,C^FD${model}^FS`,
-    `^FO0,38^GB${labelW},2,2^FS`,
-    `^FO${refX},55^A0N,${refFontH},${refW}^FD${refText}^FS`,
-    `^FO0,${labelH - 88},${labelW},2,2^GB${labelW},2,2^FS`,
-    `^FO${loteX},${labelH - 80}^A0N,${loteFontH},${loteW}^FD${loteText}^FS`,
+    // Modelo no topo — duas linhas se necessário
+    `^FO10,6^A0N,22,13^FB${labelW - 20},2,,C^FD${model}^FS`,
+    // Separador
+    `^FO0,36^GB${labelW},2,2^FS`,
+    // Referência centralizada vertical e horizontalmente
+    `^FO${refX},${refY}^A0N,${refFontH},${refW}^FD${refText}^FS`,
     "^PQ2",
     "^XZ",
   ].join("\n");
@@ -103,15 +98,11 @@ function printLabelFallback(model: string, reference: string, lote: string, copi
   const refFontSize = reference.length > 8
     ? Math.max(14, Math.floor(refMaxPx / reference.length * 1.55))
     : 44;
-  const loteFontSize = Math.max(12, Math.min(28, Math.floor(refMaxPx / lote.length * 1.55)));
-
   const labelHTML = Array.from({ length: copies }).map(() => `
     <div class="label">
       <div class="model">${model}</div>
       <div class="sep"></div>
       <div class="ref" style="font-size:${refFontSize}px">${reference}</div>
-      <div class="sep"></div>
-      <div class="lote" style="font-size:${loteFontSize}px">${lote}</div>
     </div>
   `).join("");
 
@@ -124,7 +115,6 @@ function printLabelFallback(model: string, reference: string, lote: string, copi
     .model { font-size: 7.5pt; font-weight: bold; text-align: center; padding: 1.5mm 1mm 1mm; line-height: 1.2; white-space: nowrap; overflow: hidden; color: #222; }
     .sep { height: 0.3mm; background: #555; width: 100%; }
     .ref { flex: 1; display: flex; align-items: center; justify-content: center; font-weight: 800; text-align: center; letter-spacing: -0.3px; padding: 0 1mm; color: #000; }
-    .lote { height: 12mm; display: flex; align-items: center; justify-content: center; font-weight: 700; text-align: center; color: #000; }
   </style></head><body>${labelHTML}</body></html>`;
 
   const iframe = document.createElement("iframe");
