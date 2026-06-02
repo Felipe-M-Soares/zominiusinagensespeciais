@@ -377,6 +377,185 @@ export function AdminDevices() {
     if (photoDirInputRef.current) photoDirInputRef.current.value = "";
   };
 
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (importing) return;
+
+    const MAX_FILE_SIZE_MB = 10;
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      toast.error(`Arquivo muito grande. Máximo: ${MAX_FILE_SIZE_MB}MB`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const isJson = file.name.toLowerCase().endsWith(".json");
+    const isCsv  = file.name.toLowerCase().endsWith(".csv");
+    if (!isJson && !isCsv) {
+      toast.error("Tipo de arquivo inválido. Aceitos: .json, .csv");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    // valida MIME além da extensão — impede renomear arquivo malicioso
+    const ALLOWED_MIMES = [
+      "application/json", "text/json",
+      "text/csv", "text/plain",
+      "application/octet-stream", // alguns browsers enviam isso para ambos
+      "", // file.type pode ser vazio em alguns sistemas operacionais
+    ];
+    if (file.type !== "" && !ALLOWED_MIMES.includes(file.type)) {
+      toast.error("Tipo MIME inválido. Aceitos: JSON ou CSV.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    setImporting(true);
+    try {
+      // 1. Lê arquivo com encoding correto (UTF-8, fallback windows-1252/ISO-8859-1)
+      let text = await readFileWithEncoding(file, "UTF-8");
+      if (looksCorrupted(text)) {
+        const w = await readFileWithEncoding(file, "windows-1252");
+        text = looksCorrupted(w) ? await readFileWithEncoding(file, "ISO-8859-1") : w;
+      }
+
+      // 2. Parse → array de dispositivos mapeados (tudo no browser, sem Edge Function)
+      type DeviceInsert = ReturnType<typeof mapRow>;
+      let mapped: DeviceInsert[] = [];
+
+      if (isCsv) {
+        const rows = parseCSVBrowser(text);
+        if (rows.length === 0) { toast.error("CSV vazio ou sem dados."); return; }
+
+        const firstRow = rows[0];
+        const hasUdi   = Object.keys(firstRow).some(k => ["udi_di","udidi","udi","udi-di"].includes(normalizeKey(k)));
+        const hasModel = Object.keys(firstRow).some(k => ["model","modelo","nome"].includes(normalizeKey(k)));
+        if (!hasUdi || !hasModel) {
+          toast.error(`CSV inválido. Necessário: 'udi_di' e 'model'. Detectado: ${Object.keys(firstRow).filter((_, i) => i < 8).join(", ")}`);
+          return;
+        }
+        mapped = rows.map(mapRow).filter(d => d.udi_di.length > 0);
+      } else {
+        let parsed: unknown;
+        try { parsed = JSON.parse(text); } catch { toast.error("Arquivo JSON inválido."); return; }
+        const safe = parsed as Record<string, unknown>;
+        const list = (Array.isArray(safe.devices) ? safe.devices :
+                      Array.isArray(safe.dispositivos_medicos) ? safe.dispositivos_medicos : null) as Record<string,unknown>[] | null;
+        if (!list) { toast.error("JSON deve ter campo 'devices' ou 'dispositivos_medicos'."); return; }
+        mapped = list.map(d => mapRow(d as Record<string, string>)).filter(d => d.udi_di.length > 0);
+      }
+
+      if (mapped.length === 0) { toast.error("Nenhum dispositivo válido encontrado."); return; }
+
+      // 3. Deduplicar por udi_di
+      const seen = new Map<string, number>();
+      for (const d of mapped) {
+        const orig = d.udi_di;
+        const cnt = seen.get(orig) ?? 0;
+        seen.set(orig, cnt + 1);
+        if (cnt > 0) d.udi_di = `${orig}-${d.internal_code || cnt}`;
+      }
+      const deduped = Array.from(new Map(mapped.map(d => [d.udi_di, d])).values());
+
+      toast.info(`Importando ${deduped.length} dispositivos...`);
+
+      // 4. Apaga catálogo atual e insere em batches diretamente via supabase client.
+      // O RLS já garante que só admins conseguem fazer DELETE e INSERT na tabela devices.
+      // Isso elimina a dependência da Edge Function (que estava causando erros de CORS/rede).
+      const { error: deleteError } = await supabase
+        .from("devices")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (deleteError) {
+        toast.error("Erro ao limpar catálogo: " + deleteError.message);
+        return;
+      }
+
+      const BATCH = 500;
+      let inserted = 0;
+      let skipped  = 0;
+      // Coleta os IDs dos devices inseridos para criar stock_items depois
+      const insertedDeviceIds: string[] = [];
+
+      for (let i = 0; i < deduped.length; i += BATCH) {
+        const batch = deduped.slice(i, i + BATCH);
+        const { data: upserted, error } = await supabase
+          .from("devices")
+          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
+          .select("id");
+
+        if (error) {
+          logger.error(`Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
+          skipped += batch.length;
+        } else {
+          inserted += batch.length;
+          if (upserted) insertedDeviceIds.push(...upserted.map((d: { id: string }) => d.id));
+        }
+      }
+
+      if (inserted === 0) {
+        toast.error("Nenhum dispositivo foi importado. Verifique o arquivo e tente novamente.");
+        return;
+      }
+
+      // 5. Cria stock_item na fase "intermediaria" para cada device importado que ainda não tem.
+      // Busca os que já existem e insere apenas os novos — evita conflito com o
+      // partial unique index (stock_items_device_intermediaria_unique).
+      let stockCreated = 0;
+      if (insertedDeviceIds.length > 0) {
+        for (let i = 0; i < insertedDeviceIds.length; i += BATCH) {
+          const idBatch = insertedDeviceIds.slice(i, i + BATCH);
+
+          // Descobre quais já têm stock_item intermediaria
+          const { data: existing } = await supabase
+            .from("stock_items")
+            .select("device_id")
+            .in("device_id", idBatch)
+            .eq("fase", "intermediaria");
+
+          const existingIds = new Set((existing ?? []).map((r: { device_id: string }) => r.device_id));
+          const toInsert = idBatch
+            .filter(id => !existingIds.has(id))
+            .map(device_id => ({
+              device_id,
+              quantity: 0,
+              quantity_reserved: 0,
+              min_quantity: 0,
+              fase: "intermediaria" as const,
+            }));
+
+          if (toInsert.length > 0) {
+            const { data: stockInserted, error: stockErr } = await supabase
+              .from("stock_items")
+              .insert(toInsert)
+              .select("id");
+
+            if (stockErr) {
+              logger.warn(`Stock insert batch warning:`, stockErr.message);
+            } else {
+              stockCreated += stockInserted?.length ?? 0;
+            }
+          }
+        }
+      }
+
+      const stockMsg = stockCreated > 0
+        ? ` · ${stockCreated} adicionados ao estoque intermediário`
+        : "";
+      toast.success(`Importação concluída: ${inserted} dispositivos${skipped > 0 ? ` (${skipped} com erro)` : ""}${stockMsg}`);
+      setPage(0);
+      fetchDevices(debouncedSearch, 0);
+
+    } catch (err) {
+      logger.error("Import error:", err);
+      toast.error("Erro ao processar arquivo.");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+
   // ── Excluir foto individual ───────────────────────────────────────────────
   const handleDeletePhoto = async (deviceId: string) => {
     setDeletingPhoto(true);
