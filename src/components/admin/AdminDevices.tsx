@@ -255,7 +255,7 @@ export function AdminDevices() {
       s
         .toLowerCase()
         .normalize("NFD")
-        .replace(/[̀-ͯ]/g, "")
+        .replace(/[\u0300-\u036f]/g, "")
         .replace(/ø/gi, "o")
         .replace(/æ/gi, "ae")
         .replace(/[\s_\-./(\\),;:°®™#@!?]+/g, "").replace("[", "").replace("]", "")
@@ -269,20 +269,30 @@ export function AdminDevices() {
       if (key) refMap.set(key, d.id);
     }
 
-    // Array ordenado por tamanho decrescente para o fuzzy match preferir
-    // referências mais específicas (mais longas) sobre genéricas
+    // Array ordenado por tamanho decrescente — referências mais longas têm prioridade
     const refEntries = Array.from(refMap.entries()).sort((a, b) => b[0].length - a[0].length);
 
-    // ── 4. Fuzzy match ──────────────────────────────────────────────────────
-    // Quando o match exato falha, testa se o nome do arquivo CONTÉM a ref
-    // (ex: "UCIR 3818IMS frente" → contém "ucir3818ims") ou vice-versa.
-    // Exige mínimo de 4 chars para evitar falsos positivos.
+    // ── 4. Fuzzy match conservador ──────────────────────────────────────────
+    // Aceita APENAS se o nome do arquivo começa ou termina com a ref normalizada.
+    // Ex: "MUI38163N_frente" → começa com "mui38163n" ✓
+    //     "foto_MUI38163N"   → termina com "mui38163n" ✓
+    //     "BMUI38163N"       → não é prefixo/sufixo limpo → REJEITA ✗
+    // Isso evita que "bmue" bata com "mue" ou "mue1234" bata com "mue".
     const fuzzyMatch = (normName: string): string | null => {
+      // Pass 1: prefixo exato — nome começa com ref (sem dígito imediatamente após)
       for (const [key, id] of refEntries) {
-        if (key.length >= 4 && normName.includes(key)) return id;
+        if (key.length < 4) continue;
+        if (normName.startsWith(key) && (normName.length === key.length || /^[0-9]/.test(normName[key.length]) === false)) return id;
       }
+      // Pass 2: sufixo exato — nome termina com ref
       for (const [key, id] of refEntries) {
-        if (normName.length >= 4 && key.includes(normName)) return id;
+        if (key.length < 4) continue;
+        if (normName.endsWith(key)) return id;
+      }
+      // Pass 3: contém ref como substring (apenas para refs longas ≥ 6 chars)
+      for (const [key, id] of refEntries) {
+        if (key.length < 6) continue;
+        if (normName.includes(key)) return id;
       }
       return null;
     };
@@ -498,43 +508,62 @@ export function AdminDevices() {
         return;
       }
 
-      // 5. Cria stock_item na fase "intermediaria" para cada device importado que ainda não tem.
-      // Busca os que já existem e insere apenas os novos — evita conflito com o
-      // partial unique index (stock_items_device_intermediaria_unique).
+      // 5. Cria stock_item "intermediaria" para TODOS os devices do banco.
+      // Usa os IDs coletados durante o upsert, mas também re-busca todos os devices
+      // para garantir que devices atualizados (não novos) também recebam stock_item.
+      // Isso corrige o limite de 500: mesmo com 5000+ devices, todos recebem stock_item.
       let stockCreated = 0;
-      if (insertedDeviceIds.length > 0) {
-        for (let i = 0; i < insertedDeviceIds.length; i += BATCH) {
-          const idBatch = insertedDeviceIds.slice(i, i + BATCH);
+      {
+        // Busca todos os device IDs atualmente no banco (paginado)
+        const allDeviceIds: string[] = [];
+        let devFrom = 0;
+        while (true) {
+          const { data: devChunk } = await supabase
+            .from("devices")
+            .select("id")
+            .range(devFrom, devFrom + BATCH - 1);
+          if (!devChunk || devChunk.length === 0) break;
+          allDeviceIds.push(...devChunk.map((d: { id: string }) => d.id));
+          if (devChunk.length < BATCH) break;
+          devFrom += BATCH;
+        }
 
-          // Descobre quais já têm stock_item intermediaria
-          const { data: existing } = await supabase
+        // Busca todos os stock_items intermediaria já existentes (paginado)
+        const existingStockIds = new Set<string>();
+        let stockFrom = 0;
+        while (true) {
+          const { data: stockChunk } = await supabase
             .from("stock_items")
             .select("device_id")
-            .in("device_id", idBatch)
-            .eq("fase", "intermediaria");
+            .eq("fase", "intermediaria")
+            .range(stockFrom, stockFrom + BATCH - 1);
+          if (!stockChunk || stockChunk.length === 0) break;
+          stockChunk.forEach((r: { device_id: string }) => existingStockIds.add(r.device_id));
+          if (stockChunk.length < BATCH) break;
+          stockFrom += BATCH;
+        }
 
-          const existingIds = new Set((existing ?? []).map((r: { device_id: string }) => r.device_id));
-          const toInsert = idBatch
-            .filter(id => !existingIds.has(id))
-            .map(device_id => ({
-              device_id,
-              quantity: 0,
-              quantity_reserved: 0,
-              min_quantity: 0,
-              fase: "intermediaria" as const,
-            }));
+        // Insere apenas os que ainda não têm stock_item intermediaria
+        const toInsertAll = allDeviceIds
+          .filter(id => !existingStockIds.has(id))
+          .map(device_id => ({
+            device_id,
+            quantity: 0,
+            quantity_reserved: 0,
+            min_quantity: 0,
+            fase: "intermediaria" as const,
+          }));
 
-          if (toInsert.length > 0) {
-            const { data: stockInserted, error: stockErr } = await supabase
-              .from("stock_items")
-              .insert(toInsert)
-              .select("id");
-
-            if (stockErr) {
-              logger.warn(`Stock insert batch warning:`, stockErr.message);
-            } else {
-              stockCreated += stockInserted?.length ?? 0;
-            }
+        for (let i = 0; i < toInsertAll.length; i += BATCH) {
+          const chunk = toInsertAll.slice(i, i + BATCH);
+          const { data: stockInserted, error: stockErr } = await supabase
+            .from("stock_items")
+            .insert(chunk)
+            .select("id");
+          if (stockErr) {
+            logger.warn(`Stock insert batch warning:`, stockErr.message);
+          } else {
+            stockCreated += stockInserted?.length ?? 0;
           }
         }
       }

@@ -1170,7 +1170,7 @@ export default function Estoque() {
         {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && !loading && (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs text-muted-foreground">
-              {filteredItems.length} peça{filteredItems.length !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
+              {filteredItems.reduce((s, i) => s + i.quantity, 0).toLocaleString("pt-BR")} peça{filteredItems.reduce((s, i) => s + i.quantity, 0) !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
               {hasActiveFilters && <span className="text-primary/70"> (filtrado)</span>}
             </p>
             {activeView !== "retrabalho" && statsOk > 0 && (

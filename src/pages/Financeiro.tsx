@@ -713,7 +713,7 @@ function NotaManualModal({
                             value={item[f.key]}
                             onChange={e => updItem(item.id, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
                             placeholder={f.ph}
-                            className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                            className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                               f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
@@ -725,7 +725,7 @@ function NotaManualModal({
                         <input type="number" min="1" step="1"
                           value={item.quantidade}
                           onChange={e => updItem(item.id, "quantidade", parseInt(e.target.value) || 1)}
-                          className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                          className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                         />
                       </div>
                       <div className="space-y-1">
@@ -733,7 +733,7 @@ function NotaManualModal({
                         <input type="number" min="0" step="0.01"
                           value={item.valorUnitario}
                           onChange={e => updItem(item.id, "valorUnitario", e.target.value)}
-                          className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                          className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                             vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
                         />
                       </div>
@@ -751,7 +751,7 @@ function NotaManualModal({
                 <input type="number" min="0" step="0.01"
                   value={dados.valorFrete}
                   onChange={e => upd("valorFrete", e.target.value)}
-                  className="w-24 h-7 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                  className="w-24 h-7 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                 />
               </div>
               <div className="flex items-center justify-between rounded-xl border border-violet-500/25 bg-violet-500/8 px-3 py-2.5">
@@ -1259,7 +1259,7 @@ function SefazModal({
         await notificarPedidoEnviado(pedido, nfLabel, fake.protocolo ?? "");
         toast.success(`[TESTE] NF-e simulada! Protocolo ${fake.protocolo}`, { duration: 5000 });
         setLastResult(fake);
-        onSuccess(); return;
+        onClose(); onSuccess(); return;
       }
       const { data, error } = await supabase.functions.invoke("sefaz-emitir", {
         body: { pedidoId: pedido.id, dadosFiscais: dados, modoTeste },
@@ -1490,7 +1490,7 @@ function SefazModal({
                             value={item[f.key]}
                             onChange={e => updItem(idx, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
                             placeholder={f.ph}
-                            className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                            className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                               f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
@@ -1514,7 +1514,7 @@ function SefazModal({
                         <input type="number" min="0" max="100" step="0.01"
                           value={item.aliqICMS}
                           onChange={e => updItem(idx, "aliqICMS", e.target.value)}
-                          className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                          className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                         />
                       </div>
                       <div className="space-y-1">
@@ -1541,7 +1541,7 @@ function SefazModal({
                 <span className="text-[11px] text-muted-foreground">Frete (R$)</span>
                 <input type="number" min="0" step="0.01"
                   value={dados.valorFrete} onChange={e => upd("valorFrete", e.target.value)}
-                  className="w-24 h-7 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                  className="w-24 h-7 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                 />
               </div>
               <div className="flex items-center justify-between rounded-xl border border-violet-500/25 bg-violet-500/8 px-3 py-2.5">
@@ -3247,7 +3247,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" max="100" step="1"
                         value={editData.desconto_max_pct ?? 0}
                         onChange={e => setEditData(prev => ({ ...prev, desconto_max_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                       />
                       <span className="text-[10px] text-muted-foreground shrink-0">%</span>
                     </div>
@@ -3288,7 +3288,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" max="100" step="1"
                         value={editData.margem_minima_pct ?? 0}
                         onChange={e => setEditData(prev => ({ ...prev, margem_minima_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                       />
                       <span className="text-[10px] text-muted-foreground shrink-0">%</span>
                     </div>

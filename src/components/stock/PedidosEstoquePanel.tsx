@@ -8,7 +8,7 @@
  *  4. Clica "Marcar como Pronto" → status vira "pronto", aguarda financeiro emitir NF
  */
 
-import { useState, useEffect, useCallback, useRef, memo } from "react";
+import { AlertCircle, useState, useEffect, useCallback, useRef, memo } from "react";
 import { displayLote } from "@/lib/lote";
 import {
   Package,
@@ -330,10 +330,13 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     return totalSel(item.id) === item.quantidade;
   });
 
-  // All items confirmed (used to enable "Marcar como Pronto" in separando mode with multiple items)
+  // All items confirmed (used to enable "Marcar como Pronto" in separando mode)
+  // For single-item orders: require that total selected equals required quantity
+  // For multi-item orders: require each item individually confirmed via "Confirmar Item"
+  const allSelectionComplete = isSeparando && pedido.itens.every(item => totalSel(item.id) === item.quantidade);
   const allItemsConfirmed = isSeparando && pedido.itens.length > 1
     ? pedido.itens.every(item => confirmedItems.has(item.id))
-    : true;
+    : allSelectionComplete;
 
   // Confirm a single item during separation: save snapshot and mark locally
   async function handleConfirmarItem(item: PedidoItem) {
@@ -483,33 +486,131 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   <meta charset="UTF-8">
   <title>Pedido — ${escHtml(pedido.cliente_nome)}</title>
   <style>
+    @page {
+      size: A4 portrait;
+      margin: 18mm 16mm 16mm 16mm;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; padding: 24px 28px; color: #111; font-size: 13px; }
-    .header { margin-bottom: 18px; border-bottom: 2px solid #ddd6fe; padding-bottom: 14px; }
-    h1 { font-size: 20px; font-weight: 800; color: #3b0764; margin-bottom: 6px; }
-    .meta { font-size: 12px; color: #555; display: flex; flex-wrap: wrap; gap: 12px; }
-    .meta strong { color: #333; }
-    .obs { font-size: 12px; color: #666; background: #f9f5ff; border-left: 3px solid #a78bfa; padding: 8px 12px; margin-bottom: 14px; border-radius: 0 6px 6px 0; }
+    body {
+      font-family: Arial, sans-serif;
+      color: #111;
+      font-size: 15px;
+      background: #fff;
+    }
+    .header {
+      margin-bottom: 20px;
+      border-bottom: 2.5px solid #ddd6fe;
+      padding-bottom: 14px;
+    }
+    .header-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .header-icon {
+      width: 36px; height: 36px;
+      background: #f3f0ff;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    h1 { font-size: 26px; font-weight: 900; color: #3b0764; }
+    .meta {
+      font-size: 14px;
+      color: #555;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .meta strong { color: #222; }
+    .obs {
+      font-size: 13px;
+      color: #555;
+      background: #f9f5ff;
+      border-left: 4px solid #a78bfa;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      border-radius: 0 8px 8px 0;
+    }
     table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; padding: 8px 10px; background: #f3f0ff; color: #5b21b6; border-bottom: 2px solid #ddd6fe; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-    td { padding: 7px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      background: #f3f0ff;
+      color: #5b21b6;
+      border-bottom: 2.5px solid #ddd6fe;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #ede9fe;
+      vertical-align: middle;
+    }
     tr:nth-child(even) td { background: #faf9ff; }
-    .col-num { width: 28px; color: #bbb; font-size: 11px; }
-    .col-model { width: 38%; }
+    .col-num { width: 32px; color: #bbb; font-size: 13px; }
+    .col-model { width: 40%; }
     .col-lotes { }
-    .col-qty { width: 80px; text-align: right; font-weight: 800; font-size: 15px; color: #3b0764; white-space: nowrap; }
-    .model-name { display: block; font-weight: 600; font-size: 12px; color: #1a1a2e; }
-    .model-ref { display: block; font-family: monospace; font-size: 10px; color: #888; margin-top: 1px; }
-    .lote-badge { display: inline-block; background: #f3f0ff; color: #5b21b6; font-family: monospace; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; border: 1px solid #ddd6fe; margin: 1px 2px 1px 0; }
-    .lote-empty { color: #bbb; font-size: 11px; }
-    .footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #eee; display: flex; justify-content: space-between; font-size: 11px; color: #999; }
-    .footer strong { color: #5b21b6; }
-    @media print { button { display: none } body { padding: 16px } }
+    .col-qty {
+      width: 90px;
+      text-align: right;
+      font-weight: 900;
+      font-size: 20px;
+      color: #3b0764;
+      white-space: nowrap;
+    }
+    .model-name {
+      display: block;
+      font-weight: 700;
+      font-size: 15px;
+      color: #1a1a2e;
+      line-height: 1.3;
+    }
+    .model-ref {
+      display: block;
+      font-family: monospace;
+      font-size: 12px;
+      color: #888;
+      margin-top: 2px;
+    }
+    .lote-badge {
+      display: inline-block;
+      background: #f3f0ff;
+      color: #5b21b6;
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 5px;
+      border: 1px solid #ddd6fe;
+      margin: 2px 3px 2px 0;
+    }
+    .lote-empty { color: #bbb; font-size: 13px; }
+    .footer {
+      margin-top: 24px;
+      padding-top: 14px;
+      border-top: 1px solid #ede9fe;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: #999;
+    }
+    .footer strong { color: #5b21b6; font-size: 15px; }
+    @media print {
+      button { display: none; }
+    }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>📦 Pedido</h1>
+    <div class="header-top">
+      <div class="header-icon">📦</div>
+      <h1>Pedido</h1>
+    </div>
     <div class="meta">
       <span>Cliente: <strong>${escHtml(pedido.cliente_nome)}</strong></span>
       <span>Vendedora: <strong>${escHtml(pedido.vendedora_nome)}</strong></span>
@@ -885,12 +986,14 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                   <button
                     type="button"
                     onClick={() => onMarcarPronto(pedido, sel, expIdByItem)}
-                    disabled={multiPecas && !allItemsConfirmed}
+                    disabled={!allItemsConfirmed}
                     className="w-full h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
                   >
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    {multiPecas && !allItemsConfirmed
-                      ? `Confirme todas as peças (${totalConfirmed}/${totalPecasTipos})`
+                    {!allItemsConfirmed
+                      ? (multiPecas
+                          ? `Confirme todas as peças (${totalConfirmed}/${totalPecasTipos})`
+                          : `Selecione ${pedido.itens[0]?.quantidade ?? 0} un. para continuar`)
                       : "Marcar como Pronto"
                     }
                   </button>
@@ -1103,12 +1206,16 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
 
   if (!pedido) return null;
 
-  // Valida: todos os itens com estoque devem ter total selecionado === quantidade pedida
-  const canConfirm = pedido.itens.every(item => {
-    const disponiveis = lotesDisponiveis[item.id] ?? [];
-    if (disponiveis.length === 0) return true; // sem estoque, deixa passar com aviso
-    return totalSelecionado(item.id) === item.quantidade;
-  });
+  // Valida: todos os itens devem ter total selecionado === quantidade pedida.
+  // Se não houver lotes disponíveis para um item, canConfirm = false (falta estoque).
+  const canConfirm = pedido.itens.every(item =>
+    totalSelecionado(item.id) === item.quantidade
+  );
+
+  // Itens com seleção incompleta — usado para mostrar aviso
+  const itensFaltando = pedido.itens.filter(item =>
+    totalSelecionado(item.id) < item.quantidade
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -1242,12 +1349,25 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
           })}
         </div>
 
-        <div className="px-5 pb-5 pt-3 border-t border-border/20">
+        <div className="px-5 pb-5 pt-3 border-t border-border/20 space-y-2">
+          {!canConfirm && itensFaltando.length > 0 && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/8 px-3 py-2 flex items-start gap-2 text-[11px] text-destructive">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>Estoque insuficiente:</strong>{" "}
+                {itensFaltando.map(item => {
+                  const falta = item.quantidade - totalSelecionado(item.id);
+                  return `${item.device_model ?? item.device_reference ?? "item"} (faltam ${falta} un.)`;
+                }).join(" · ")}
+              </span>
+            </div>
+          )}
           <button
             type="button"
             onClick={handleConfirmar}
             disabled={saving || loading || saved || !canConfirm}
-            className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            title={!canConfirm ? "Preencha todas as quantidades antes de confirmar" : undefined}
+            className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {saving ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : saved ? <CheckCircle2 className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
             {saved ? "Confirmado!" : "Confirmar e Reservar Peças"}
@@ -1614,6 +1734,18 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     expIdByItem: Record<string, string>
   ) {
     if (!user) return;
+
+    // Validação: todos os itens devem ter a quantidade completa selecionada
+    const itensFaltando = pedido.itens.filter(item => {
+      const selected = Object.values(lotesSelecionados[item.id] ?? {}).reduce((s, q) => s + q, 0);
+      return selected < item.quantidade;
+    });
+    if (itensFaltando.length > 0) {
+      const nomes = itensFaltando.map(i => i.device_model ?? i.device_reference ?? "item").join(", ");
+      toast.error(`Peças faltando no pedido de ${pedido.cliente_nome}: ${nomes}`);
+      return;
+    }
+
     try {
       // 1. Monta snapshot de lotes_separados a partir da seleção atual
       // (mesma lógica do handleSalvarSeparacao — merge por expId+lote)
