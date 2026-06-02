@@ -1160,106 +1160,68 @@ const GS1_SITES: Record<GS1Site, { label: string; url: string; color: string }> 
 };
 
 function GS1PortalSelector() {
-  const [active, setActive] = useState<GS1Site | null>(null);
-  const [blocked, setBlocked] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  // O GS1 Brasil bloqueia iframes (X-Frame-Options: SAMEORIGIN).
+  // Solução: painel de links diretos com atalhos rápidos + abertura em nova aba.
+  const [gtinQuery, setGtinQuery] = useState("");
 
-  function open(site: GS1Site) {
-    setBlocked(false);
-    setActive(site);
-  }
-
-  // Detectar se o iframe foi bloqueado (X-Frame-Options / CSP)
-  function handleIframeLoad() {
-    try {
-      // Se conseguir acessar contentDocument, não foi bloqueado
-      const doc = iframeRef.current?.contentDocument;
-      if (!doc || doc.URL === "about:blank") setBlocked(true);
-    } catch {
-      setBlocked(true);
-    }
-  }
-
-  const site = active ? GS1_SITES[active] : null;
+  const handleGtinSearch = () => {
+    const q = gtinQuery.trim();
+    if (!q) return;
+    window.open(`https://www.gs1br.org/consulta-gtin?gtin=${encodeURIComponent(q)}`, "_blank", "noopener,noreferrer");
+  };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
+      {/* Portais principais */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {(Object.entries(GS1_SITES) as [GS1Site, typeof GS1_SITES[GS1Site]][]).map(([key, s]) => (
-          <button
+          <a
             key={key}
-            type="button"
-            onClick={() => open(key)}
+            href={s.url}
+            target="_blank"
+            rel="noopener noreferrer"
             className={cn(
               "flex items-center justify-center gap-2 h-9 rounded-xl text-[12px] font-semibold transition-all",
-              key === "cnp" ? "bg-teal-500 hover:bg-teal-400 text-white" : "bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 text-teal-600 dark:text-teal-400",
-              active === key && "ring-2 ring-teal-500/50 ring-offset-1 ring-offset-transparent"
+              key === "cnp"
+                ? "bg-teal-500 hover:bg-teal-400 text-white"
+                : "bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 text-teal-600 dark:text-teal-400"
             )}
           >
-            <Layers className="h-3.5 w-3.5 shrink-0" />
+            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{s.label}</span>
-          </button>
+          </a>
         ))}
       </div>
 
-      {active && site && (
-        <div className="rounded-xl border border-teal-500/20 overflow-hidden">
-          {/* Barra do iframe */}
-          <div className="flex items-center gap-2 px-3 py-2 bg-muted/20 border-b border-border/30">
-            <div className="flex gap-1">
-              <div className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
-              <div className="h-2.5 w-2.5 rounded-full bg-amber-400/70" />
-              <div className="h-2.5 w-2.5 rounded-full bg-teal-400/70" />
-            </div>
-            <span className="text-[10px] text-muted-foreground/60 font-mono truncate flex-1">{site.url}</span>
-            <a
-              href={site.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 hover:underline shrink-0"
-              title="Abrir em nova aba"
-            >
-              <ExternalLink className="h-3 w-3" />
-              Nova aba
-            </a>
-            <button
-              type="button"
-              onClick={() => setActive(null)}
-              className="h-5 w-5 flex items-center justify-center rounded hover:bg-muted/50 text-muted-foreground/60 transition-colors shrink-0"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-
-          {blocked ? (
-            /* Fallback: o site bloqueou o iframe */
-            <div className="flex flex-col items-center justify-center gap-3 py-12 bg-muted/5 text-center px-6">
-              <ExternalLink className="h-8 w-8 text-teal-500/50" />
-              <p className="text-sm font-medium text-foreground">Este portal não permite incorporação</p>
-              <p className="text-[11px] text-muted-foreground/70">O GS1 Brasil bloqueia exibição em apps externos por segurança.</p>
-              <a
-                href={site.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 h-9 px-5 rounded-xl bg-teal-500 hover:bg-teal-400 text-white text-[12px] font-semibold transition-colors"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Abrir {site.label}
-              </a>
-            </div>
-          ) : (
-            <iframe
-              ref={iframeRef}
-              src={site.url}
-              className="w-full h-[560px] bg-white"
-              onLoad={handleIframeLoad}
-              onError={() => setBlocked(true)}
-              title={site.label}
-              sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-            />
-          )}
+      {/* Busca rápida de GTIN */}
+      <div className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Hash className="h-4 w-4 text-teal-500 shrink-0" />
+          <span className="text-[12px] font-semibold text-foreground">Consulta Rápida de GTIN</span>
         </div>
-      )}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={gtinQuery}
+            onChange={e => setGtinQuery(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleGtinSearch()}
+            placeholder="Digite o GTIN (EAN-13 ou EAN-8)..."
+            className="flex-1 h-9 rounded-xl bg-background border border-border/40 px-3 text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-teal-500/30 placeholder:text-muted-foreground/50"
+          />
+          <button
+            type="button"
+            onClick={handleGtinSearch}
+            disabled={!gtinQuery.trim()}
+            className="h-9 px-4 rounded-xl bg-teal-500 hover:bg-teal-400 text-white text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Consultar
+          </button>
+        </div>
+        <p className="text-[10px] text-muted-foreground/60">
+          Abre a consulta diretamente no portal GS1 Brasil em nova aba.
+        </p>
+      </div>
     </div>
   );
 }

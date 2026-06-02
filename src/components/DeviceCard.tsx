@@ -72,7 +72,7 @@ export function DeviceCard({ device, onClick }: Props) {
     >
       {/* ── Área de imagem: quadrada, padding uniforme, sem scale ── */}
       {/* aspect-[2/1] + object-contain + p-2 = mesma "caixa" para todas as peças, 50% menor */}
-      <div className="relative w-full aspect-[2/1] bg-muted/25 overflow-hidden shrink-0">
+      <div className="relative w-full aspect-[2/1] bg-white overflow-hidden shrink-0">
 
         {/* Badge classificação — canto sup. direito */}
         <div className="absolute top-1.5 right-1.5 z-10">
@@ -98,7 +98,7 @@ export function DeviceCard({ device, onClick }: Props) {
             src={device.icon_url!}
             alt={device.model}
             onError={() => setImgError(true)}
-            className="w-full h-full object-contain p-2 mix-blend-multiply dark:mix-blend-screen"
+            className="w-full h-full object-contain p-2"
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 select-none">
