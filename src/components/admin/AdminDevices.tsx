@@ -258,7 +258,7 @@ export function AdminDevices() {
         .replace(/[̀-ͯ]/g, "")
         .replace(/ø/gi, "o")
         .replace(/æ/gi, "ae")
-        .replace(/[\s_\-./(\\),;:°®™#@!?]+/g, "").replace(/[\[\]]/g, "")
+        .replace(/[\s_\-./(\\),;:°®™#@!?]+/g, "").replace("[", "").replace("]", "")
         .replace(/[^a-z0-9]/g, "");
 
     // ── 3. Mapa exato: ref_normalizada → deviceId ───────────────────────────
