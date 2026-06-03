@@ -1,4 +1,3 @@
-BEGIN;
 -- =============================================================================
 -- 019: Performance — carga do estoque
 --
@@ -240,4 +239,3 @@ ANALYZE public.devices;
 ANALYZE public.pedido_itens;
 ANALYZE public.pedidos_comerciais;
 
-COMMIT;
