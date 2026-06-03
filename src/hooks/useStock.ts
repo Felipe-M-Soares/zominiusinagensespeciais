@@ -152,7 +152,7 @@ export function useStock(search: string) {
       // ── Passo 2: RPC principal — 1 chamada, tudo incluído ─────────────────
       const { data: rpcResult, error: rpcError } = await supabase.rpc("load_stock_page", {
         p_search:     null,
-        p_limit:      500,       // máximo permitido pelo RPC (clampado no servidor)
+        p_limit:      10000,     // suporta estoques grandes (>5000 itens)
         p_offset:     0,
         p_device_ids: deviceIds, // null = sem filtro (carrega todos)
       });
