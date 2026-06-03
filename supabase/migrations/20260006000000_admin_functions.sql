@@ -6,7 +6,7 @@ CREATE OR REPLACE FUNCTION public.admin_create_user(
   p_login        text,
   p_password     text,
   p_display_name text,
-  p_role         text DEFAULT 'funcionario'
+  p_role         text DEFAULT 'estoque'
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 DECLARE
   v_caller_id   uuid := auth.uid();
@@ -27,7 +27,10 @@ BEGIN
   IF length(p_password) > 72 THEN RETURN jsonb_build_object('error', 'Senha deve ter no máximo 72 caracteres.'); END IF;
   IF length(trim(p_display_name)) < 2 THEN RETURN jsonb_build_object('error', 'Nome inválido.'); END IF;
 
-  v_valid_role := CASE WHEN p_role = 'admin' THEN 'admin' WHEN p_role = 'vendedora' THEN 'vendedora' WHEN p_role = 'financeiro' THEN 'financeiro' ELSE 'funcionario' END;
+  v_valid_role := CASE
+    WHEN p_role IN ('admin','estoque','qualidade','comercial','financeiro','producao') THEN p_role
+    ELSE 'estoque'
+  END;
   v_email := v_clean_login || '@interno.conceptus';
 
   INSERT INTO auth.users (
@@ -105,32 +108,4 @@ GRANT EXECUTE ON FUNCTION public.admin_create_user   TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_reset_password TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_delete_user   TO authenticated;
 
--- Conta admin padrão
-DO $admin$
-DECLARE
-  v_uid  uuid;
-  v_email text := 'admin@interno.conceptus';
-BEGIN
-  SELECT id INTO v_uid FROM auth.users WHERE email = v_email LIMIT 1;
-  IF v_uid IS NOT NULL THEN RAISE NOTICE 'Admin já existe: %', v_uid; RETURN; END IF;
-
-  INSERT INTO auth.users (
-    id, instance_id, email, encrypted_password, email_confirmed_at,
-    raw_user_meta_data, raw_app_meta_data, aud, role,
-    created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change
-  ) VALUES (
-    gen_random_uuid(), '00000000-0000-0000-0000-000000000000', v_email,
-    extensions.crypt('Admin@2024', extensions.gen_salt('bf')), now(),
-    jsonb_build_object('display_name', 'Administrador'),
-    jsonb_build_object('provider', 'email', 'providers', ARRAY['email']),
-    'authenticated', 'authenticated', now(), now(), '', '', '', ''
-  ) RETURNING id INTO v_uid;
-
-  INSERT INTO public.profiles (user_id, display_name, email, login, approved, must_change_password)
-  VALUES (v_uid, 'Administrador', v_email, 'admin', true, false)
-  ON CONFLICT (user_id) DO UPDATE SET display_name='Administrador', login='admin', approved=true, must_change_password=false;
-
-  INSERT INTO public.user_roles (user_id, role) VALUES (v_uid, 'admin')
-  ON CONFLICT (user_id) DO UPDATE SET role = 'admin';
-END;
-$admin$;
+-- Conta admin padrão movida para migration 022_seed_admin_account.sql

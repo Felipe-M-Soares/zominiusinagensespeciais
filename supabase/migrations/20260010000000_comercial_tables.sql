@@ -92,7 +92,7 @@ ALTER TABLE public.notificacoes ENABLE ROW LEVEL SECURITY;
 -- ── RLS Comercial ─────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "clientes_select" ON public.clientes;
 CREATE POLICY "clientes_select" ON public.clientes FOR SELECT TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin','funcionario','financeiro'))
+  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin','comercial','estoque','financeiro'))
   OR auth.uid() = created_by
 );
 DROP POLICY IF EXISTS "clientes_insert" ON public.clientes;
@@ -108,7 +108,7 @@ CREATE POLICY "clientes_delete" ON public.clientes FOR DELETE TO authenticated U
 
 DROP POLICY IF EXISTS "pedidos_select" ON public.pedidos_comerciais;
 CREATE POLICY "pedidos_select" ON public.pedidos_comerciais FOR SELECT TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin','funcionario','financeiro'))
+  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin','comercial','estoque','financeiro'))
   OR vendedora_id = auth.uid()
 );
 DROP POLICY IF EXISTS "pedidos_insert" ON public.pedidos_comerciais;
@@ -124,7 +124,7 @@ DROP POLICY IF EXISTS "pedido_itens_select" ON public.pedido_itens;
 CREATE POLICY "pedido_itens_select" ON public.pedido_itens FOR SELECT TO authenticated USING (
   EXISTS (SELECT 1 FROM public.pedidos_comerciais pc WHERE pc.id = pedido_id AND (
     pc.vendedora_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin','funcionario','financeiro'))
+    EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin','comercial','estoque','financeiro'))
   ))
 );
 DROP POLICY IF EXISTS "pedido_itens_insert" ON public.pedido_itens;

@@ -6,7 +6,7 @@
 CREATE TABLE public.user_roles (
   id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  role    app_role NOT NULL DEFAULT 'funcionario',
+  role    app_role NOT NULL DEFAULT 'estoque',
   UNIQUE (user_id)
 );
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;

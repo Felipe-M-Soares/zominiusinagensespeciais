@@ -62,7 +62,7 @@ BEGIN
     true,
     true
   );
-  INSERT INTO public.user_roles (user_id, role) VALUES (NEW.id, 'funcionario');
+  INSERT INTO public.user_roles (user_id, role) VALUES (NEW.id, 'estoque');
   RETURN NEW;
 END;
 $$;
