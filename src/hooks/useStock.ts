@@ -138,28 +138,52 @@ export function useStock(search: string) {
         }
       }
 
-      // ── Passo 2: RPC principal — 1 chamada, tudo incluído ─────────────────
-      const { data: rpcResult, error: rpcError } = await supabase.rpc("load_stock_page", {
-        p_search:     null,
-        p_limit:      500,       // máximo permitido pelo RPC (clampado no servidor)
-        p_offset:     0,
-        p_device_ids: deviceIds, // null = sem filtro (carrega todos)
-      });
+      // ── Passo 2: RPC principal — pagina até buscar todos os itens ──────────
+      // O RPC tem teto de 2000 por chamada. Paginamos até total_count para
+      // garantir que todos os itens (ex: 5133 no intermediário) sejam carregados.
+      const PAGE_SIZE = 2000;
+      let allItems:       Record<string, unknown>[] = [];
+      let allReservedMap: Record<string, number>    = {};
+      let allLoteMapRaw:  Record<string, number>    = {};
+      let totalCount = 0;
+      let offset = 0;
 
-      if (rpcError) throw rpcError;
-      if (gen !== genRef.current) return; // carga obsoleta — descarta
+      while (true) {
+        const { data: rpcResult, error: rpcError } = await supabase.rpc("load_stock_page", {
+          p_search:     null,
+          p_limit:      PAGE_SIZE,
+          p_offset:     offset,
+          p_device_ids: deviceIds,
+        });
 
-      const payload = rpcResult as {
-        total_count:  number;
-        items:        Record<string, unknown>[];
-        reserved_map: Record<string, number>;
-        lote_map:     Record<string, number>;
-      };
+        if (rpcError) throw rpcError;
+        if (gen !== genRef.current) return; // carga obsoleta — descarta
 
-      const reservedMap = payload.reserved_map ?? {};
-      const loteMapRaw  = payload.lote_map     ?? {};
+        const payload = rpcResult as {
+          total_count:  number;
+          items:        Record<string, unknown>[];
+          reserved_map: Record<string, number>;
+          lote_map:     Record<string, number>;
+        };
 
-      const normalized: StockItem[] = (payload.items ?? [])
+        totalCount    = payload.total_count ?? 0;
+        allItems      = allItems.concat(payload.items ?? []);
+        allReservedMap = { ...allReservedMap, ...(payload.reserved_map ?? {}) };
+        allLoteMapRaw  = { ...allLoteMapRaw,  ...(payload.lote_map     ?? {}) };
+
+        const fetched = (payload.items ?? []).length;
+        offset += fetched;
+
+        // Para quando buscamos tudo ou a página veio vazia
+        if (fetched < PAGE_SIZE || offset >= totalCount) break;
+      }
+
+      if (gen !== genRef.current) return;
+
+      const reservedMap = allReservedMap;
+      const loteMapRaw  = allLoteMapRaw;
+
+      const normalized: StockItem[] = allItems
         .map((row: Record<string, unknown>) => {
           const qty      = (row.quantity as number) ?? 0;
           // reserved_map sobrescreve o valor do banco para itens da expedição
@@ -179,14 +203,14 @@ export function useStock(search: string) {
       );
 
       setItems(normalized);
-      setTotalCount(payload.total_count ?? normalized.length);
+      setTotalCount(totalCount || normalized.length);
       setLoteMap(newLoteMap);
       lastLoadRef.current = Date.now();
 
       // Persiste no cache — navegação de volta é instantânea (sem spinner)
       queryClient.setQueryData(cacheKey, {
         items:      normalized,
-        totalCount: payload.total_count ?? normalized.length,
+        totalCount: totalCount || normalized.length,
         loteMap:    newLoteMap,
       });
     } catch (e: unknown) {
