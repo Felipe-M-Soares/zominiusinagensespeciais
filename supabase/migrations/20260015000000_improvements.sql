@@ -104,6 +104,7 @@ BEGIN
   RETURN jsonb_build_object('ok', true);
 END; $$;
 
+GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz(uuid,text,text,text,timestamptz,uuid,text,text) TO authenticated;
 
 -- ── 6. Campo rastreio_envio em pedidos_comerciais ─────────────────────────────
 ALTER TABLE public.pedidos_comerciais
@@ -113,4 +114,3 @@ ALTER TABLE public.pedidos_comerciais
 CREATE INDEX IF NOT EXISTS idx_pedidos_rastreio
   ON public.pedidos_comerciais (rastreio_envio) WHERE rastreio_envio IS NOT NULL;
 
-GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz(uuid,text,text,text,timestamptz,uuid,text,text) TO authenticated;

@@ -1,3 +1,4 @@
+BEGIN;
 -- PERF-04: Funções aggregate para evitar paginação de milhares de rows no cliente
 
 -- Retorna soma total de peças no estoque (quantity > 0)
@@ -36,3 +37,4 @@ $$;
 GRANT EXECUTE ON FUNCTION get_total_stock_quantity() TO authenticated;
 GRANT EXECUTE ON FUNCTION get_devices_regularizacao_counts() TO authenticated;
 
+COMMIT;

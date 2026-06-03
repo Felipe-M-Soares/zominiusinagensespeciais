@@ -82,6 +82,7 @@ BEGIN
   INSERT INTO public.rate_limit_log (user_id, action) VALUES (p_user_id, p_action);
   RETURN true;
 END; $$;
+GRANT EXECUTE ON FUNCTION public.check_rate_limit(text, uuid) TO authenticated;
 
 -- ── Adiciona check_rate_limit nas RPCs críticas ───────────────────────────────
 
@@ -122,6 +123,7 @@ BEGIN
 
   RETURN jsonb_build_object('ok', true);
 END; $$;
+GRANT EXECUTE ON FUNCTION public.stock_movement_atomic(uuid,text,integer,text,text,uuid,text) TO authenticated;
 
 -- cancel_pedido com rate limit
 DROP FUNCTION IF EXISTS public.cancel_pedido(uuid);
@@ -154,6 +156,7 @@ BEGIN
   UPDATE public.pedidos_comerciais SET status = 'cancelado' WHERE id = p_pedido_id;
   RETURN jsonb_build_object('ok', true);
 END; $$;
+GRANT EXECUTE ON FUNCTION public.cancel_pedido(uuid) TO authenticated;
 
 -- faturar_pedido_sefaz com rate limit (redefine a versão da migration 015)
 DROP FUNCTION IF EXISTS public.faturar_pedido_sefaz(uuid, text, text, text, timestamptz, uuid, text, text);
@@ -198,8 +201,5 @@ BEGIN
 
   RETURN jsonb_build_object('ok', true);
 END; $$;
-
-GRANT EXECUTE ON FUNCTION public.check_rate_limit(text, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.stock_movement_atomic(uuid,text,integer,text,text,uuid,text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.cancel_pedido(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz(uuid,text,text,text,timestamptz,uuid,text,text) TO authenticated;
+
