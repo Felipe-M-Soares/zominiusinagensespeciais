@@ -592,8 +592,6 @@ export default function Estoque() {
   // ── Estado principal ──────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ActiveView>("dashboard");
   const [search, setSearch] = useState("");
-  // IDs de stock_items que contêm o lote pesquisado (para busca por lote no front)
-  const [loteSearchItemIds, setLoteSearchItemIds] = useState<Set<string>>(new Set());
   const [querySearch, setQuerySearch] = useState("");
 
   // Pedidos pendentes (badge na aba)
@@ -680,7 +678,7 @@ export default function Estoque() {
   const adminMenuRef = useRef<HTMLDivElement>(null);
 
   // ── Dados do servidor ─────────────────────────────────────────────────────
-  const { items: allItems, totalCount, loteMap, loading, error, refetch } = useStock(""); // busca feita no front
+  const { items: allItems, totalCount, loteMap, loading, error, refetch } = useStock(querySearch);
 
   // Derivados dos dados (não são hooks — apenas cálculos puros)
   const intermediariaItemsAll = allItems.filter((i) => i.fase === "intermediaria");
@@ -700,35 +698,18 @@ export default function Estoque() {
     return []; // dashboard, recebimento — rawItems não é usado nessa view
   }, [activeView, expedicaoItems, intermediariaItems, retrabalhoItems]);
 
-  const filteredItems = useMemo(() => {
-    const q = querySearch.trim().toLowerCase();
-    return rawItems.filter(item => {
-      if (!item.device) return false;
-
-      // Filtro de texto — feito no front sobre todos os items em memória
-      if (q) {
-        const matchText =
-          item.device.model?.toLowerCase().includes(q) ||
-          item.device.reference?.toLowerCase().includes(q) ||
-          item.device.internal_code?.toLowerCase().includes(q) ||
-          item.device.brand_name?.toLowerCase().includes(q) ||
-          item.device.udi_di?.toLowerCase().includes(q) ||
-          item.device.anvisa_registration?.toLowerCase().includes(q) ||
-          // busca por lote: verifica se o item está na lista de ids por lote
-          loteSearchItemIds.has(item.id);
-        if (!matchText) return false;
-      }
-
-      // Quando há busca ativa e o usuário não pediu explicitamente ver zerados
-      if (q && filterStatus !== "zerado" && item.quantity === 0) return false;
-      if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
-      if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
-      if (filterStatus === "zerado" && item.quantity !== 0) return false;
-      if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
-      if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
-      return true;
-    });
-  }, [rawItems, querySearch, filterStatus, filterLocation, filterBrand, loteSearchItemIds]);
+  const filteredItems = useMemo(() => rawItems.filter(item => {
+    if (!item.device) return false; // item órfão sem device associado
+    // Quando há busca ativa e o usuário não pediu explicitamente ver zerados,
+    // esconder itens sem estoque (igual ao comportamento do rastreamento)
+    if (querySearch.trim() && filterStatus !== "zerado" && item.quantity === 0) return false;
+    if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
+    if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
+    if (filterStatus === "zerado" && item.quantity !== 0) return false;
+    if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
+    if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
+    return true;
+  }), [rawItems, querySearch, filterStatus, filterLocation, filterBrand]);
 
   // ── useEffect ─────────────────────────────────────────────────────────────
 
@@ -783,27 +764,6 @@ export default function Estoque() {
   // FIX: useClickOutside substitui document.addEventListener duplicado
   useClickOutside(autocompleteRef, () => setShowAutocomplete(false));
   useClickOutside(adminMenuRef,    () => { if (adminMenuOpen) setAdminMenuOpen(false); });
-
-  // Busca por lote: quando o query é padrão de lote, resolve os item_ids no banco
-  // e armazena em loteSearchItemIds para filtrar em memória no filteredItems
-  useEffect(() => {
-    const q = querySearch.trim();
-    const isLote = /^\d{6}-\d{2}([/][A-Za-z])?$/i.test(q);
-    if (!isLote) {
-      setLoteSearchItemIds(new Set());
-      return;
-    }
-    let cancelled = false;
-    supabase
-      .from("stock_movements")
-      .select("stock_item_id")
-      .eq("lote", q.toUpperCase())
-      .then(({ data }) => {
-        if (cancelled) return;
-        setLoteSearchItemIds(new Set((data ?? []).map((r: { stock_item_id: string }) => r.stock_item_id)));
-      });
-    return () => { cancelled = true; };
-  }, [querySearch]);
 
   const hasSearch = !!querySearch.trim();
   const hasActiveFilters = filterStatus !== "all" || !!filterLocation || !!filterBrand;
@@ -862,10 +822,11 @@ export default function Estoque() {
   const globalEmptyCount = allItems.filter(i => i.quantity === 0 && i.fase === "intermediaria").length;
   const totalAlertCount = globalLowCount + globalEmptyCount;
 
-  const hasMore = visibleCount < filteredItems.length;
+  // Quando há busca ativa, exibe todos os resultados filtrados (sem limite de página)
+  const hasMore = !hasSearch && visibleCount < filteredItems.length;
   const pagedItems = useMemo(
-    () => filteredItems.slice(0, visibleCount),
-    [filteredItems, visibleCount]
+    () => hasSearch ? filteredItems : filteredItems.slice(0, visibleCount),
+    [filteredItems, visibleCount, hasSearch]
   );
 
   // PERF: loteMap vem diretamente do RPC load_stock_page embutido no useStock.
