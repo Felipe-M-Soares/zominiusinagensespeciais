@@ -31,24 +31,30 @@ interface Props {
 // 203 dpi → 1mm = 8 dots
 // 50mm = 400 dots largura | 45mm = 360 dots altura
 
-function buildZpl(model: string, reference: string, _lote: string): string {
+function buildZpl(model: string, reference: string, lote: string): string {
   const labelW = 400;
   const labelH = 360;
 
-  // Linha do modelo no topo (pequena, centralizada)
-  // Referência centralizada ocupando toda a área útil
   const refText = reference;
-  const refMaxW = Math.round(labelW * 0.92);
-  const refH = 130;
+  const refMaxW = Math.round(labelW * 0.90);
+  const refH = 110;
   const refCharW = Math.round(refH * 0.6);
   const refFitsChars = Math.floor(refMaxW / refCharW);
   const refW = refText.length <= refFitsChars
     ? refCharW
     : Math.floor(refMaxW / refText.length);
   const refFontH = Math.round(refW / 0.6);
-  // Centralizar verticalmente entre a linha separadora e o fim da etiqueta
-  const refY = Math.round((labelH - 38 - refFontH) / 2) + 38;
   const refX = Math.round((labelW - refText.length * refW) / 2);
+
+  const loteText = lote;
+  const loteH = 70;
+  const loteCharW = Math.round(loteH * 0.6);
+  const loteFitsChars = Math.floor(refMaxW / loteCharW);
+  const loteW = loteText.length <= loteFitsChars
+    ? loteCharW
+    : Math.floor(refMaxW / loteText.length);
+  const loteFontH = Math.round(loteW / 0.6);
+  const loteX = Math.round((labelW - loteText.length * loteW) / 2);
 
   return [
     "^XA",
@@ -56,12 +62,11 @@ function buildZpl(model: string, reference: string, _lote: string): string {
     `^LL${labelH}`,
     "^CI28",
     "^LH0,0",
-    // Modelo no topo — duas linhas se necessário
-    `^FO10,6^A0N,22,13^FB${labelW - 20},2,,C^FD${model}^FS`,
-    // Separador
-    `^FO0,36^GB${labelW},2,2^FS`,
-    // Referência centralizada vertical e horizontalmente
-    `^FO${refX},${refY}^A0N,${refFontH},${refW}^FD${refText}^FS`,
+    `^FO10,8^A0N,22,13^FB${labelW - 20},2,,C^FD${model}^FS`,
+    `^FO0,38^GB${labelW},2,2^FS`,
+    `^FO${refX},55^A0N,${refFontH},${refW}^FD${refText}^FS`,
+    `^FO0,${labelH - 88},${labelW},2,2^GB${labelW},2,2^FS`,
+    `^FO${loteX},${labelH - 80}^A0N,${loteFontH},${loteW}^FD${loteText}^FS`,
     "^PQ2",
     "^XZ",
   ].join("\n");
@@ -98,11 +103,15 @@ function printLabelFallback(model: string, reference: string, lote: string, copi
   const refFontSize = reference.length > 8
     ? Math.max(14, Math.floor(refMaxPx / reference.length * 1.55))
     : 44;
+  const loteFontSize = Math.max(12, Math.min(28, Math.floor(refMaxPx / lote.length * 1.55)));
+
   const labelHTML = Array.from({ length: copies }).map(() => `
     <div class="label">
       <div class="model">${model}</div>
       <div class="sep"></div>
       <div class="ref" style="font-size:${refFontSize}px">${reference}</div>
+      <div class="sep"></div>
+      <div class="lote" style="font-size:${loteFontSize}px">${lote}</div>
     </div>
   `).join("");
 
@@ -115,6 +124,7 @@ function printLabelFallback(model: string, reference: string, lote: string, copi
     .model { font-size: 7.5pt; font-weight: bold; text-align: center; padding: 1.5mm 1mm 1mm; line-height: 1.2; white-space: nowrap; overflow: hidden; color: #222; }
     .sep { height: 0.3mm; background: #555; width: 100%; }
     .ref { flex: 1; display: flex; align-items: center; justify-content: center; font-weight: 800; text-align: center; letter-spacing: -0.3px; padding: 0 1mm; color: #000; }
+    .lote { height: 12mm; display: flex; align-items: center; justify-content: center; font-weight: 700; text-align: center; color: #000; }
   </style></head><body>${labelHTML}</body></html>`;
 
   const iframe = document.createElement("iframe");
@@ -201,18 +211,20 @@ interface PrintPreviewModalProps {
 
 function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
   const [printing, setPrinting] = useState(false);
+  if (!row) return null;
 
   async function handlePrint() {
-    if (!row || printing) return;
+    if (printing) return;
     setPrinting(true);
     try {
-      const zpl = buildZpl(row.model, row.reference, row.lote);
+      const zpl = buildZpl(row!.model, row!.reference, row!.lote);
       const sent = await sendZplDirect(zpl);
       if (sent) {
         toast.success("Enviado para a ZD220 — 2 cópias impressas");
         onClose();
       } else {
-        printLabelFallback(row.model, row.reference, row.lote, 2);
+        // Fallback: diálogo de impressão do sistema com @page 50×45mm
+        printLabelFallback(row!.model, row!.reference, row!.lote, 2);
         toast.info("Zebra Browser Print não encontrado — abrindo diálogo de impressão", { duration: 5000 });
         onClose();
       }
@@ -221,73 +233,63 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
     }
   }
 
-  // Usa Dialog do Radix — único jeito garantido de sobrepor outro Dialog
-  // sem conflito de aria-hidden / pointer-events
   return (
-    <Dialog open={!!row} onOpenChange={open => { if (!open && !printing) onClose(); }}>
-      <DialogContent
-        className="max-w-sm p-0 rounded-2xl overflow-hidden border-border/30 gap-0"
-        // Impede que ESC feche enquanto imprime
-        onEscapeKeyDown={e => { if (printing) e.preventDefault(); }}
-        onPointerDownOutside={e => { if (printing) e.preventDefault(); }}
-      >
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
         {/* Header */}
-        <DialogHeader className="flex flex-row items-center justify-between px-5 py-4 border-b border-border/30 space-y-0">
-          <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
+          <div className="flex items-center gap-2">
             <Eye className="h-4 w-4 text-primary" />
-            Prévia da Etiqueta
-          </DialogTitle>
-        </DialogHeader>
+            <p className="text-sm font-semibold">Prévia da Etiqueta</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
 
-        {row && (
-          <>
-            {/* Preview */}
-            <div className="p-5 flex flex-col items-center gap-4">
-              <LabelPreview model={row.model} reference={row.reference} lote={row.lote} />
+        {/* Preview */}
+        <div className="p-5 flex flex-col items-center gap-4">
+          <LabelPreview model={row.model} reference={row.reference} lote={row.lote} />
 
-              {/* Info */}
-              <div className="w-full rounded-xl bg-muted/20 border border-border/20 px-4 py-3 space-y-1.5 text-[12px]">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Package className="h-3.5 w-3.5 shrink-0 text-primary/60" />
-                  <span className="font-medium text-foreground truncate">{row.model}</span>
-                </div>
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <span className="text-[11px] font-mono text-foreground/70">{row.reference}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Tag className="h-3.5 w-3.5 shrink-0 text-primary/60" />
-                  <span className="font-bold font-mono text-primary">{row.lote}</span>
-                  <span className="ml-auto text-muted-foreground/60">{row.saldo} un.</span>
-                </div>
-              </div>
+          {/* Info */}
+          <div className="w-full rounded-xl bg-muted/20 border border-border/20 px-4 py-3 space-y-1.5 text-[12px]">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Package className="h-3.5 w-3.5 shrink-0 text-primary/60" />
+              <span className="font-medium text-foreground truncate">{row.model}</span>
             </div>
-
-            {/* Actions */}
-            <div className="flex gap-2 px-5 pb-5">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={printing}
-                className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                disabled={printing}
-                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-95 text-white text-sm font-semibold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {printing
-                  ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  : <Printer className="h-3.5 w-3.5" />}
-                {printing ? "Enviando…" : "Imprimir (2 cópias)"}
-              </button>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span className="text-[11px] font-mono text-foreground/70">{row.reference}</span>
             </div>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+            <div className="flex items-center gap-2">
+              <Tag className="h-3.5 w-3.5 shrink-0 text-primary/60" />
+              <span className="font-bold font-mono text-primary">{row.lote}</span>
+              <span className="ml-auto text-muted-foreground/60">{row.saldo} un.</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 px-5 pb-5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button type="button" onClick={handlePrint} disabled={printing} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-95 text-white text-sm font-semibold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed">
+            {printing
+              ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : <Printer className="h-3.5 w-3.5" />}
+            {printing ? "Enviando…" : "Imprimir (2 cópias)"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

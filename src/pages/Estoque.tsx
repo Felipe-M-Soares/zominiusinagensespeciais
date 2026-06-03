@@ -700,16 +700,13 @@ export default function Estoque() {
 
   const filteredItems = useMemo(() => rawItems.filter(item => {
     if (!item.device) return false; // item órfão sem device associado
-    // Quando há busca ativa e o usuário não pediu explicitamente ver zerados,
-    // esconder itens sem estoque (igual ao comportamento do rastreamento)
-    if (querySearch.trim() && filterStatus !== "zerado" && item.quantity === 0) return false;
     if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
     if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
     if (filterStatus === "zerado" && item.quantity !== 0) return false;
     if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
     if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
     return true;
-  }), [rawItems, querySearch, filterStatus, filterLocation, filterBrand]);
+  }), [rawItems, filterStatus, filterLocation, filterBrand]);
 
   // ── useEffect ─────────────────────────────────────────────────────────────
 
@@ -751,7 +748,7 @@ export default function Estoque() {
       const q = search.trim().toLowerCase();
       // Usa allItems diretamente — filteredItems não é estável (nova referência a cada render)
       const suggestions = allItems
-        .filter(i => i.device?.model && i.quantity > 0)
+        .filter(i => i.device?.model)
         .map(i => i.device.model)
         .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
         .slice(0, 6);
@@ -822,11 +819,10 @@ export default function Estoque() {
   const globalEmptyCount = allItems.filter(i => i.quantity === 0 && i.fase === "intermediaria").length;
   const totalAlertCount = globalLowCount + globalEmptyCount;
 
-  // Quando há busca ativa, exibe todos os resultados filtrados (sem limite de página)
-  const hasMore = !hasSearch && visibleCount < filteredItems.length;
+  const hasMore = visibleCount < filteredItems.length;
   const pagedItems = useMemo(
-    () => hasSearch ? filteredItems : filteredItems.slice(0, visibleCount),
-    [filteredItems, visibleCount, hasSearch]
+    () => filteredItems.slice(0, visibleCount),
+    [filteredItems, visibleCount]
   );
 
   // PERF: loteMap vem diretamente do RPC load_stock_page embutido no useStock.
@@ -1171,7 +1167,7 @@ export default function Estoque() {
         {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && !loading && (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs text-muted-foreground">
-              {filteredItems.reduce((s, i) => s + i.quantity, 0).toLocaleString("pt-BR")} peça{filteredItems.reduce((s, i) => s + i.quantity, 0) !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
+              {filteredItems.length} peça{filteredItems.length !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
               {hasActiveFilters && <span className="text-primary/70"> (filtrado)</span>}
             </p>
             {activeView !== "retrabalho" && statsOk > 0 && (

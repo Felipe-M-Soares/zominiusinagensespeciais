@@ -849,7 +849,6 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     const lotesByItem = buildLotesByItem(movData ?? []);
     const results: PecaResult[] = devRows
       .map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
-      .filter(r => totalQty(r) > 0)
       .sort((a, b) => totalQty(b) - totalQty(a));
     return { suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })), results };
   }
@@ -890,7 +889,6 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
   const lotesByItem = buildLotesByItem(movData ?? []);
   const results: PecaResult[] = devsOrdenados
     .map(dev => buildPecaResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
-    .filter(r => totalQty(r) > 0)
     .sort((a, b) => totalQty(b) - totalQty(a));
   return { suggestions, results };
 }
@@ -1147,86 +1145,6 @@ const HistoricoPanel = memo(function HistoricoPanel() {
 
 // ─── GS1 Panel ───────────────────────────────────────────────────────────────
 
-// ─── GS1 Portal integrado ──────────────────────────────────────────────────────
-// Permite acessar CNP, consulta GTIN e Portal GS1 direto do app via iframe.
-// Fallback para link externo caso o site bloqueie iframe (X-Frame-Options).
-
-type GS1Site = "cnp" | "consulta" | "portal";
-
-const GS1_SITES: Record<GS1Site, { label: string; url: string; color: string }> = {
-  cnp:      { label: "CNP — Cadastro Nacional de Produtos", url: "https://cnp.gs1br.org",                color: "bg-teal-500" },
-  consulta: { label: "Verificar / Consultar GTIN",          url: "https://www.gs1br.org/consulta-gtin",  color: "bg-teal-500/10 border border-teal-500/30 text-teal-600 dark:text-teal-400" },
-  portal:   { label: "Portal GS1 Brasil",                   url: "https://www.gs1br.org",                color: "bg-teal-500/10 border border-teal-500/30 text-teal-600 dark:text-teal-400" },
-};
-
-function GS1PortalSelector() {
-  // O GS1 Brasil bloqueia iframes (X-Frame-Options: SAMEORIGIN).
-  // Solução: painel de links diretos com atalhos rápidos + abertura em nova aba.
-  const [gtinQuery, setGtinQuery] = useState("");
-
-  const handleGtinSearch = () => {
-    const q = gtinQuery.trim();
-    if (!q) return;
-    window.open(`https://www.gs1br.org/consulta-gtin?gtin=${encodeURIComponent(q)}`, "_blank", "noopener,noreferrer");
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Portais principais */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        {(Object.entries(GS1_SITES) as [GS1Site, typeof GS1_SITES[GS1Site]][]).map(([key, s]) => (
-          <a
-            key={key}
-            href={s.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(
-              "flex items-center justify-center gap-2 h-9 rounded-xl text-[12px] font-semibold transition-all",
-              key === "cnp"
-                ? "bg-teal-500 hover:bg-teal-400 text-white"
-                : "bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 text-teal-600 dark:text-teal-400"
-            )}
-          >
-            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{s.label}</span>
-          </a>
-        ))}
-      </div>
-
-      {/* Busca rápida de GTIN */}
-      <div className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Hash className="h-4 w-4 text-teal-500 shrink-0" />
-          <span className="text-[12px] font-semibold text-foreground">Consulta Rápida de GTIN</span>
-        </div>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={gtinQuery}
-            onChange={e => setGtinQuery(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleGtinSearch()}
-            placeholder="Digite o GTIN (EAN-13 ou EAN-8)..."
-            className="flex-1 h-9 rounded-xl bg-background border border-border/40 px-3 text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-teal-500/30 placeholder:text-muted-foreground/50"
-          />
-          <button
-            type="button"
-            onClick={handleGtinSearch}
-            disabled={!gtinQuery.trim()}
-            className="h-9 px-4 rounded-xl bg-teal-500 hover:bg-teal-400 text-white text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Consultar
-          </button>
-        </div>
-        <p className="text-[10px] text-muted-foreground/60">
-          Abre a consulta diretamente no portal GS1 Brasil em nova aba.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-
 const GS1Panel = memo(function GS1Panel() {
   const [devices, setDevices] = useState<{ id: string; model: string; reference: string; gtin: string | null; udi_di: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1268,8 +1186,35 @@ const GS1Panel = memo(function GS1Panel() {
             <p className="text-[11px] text-muted-foreground/70">Gerencie GTINs e acesse o portal GS1 para registro de produtos médicos</p>
           </div>
         </div>
-        {/* Seletor de portal integrado */}
-        <GS1PortalSelector />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <a
+            href="https://cnp.gs1br.org"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500 hover:bg-teal-400 text-white text-[12px] font-semibold transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            CNP — Cadastro Nacional de Produtos
+          </a>
+          <a
+            href="https://www.gs1br.org/consulta-gtin"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[12px] font-semibold border border-teal-500/30 transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Verificar / Consultar GTIN
+          </a>
+          <a
+            href="https://www.gs1br.org"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[12px] font-semibold border border-teal-500/30 transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Portal GS1 Brasil
+          </a>
+        </div>
       </div>
 
       {/* KPIs GTIN */}

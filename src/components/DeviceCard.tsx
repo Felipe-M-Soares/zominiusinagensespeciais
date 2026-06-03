@@ -1,12 +1,14 @@
 import { useState } from "react";
 import type { Device } from "@/types/device";
-import { Shield, Package, Activity, Copy, Check, Cpu, ImageOff } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Shield, Package, Globe, Cpu, Activity, Copy, Check } from "lucide-react";
 
 interface Props {
-  device: Device;
-  onClick: (device: Device) => void;
+device: Device;
+onClick: (device: Device) => void;
 }
 
+// Mapa de país → emoji de bandeira
 export function countryFlag(country: string): string {
   const map: Record<string, string> = {
     "Brasil": "🇧🇷", "Brazil": "🇧🇷", "BR": "🇧🇷",
@@ -37,18 +39,16 @@ export function countryFlag(country: string): string {
     "Finlândia": "🇫🇮", "Finland": "🇫🇮", "FI": "🇫🇮",
     "Noruega": "🇳🇴", "Norway": "🇳🇴", "NO": "🇳🇴",
   };
-  return map[country.trim()] ?? "🌐";
+  const trimmed = country.trim();
+  return map[trimmed] ?? "🌐";
 }
 
 export function DeviceCard({ device, onClick }: Props) {
   const [copied, setCopied] = useState(false);
-  const [imgError, setImgError] = useState(false);
 
-  const hasImage = !!device.icon_url && !imgError;
-
-  const handleCopyRef = (e: React.MouseEvent) => {
+  const handleCopyUDI = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const text = device.reference || device.udi_di;
+    const text = device.udi_di || device.anvisa_registration;
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
@@ -56,127 +56,98 @@ export function DeviceCard({ device, onClick }: Props) {
     });
   };
 
-  const pills = [
-    device.sterile     && { icon: Shield,   label: "Estéril",     cls: "bg-success/10 text-success border-success/20" },
-    device.single_use  && { icon: Package,  label: "Uso único",   cls: "bg-orange-500/10 text-orange-500 border-orange-500/20" },
-    device.implantable && { icon: Activity, label: "Implantável", cls: "bg-brand/10 text-brand border-brand/20" },
-  ].filter(Boolean) as Array<{ icon: React.ElementType; label: string; cls: string }>;
-
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      className="group relative flex flex-col rounded-xl bg-card overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border border-border/30 hover:border-brand/30"
-      onClick={() => onClick(device)}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(device); }}
-    >
-      {/* ── Área de imagem: quadrada, padding uniforme, sem scale ── */}
-      {/* aspect-[2/1] + object-contain + p-2 = mesma "caixa" para todas as peças, 50% menor */}
-      <div className="relative w-full aspect-[2/1] bg-white overflow-hidden shrink-0">
+  <div
+    role="button"
+    tabIndex={0}
+    className="w-full text-left group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+    style={{
+      boxShadow:
+        "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
+    }}
+    onClick={() => onClick(device)}
+    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(device); }}
+  >
+    {/* Top accent bar */}
+    <div className="h-0.5 bg-gradient-to-r from-transparent via-brand to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
 
-        {/* Badge classificação — canto sup. direito */}
-        <div className="absolute top-1.5 right-1.5 z-10">
-          <span className="inline-flex items-center rounded-md bg-card/90 backdrop-blur-sm border border-brand/20 px-1.5 py-0.5 text-[9px] font-mono font-bold text-brand/80 leading-none shadow-sm">
-            {device.classification_code}
-          </span>
+    <div className="p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-0.5">
+          <h3 className="text-[13px] font-semibold leading-snug text-foreground group-hover:text-brand transition-colors line-clamp-2">
+            {device.model}
+          </h3>
+          <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{device.reference}</p>
         </div>
+        <Badge
+          variant="outline"
+          className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-brand/25 text-brand/80 bg-brand/5 rounded-lg"
+        >
+          {device.classification_code}
+        </Badge>
+      </div>
 
-        {/* País — canto sup. esquerdo */}
-        {device.manufacturer_country && (
-          <div className="absolute top-1.5 left-1.5 z-10">
-            <span
-              className="flex items-center justify-center h-5 w-5 rounded-md bg-card/80 backdrop-blur-sm border border-border/30 text-xs shadow-sm"
-              title={device.manufacturer_country}
-            >
-              {countryFlag(device.manufacturer_country)}
-            </span>
-          </div>
+      {/* Brand */}
+      {device.brand_name && (
+        <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{device.brand_name}</p>
+      )}
+
+      {/* Status pills */}
+      <div className="flex flex-wrap gap-1">
+        {device.sterile && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
+            <Shield className="h-2.5 w-2.5" />
+            Estéril
+          </span>
         )}
-
-        {hasImage ? (
-          <img
-            src={device.icon_url!}
-            alt={device.model}
-            onError={() => setImgError(true)}
-            className="w-full h-full object-contain p-2"
-          />
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 select-none">
-            <div
-              className="absolute inset-0 opacity-[0.035]"
-              style={{
-                backgroundImage: "radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)",
-                backgroundSize: "14px 14px",
-              }}
-            />
-            <ImageOff className="h-6 w-6 text-muted-foreground/20" />
-            <span className="text-[8px] font-medium text-muted-foreground/30 uppercase tracking-widest">
-              sem foto
-            </span>
-          </div>
+        {device.single_use && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
+            <Package className="h-2.5 w-2.5" />
+            Uso único
+          </span>
+        )}
+        {device.implantable && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand/8 px-2 py-0.5 text-[10px] font-medium text-brand">
+            <Activity className="h-2.5 w-2.5" />
+            Implantável
+          </span>
         )}
       </div>
 
-      {/* Separador accent */}
-      <div className="h-px bg-gradient-to-r from-transparent via-brand/30 to-transparent group-hover:via-brand/60 transition-colors duration-300" />
-
-      {/* ── Conteúdo ── */}
-      <div className="flex flex-col flex-1 p-2 gap-1.5">
-
-        {/* Nome + marca */}
-        <div className="space-y-0.5 min-w-0">
-          <h3 className="text-[11px] font-semibold leading-snug text-foreground group-hover:text-brand transition-colors line-clamp-2">
-            {device.model}
-          </h3>
-          {device.brand_name && (
-            <p className="text-[9px] text-muted-foreground/60 truncate">{device.brand_name}</p>
-          )}
-        </div>
-
-        {/* Referência com copy */}
+      {/* Footer */}
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-2 border-t border-border/20">
+        {/* UDI-DI clicável para copiar */}
         <button
           type="button"
-          onClick={handleCopyRef}
-          title="Clique para copiar referência"
-          className="group/copy flex items-center gap-1 w-fit max-w-full rounded-md bg-muted/30 hover:bg-brand/8 border border-border/30 hover:border-brand/25 px-1.5 py-0.5 transition-colors"
+          title="Clique para copiar UDI-DI"
+          onClick={handleCopyUDI}
+          className="font-mono truncate flex items-center gap-1 hover:text-brand transition-colors group/copy"
         >
           {copied
             ? <Check className="h-2.5 w-2.5 text-success shrink-0" />
-            : <Copy className="h-2.5 w-2.5 text-muted-foreground/40 group-hover/copy:text-brand/60 shrink-0 transition-colors" />
-          }
-          <span className={`font-mono text-[10px] truncate ${copied ? "text-success" : "text-muted-foreground group-hover/copy:text-foreground"}`}>
-            {device.reference || device.udi_di}
+            : <Copy className="h-2.5 w-2.5 shrink-0 opacity-0 group-hover/copy:opacity-100 transition-opacity" />}
+          <span className={copied ? "text-success" : ""}>
+            {device.anvisa_registration || device.udi_di}
           </span>
         </button>
 
-        {/* Pills */}
-        {pills.length > 0 && (
-          <div className="flex flex-wrap gap-0.5">
-            {pills.map(({ icon: Icon, label, cls }) => (
-              <span
-                key={label}
-                className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[8px] font-medium leading-none ${cls}`}
-              >
-                <Icon className="h-2 w-2" />
-                {label}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Rodapé */}
-        <div className="flex items-center justify-between gap-1 pt-1 mt-auto border-t border-border/15">
-          <span className="font-mono text-[9px] text-muted-foreground/50 truncate flex-1">
-            {device.anvisa_registration || device.udi_di || "—"}
-          </span>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {device.manufacturer_country && (
+            <span className="flex items-center gap-0.5" title={device.manufacturer_country}>
+              <span>{countryFlag(device.manufacturer_country)}</span>
+              <span className="hidden sm:inline">{device.manufacturer_country}</span>
+            </span>
+          )}
           {device.exocad_compatibility && device.exocad_compatibility !== "N.A" && (
-            <span className="flex items-center gap-0.5 text-[9px] text-brand/60 shrink-0">
-              <Cpu className="h-2 w-2 text-brand" />
-              <span className="hidden sm:inline text-[8px]">Exocad</span>
+            <span className="flex items-center gap-0.5 text-brand/60">
+              <Cpu className="h-2.5 w-2.5 text-brand" />
+              Exocad
             </span>
           )}
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }

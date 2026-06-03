@@ -366,10 +366,6 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
   }
 
   // ── Importar ─────────────────────────────────────────────────────────────────
-  // Estratégia:
-  // 1. Prefetch completo de devices + stock_items em memória (O(1) lookup)
-  // 2. Match por referência E por nome (normalizado) para cobrir variações
-  // 3. Bulk RPC em chunks de 500 para evitar limite de payload do Supabase
 
   async function handleImport() {
     const valid = parsedRows.filter(r => !r.parseError);
@@ -385,221 +381,43 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
 
     let ok = 0, created = 0, err = res.filter(r => r.status === "error").length;
 
-    // Normaliza removendo acentos, espaços e caracteres especiais — igual ao normalizeRef das fotos
-    const normKey = (s: string) =>
-      s.trim().toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .replace(/ø/gi, "o").replace(/æ/gi, "ae")
-        .replace(/[^a-z0-9]/g, "");
-
-    try {
-      // ── Fase 1: prefetch devices e stock_items ───────────────────────────
-      let allDevices: { id: string; model: string; reference: string }[] = [];
-      {
-        let from = 0;
-        while (true) {
-          const { data, error } = await supabase.from("devices").select("id, model, reference").range(from, from + 999);
-          if (error) throw new Error("Erro ao buscar devices: " + error.message);
-          if (!data?.length) break;
-          allDevices = allDevices.concat(data as typeof allDevices);
-          if (data.length < 1000) break;
-          from += 1000;
-        }
-      }
-
-      const fasesNecessarias = [...new Set(valid.map(r => r.fase).filter(Boolean))] as Fase[];
-      let allStockItems: { id: string; device_id: string; fase: string }[] = [];
-      {
-        let from = 0;
-        while (true) {
-          const { data, error } = await supabase
-            .from("stock_items").select("id, device_id, fase")
-            .in("fase", fasesNecessarias).range(from, from + 999);
-          if (error) throw new Error("Erro ao buscar stock_items: " + error.message);
-          if (!data?.length) break;
-          allStockItems = allStockItems.concat(data as typeof allStockItems);
-          if (data.length < 1000) break;
-          from += 1000;
-        }
-      }
-
-      setProgress({ current: Math.floor(valid.length * 0.15), total: valid.length });
-
-      // Mapa por referência normalizada E por nome normalizado
-      const deviceByRef   = new Map<string, { id: string; model: string }>();
-      const deviceByModel = new Map<string, { id: string; model: string }>();
-      for (const d of allDevices) {
-        if (d.reference) {
-          const rk = normKey(d.reference);
-          if (rk && !deviceByRef.has(rk)) deviceByRef.set(rk, d);
-        }
-        const mk = normKey(d.model);
-        if (mk && !deviceByModel.has(mk)) deviceByModel.set(mk, d);
-      }
-
-      // stock_item: "device_id|fase" → id
-      const stockItemMap = new Map<string, string>();
-      for (const si of allStockItems) stockItemMap.set(`${si.device_id}|${si.fase}`, si.id);
-
-      setProgress({ current: Math.floor(valid.length * 0.25), total: valid.length });
-
-      // ── Fase 2: resolve stock_item para cada linha ───────────────────────
-      type ResolvedItem = { validIndex: number; stockItemId: string; model: string; isNew: boolean };
-      const resolvedItems: ResolvedItem[] = [];
-      const toCreateDevices: { validIndex: number; nome: string; referencia: string; lote: string; fase: Fase }[] = [];
-      const toCreateStockItems: { validIndex: number; deviceId: string; model: string; fase: Fase }[] = [];
-
-      for (let i = 0; i < valid.length; i++) {
-        const row = valid[i];
-        // Tenta match por referência primeiro, depois por nome
-        const device =
-          (row.referencia ? deviceByRef.get(normKey(row.referencia)) : undefined) ??
-          deviceByModel.get(normKey(row.nome));
-
-        if (!device) {
-          toCreateDevices.push({ validIndex: i, nome: row.nome, referencia: row.referencia ?? "", lote: row.lote, fase: row.fase! });
-          continue;
-        }
-
-        const siId = stockItemMap.get(`${device.id}|${row.fase}`);
-        if (siId) {
-          resolvedItems.push({ validIndex: i, stockItemId: siId, model: device.model, isNew: false });
+    for (let i = 0; i < valid.length; i++) {
+      const row = valid[i];
+      const idx = res.findIndex(r => r.line === row.line);
+      try {
+        const found = await findOrCreateStockItem(row.nome, row.referencia ?? "", row.lote, row.fase!);
+        if (!found) {
+          res[idx] = { ...res[idx], status: "error",
+            message: `Não foi possível criar "${row.nome}"` };
+          err++;
         } else {
-          toCreateStockItems.push({ validIndex: i, deviceId: device.id, model: device.model, fase: row.fase! });
-        }
-      }
-
-      setProgress({ current: Math.floor(valid.length * 0.40), total: valid.length });
-
-      // ── Fase 3: cria devices novos em batches ────────────────────────────
-      const BATCH = 20;
-      const PLACEHOLDER = "—";
-      for (let i = 0; i < toCreateDevices.length; i += BATCH) {
-        const batch = toCreateDevices.slice(i, i + BATCH);
-        const { data: newDevs, error: devErr } = await supabase.from("devices").insert(
-          batch.map(r => ({
-            model: r.nome, reference: r.referencia || r.lote,
-            internal_code: PLACEHOLDER, brand_name: PLACEHOLDER,
-            anvisa_registration: PLACEHOLDER, classification_code: PLACEHOLDER,
-            risk_class: PLACEHOLDER, intended_use: PLACEHOLDER,
-            primary_material: PLACEHOLDER, manufacturer_country: PLACEHOLDER,
-            body_region: PLACEHOLDER, udi_di: PLACEHOLDER,
-            exocad_compatibility: PLACEHOLDER,
-            implantable: false, single_use: false, sterile: false,
-          }))
-        ).select("id, model");
-
-        if (devErr || !newDevs) {
-          for (const r of batch) {
-            const resIdx = res.findIndex(ri => ri.line === valid[r.validIndex].line);
-            res[resIdx] = { ...res[resIdx], status: "error", message: `Não foi possível criar "${r.nome}"` };
-            err++;
-          }
-        } else {
-          for (let j = 0; j < batch.length; j++) {
-            const nd = newDevs[j];
-            const r = batch[j];
-            if (nd) toCreateStockItems.push({ validIndex: r.validIndex, deviceId: nd.id, model: nd.model, fase: r.fase });
-          }
-        }
-        await new Promise(r => setTimeout(r, 20));
-      }
-
-      setProgress({ current: Math.floor(valid.length * 0.55), total: valid.length });
-
-      // ── Fase 4: cria stock_items faltantes em batches ────────────────────
-      for (let i = 0; i < toCreateStockItems.length; i += BATCH) {
-        const batch = toCreateStockItems.slice(i, i + BATCH);
-        const { data: newSIs, error: siErr } = await supabase
-          .from("stock_items")
-          .upsert(batch.map(r => ({ device_id: r.deviceId, quantity: 0, min_quantity: 0, fase: r.fase })), { onConflict: "device_id,fase" })
-          .select("id, device_id, fase");
-
-        if (siErr || !newSIs) {
-          for (const r of batch) {
-            const resIdx = res.findIndex(ri => ri.line === valid[r.validIndex].line);
-            res[resIdx] = { ...res[resIdx], status: "error", message: "Erro ao criar item de estoque" };
-            err++;
-          }
-        } else {
-          for (const si of newSIs as { id: string; device_id: string; fase: string }[]) {
-            const r = batch.find(b => b.deviceId === si.device_id && b.fase === si.fase);
-            if (r) {
-              const isNew = toCreateDevices.some(d => d.validIndex === r.validIndex);
-              resolvedItems.push({ validIndex: r.validIndex, stockItemId: si.id, model: r.model, isNew });
-            }
-          }
-        }
-        await new Promise(r => setTimeout(r, 20));
-      }
-
-      setProgress({ current: Math.floor(valid.length * 0.70), total: valid.length });
-
-      // ── Fase 5: bulk RPC em chunks de 500 (evita limite de payload) ──────
-      const CHUNK = 500;
-      if (resolvedItems.length > 0) {
-        const SOURCE = fileMode === "pdf" ? "PDF Saldo" : "Excel";
-        const allErrors = new Map<string, string>();
-
-        for (let i = 0; i < resolvedItems.length; i += CHUNK) {
-          const chunk = resolvedItems.slice(i, i + CHUNK);
-          const payload = chunk.map(({ validIndex, stockItemId }) => {
-            const row = valid[validIndex];
-            return {
-              stock_item_id: stockItemId,
-              type: "entrada",
-              quantity: row.quantidade ?? 1,
-              reason: `Importação ${SOURCE} — lote: ${row.lote ?? ""}`,
-              lote: row.lote ?? null,
-            };
-          });
-
-          const { data: bulkResult, error: bulkError } = await supabase.rpc("bulk_stock_movements", {
-            p_movements: payload,
-            p_user_id:   user?.id ?? null,
-            p_user_name: user?.email ?? null,
-          });
-
-          if (bulkError) {
-            // Marca todas as linhas do chunk como erro
-            for (const { validIndex } of chunk) {
-              const resIdx = res.findIndex(r => r.line === valid[validIndex].line);
-              res[resIdx] = { ...res[resIdx], status: "error", message: bulkError.message };
-              err++;
+          const mv = await registerMovement(
+            found.id, "entrada", row.quantidade!,
+            `Importação ${fileMode === "pdf" ? "PDF Saldo" : "Excel"} — lote: ${row.lote}`,
+            user?.id ?? null, null, row.lote
+          );
+          if (mv.ok) {
+            if (found.created) {
+              res[idx] = { ...res[idx], status: "created", deviceModel: found.model,
+                message: `Peça criada e +${row.quantidade} un. registradas` };
+              created++;
+            } else {
+              res[idx] = { ...res[idx], status: "ok", deviceModel: found.model,
+                message: `+${row.quantidade} un. em "${found.model}"` };
+              ok++;
             }
           } else {
-            const result = bulkResult as { ok: boolean; inserted: number; errors: { item_id: string; error: string }[] };
-            for (const e of result.errors ?? []) allErrors.set(e.item_id, e.error);
-          }
-
-          setProgress({ current: Math.floor(valid.length * 0.70) + Math.floor((i + chunk.length) / resolvedItems.length * valid.length * 0.30), total: valid.length });
-          await new Promise(r => setTimeout(r, 10));
-        }
-
-        // Atualiza status de cada linha
-        for (const { validIndex, stockItemId, model, isNew } of resolvedItems) {
-          const row = valid[validIndex];
-          const resIdx = res.findIndex(r => r.line === row.line);
-          if (res[resIdx].status === "error") continue; // já marcado no chunk com erro
-          const errMsg = allErrors.get(stockItemId);
-          if (errMsg) {
-            res[resIdx] = { ...res[resIdx], status: "error", message: errMsg };
+            res[idx] = { ...res[idx], status: "error", message: mv.error ?? "Erro" };
             err++;
-          } else if (isNew) {
-            res[resIdx] = { ...res[resIdx], status: "created", deviceModel: model, message: `Peça criada e +${row.quantidade} un. registradas` };
-            created++;
-          } else {
-            res[resIdx] = { ...res[resIdx], status: "ok", deviceModel: model, message: `+${row.quantidade} un. em "${model}"` };
-            ok++;
           }
         }
+      } catch {
+        res[idx] = { ...res[idx], status: "error", message: "Erro inesperado" };
+        err++;
       }
-
       setResults([...res]);
-      setProgress({ current: valid.length, total: valid.length });
-
-    } catch (e: unknown) {
-      toast.error("Erro inesperado: " + (e instanceof Error ? e.message : "desconhecido"));
+      setProgress({ current: i + 1, total: valid.length });
+      if (i < valid.length - 1) await new Promise(r => setTimeout(r, 60));
     }
 
     setStep("done");
@@ -613,7 +431,6 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
     }
     if (err > 0) toast.error(`${err} com erro.`);
   }
-
 
   if (!open) return null;
 

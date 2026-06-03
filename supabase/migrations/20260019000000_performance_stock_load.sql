@@ -50,6 +50,7 @@ BEGIN
       internal_code       ILIKE '%' || p_search || '%' OR
       anvisa_registration ILIKE '%' || p_search || '%' OR
       brand_name          ILIKE '%' || p_search || '%'
+    LIMIT 500
   );
 END;
 $$;
@@ -132,6 +133,7 @@ BEGIN
       JOIN public.devices d ON d.id = si.device_id
       WHERE si.device_id = ANY(p_device_ids)
       ORDER BY si.updated_at DESC
+      LIMIT  v_limit
       OFFSET COALESCE(p_offset, 0)
     ) t;
   ELSE

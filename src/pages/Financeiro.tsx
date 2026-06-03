@@ -535,7 +535,7 @@ function NotaManualModal({
                       value={dados.numero}
                       onChange={e => upd("numero", e.target.value.replace(/\D/g,"").slice(0,9))}
                       placeholder="000000001"
-                      className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                      className="w-full h-9 rounded-xl border border-border/50 bg-background pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                     />
                   </div>
                 </div>
@@ -544,7 +544,7 @@ function NotaManualModal({
                   <input type="text" inputMode="numeric"
                     value={dados.serie}
                     onChange={e => upd("serie", e.target.value.replace(/\D/g,"").slice(0,3))}
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                   />
                 </div>
               </div>
@@ -554,7 +554,7 @@ function NotaManualModal({
                   value={dados.naturezaOperacao}
                   onChange={e => upd("naturezaOperacao", e.target.value.slice(0,60).toUpperCase())}
                   placeholder="VENDA DE MERCADORIA"
-                  className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -562,7 +562,7 @@ function NotaManualModal({
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Data de Emissão</label>
                   <input type="date" value={dados.dataEmissao}
                     onChange={e => upd("dataEmissao", e.target.value)}
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                   />
                 </div>
                 <div className="space-y-1">
@@ -570,7 +570,7 @@ function NotaManualModal({
                   <input type="text" value={dados.emitente}
                     onChange={e => upd("emitente", e.target.value.slice(0,80))}
                     placeholder="Nome da empresa emitente"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                   />
                 </div>
               </div>
@@ -629,7 +629,7 @@ function NotaManualModal({
                     <input type="text" value={dados.fornecedorLancamento}
                       onChange={e => upd("fornecedorLancamento", e.target.value.slice(0,80))}
                       placeholder="Fornecedor (opcional — usa destinatário se vazio)"
-                      className="w-full h-8 rounded-xl border border-border/50 bg-background text-foreground px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                      className="w-full h-8 rounded-xl border border-border/50 bg-background px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                     />
                   </div>
                 )}
@@ -655,7 +655,7 @@ function NotaManualModal({
                     value={dados[f.key] as string}
                     onChange={e => upd(f.key, f.upper ? e.target.value.toUpperCase().slice(0,80) : e.target.value.slice(0,80))}
                     placeholder={f.ph}
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                   />
                   {f.key === "destDocumento" && dados.destDocumento.length > 0 && (
                     <p className="text-[10px] text-muted-foreground pl-1">{mascararDoc(dados.destDocumento)}</p>
@@ -692,7 +692,7 @@ function NotaManualModal({
                       <input type="text" value={item.descricao}
                         onChange={e => updItem(item.id, "descricao", e.target.value.slice(0,100))}
                         placeholder="Descrição do produto / serviço *"
-                        className={cn("flex-1 h-8 rounded-lg border bg-background text-foreground px-2 text-[12px] focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                        className={cn("flex-1 h-8 rounded-lg border bg-background px-2 text-[12px] focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                           descOk ? "border-border/50" : "border-amber-500/60")}
                       />
                       {dados.itens.length > 1 && (
@@ -713,7 +713,7 @@ function NotaManualModal({
                             value={item[f.key]}
                             onChange={e => updItem(item.id, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
                             placeholder={f.ph}
-                            className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                            className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                               f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
@@ -725,7 +725,7 @@ function NotaManualModal({
                         <input type="number" min="1" step="1"
                           value={item.quantidade}
                           onChange={e => updItem(item.id, "quantidade", parseInt(e.target.value) || 1)}
-                          className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                          className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                         />
                       </div>
                       <div className="space-y-1">
@@ -733,7 +733,7 @@ function NotaManualModal({
                         <input type="number" min="0" step="0.01"
                           value={item.valorUnitario}
                           onChange={e => updItem(item.id, "valorUnitario", e.target.value)}
-                          className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                          className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                             vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
                         />
                       </div>
@@ -746,12 +746,12 @@ function NotaManualModal({
                   </div>
                 );
               })}
-              <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background text-foreground/60 px-3 py-2">
+              <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background/60 px-3 py-2">
                 <span className="text-[11px] text-muted-foreground">Frete (R$)</span>
                 <input type="number" min="0" step="0.01"
                   value={dados.valorFrete}
                   onChange={e => upd("valorFrete", e.target.value)}
-                  className="w-24 h-7 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                  className="w-24 h-7 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                 />
               </div>
               <div className="flex items-center justify-between rounded-xl border border-violet-500/25 bg-violet-500/8 px-3 py-2.5">
@@ -805,7 +805,7 @@ function NotaManualModal({
                   onChange={e => upd("informacoesAdicionais", e.target.value.slice(0,500))}
                   placeholder="Referência, observações, condições..."
                   rows={3}
-                  className="w-full rounded-xl border border-border/50 bg-background text-foreground px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>
             </div>
@@ -996,9 +996,9 @@ function RastreioSection({ pedido, onSaved }: RastreioSectionProps) {
     <div className="rounded-xl bg-muted/10 border border-violet-500/20 px-3 py-2.5 space-y-2">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60">Rastreio de envio</p>
       <input type="text" value={transp} onChange={e => setTransp(e.target.value)} placeholder="Transportadora (ex: Correios)"
-        className="w-full h-8 px-3 rounded-lg border border-border/50 bg-background text-foreground text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+        className="w-full h-8 px-3 rounded-lg border border-border/50 bg-background text-[12px] focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
       <input type="text" value={rastreio} onChange={e => setRastreio(e.target.value)} placeholder="Código de rastreio (ex: AA123456789BR)"
-        className="w-full h-8 px-3 rounded-lg border border-border/50 bg-background text-foreground text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+        className="w-full h-8 px-3 rounded-lg border border-border/50 bg-background text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
       <div className="flex gap-2">
         <button type="button" onClick={() => setEditing(false)}
           className="flex-1 h-8 rounded-lg border border-border/40 text-[11px] text-muted-foreground hover:bg-muted/30 transition-colors">Cancelar</button>
@@ -1259,7 +1259,7 @@ function SefazModal({
         await notificarPedidoEnviado(pedido, nfLabel, fake.protocolo ?? "");
         toast.success(`[TESTE] NF-e simulada! Protocolo ${fake.protocolo}`, { duration: 5000 });
         setLastResult(fake);
-        onClose(); onSuccess(); return;
+        onSuccess(); return;
       }
       const { data, error } = await supabase.functions.invoke("sefaz-emitir", {
         body: { pedidoId: pedido.id, dadosFiscais: dados, modoTeste },
@@ -1360,7 +1360,7 @@ function SefazModal({
                       value={dados.numero}
                       onChange={e => upd("numero", e.target.value.replace(/\D/g,"").slice(0,9))}
                       placeholder="000000001"
-                      className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+                      className="w-full h-9 rounded-xl border border-border/50 bg-background pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
                     />
                   </div>
                   <p className="text-[9px] text-muted-foreground/60 pl-1">Preenchido automaticamente (sequencial)</p>
@@ -1371,7 +1371,7 @@ function SefazModal({
                     value={dados.serie}
                     onChange={e => upd("serie", e.target.value.replace(/\D/g,"").slice(0,3))}
                     placeholder="1"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                   />
                 </div>
               </div>
@@ -1381,7 +1381,7 @@ function SefazModal({
                   value={dados.naturezaOperacao}
                   onChange={e => upd("naturezaOperacao", e.target.value.slice(0,60).toUpperCase())}
                   placeholder="VENDA DE MERCADORIA"
-                  className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>
               <div className={cn("rounded-xl border p-3 flex items-start gap-2",
@@ -1416,7 +1416,7 @@ function SefazModal({
                     value={dados[f.key] as string}
                     onChange={e => upd(f.key, f.upper ? e.target.value.toUpperCase().slice(0,60) : e.target.value.slice(0,60))}
                     placeholder={f.placeholder}
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                   />
                   {f.key === "destDocumento" && dados.destDocumento.length > 0 && (
                     <p className="text-[10px] text-muted-foreground pl-1">{mascararDoc(dados.destDocumento)}</p>
@@ -1490,7 +1490,7 @@ function SefazModal({
                             value={item[f.key]}
                             onChange={e => updItem(idx, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
                             placeholder={f.ph}
-                            className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                            className={cn("w-full h-8 rounded-lg border bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                               f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
@@ -1504,7 +1504,7 @@ function SefazModal({
                           <input type="number" min="0" step="0.01"
                             value={item.valorUnitario}
                             onChange={e => updItem(idx, "valorUnitario", e.target.value)}
-                            className={cn("w-full h-8 rounded-lg border bg-background text-foreground pl-5 pr-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                            className={cn("w-full h-8 rounded-lg border bg-background pl-5 pr-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                               vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
                           />
                         </div>
@@ -1514,13 +1514,13 @@ function SefazModal({
                         <input type="number" min="0" max="100" step="0.01"
                           value={item.aliqICMS}
                           onChange={e => updItem(idx, "aliqICMS", e.target.value)}
-                          className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                          className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">CST</label>
                         <select value={item.cst} onChange={e => updItem(idx, "cst", e.target.value)}
-                          className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500/40">
+                          className="w-full h-8 rounded-lg border border-border/50 bg-background px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500/40">
                           <option value="00">00 — Tributado</option>
                           <option value="20">20 — Red. BC</option>
                           <option value="40">40 — Isento</option>
@@ -1537,11 +1537,11 @@ function SefazModal({
                   </div>
                 );
               })}
-              <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background text-foreground/60 px-3 py-2">
+              <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background/60 px-3 py-2">
                 <span className="text-[11px] text-muted-foreground">Frete (R$)</span>
                 <input type="number" min="0" step="0.01"
                   value={dados.valorFrete} onChange={e => upd("valorFrete", e.target.value)}
-                  className="w-24 h-7 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                  className="w-24 h-7 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono text-right focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                 />
               </div>
               <div className="flex items-center justify-between rounded-xl border border-violet-500/25 bg-violet-500/8 px-3 py-2.5">
@@ -1595,7 +1595,7 @@ function SefazModal({
                   onChange={e => upd("informacoesAdicionais", e.target.value.slice(0,500))}
                   placeholder="Pedido nº ..., referência ..., prazo de entrega ..."
                   rows={3}
-                  className="w-full rounded-xl border border-border/50 bg-background text-foreground px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none"
+                  className="w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none"
                 />
                 <p className="text-[9px] text-muted-foreground text-right">{dados.informacoesAdicionais.length}/500</p>
               </div>
@@ -1957,7 +1957,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{f.label}</label>
               <input type="text" value={f.val} onChange={e => f.set(e.target.value.slice(0,120))}
                 placeholder={f.placeholder}
-                className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
               />
             </div>
           ))}
@@ -1966,7 +1966,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Valor (R$) *</label>
               <input type="number" min="0" step="0.01" value={valor} onChange={e => setValor(e.target.value)}
                 placeholder="0,00"
-                className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
               />
             </div>
             <div className="space-y-1">
@@ -1974,7 +1974,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                 <CalendarDays className="h-2.5 w-2.5" />Data
               </label>
               <input type="date" value={data} onChange={e => setData(e.target.value)}
-                className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
               />
             </div>
           </div>
@@ -1995,11 +1995,11 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
               <div className="space-y-2">
                 <input type="text" value={nfManual} onChange={e => setNfManual(e.target.value.slice(0,60))}
                   placeholder="Número da NF (ex: NF-0001)"
-                  className="w-full h-8 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full h-8 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
                 <input type="text" value={chaveNfe} onChange={e => setChaveNfe(e.target.value.replace(/\D/g,"").slice(0,44))}
                   placeholder="Chave de acesso NF-e 44 dígitos (opcional)"
-                  className="w-full h-8 rounded-xl border border-border/50 bg-background text-foreground px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  className="w-full h-8 rounded-xl border border-border/50 bg-background px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>
             )}
@@ -2034,7 +2034,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
             <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Observações</label>
             <textarea value={obs} onChange={e => setObs(e.target.value.slice(0,300))}
               placeholder="Informações adicionais..." rows={2}
-              className="w-full rounded-xl border border-border/50 bg-background text-foreground px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+              className="w-full rounded-xl border border-border/50 bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30"
             />
           </div>
         </div>
@@ -2172,11 +2172,11 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         </button>
         <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}
           title="Data início"
-          className="h-9 rounded-xl border border-border/50 bg-background text-foreground text-[11px] px-2 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+          className="h-9 rounded-xl border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
         <span className="text-[10px] text-muted-foreground">–</span>
         <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}
           title="Data fim"
-          className="h-9 rounded-xl border border-border/50 bg-background text-foreground text-[11px] px-2 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+          className="h-9 rounded-xl border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
         {(filtroDataInicio || filtroDataFim) && (
           <button type="button" onClick={() => { setFiltroDataInicio(""); setFiltroDataFim(""); }}
             className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-muted/50 text-muted-foreground transition-colors" title="Limpar período">
@@ -2693,7 +2693,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
               <div className="space-y-1">
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Banco *</label>
                 <select value={banco} onChange={e => setBanco(e.target.value)}
-                  className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30">
+                  className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30">
                   {BANCOS_BR.map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
@@ -2701,12 +2701,12 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Agência *</label>
                   <input type="text" value={agencia} onChange={e => setAgencia(e.target.value.slice(0,10))} placeholder="0000-0"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Conta *</label>
                   <input type="text" value={contaNum} onChange={e => setContaNum(e.target.value.slice(0,20))} placeholder="00000-0"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
@@ -2721,7 +2721,7 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
               <div className="space-y-1">
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Saldo Atual (R$)</label>
                 <input type="number" step="0.01" value={saldo} onChange={e => setSaldo(e.target.value)} placeholder="0,00"
-                  className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                  className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
               </div>
               <div className="border-t border-border/20 pt-3 space-y-3">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
@@ -2731,13 +2731,13 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Webhook URL</label>
                   <input type="url" value={webhook} onChange={e => setWebhook(e.target.value.slice(0,300))}
                     placeholder="https://api.banco.com.br/webhooks/nf"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Token / Bearer API</label>
                   <input type="password" value={token} onChange={e => setToken(e.target.value.slice(0,300))}
                     placeholder="Bearer token ou chave API"
-                    className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                    className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
                   {[
@@ -3204,7 +3204,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                         value={editData.observacoes_preco ?? ""}
                         onChange={e => setEditData(prev => ({ ...prev, observacoes_preco: e.target.value.slice(0,120) }))}
                         placeholder="Observação (opcional)"
-                        className="mt-1 w-full h-6 rounded-lg border border-border/50 bg-background text-foreground px-2 text-[10px] focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="mt-1 w-full h-6 rounded-lg border border-border/50 bg-background px-2 text-[10px] focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                       />
                     )}
                   </div>
@@ -3216,7 +3216,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" step="0.01"
                         value={editData.preco_custo ?? ""}
                         onChange={e => setEditData(prev => ({ ...prev, preco_custo: parseFloat(e.target.value) || 0 }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="w-full h-8 rounded-lg border border-border/50 bg-background pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                       />
                     </div>
                   ) : (
@@ -3230,7 +3230,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" step="0.01"
                         value={editData.preco_venda ?? ""}
                         onChange={e => setEditData(prev => ({ ...prev, preco_venda: parseFloat(e.target.value) || 0 }))}
-                        className={cn("w-full h-8 rounded-lg border bg-background text-foreground pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                        className={cn("w-full h-8 rounded-lg border bg-background pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                           (editData.preco_venda ?? 0) > 0 ? "border-border/50" : "border-amber-500/60")}
                       />
                     </div>
@@ -3247,7 +3247,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" max="100" step="1"
                         value={editData.desconto_max_pct ?? 0}
                         onChange={e => setEditData(prev => ({ ...prev, desconto_max_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                       />
                       <span className="text-[10px] text-muted-foreground shrink-0">%</span>
                     </div>
@@ -3265,7 +3265,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                     <input type="text" inputMode="numeric"
                       value={editData.ncm ?? ""}
                       onChange={e => setEditData(prev => ({ ...prev, ncm: e.target.value.replace(/\D/g,"").slice(0,8) }))}
-                      className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                      className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                     />
                   ) : (
                     <p className="text-[10px] font-mono text-muted-foreground">{d.ncm || "—"}</p>
@@ -3276,7 +3276,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                     <input type="text" inputMode="numeric"
                       value={editData.cfop_padrao ?? ""}
                       onChange={e => setEditData(prev => ({ ...prev, cfop_padrao: e.target.value.replace(/\D/g,"").slice(0,4) }))}
-                      className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                      className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                     />
                   ) : (
                     <p className="text-[10px] font-mono text-muted-foreground">{d.cfop_padrao || "—"}</p>
@@ -3288,7 +3288,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       <input type="number" min="0" max="100" step="1"
                         value={editData.margem_minima_pct ?? 0}
                         onChange={e => setEditData(prev => ({ ...prev, margem_minima_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                        className="w-full h-8 rounded-lg border border-border/50 bg-background px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                       />
                       <span className="text-[10px] text-muted-foreground shrink-0">%</span>
                     </div>

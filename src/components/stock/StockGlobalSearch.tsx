@@ -173,7 +173,6 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     const lotesByItem = buildLoteMap(movData ?? []);
     const results = devRows
       .map(dev => buildResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
-      .filter(r => totalQty(r) > 0)
       .sort((a, b) => totalQty(b) - totalQty(a));
     return {
       suggestions: devRows.map(d => ({ device_id: d.id, model: d.model, reference: d.reference })),
@@ -223,7 +222,6 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
 
   const results = devsOrdenados
     .map(dev => buildResult(dev, stockItems.filter(s => s.device_id === dev.id), lotesByItem))
-    .filter(r => totalQty(r) > 0)
     .sort((a, b) => totalQty(b) - totalQty(a));
 
   return {

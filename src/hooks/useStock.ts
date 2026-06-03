@@ -122,22 +122,11 @@ export function useStock(search: string) {
             return;
           }
         } else {
-          // Busca textual: RPC usa índices GIN trgm no servidor (busca em devices)
+          // Busca textual: RPC usa índices GIN trgm no servidor
           const { data: ids } = await supabase.rpc("search_devices_for_stock", {
             p_search: s,
           });
-          const deviceIdsFromSearch = (ids as string[] | null) ?? [];
-
-          // Também busca por location e notes diretamente nos stock_items
-          const { data: siByLocation } = await supabase
-            .from("stock_items")
-            .select("device_id")
-            .or(`location.ilike.%${s}%,notes.ilike.%${s}%`);
-
-          const extraDeviceIds = (siByLocation ?? []).map((r: { device_id: string }) => r.device_id);
-
-          // Une os dois conjuntos de device_ids sem duplicatas
-          deviceIds = [...new Set([...deviceIdsFromSearch, ...extraDeviceIds])];
+          deviceIds = (ids as string[] | null) ?? [];
 
           if (deviceIds.length === 0) {
             if (gen !== genRef.current) return;
@@ -152,7 +141,7 @@ export function useStock(search: string) {
       // ── Passo 2: RPC principal — 1 chamada, tudo incluído ─────────────────
       const { data: rpcResult, error: rpcError } = await supabase.rpc("load_stock_page", {
         p_search:     null,
-        p_limit:      10000,     // suporta estoques grandes (>5000 itens)
+        p_limit:      500,       // máximo permitido pelo RPC (clampado no servidor)
         p_offset:     0,
         p_device_ids: deviceIds, // null = sem filtro (carrega todos)
       });
