@@ -686,7 +686,7 @@ function NotaManualModal({
                 return (
                   <div key={item.id}
                     className={cn("rounded-xl border p-3 space-y-2.5",
-                      allOk ? "border-border/30 bg-muted/10" : "border-amber-500/30 bg-amber-500/4")}>
+                      allOk ? "border-border/30 bg-muted/10" : "border-amber-500/30 bg-amber-500/10")}>
                     <div className="flex items-center gap-2">
                       <Package size={13} className="text-violet-500 shrink-0" />
                       <input type="text" value={item.descricao}
@@ -714,7 +714,7 @@ function NotaManualModal({
                             onChange={e => updItem(item.id, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
                             placeholder={f.ph}
                             className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                              f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                              f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/10")}
                           />
                         </div>
                       ))}
@@ -734,7 +734,8 @@ function NotaManualModal({
                           value={item.valorUnitario}
                           onChange={e => updItem(item.id, "valorUnitario", e.target.value)}
                           className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                            vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                            vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/10")}
+                          placeholder="0.00"
                         />
                       </div>
                     </div>
@@ -1258,8 +1259,7 @@ function SefazModal({
         // Notifica vendedora + admins mesmo no modo teste
         await notificarPedidoEnviado(pedido, nfLabel, fake.protocolo ?? "");
         toast.success(`[TESTE] NF-e simulada! Protocolo ${fake.protocolo}`, { duration: 5000 });
-        setLastResult(fake);
-        onSuccess(); return;
+        onClose(); onSuccess(); return;
       }
       const { data, error } = await supabase.functions.invoke("sefaz-emitir", {
         body: { pedidoId: pedido.id, dadosFiscais: dados, modoTeste },
@@ -1471,7 +1471,7 @@ function SefazModal({
                 return (
                   <div key={item.pedido_item_id}
                     className={cn("rounded-xl border p-3 space-y-2.5",
-                      ncmOk && cfopOk && vlrOk ? "border-border/30 bg-muted/10" : "border-amber-500/30 bg-amber-500/4")}>
+                      ncmOk && cfopOk && vlrOk ? "border-border/30 bg-muted/10" : "border-amber-500/30 bg-amber-500/10")}>
                     <div className="flex items-center gap-2">
                       <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
                         <Package className="h-3 w-3 text-violet-500" />
@@ -1491,7 +1491,7 @@ function SefazModal({
                             onChange={e => updItem(idx, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
                             placeholder={f.ph}
                             className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                              f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                              f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/10")}
                           />
                         </div>
                       ))}
@@ -1505,7 +1505,7 @@ function SefazModal({
                             value={item.valorUnitario}
                             onChange={e => updItem(idx, "valorUnitario", e.target.value)}
                             className={cn("w-full h-8 rounded-lg border bg-background text-foreground pl-5 pr-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                              vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/4")}
+                              vlrOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/10")}
                           />
                         </div>
                       </div>

@@ -62,21 +62,25 @@ Isso criará:
 
 ## 5. Conta de Admin Inicial
 
-Após as migrations, uma conta admin é criada automaticamente:
+A migration de seed foi removida por segurança. Você precisa criar o admin manualmente.
 
-| Campo  | Valor              |
-|--------|--------------------|
-| Login  | `admin`            |
-| Senha  | `Admin@2024`       |
-| Email  | `admin@interno.conceptus` |
+**Como criar o primeiro admin via Supabase SQL Editor:**
 
-> ⚠️ **MUDE A SENHA NO PRIMEIRO LOGIN.** O sistema forçará a troca (`must_change_password = true`).
+Supabase → **SQL Editor** → cole e execute:
 
-Para trocar via SQL (opcional, antes do primeiro login):
 ```sql
-SELECT public.admin_reset_password(
-  (SELECT id FROM auth.users WHERE email = 'admin@interno.conceptus'),
-  'SuaNovaSenhaForte@2026'
+SELECT public.admin_create_user(
+  'seu_login',       -- login desejado (sem espaços)
+  'SuaSenhaForte@1', -- senha (mín. 8 caracteres)
+  'Seu Nome'         -- nome de exibição
+);
+
+-- Depois promova para admin:
+UPDATE public.user_roles
+SET role = 'admin'
+WHERE user_id = (
+  SELECT id FROM auth.users
+  WHERE email = 'seu_login@interno.conceptus'
 );
 ```
 

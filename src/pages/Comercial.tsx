@@ -674,7 +674,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 onChange={e => {
                   if (e.target.value !== "outro") setDesconto(Number(e.target.value));
                 }}
-                className="flex-1 h-10 rounded-xl border border-border bg-muted/30 px-3 text-[13px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all"
+                className="flex-1 h-10 rounded-xl border border-border bg-background px-3 text-[13px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all [&>option]:bg-background [&>option]:text-foreground"
               >
                 <option value="0">Sem desconto</option>
                 <option value="5">5%</option>
