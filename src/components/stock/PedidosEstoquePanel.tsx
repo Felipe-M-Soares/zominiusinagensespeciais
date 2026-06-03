@@ -326,8 +326,12 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
   const canConfirmar = isPendente && !loadingLotes && pedido.itens.every(item => {
     const lotes = lotesDisp[item.id] ?? [];
-    if (lotes.length === 0) return true;
-    return totalSel(item.id) === item.quantidade;
+    // Se há lotes disponíveis, exige seleção completa
+    if (lotes.length > 0) return totalSel(item.id) === item.quantidade;
+    // Se não há lotes disponíveis mas há seleção manual, permite
+    if (totalSel(item.id) > 0) return totalSel(item.id) === item.quantidade;
+    // Se não há lotes e nem seleção, bloqueia
+    return false;
   });
 
   // All items confirmed (used to enable "Marcar como Pronto" in separando mode with multiple items)
@@ -848,15 +852,31 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
               <Printer className="h-3.5 w-3.5" />
             </button>
 
-            {isPendente && (
+            {isPendente && (() => {
+              // Calcula quantos itens ainda faltam seleção
+              const itensFaltando = pedido.itens.filter(item => {
+                const sel_item = totalSel(item.id);
+                return sel_item < item.quantidade;
+              });
+              const btnLabel = itensFaltando.length > 0
+                ? `Selecione as peças (${itensFaltando.length} pendente${itensFaltando.length > 1 ? "s" : ""})`
+                : "Iniciar Separação";
+              return (
               <button type="button"
-                onClick={() => onIniciarSeparacao(pedido, sel, expIdByItem)}
-                disabled={!canConfirmar || loadingLotes}
+                onClick={() => {
+                  if (!canConfirmar) {
+                    toast.error("Selecione a quantidade de peças para todos os itens antes de iniciar a separação.");
+                    return;
+                  }
+                  onIniciarSeparacao(pedido, sel, expIdByItem);
+                }}
+                disabled={loadingLotes}
                 className="flex-1 h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none">
                 <PackageCheck className="h-3.5 w-3.5" />
-                Iniciar Separação
+                {btnLabel}
               </button>
-            )}
+              );
+            })()}
 
             {isSeparando && (() => {
               const multiPecas = pedido.itens.length > 1;

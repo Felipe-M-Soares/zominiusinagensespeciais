@@ -812,6 +812,7 @@ export default function Estoque() {
   const statsLow = filteredItems.filter((i) => i.quantity > 0 && i.quantity <= i.min_quantity).length;
   const statsOk = filteredItems.filter((i) => i.quantity > i.min_quantity).length;
   const statsEmpty = filteredItems.filter((i) => i.quantity === 0).length;
+  const totalQty = filteredItems.reduce((s, i) => s + i.quantity, 0);
 
   // Alerta global de estoque baixo (badge no header)
   const globalLowCount = allItems.filter(i => i.quantity > 0 && i.quantity <= i.min_quantity).length;
@@ -1167,7 +1168,8 @@ export default function Estoque() {
         {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && !loading && (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs text-muted-foreground">
-              {filteredItems.length} peça{filteredItems.length !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
+              {totalQty.toLocaleString("pt-BR")} unidade{totalQty !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
+              {" "}({filteredItems.length} tipo{filteredItems.length !== 1 ? "s" : ""})
               {hasActiveFilters && <span className="text-primary/70"> (filtrado)</span>}
             </p>
             {activeView !== "retrabalho" && statsOk > 0 && (

@@ -636,6 +636,7 @@ const PipelinePanel = memo(function PipelinePanel() {
   const [search, setSearch] = useState("");
   const [faseFilter, setFaseFilter] = useState<"all" | "1" | "2" | "3" | "4" | "5">("all");
   const [editDevice, setEditDevice] = useState<DeviceReg | null>(null);
+  const [visibleCount, setVisibleCount] = useState(30);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -657,6 +658,7 @@ const PipelinePanel = memo(function PipelinePanel() {
         from += PAGE;
       }
       setDevices(all);
+      setVisibleCount(30);
     } finally {
       setLoading(false);
     }
@@ -677,6 +679,11 @@ const PipelinePanel = memo(function PipelinePanel() {
       );
     });
   }, [devices, faseFilter, search]);
+
+  // Reset paginação ao mudar filtros
+  useEffect(() => { setVisibleCount(30); }, [faseFilter, search]);
+
+  const visibleDevices = filtered.slice(0, visibleCount);
 
   // KPIs — só peças que precisam de ação (fase < 5 já filtrado na query)
   const kpis = useMemo(() => ({
@@ -734,9 +741,18 @@ const PipelinePanel = memo(function PipelinePanel() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(d => (
+          {visibleDevices.map(d => (
             <PipelineCard key={d.id} device={d} isAdmin={isAdmin} onEdit={setEditDevice} />
           ))}
+          {visibleCount < filtered.length && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount(v => v + 30)}
+              className="w-full h-9 rounded-xl border border-border/40 text-[12px] text-muted-foreground hover:bg-muted/30 transition-colors"
+            >
+              Carregar mais ({filtered.length - visibleCount} restantes)
+            </button>
+          )}
         </div>
       )}
 
