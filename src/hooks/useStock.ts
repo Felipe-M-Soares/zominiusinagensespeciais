@@ -74,71 +74,18 @@ export function useStock(search: string) {
   const genRef = useRef<number>(0);
   const lastLoadRef = useRef<number>(0);
 
-  const loadItems = useCallback(async (q: string) => {
+  const loadItems = useCallback(async (_q: string) => {
     const gen = ++genRef.current;
     setLoading(true);
     setError(null);
 
     try {
-      const s = sanitizeQuery(q);
-      let deviceIds: string[] | null = null;
+      // Carrega TODOS os items sem filtro de busca no banco.
+      // A filtragem por texto é feita no front sobre allItems (Estoque.tsx),
+      // eliminando o limite de 500 do search_devices_for_stock e tornando
+      // a busca instantânea mesmo com 5000+ itens.
 
-      // ── Passo 1 (apenas se há busca): resolve device_ids ─────────────────
-      if (s) {
-        const isLoteSearch = /^\d{6}-\d{2}([/][A-Za-z])?$/.test(s.toUpperCase());
-
-        if (isLoteSearch) {
-          // Busca pelo lote nos movimentos → device_ids dos stock_items correspondentes
-          const { data: loteMov } = await supabase
-            .from("stock_movements")
-            .select("stock_item_id")
-            .eq("lote", s.toUpperCase());
-
-          if (!loteMov || loteMov.length === 0) {
-            if (gen !== genRef.current) return;
-            setItems([]);
-            setTotalCount(0);
-            setLoteMap(new Map());
-            return;
-          }
-
-          const itemIds = [...new Set(
-            loteMov.map((m: { stock_item_id: string }) => m.stock_item_id)
-          )];
-          const { data: siRows } = await supabase
-            .from("stock_items")
-            .select("device_id")
-            .in("id", itemIds);
-
-          deviceIds = [...new Set(
-            (siRows ?? []).map((r: { device_id: string }) => r.device_id)
-          )];
-
-          if (deviceIds.length === 0) {
-            if (gen !== genRef.current) return;
-            setItems([]);
-            setTotalCount(0);
-            setLoteMap(new Map());
-            return;
-          }
-        } else {
-          // Busca textual: RPC usa índices GIN trgm no servidor
-          const { data: ids } = await supabase.rpc("search_devices_for_stock", {
-            p_search: s,
-          });
-          deviceIds = (ids as string[] | null) ?? [];
-
-          if (deviceIds.length === 0) {
-            if (gen !== genRef.current) return;
-            setItems([]);
-            setTotalCount(0);
-            setLoteMap(new Map());
-            return;
-          }
-        }
-      }
-
-      // ── Passo 2: RPC principal — pagina até buscar todos os itens ──────────
+      // ── RPC principal — pagina até buscar todos os itens ──────────────────
       // O RPC tem teto de 2000 por chamada. Paginamos até total_count para
       // garantir que todos os itens (ex: 5133 no intermediário) sejam carregados.
       const PAGE_SIZE = 2000;
@@ -153,7 +100,7 @@ export function useStock(search: string) {
           p_search:     null,
           p_limit:      PAGE_SIZE,
           p_offset:     offset,
-          p_device_ids: deviceIds,
+          p_device_ids: null, // sempre carrega tudo; busca é feita no front
         });
 
         if (rpcError) throw rpcError;
@@ -226,23 +173,23 @@ export function useStock(search: string) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    loadItems(search);
+    loadItems(""); // busca ignorada — filtragem feita no front
     const ref = genRef;
-    return () => { ref.current++; }; // cancela cargas em voo ao desmontar
-  }, [search, loadItems]);
+    return () => { ref.current++; };
+  }, [loadItems]); // não depende de search — recarrega só ao montar/refetch
 
   // Recarrega quando o usuário volta à aba após 60s de ausência.
   useEffect(() => {
     function handleVisibility() {
       if (document.visibilityState !== "visible") return;
       if (Date.now() - lastLoadRef.current < 60_000) return;
-      loadItems(search);
+      loadItems("");
     }
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [search, loadItems]);
 
-  return { items, totalCount, loteMap, loading, error, refetch: () => loadItems(search) };
+  return { items, totalCount, loteMap, loading, error, refetch: () => loadItems("") };
 }
 
 // ─── Hook de movimentos de um item ────────────────────────────────────────────
