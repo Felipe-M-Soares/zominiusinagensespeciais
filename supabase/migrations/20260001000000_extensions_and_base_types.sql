@@ -2,8 +2,15 @@
 -- 001: Extensões e tipos base
 -- =============================================================================
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+DO $$ BEGIN
+  CREATE EXTENSION IF NOT EXISTS pgcrypto;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE EXTENSION IF NOT EXISTS pg_trgm;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Enum de papéis do sistema
 DO $$ BEGIN
