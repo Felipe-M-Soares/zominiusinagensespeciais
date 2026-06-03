@@ -101,9 +101,6 @@ $$;
 REVOKE ALL ON FUNCTION public.admin_create_user   FROM anon;
 REVOKE ALL ON FUNCTION public.admin_reset_password FROM anon;
 REVOKE ALL ON FUNCTION public.admin_delete_user   FROM anon;
-GRANT EXECUTE ON FUNCTION public.admin_create_user   TO authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_reset_password TO authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_delete_user   TO authenticated;
 
 -- Conta admin padrão
 DO $admin$
@@ -135,3 +132,6 @@ BEGIN
 END;
 $admin$;
 
+GRANT EXECUTE ON FUNCTION public.admin_create_user   TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_reset_password TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_delete_user   TO authenticated;

@@ -7,7 +7,6 @@ CREATE OR REPLACE FUNCTION public.increment_stock_quantity(p_item_id uuid, p_qty
 RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   UPDATE public.stock_items SET quantity = quantity + p_qty, updated_at = now() WHERE id = p_item_id;
 $$;
-GRANT EXECUTE ON FUNCTION public.increment_stock_quantity TO authenticated;
 
 -- ── reserve_stock ─────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.reserve_stock(p_item_id uuid, p_qty integer)
@@ -79,7 +78,6 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN RETURN jsonb_build_object('ok', false, 'error', SQLERRM);
 END;
 $$;
-GRANT EXECUTE ON FUNCTION public.delete_stock_item(uuid) TO authenticated;
 
 -- ── admin_clear_history ───────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.admin_clear_history()
@@ -107,7 +105,6 @@ BEGIN
   RETURN jsonb_build_object('inserted', inserted_count);
 END;
 $$;
-GRANT EXECUTE ON FUNCTION public.sync_stock_items_from_devices() TO authenticated;
 
 -- ── get_lotes_intermediario ───────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.get_lotes_intermediario()
@@ -128,5 +125,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   HAVING SUM(CASE sm.type WHEN 'entrada' THEN sm.quantity WHEN 'saida' THEN -sm.quantity ELSE 0 END) > 0
   ORDER BY d.model, upper(sm.lote);
 $$;
-GRANT EXECUTE ON FUNCTION public.get_lotes_intermediario() TO authenticated;
 
+GRANT EXECUTE ON FUNCTION public.increment_stock_quantity TO authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_stock_item(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_stock_items_from_devices() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_lotes_intermediario() TO authenticated;

@@ -15,7 +15,6 @@ BEGIN
   SET quantity = quantity + p_qty, updated_at = now()
   WHERE id = p_item_id;
 END; $$;
-GRANT EXECUTE ON FUNCTION public.increment_stock_quantity(uuid, integer) TO authenticated;
 
 -- ── reserve_stock ─────────────────────────────────────────────────────────────
 -- Requer: usuário autenticado (vendedora/admin criam pedidos)
@@ -38,7 +37,6 @@ BEGIN
   END LOOP;
   RETURN jsonb_build_object('ok', true);
 END; $$;
-GRANT EXECUTE ON FUNCTION public.reserve_stock(uuid, jsonb) TO authenticated;
 
 -- ── stock_movement_atomic ─────────────────────────────────────────────────────
 -- Requer: usuário autenticado
@@ -75,7 +73,6 @@ BEGIN
 
   RETURN jsonb_build_object('ok', true);
 END; $$;
-GRANT EXECUTE ON FUNCTION public.stock_movement_atomic(uuid,text,integer,text,text,uuid,text) TO authenticated;
 
 -- ── cancel_pedido ─────────────────────────────────────────────────────────────
 -- Requer: autenticado + admin OU vendedora dona do pedido
@@ -106,7 +103,6 @@ BEGIN
   UPDATE public.pedidos_comerciais SET status = 'cancelado' WHERE id = p_pedido_id;
   RETURN jsonb_build_object('ok', true);
 END; $$;
-GRANT EXECUTE ON FUNCTION public.cancel_pedido(uuid) TO authenticated;
 
 -- ── faturar_pedido (versão antiga sem SEFAZ) ─────────────────────────────────
 -- Requer: admin ou financeiro
@@ -137,7 +133,6 @@ BEGIN
 
   RETURN jsonb_build_object('ok', true);
 END; $$;
-GRANT EXECUTE ON FUNCTION public.faturar_pedido(uuid,text,uuid,text) TO authenticated;
 
 -- ── sync_stock_items_from_devices ─────────────────────────────────────────────
 -- Requer: admin only
@@ -157,7 +152,6 @@ BEGIN
   )
   ON CONFLICT DO NOTHING;
 END; $$;
-GRANT EXECUTE ON FUNCTION public.sync_stock_items_from_devices() TO authenticated;
 
 -- ── get_lotes_intermediario ───────────────────────────────────────────────────
 -- Requer: autenticado (leitura, qualquer role)
@@ -182,5 +176,11 @@ BEGIN
     ORDER BY last_movement DESC;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION public.get_lotes_intermediario(uuid) TO authenticated;
 
+GRANT EXECUTE ON FUNCTION public.increment_stock_quantity(uuid, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.reserve_stock(uuid, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.stock_movement_atomic(uuid,text,integer,text,text,uuid,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.cancel_pedido(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.faturar_pedido(uuid,text,uuid,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_stock_items_from_devices() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_lotes_intermediario(uuid) TO authenticated;

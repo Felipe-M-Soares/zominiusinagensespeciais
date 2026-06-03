@@ -55,7 +55,6 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.search_devices_for_stock(text) TO authenticated;
 
 -- ── RPC principal: load_stock_page ────────────────────────────────────────────
 -- Retorna em UMA chamada:
@@ -230,7 +229,6 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.load_stock_page(text, integer, integer, uuid[]) TO authenticated;
 
 -- ── ANALYZE ───────────────────────────────────────────────────────────────────
 ANALYZE public.stock_items;
@@ -239,3 +237,5 @@ ANALYZE public.devices;
 ANALYZE public.pedido_itens;
 ANALYZE public.pedidos_comerciais;
 
+GRANT EXECUTE ON FUNCTION public.search_devices_for_stock(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.load_stock_page(text, integer, integer, uuid[]) TO authenticated;
