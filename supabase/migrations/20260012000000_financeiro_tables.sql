@@ -1,3 +1,4 @@
+BEGIN;
 -- =============================================================================
 -- 012: Módulo Financeiro — lançamentos, contas, NF sequencial
 -- =============================================================================
@@ -113,3 +114,5 @@ GRANT EXECUTE ON FUNCTION public.peek_next_nf_number(text,text) TO authenticated
 -- ── Índices ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_fin_lanc_data ON public.financeiro_lancamentos(data_lancamento DESC);
 CREATE INDEX IF NOT EXISTS idx_fin_lanc_tipo ON public.financeiro_lancamentos(tipo);
+
+COMMIT;

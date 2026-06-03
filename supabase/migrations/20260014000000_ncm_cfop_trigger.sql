@@ -1,3 +1,4 @@
+BEGIN;
 -- =============================================================================
 -- 014: Auto-preenchimento de NCM/CFOP para dispositivos
 -- =============================================================================
@@ -48,3 +49,5 @@ DROP TRIGGER IF EXISTS trg_devices_auto_ncm_cfop ON public.devices;
 CREATE TRIGGER trg_devices_auto_ncm_cfop
   BEFORE INSERT OR UPDATE OF risk_class, implantable, body_region, classification_code, primary_material
   ON public.devices FOR EACH ROW EXECUTE FUNCTION public.trg_auto_ncm_cfop();
+
+COMMIT;
