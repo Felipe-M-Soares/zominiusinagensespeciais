@@ -27,10 +27,10 @@ WHERE risk_class IS NULL OR risk_class = ''
    OR classification_code IS NULL OR classification_code = '';
 
 -- Fase 3 → marcar como registrado
+-- (regime é coluna gerada automaticamente — não pode ser atualizada diretamente)
 UPDATE public.devices
 SET
   status_regularizacao   = 'registrado',
-  regime                 = COALESCE(regime, 'registro'),
   data_registro_anvisa   = COALESCE(data_registro_anvisa, now()::date),
   data_vencimento_anvisa = COALESCE(data_vencimento_anvisa, (now() + INTERVAL '10 years')::date)
 WHERE status_regularizacao IN ('pendente', 'em_processo') OR status_regularizacao IS NULL;
