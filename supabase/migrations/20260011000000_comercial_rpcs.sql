@@ -1,4 +1,3 @@
-BEGIN;
 -- =============================================================================
 -- 011: RPCs de pedidos — reserva, cancelamento, separação, faturamento
 -- =============================================================================
@@ -140,5 +139,3 @@ BEGIN
 END;
 $$;
 GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz(uuid,text,text,text,timestamptz,uuid,text,text) TO authenticated;
-
-COMMIT;

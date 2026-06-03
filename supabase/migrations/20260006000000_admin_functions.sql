@@ -1,4 +1,3 @@
-BEGIN;
 -- =============================================================================
 -- 006: Funções administrativas (criar/resetar/excluir usuários)
 -- =============================================================================
@@ -135,5 +134,3 @@ BEGIN
   ON CONFLICT (user_id) DO UPDATE SET role = 'admin';
 END;
 $admin$;
-
-COMMIT;

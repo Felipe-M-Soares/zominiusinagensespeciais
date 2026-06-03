@@ -1,4 +1,3 @@
-BEGIN;
 -- =============================================================================
 -- 009: RPCs de estoque (movimentação atômica, reserva, sync)
 -- =============================================================================
@@ -130,5 +129,3 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   ORDER BY d.model, upper(sm.lote);
 $$;
 GRANT EXECUTE ON FUNCTION public.get_lotes_intermediario() TO authenticated;
-
-COMMIT;
