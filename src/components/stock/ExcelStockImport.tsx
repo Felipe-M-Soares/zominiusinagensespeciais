@@ -10,6 +10,10 @@
  */
 
 import { useRef, useState, useCallback } from "react";
+
+// Constantes fora do componente para evitar recriação a cada render
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB — proteção contra zip bomb / DDoS
+const MAX_ROWS = 10_000;                  // proteção contra esgotamento de memória
 import ExcelJS from "exceljs";
 import * as pdfjsLib from "pdfjs-dist";
 import { supabase } from "@/integrations/supabase/client";
@@ -290,9 +294,6 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
   const handleClose = () => { reset(); onClose(); };
 
   // ── Parse Excel ─────────────────────────────────────────────────────────────
-
-  const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB max (zip bomb / DDoS protection)
-  const MAX_ROWS = 10_000; // max rows to process (memory exhaustion protection)
 
   const parseExcel = useCallback(async (file: File) => {
     if (!file.name.match(/\.(xlsx|xls)$/i)) { toast.error("Use .xlsx ou .xls"); return; }
