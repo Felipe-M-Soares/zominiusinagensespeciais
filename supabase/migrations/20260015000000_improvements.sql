@@ -20,7 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_pedido_itens_pedido_stock
   ON public.pedido_itens (pedido_id, stock_item_id);
 
 -- ── 3. CHECK constraint: quantity_reserved não pode ser negativo ──────────────
-DO $$ BEGIN
+DO $f01$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'stock_items_quantity_reserved_non_negative'
@@ -30,7 +30,7 @@ DO $$ BEGIN
       ADD CONSTRAINT stock_items_quantity_reserved_non_negative
       CHECK (quantity_reserved >= 0);
   END IF;
-END $$;
+END $f01$;
 
 -- ── 4. Tabela de auditoria de ações críticas ──────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.audit_log (
@@ -69,7 +69,7 @@ CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(
   p_pedido_id uuid, p_nf text, p_chave_acesso text, p_protocolo text,
   p_dh_autorizacao timestamptz, p_user_id uuid, p_user_name text,
   p_xml_nfe text DEFAULT NULL
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f02$
 DECLARE v_status text; v_nf_existente text;
 BEGIN
   SELECT status, nota_fiscal INTO v_status, v_nf_existente
@@ -102,7 +102,7 @@ BEGIN
     jsonb_build_object('nota_fiscal', p_nf, 'protocolo', p_protocolo));
 
   RETURN jsonb_build_object('ok', true);
-END; $$;
+END; $f02$;
 
 GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz(uuid,text,text,text,timestamptz,uuid,text,text) TO authenticated;
 

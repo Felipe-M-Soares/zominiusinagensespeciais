@@ -6,11 +6,11 @@ RETURNS integer
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
-AS $$
+AS $f01$
   SELECT COALESCE(SUM(quantity)::integer, 0)
   FROM stock_items
   WHERE quantity > 0;
-$$;
+$f01$;
 
 -- Retorna total de devices em regularização por fase
 CREATE OR REPLACE FUNCTION get_devices_regularizacao_counts()
@@ -18,7 +18,7 @@ RETURNS json
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
-AS $$
+AS $f02$
   SELECT json_build_object(
     'total',       COUNT(*),
     'fase_1',      COUNT(*) FILTER (WHERE fase_atual = 1),
@@ -31,7 +31,7 @@ AS $$
     'vencendo',    COUNT(*) FILTER (WHERE dias_ate_vencer IS NOT NULL AND dias_ate_vencer < 365)
   )
   FROM devices_regularizacao;
-$$;
+$f02$;
 
 GRANT EXECUTE ON FUNCTION get_total_stock_quantity() TO authenticated;
 GRANT EXECUTE ON FUNCTION get_devices_regularizacao_counts() TO authenticated;

@@ -5,7 +5,7 @@
 CREATE OR REPLACE FUNCTION public.resolve_ncm_device(
   p_risk_class text, p_implantable boolean, p_body_region text,
   p_classification text, p_primary_material text
-) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $$
+) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $f01$
 DECLARE
   v_body     text := lower(coalesce(p_body_region,''));
   v_class    text := lower(coalesce(p_classification,''));
@@ -25,13 +25,13 @@ BEGIN
   IF p_risk_class IN ('I','II') THEN RETURN '9018.90.99'; END IF;
   RETURN '9021.39.90';
 END;
-$$;
+$f01$;
 
 CREATE OR REPLACE FUNCTION public.resolve_cfop_device(p_implantable boolean)
-RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT '5102'; $$;
+RETURNS text LANGUAGE sql IMMUTABLE AS $f02$ SELECT '5102'; $f02$;
 
 CREATE OR REPLACE FUNCTION public.trg_auto_ncm_cfop()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger LANGUAGE plpgsql AS $f03$
 BEGIN
   IF NEW.ncm IS NULL OR NEW.ncm = '' OR NEW.ncm = '90213990' THEN
     NEW.ncm := replace(public.resolve_ncm_device(NEW.risk_class, NEW.implantable, NEW.body_region, NEW.classification_code, NEW.primary_material), '.', '');
@@ -42,7 +42,7 @@ BEGIN
   IF NEW.unidade IS NULL OR NEW.unidade = '' THEN NEW.unidade := 'UN'; END IF;
   RETURN NEW;
 END;
-$$;
+$f03$;
 
 DROP TRIGGER IF EXISTS trg_devices_auto_ncm_cfop ON public.devices;
 CREATE TRIGGER trg_devices_auto_ncm_cfop

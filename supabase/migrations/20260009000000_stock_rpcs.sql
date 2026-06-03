@@ -4,14 +4,14 @@
 
 -- ── increment_stock_quantity ──────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.increment_stock_quantity(p_item_id uuid, p_qty integer)
-RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $f01$
   UPDATE public.stock_items SET quantity = quantity + p_qty, updated_at = now() WHERE id = p_item_id;
-$$;
+$f01$;
 GRANT EXECUTE ON FUNCTION public.increment_stock_quantity TO authenticated;
 
 -- ── reserve_stock ─────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.reserve_stock(p_item_id uuid, p_qty integer)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f02$
 DECLARE v_updated integer;
 BEGIN
   UPDATE public.stock_items
@@ -21,13 +21,13 @@ BEGIN
   IF v_updated = 0 THEN RETURN jsonb_build_object('ok', false, 'error', 'Estoque insuficiente ou item não encontrado'); END IF;
   RETURN jsonb_build_object('ok', true);
 END;
-$$;
+$f02$;
 
 -- ── stock_movement_atomic ─────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.stock_movement_atomic(
   p_item_id uuid, p_type text, p_qty integer,
   p_reason text, p_lote text, p_user_id uuid, p_user_name text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f03$
 DECLARE v_new_qty integer;
 BEGIN
   IF p_type = 'saida' THEN
@@ -42,11 +42,11 @@ BEGIN
   VALUES (p_item_id, p_type, p_qty, p_reason, p_lote, p_user_id, p_user_name);
   RETURN jsonb_build_object('ok', true, 'new_quantity', v_new_qty);
 END;
-$$;
+$f03$;
 
 -- ── cancel_movement ───────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.cancel_movement(p_movement_id uuid, p_stock_item_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f04$
 DECLARE v_movement public.stock_movements%ROWTYPE;
 BEGIN
   IF auth.uid() IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
@@ -60,11 +60,11 @@ BEGIN
   DELETE FROM public.stock_movements WHERE id = p_movement_id;
   RETURN jsonb_build_object('ok', true);
 END;
-$$;
+$f04$;
 
 -- ── delete_stock_item ─────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.delete_stock_item(p_stock_item_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f05$
 DECLARE v_role public.app_role;
 BEGIN
   SELECT role INTO v_role FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1;
@@ -78,12 +78,12 @@ BEGIN
   RETURN jsonb_build_object('ok', true);
 EXCEPTION WHEN OTHERS THEN RETURN jsonb_build_object('ok', false, 'error', SQLERRM);
 END;
-$$;
+$f05$;
 GRANT EXECUTE ON FUNCTION public.delete_stock_item(uuid) TO authenticated;
 
 -- ── admin_clear_history ───────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.admin_clear_history()
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f06$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
     RAISE EXCEPTION 'Acesso negado: apenas administradores podem apagar o histórico';
@@ -93,11 +93,11 @@ BEGIN
   DELETE FROM public.stock_movements;
   UPDATE public.stock_items SET quantity = 0, quantity_reserved = 0;
 END;
-$$;
+$f06$;
 
 -- ── sync_stock_items_from_devices ─────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.sync_stock_items_from_devices()
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f07$
 DECLARE inserted_count integer;
 BEGIN
   INSERT INTO public.stock_items (device_id, quantity, min_quantity, fase)
@@ -106,13 +106,13 @@ BEGIN
   GET DIAGNOSTICS inserted_count = ROW_COUNT;
   RETURN jsonb_build_object('inserted', inserted_count);
 END;
-$$;
+$f07$;
 GRANT EXECUTE ON FUNCTION public.sync_stock_items_from_devices() TO authenticated;
 
 -- ── get_lotes_intermediario ───────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.get_lotes_intermediario()
 RETURNS TABLE (stock_item_id uuid, lote text, saldo integer, model text, reference text)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $f08$
   SELECT si.id, upper(sm.lote), SUM(CASE sm.type WHEN 'entrada' THEN sm.quantity WHEN 'saida' THEN -sm.quantity ELSE 0 END)::integer,
     d.model, d.reference
   FROM public.stock_items si
@@ -127,5 +127,5 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   GROUP BY si.id, upper(sm.lote), d.model, d.reference
   HAVING SUM(CASE sm.type WHEN 'entrada' THEN sm.quantity WHEN 'saida' THEN -sm.quantity ELSE 0 END) > 0
   ORDER BY d.model, upper(sm.lote);
-$$;
+$f08$;
 GRANT EXECUTE ON FUNCTION public.get_lotes_intermediario() TO authenticated;

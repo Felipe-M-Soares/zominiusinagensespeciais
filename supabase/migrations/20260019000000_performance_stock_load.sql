@@ -34,7 +34,7 @@ LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $f01$
 BEGIN
   -- SEG: rejeita chamadas não autenticadas (padrão do projeto)
   IF auth.uid() IS NULL THEN
@@ -53,7 +53,7 @@ BEGIN
     LIMIT 500
   );
 END;
-$$;
+$f01$;
 
 GRANT EXECUTE ON FUNCTION public.search_devices_for_stock(text) TO authenticated;
 
@@ -79,7 +79,7 @@ LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $f02$
 DECLARE
   v_total        bigint;
   v_items        jsonb;
@@ -228,7 +228,7 @@ BEGIN
     'lote_map',     COALESCE(v_lote_map,     '{}'::jsonb)
   );
 END;
-$$;
+$f02$;
 
 GRANT EXECUTE ON FUNCTION public.load_stock_page(text, integer, integer, uuid[]) TO authenticated;
 

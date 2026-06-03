@@ -18,12 +18,12 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_user_action_created
 DROP TRIGGER IF EXISTS trg_cleanup_rate_limit ON public.rate_limit_log;
 DROP FUNCTION IF EXISTS public.cleanup_rate_limit_log();
 CREATE OR REPLACE FUNCTION public.cleanup_rate_limit_log()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f01$
 BEGIN
   DELETE FROM public.rate_limit_log
   WHERE created_at < now() - interval '5 minutes';
   RETURN NULL;
-END; $$;
+END; $f01$;
 
 DROP TRIGGER IF EXISTS trg_cleanup_rate_limit ON public.rate_limit_log;
 CREATE TRIGGER trg_cleanup_rate_limit
@@ -51,7 +51,7 @@ DROP FUNCTION IF EXISTS public.check_rate_limit(text, uuid);
 CREATE OR REPLACE FUNCTION public.check_rate_limit(
   p_action text,
   p_user_id uuid DEFAULT auth.uid()
-) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f02$
 DECLARE
   v_count   integer;
   v_max     integer;
@@ -81,7 +81,7 @@ BEGIN
   -- Registra a chamada atual
   INSERT INTO public.rate_limit_log (user_id, action) VALUES (p_user_id, p_action);
   RETURN true;
-END; $$;
+END; $f02$;
 GRANT EXECUTE ON FUNCTION public.check_rate_limit(text, uuid) TO authenticated;
 
 -- ── Adiciona check_rate_limit nas RPCs críticas ───────────────────────────────
@@ -96,7 +96,7 @@ CREATE OR REPLACE FUNCTION public.stock_movement_atomic(
   p_lote      text,
   p_user_id   uuid,
   p_user_name text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f03$
 DECLARE v_current integer;
 BEGIN
   IF auth.uid() IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
@@ -122,13 +122,13 @@ BEGIN
   VALUES (p_item_id, p_type, p_qty, p_reason, p_lote, p_user_id, p_user_name);
 
   RETURN jsonb_build_object('ok', true);
-END; $$;
+END; $f03$;
 GRANT EXECUTE ON FUNCTION public.stock_movement_atomic(uuid,text,integer,text,text,uuid,text) TO authenticated;
 
 -- cancel_pedido com rate limit
 DROP FUNCTION IF EXISTS public.cancel_pedido(uuid);
 CREATE OR REPLACE FUNCTION public.cancel_pedido(p_pedido_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f04$
 DECLARE v_vendedora_id uuid; v_status text;
 BEGIN
   IF auth.uid() IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
@@ -155,7 +155,7 @@ BEGIN
 
   UPDATE public.pedidos_comerciais SET status = 'cancelado' WHERE id = p_pedido_id;
   RETURN jsonb_build_object('ok', true);
-END; $$;
+END; $f04$;
 GRANT EXECUTE ON FUNCTION public.cancel_pedido(uuid) TO authenticated;
 
 -- faturar_pedido_sefaz com rate limit (redefine a versão da migration 015)
@@ -164,7 +164,7 @@ CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(
   p_pedido_id uuid, p_nf text, p_chave_acesso text, p_protocolo text,
   p_dh_autorizacao timestamptz, p_user_id uuid, p_user_name text,
   p_xml_nfe text DEFAULT NULL
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f05$
 DECLARE v_status text; v_nf_existente text; v_role text;
 BEGIN
   IF auth.uid() IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
@@ -200,6 +200,6 @@ BEGIN
     jsonb_build_object('nota_fiscal', p_nf, 'protocolo', p_protocolo));
 
   RETURN jsonb_build_object('ok', true);
-END; $$;
+END; $f05$;
 GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz(uuid,text,text,text,timestamptz,uuid,text,text) TO authenticated;
 

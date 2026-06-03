@@ -7,7 +7,7 @@ CREATE OR REPLACE FUNCTION public.admin_create_user(
   p_password     text,
   p_display_name text,
   p_role         text DEFAULT 'estoque'
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $f01$
 DECLARE
   v_caller_id   uuid := auth.uid();
   v_caller_role text;
@@ -57,12 +57,12 @@ BEGIN
 
   RETURN jsonb_build_object('success', true, 'user_id', v_new_uid::text, 'login', v_clean_login);
 END;
-$$;
+$f01$;
 
 CREATE OR REPLACE FUNCTION public.admin_reset_password(
   p_target_user_id uuid,
   p_new_password   text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $f02$
 DECLARE
   v_caller_id   uuid := auth.uid();
   v_caller_role text;
@@ -80,10 +80,10 @@ BEGIN
   UPDATE public.profiles SET must_change_password = true WHERE user_id = p_target_user_id;
   RETURN jsonb_build_object('success', true);
 END;
-$$;
+$f02$;
 
 CREATE OR REPLACE FUNCTION public.admin_delete_user(p_target_user_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f03$
 DECLARE
   v_caller_id   uuid := auth.uid();
   v_caller_role text;
@@ -99,7 +99,7 @@ BEGIN
   IF NOT FOUND THEN RETURN jsonb_build_object('error', 'Usuário não encontrado.'); END IF;
   RETURN jsonb_build_object('success', true);
 END;
-$$;
+$f03$;
 
 REVOKE ALL ON FUNCTION public.admin_create_user   FROM anon;
 REVOKE ALL ON FUNCTION public.admin_reset_password FROM anon;

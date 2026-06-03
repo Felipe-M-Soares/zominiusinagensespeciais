@@ -4,14 +4,14 @@
 
 -- ── updated_at genérico ───────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $f01$
 BEGIN NEW.updated_at = now(); RETURN NEW; END;
-$$;
+$f01$;
 
 CREATE OR REPLACE FUNCTION public.set_updated_at()
-RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $f02$
 BEGIN NEW.updated_at = now(); RETURN NEW; END;
-$$;
+$f02$;
 
 -- ── Triggers updated_at ───────────────────────────────────────────────────────
 CREATE TRIGGER update_profiles_updated_at
@@ -28,31 +28,31 @@ CREATE TRIGGER update_manuals_updated_at
 
 -- ── Verificadores de role ─────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role app_role)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $f03$
   SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role)
-$$;
+$f03$;
 
 CREATE OR REPLACE FUNCTION public.is_admin_user()
-RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $f04$
   SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')
-$$;
+$f04$;
 
 CREATE OR REPLACE FUNCTION public.is_approved_user()
-RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $f05$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles
     WHERE user_id = auth.uid() AND approved = true AND blocked = false
   )
-$$;
+$f05$;
 
 CREATE OR REPLACE FUNCTION public.get_my_role()
-RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $f06$
   SELECT role::text FROM user_roles WHERE user_id = auth.uid() LIMIT 1
-$$;
+$f06$;
 
 -- ── Trigger: cria perfil automaticamente no cadastro ─────────────────────────
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public' AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public' AS $f07$
 BEGIN
   INSERT INTO public.profiles (user_id, email, display_name, approved, must_change_password)
   VALUES (
@@ -65,7 +65,7 @@ BEGIN
   INSERT INTO public.user_roles (user_id, role) VALUES (NEW.id, 'estoque');
   RETURN NEW;
 END;
-$$;
+$f07$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created

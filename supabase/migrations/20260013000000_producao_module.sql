@@ -182,7 +182,7 @@ DROP POLICY IF EXISTS "mov_delete" ON movimentos_mp_producao; CREATE POLICY "mov
 
 -- Triggers updated_at
 CREATE OR REPLACE FUNCTION public.set_updated_at_producao()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN NEW.updated_at = now(); RETURN NEW; END; $$;
+RETURNS TRIGGER LANGUAGE plpgsql AS $f01$ BEGIN NEW.updated_at = now(); RETURN NEW; END; $f01$;
 
 DROP TRIGGER IF EXISTS maq_updated_at  ON maquinas_producao;        CREATE TRIGGER maq_updated_at  BEFORE UPDATE ON maquinas_producao        FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_producao();
 DROP TRIGGER IF EXISTS prod_updated_at ON produtos_producao;         CREATE TRIGGER prod_updated_at BEFORE UPDATE ON produtos_producao         FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_producao();

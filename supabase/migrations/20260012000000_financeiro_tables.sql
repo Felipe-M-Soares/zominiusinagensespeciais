@@ -89,7 +89,7 @@ CREATE POLICY "nfe_seq_select" ON public.nfe_sequencia FOR SELECT TO authenticat
 INSERT INTO public.nfe_sequencia (serie, tipo, ultimo_num) VALUES ('1','nfe',0),('1','nfce',0) ON CONFLICT (serie,tipo) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.get_next_nf_number(p_serie text DEFAULT '1', p_tipo text DEFAULT 'nfe')
-RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f01$
 DECLARE v_num bigint;
 BEGIN
   INSERT INTO public.nfe_sequencia (serie, tipo, ultimo_num) VALUES (p_serie, p_tipo, 1)
@@ -97,17 +97,17 @@ BEGIN
   RETURNING ultimo_num INTO v_num;
   RETURN v_num;
 END;
-$$;
+$f01$;
 
 CREATE OR REPLACE FUNCTION public.peek_next_nf_number(p_serie text DEFAULT '1', p_tipo text DEFAULT 'nfe')
-RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f02$
 DECLARE v_num bigint;
 BEGIN
   SELECT COALESCE(ultimo_num, 0) + 1 INTO v_num FROM public.nfe_sequencia WHERE serie = p_serie AND tipo = p_tipo;
   IF NOT FOUND THEN v_num := 1; END IF;
   RETURN v_num;
 END;
-$$;
+$f02$;
 GRANT EXECUTE ON FUNCTION public.peek_next_nf_number(text,text) TO authenticated;
 
 -- ── Índices ───────────────────────────────────────────────────────────────────

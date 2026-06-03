@@ -4,7 +4,7 @@
 
 -- ── cancel_pedido ─────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.cancel_pedido(p_pedido_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f01$
 BEGIN
   UPDATE public.stock_items si
   SET quantity_reserved = GREATEST(0, si.quantity_reserved - pi.quantidade_reservada)
@@ -14,11 +14,11 @@ BEGIN
   UPDATE public.pedidos_comerciais SET status = 'cancelado' WHERE id = p_pedido_id;
   RETURN jsonb_build_object('success', true);
 END;
-$$;
+$f01$;
 
 -- ── marcar_pedido_pronto ──────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.marcar_pedido_pronto(p_pedido_id uuid, p_user_name text)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f02$
 DECLARE
   v_pedido      RECORD;
   v_ls          RECORD;
@@ -91,11 +91,11 @@ BEGIN
   IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Pedido não encontrado ou status inválido'); END IF;
   RETURN jsonb_build_object('ok', true);
 END;
-$$;
+$f02$;
 
 -- ── faturar_pedido ────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.faturar_pedido(p_pedido_id uuid, p_nf text, p_user_id uuid, p_user_name text)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f03$
 DECLARE v_item RECORD;
 BEGIN
   UPDATE public.pedidos_comerciais SET status='faturado', nota_fiscal=p_nf, faturado_em=now()
@@ -110,7 +110,7 @@ BEGIN
   END LOOP;
   RETURN jsonb_build_object('ok',true);
 END;
-$$;
+$f03$;
 
 -- ── faturar_pedido_sefaz ──────────────────────────────────────────────────────
 DROP FUNCTION IF EXISTS public.faturar_pedido_sefaz(uuid,text,text,text,timestamptz,uuid,text);
@@ -119,7 +119,7 @@ DROP FUNCTION IF EXISTS public.faturar_pedido_sefaz(uuid,text,text,text,timestam
 CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(
   p_pedido_id uuid, p_nf text, p_chave_acesso text, p_protocolo text,
   p_dh_autorizacao timestamptz, p_user_id uuid, p_user_name text, p_xml_nfe text DEFAULT NULL
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f04$
 DECLARE v_item RECORD;
 BEGIN
   UPDATE public.pedidos_comerciais SET
@@ -137,5 +137,5 @@ BEGIN
   END LOOP;
   RETURN jsonb_build_object('ok',true,'nf',p_nf);
 END;
-$$;
+$f04$;
 GRANT EXECUTE ON FUNCTION public.faturar_pedido_sefaz(uuid,text,text,text,timestamptz,uuid,text,text) TO authenticated;
