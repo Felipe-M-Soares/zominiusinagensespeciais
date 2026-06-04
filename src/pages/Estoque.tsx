@@ -79,7 +79,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { countryFlag } from "@/components/DeviceCard";
 import { toast } from "sonner";
 
@@ -578,16 +577,7 @@ export default function Estoque() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
-  const [isDark, setIsDark] = useState(() => {
-    const theme = getStoredTheme();
-    if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return theme === "dark";
-  });
-  const toggleTheme = useCallback(() => {
-    const next = !isDark;
-    setIsDark(next);
-    applyTheme(next ? "dark" : "light");
-  }, [isDark]);
+
 
   // ── Estado principal ──────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ActiveView>("dashboard");

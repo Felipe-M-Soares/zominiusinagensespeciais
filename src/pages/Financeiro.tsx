@@ -3730,10 +3730,7 @@ export default function Financeiro() {
             )}
           </div>
           <div className="flex items-center gap-1">
-            <button type="button" onClick={toggleTheme}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground">
-              {isDark ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
+
             <button type="button" onClick={() => setHistoricoOpen(true)}
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground"
               title="Histórico de NFs">
