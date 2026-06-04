@@ -164,35 +164,26 @@ export function AdminDevices() {
     const ref    = g(r, "reference","referencia","ref","Referencia");
     const model  = g(r, "model","modelo","nome","Model","Modelo");
     const cls    = g(r, "classification_code","Codigo_Classificacao","classe","Classe","Classification_Code") || "III";
-    // Garante que todos os campos NOT NULL tenham valor (mesmo que placeholder)
     return {
       udi_di:               tr(udi, 200),
       reference:            tr(ref || udi, 200),
       model:                tr(model, 300),
-      internal_code:        tr(g(r,"internal_code","codigo_interno","Codigo_Interno"), 100) || "—",
-      anvisa_registration:  tr(g(r,"anvisa_registration","registro_anvisa","Anvisa","anvisa"), 100) || "—",
-      brand_name:           tr(g(r,"brand_name","marca","Marca","Brand_Name"), 200) || "",
-      primary_material:     tr(g(r,"primary_material","material","Material","material_principal"), 200) || "—",
-      secondary_material:   tr(g(r,"secondary_material","material_secundario"), 200) || null,
-      surface_treatment:    tr(g(r,"surface_treatment","tratamento_superficie"), 200) || null,
-      classification_code:  tr(cls, 50) || "III",
+      internal_code:        tr(g(r,"internal_code","codigo_interno","Codigo_Interno"), 100),
+      anvisa_registration:  tr(g(r,"anvisa_registration","registro_anvisa","Anvisa","anvisa"), 100),
+      brand_name:           tr(g(r,"brand_name","marca","Marca","Brand_Name"), 200),
+      primary_material:     tr(g(r,"primary_material","material","Material","material_principal"), 200),
+      secondary_material:   tr(g(r,"secondary_material","material_secundario"), 200),
+      surface_treatment:    tr(g(r,"surface_treatment","tratamento_superficie"), 200),
+      classification_code:  tr(cls, 50),
       risk_class:           (["I","II","III","IV"].includes(cls) ? cls : "III") as "I"|"II"|"III"|"IV",
       sterile:              toBool(g(r,"sterile","esteril","Esteril","Estéril","labeled_as_a_sterile_device","labeledasasteriledevice","Labeled As A Sterile Device?")),
       single_use:           toBool(g(r,"single_use","uso_unico","Uso_Unico","labeled_as_a_single_use_device","labeledasasingleusedevice","Labeled As A Single-Use Device?")),
       implantable:          true,
       intended_use:         tr(g(r,"intended_use","uso_pretendido","gmdn","descricao") || "Componente protético para implante dentário", 1000),
       body_region:          tr(g(r,"body_region","regiao_corpo","categoria") || "Oral", 200),
-      compatible_systems:   [] as unknown as string[],
-      manufacturer_country: tr(g(r,"manufacturer_country","pais_fabricante","pais"), 100) || "",
-      exocad_compatibility: tr(g(r,"exocad_compatibility","exocad"), 200) || "",
-      preco_venda:          0,
-      preco_custo:          0,
-      desconto_max_pct:     0,
-      margem_minima_pct:    0,
-      ncm:                  tr(g(r,"ncm"), 20) || "90213990",
-      cfop_padrao:          tr(g(r,"cfop_padrao","cfop"), 10) || "5102",
-      unidade:              tr(g(r,"unidade"), 10) || "UN",
-      ativo:                true,
+      compatible_systems:   [] as string[],
+      manufacturer_country: tr(g(r,"manufacturer_country","pais_fabricante","pais"), 100),
+      exocad_compatibility: tr(g(r,"exocad_compatibility","exocad"), 200),
     };
   }
 
@@ -277,41 +268,38 @@ export function AdminDevices() {
 
       toast.info(`Importando ${deduped.length} dispositivos...`);
 
-      // 4. Upsert em batches PARALELOS via supabase client (onConflict udi_di).
-      // Paralelismo de 5 batches simultâneos para máxima velocidade.
+      // 4. Apaga catálogo atual e insere em batches diretamente via supabase client.
+      // O RLS já garante que só admins conseguem fazer DELETE e INSERT na tabela devices.
+      // Isso elimina a dependência da Edge Function (que estava causando erros de CORS/rede).
+      const { error: deleteError } = await supabase
+        .from("devices")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (deleteError) {
+        toast.error("Erro ao limpar catálogo: " + deleteError.message);
+        return;
+      }
+
       const BATCH = 500;
-      const PARALLEL = 5;
       let inserted = 0;
       let skipped  = 0;
+      // Coleta os IDs dos devices inseridos para criar stock_items depois
       const insertedDeviceIds: string[] = [];
 
-      const batches: (typeof deduped)[] = [];
-      for (let i = 0; i < deduped.length; i += BATCH) batches.push(deduped.slice(i, i + BATCH));
-      const totalBatches = batches.length;
+      for (let i = 0; i < deduped.length; i += BATCH) {
+        const batch = deduped.slice(i, i + BATCH);
+        const { data: upserted, error } = await supabase
+          .from("devices")
+          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
+          .select("id");
 
-      toast.info(`Importando ${deduped.length} dispositivos em ${totalBatches} grupos...`, { id: "import-progress" });
-
-      // Processa em grupos de PARALLEL batches simultâneos
-      for (let g = 0; g < batches.length; g += PARALLEL) {
-        const group = batches.slice(g, g + PARALLEL);
-        const groupNum = Math.floor(g / PARALLEL) + 1;
-        const totalGroups = Math.ceil(totalBatches / PARALLEL);
-        toast.info(`Importando... ${groupNum}/${totalGroups}`, { id: "import-progress" });
-
-        const results = await Promise.all(group.map(batch =>
-          supabase.from("devices")
-            .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
-            .select("id")
-        ));
-
-        for (const { data, error } of results) {
-          if (error) {
-            logger.error("Batch error:", error.message);
-            skipped += BATCH;
-          } else {
-            inserted += data?.length ?? 0;
-            if (data) insertedDeviceIds.push(...(data as { id: string }[]).map(d => d.id));
-          }
+        if (error) {
+          logger.error(`Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
+          skipped += batch.length;
+        } else {
+          inserted += batch.length;
+          if (upserted) insertedDeviceIds.push(...upserted.map((d: { id: string }) => d.id));
         }
       }
 
@@ -323,38 +311,40 @@ export function AdminDevices() {
       // 5. Cria stock_item na fase "intermediaria" para cada device importado que ainda não tem.
       // Busca os que já existem e insere apenas os novos — evita conflito com o
       // partial unique index (stock_items_device_intermediaria_unique).
-      // 5. Cria stock_items para os novos devices em paralelo
       let stockCreated = 0;
       if (insertedDeviceIds.length > 0) {
-        // Busca todos os que já têm stock_item de uma vez
-        const { data: existing } = await supabase
-          .from("stock_items")
-          .select("device_id")
-          .in("device_id", insertedDeviceIds)
-          .eq("fase", "intermediaria");
+        for (let i = 0; i < insertedDeviceIds.length; i += BATCH) {
+          const idBatch = insertedDeviceIds.slice(i, i + BATCH);
 
-        const existingIds = new Set((existing ?? []).map((r: { device_id: string }) => r.device_id));
-        const toInsert = insertedDeviceIds
-          .filter(id => !existingIds.has(id))
-          .map(device_id => ({
-            device_id,
-            quantity: 0,
-            quantity_reserved: 0,
-            min_quantity: 0,
-            fase: "intermediaria" as const,
-          }));
+          // Descobre quais já têm stock_item intermediaria
+          const { data: existing } = await supabase
+            .from("stock_items")
+            .select("device_id")
+            .in("device_id", idBatch)
+            .eq("fase", "intermediaria");
 
-        if (toInsert.length > 0) {
-          // Insere em batches paralelos
-          const stockBatches: (typeof toInsert)[] = [];
-          for (let i = 0; i < toInsert.length; i += BATCH) stockBatches.push(toInsert.slice(i, i + BATCH));
+          const existingIds = new Set((existing ?? []).map((r: { device_id: string }) => r.device_id));
+          const toInsert = idBatch
+            .filter(id => !existingIds.has(id))
+            .map(device_id => ({
+              device_id,
+              quantity: 0,
+              quantity_reserved: 0,
+              min_quantity: 0,
+              fase: "intermediaria" as const,
+            }));
 
-          const stockResults = await Promise.all(
-            stockBatches.map(b => supabase.from("stock_items").insert(b).select("id"))
-          );
-          for (const { data, error } of stockResults) {
-            if (error) logger.warn("Stock insert warning:", error.message);
-            else stockCreated += data?.length ?? 0;
+          if (toInsert.length > 0) {
+            const { data: stockInserted, error: stockErr } = await supabase
+              .from("stock_items")
+              .insert(toInsert)
+              .select("id");
+
+            if (stockErr) {
+              logger.warn(`Stock insert batch warning:`, stockErr.message);
+            } else {
+              stockCreated += stockInserted?.length ?? 0;
+            }
           }
         }
       }
