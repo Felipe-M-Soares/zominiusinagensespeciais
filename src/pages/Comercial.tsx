@@ -214,8 +214,8 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2">
             <User className="h-4 w-4 text-violet-500" />
@@ -510,8 +510,8 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/30 shrink-0 bg-gradient-to-r from-violet-500/5 to-transparent">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-xl bg-violet-500/10 flex items-center justify-center">
@@ -1337,7 +1337,7 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
   const total = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="flex items-start gap-3">
           <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
@@ -1467,8 +1467,8 @@ function HistoricoClienteModal({ clienteId, clientes, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh] sm:max-h-[85vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-violet-500" />
@@ -1570,7 +1570,7 @@ function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | null; onCl
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl flex flex-col max-h-[75vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
           <div className="flex items-center gap-2">
@@ -1782,7 +1782,7 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         {/* Header */}
         <div className="relative px-5 pt-5 pb-3 shrink-0">
@@ -2375,7 +2375,7 @@ export default function Comercial() {
     <div className="flex flex-col h-full bg-transparent">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <ShoppingBag className="h-4 w-4 text-violet-500" />
             <h1 className="text-sm font-semibold">Comercial</h1>
@@ -2571,7 +2571,7 @@ export default function Comercial() {
 
       {/* Cancelar pedido */}
       {cancelarPedido && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0"><Ban className="h-4 w-4 text-destructive" /></div>
@@ -2594,7 +2594,7 @@ export default function Comercial() {
 
       {/* Excluir cliente */}
       {deleteCliente && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0"><Trash2 className="h-4 w-4 text-destructive" /></div>

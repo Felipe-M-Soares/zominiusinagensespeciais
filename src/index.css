@@ -268,3 +268,58 @@ html, body, #root {
 .sidebar-tooltip {
   pointer-events: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE — Safe areas, touch targets, scroll improvements
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Safe area para notch e home indicator no iOS/Android */
+:root {
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+}
+
+/* Topbar mobile considera notch */
+@media (max-width: 767px) {
+  /* Touch targets mínimos de 44px */
+  button, a, [role="button"] {
+    min-height: 36px;
+  }
+
+  /* Remove tap highlight no iOS */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Smooth scrolling em listas longas */
+  .overflow-y-auto, .overflow-y-scroll, main {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Impede zoom em inputs no iOS (font-size < 16px causa zoom) */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Tabelas horizontalmente scrolláveis no mobile */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Safe area no header mobile */
+.mobile-header-safe {
+  padding-top: max(0.625rem, env(safe-area-inset-top));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+/* Safe area no bottom do drawer mobile */
+.mobile-drawer-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+

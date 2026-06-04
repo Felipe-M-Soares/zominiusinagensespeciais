@@ -202,7 +202,7 @@ export function StockNav({
               {/* Label */}
               <span
                 className={cn(
-                  "text-[9px] font-medium leading-tight hidden sm:block",
+                  "text-[8px] font-medium leading-tight",
                   isActive ? tab.activeColor : "text-muted-foreground"
                 )}
               >

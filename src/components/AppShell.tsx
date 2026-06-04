@@ -401,7 +401,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
         </div>
 
-        {/* Mobile bottom */}
+        {/* Mobile bottom — safe area for home indicator */}
         <div className="border-t border-sidebar-border/60 p-2 space-y-0.5">
           <button
             onClick={toggleTheme}
@@ -434,11 +434,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* ── Main content ────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Mobile topbar */}
-        <header className="md:hidden flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card/90 backdrop-blur-md shrink-0 z-30">
-          <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" />
+        <header className="md:hidden flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card/90 backdrop-blur-md shrink-0 z-30 mobile-header-safe">
+          <button onClick={() => handleNav("/")} className="hover:opacity-80 transition-opacity" title="Componentes">
+            <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" />
+          </button>
           <button
             onClick={() => setMobileOpen(true)}
-            className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground"
+            className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"
             title="Menu"
           >
             <Menu className="w-5 h-5" />
@@ -446,7 +448,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">{children}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden pb-safe">{children}</main>
       </div>
     </div>
   );

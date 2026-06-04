@@ -478,8 +478,8 @@ function NotaManualModal({
   const allCats = [...CATEGORIAS_PRODUCAO, ...CATEGORIAS_EMPRESA, ...CATEGORIAS_CUSTO];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[94vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[94vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
 
         {/* Header */}
         <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 space-y-3">
@@ -1426,8 +1426,8 @@ function SefazModal({
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[94vh] sm:max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -2064,8 +2064,8 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                   :                              "Custo Operacional";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[94vh] sm:max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="h-7 w-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
@@ -2827,8 +2827,8 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[94vh] sm:max-h-[92vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
             <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 flex items-center justify-between">
               <p className="text-sm font-semibold flex items-center gap-2">
                 <Landmark className="h-4 w-4 text-violet-500" />{editConta ? "Editar" : "Nova"} Conta Bancária
@@ -2977,7 +2977,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="px-5 pt-5 pb-3 shrink-0 border-b border-border/20 flex items-center justify-between">
           <div>
@@ -3707,7 +3707,7 @@ export default function Financeiro() {
   return (
     <div className="flex flex-col h-full bg-transparent">
       <header className="sticky top-0 z-10 bg-background text-foreground/80 backdrop-blur-md border-b border-border/40">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <Receipt size={16} className="text-violet-600 dark:text-violet-400" />
             <h1 className="text-sm font-semibold">Financeiro</h1>
@@ -3828,7 +3828,7 @@ export default function Financeiro() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 items-start">
                 {filtradosSearch.map(p => <PedidoCard key={p.id} pedido={p} onEmitirNF={setSefazPedido} onVerNF={setNfViewerPedido} />)}
               </div>
             )}

@@ -39,7 +39,7 @@ export default function Admin() {
   return (
     <div className="flex flex-col h-full bg-transparent">
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <Settings className="h-4 w-4 text-primary" />
             <h1 className="text-sm font-semibold">Admin</h1>
