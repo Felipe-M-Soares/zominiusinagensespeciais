@@ -218,7 +218,9 @@ export function useStock(search: string) {
   useEffect(() => {
     function handleVisibility() {
       if (document.visibilityState !== "visible") return;
-      if (Date.now() - lastLoadRef.current < 60_000) return;
+      // Cache de 5 min para queries sem filtro, 60s para buscas
+    const ttl = search ? 60_000 : 300_000;
+    if (Date.now() - lastLoadRef.current < ttl) return;
       loadItems(search);
     }
     document.addEventListener("visibilitychange", handleVisibility);

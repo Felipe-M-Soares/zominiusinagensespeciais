@@ -60,10 +60,10 @@ export function DeviceCard({ device, onClick }: Props) {
   <div
     role="button"
     tabIndex={0}
-    className="w-full text-left group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+    className="w-full text-left group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer border border-border/60"
     style={{
       boxShadow:
-        "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
+        "0 1px 3px hsl(var(--border) / 0.5), 0 6px 16px -4px hsl(var(--border) / 0.25), inset 0 1px 0 hsl(0 0% 100% / 0.8)",
     }}
     onClick={() => onClick(device)}
     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(device); }}

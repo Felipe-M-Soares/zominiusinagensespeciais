@@ -14,8 +14,20 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     sourcemap: false,
-    // Aumenta limite pois chunks grandes são esperados em app monolítico
+    // Inline assets < 4KB como base64 (evita request extra para ícones pequenos)
+    assetsInlineLimit: 4096,
     chunkSizeWarningLimit: 800,
+    // Minificação agressiva com esbuild (padrão do Vite)
+    minify: "esbuild",
+    // Remove console.* em produção automaticamente
+    esbuildOptions: {
+      drop: ["console", "debugger"],
+      pure: ["console.log", "console.debug", "console.info"],
+    },
+    // CSS code splitting para carregar só o CSS necessário
+    cssCodeSplit: true,
+    // Melhor target para browsers modernos
+    target: "es2020",
     rollupOptions: {
       output: {
         manualChunks(id: string) {

@@ -670,13 +670,13 @@ export default function Estoque() {
   // ── Dados do servidor ─────────────────────────────────────────────────────
   const { items: allItems, totalCount, loteMap, qtyByFase, loading, error, refetch } = useStock(querySearch);
 
-  // Derivados dos dados (não são hooks — apenas cálculos puros)
-  const intermediariaItemsAll = allItems.filter((i) => i.fase === "intermediaria");
-  const intermediariaItems = HIDE_EMPTY_INTERMEDIARIA
-    ? intermediariaItemsAll.filter((i) => i.quantity > 0)
-    : intermediariaItemsAll;
-  const expedicaoItems = allItems.filter((i) => i.fase === "expedicao");
-  const retrabalhoItems = allItems.filter((i) => i.fase === "retrabalho" && i.quantity > 0);
+  // Derivados dos dados — memoizados para evitar re-filtro a cada render
+  const intermediariaItems = useMemo(() => {
+    const all = allItems.filter((i) => i.fase === "intermediaria");
+    return HIDE_EMPTY_INTERMEDIARIA ? all.filter((i) => i.quantity > 0) : all;
+  }, [allItems]);
+  const expedicaoItems  = useMemo(() => allItems.filter((i) => i.fase === "expedicao"), [allItems]);
+  const retrabalhoItems = useMemo(() => allItems.filter((i) => i.fase === "retrabalho" && i.quantity > 0), [allItems]);
 
   // ── useMemo ───────────────────────────────────────────────────────────────
 
@@ -800,9 +800,11 @@ export default function Estoque() {
 
   // Stats da aba atual (filtrados)
   // Conta apenas peças com min_quantity configurado para ok/baixo (ignora min=0)
-  const statsLow   = filteredItems.filter((i) => i.min_quantity > 0 && i.quantity > 0 && i.quantity <= i.min_quantity).length;
-  const statsOk    = filteredItems.filter((i) => i.quantity > 0 && (i.min_quantity === 0 || i.quantity > i.min_quantity)).length;
-  const statsEmpty = filteredItems.filter((i) => i.min_quantity > 0 && i.quantity === 0).length;
+  const { statsLow, statsOk, statsEmpty } = useMemo(() => ({
+    statsLow:   filteredItems.filter((i) => i.min_quantity > 0 && i.quantity > 0 && i.quantity <= i.min_quantity).length,
+    statsOk:    filteredItems.filter((i) => i.quantity > 0 && (i.min_quantity === 0 || i.quantity > i.min_quantity)).length,
+    statsEmpty: filteredItems.filter((i) => i.min_quantity > 0 && i.quantity === 0).length,
+  }), [filteredItems]);
   // Usa qtyByFase do RPC para mostrar o total real de todas as peças (não só a página atual)
   const totalQty = activeView === "intermediaria"
     ? (qtyByFase.intermediaria || filteredItems.reduce((s, i) => s + i.quantity, 0))

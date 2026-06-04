@@ -383,7 +383,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {/* Mobile header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-sidebar-border/60">
-          <img src={logoZomini} alt="Zomini" className="h-9 w-auto object-contain" />
+          <img src={logoZomini} alt="Zomini" className="h-9 w-auto object-contain" decoding="async" />
           <button
             onClick={() => setMobileOpen(false)}
             className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground"
@@ -436,7 +436,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Mobile topbar */}
         <header className="md:hidden flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card/90 backdrop-blur-md shrink-0 z-30 mobile-header-safe">
           <button onClick={() => handleNav("/")} className="hover:opacity-80 transition-opacity" title="Componentes">
-            <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" />
+            <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" decoding="async" />
           </button>
           <button
             onClick={() => setMobileOpen(true)}

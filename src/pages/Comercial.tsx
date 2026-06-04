@@ -12,7 +12,7 @@
  *  5. Admin/Estoque fatura o pedido → peças saem da expedição
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -2314,18 +2314,18 @@ export default function Comercial() {
     loadClientes();
   }
 
-  const pedidosFiltrados = pedidos.filter(p => {
+  const pedidosFiltrados = useMemo(() => pedidos.filter(p => {
     if (filtroStatus !== "todos" && p.status !== filtroStatus) return false;
     if (filtroDataInicio && p.created_at < filtroDataInicio) return false;
     if (filtroDataFim && p.created_at > filtroDataFim + "T23:59:59") return false;
     return true;
-  });
-  const pedidosPendentes = pedidos.filter(p => p.status === "pendente").length;
-  const clientesFiltrados = clientes.filter(c =>
+  }), [pedidos, filtroStatus, filtroDataInicio, filtroDataFim]);
+  const pedidosPendentes = useMemo(() => pedidos.filter(p => p.status === "pendente").length, [pedidos]);
+  const clientesFiltrados = useMemo(() => clientes.filter(c =>
     c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
     (c.documento ?? "").includes(clienteSearchFilter) ||
     (c.telefone ?? "").includes(clienteSearchFilter)
-  );
+  ), [clientes, clienteSearchFilter]);
 
   const COMERCIAL_TABS = [
     {

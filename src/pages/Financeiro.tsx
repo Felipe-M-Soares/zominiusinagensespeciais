@@ -3639,17 +3639,21 @@ export default function Financeiro() {
 
   useEffect(() => { loadPedidos(); loadLancamentos(); }, [loadPedidos, loadLancamentos]);
 
-  const prontos   = pedidos.filter(p => p.status === "pronto").length;
-  const faturados = pedidos.filter(p => p.status === "faturado").length;
-  const enviados  = pedidos.filter(p => p.status === "enviado").length;
+  const { prontos, faturados, enviados } = useMemo(() => ({
+    prontos:   pedidos.filter(p => p.status === "pronto").length,
+    faturados: pedidos.filter(p => p.status === "faturado").length,
+    enviados:  pedidos.filter(p => p.status === "enviado").length,
+  }), [pedidos]);
 
-  const filtrados = filtroStatus === "todos" ? pedidos : pedidos.filter(p => p.status === filtroStatus);
-  const filtradosSearch = searchNF.trim()
-    ? filtrados.filter(p =>
-        p.cliente_nome.toLowerCase().includes(searchNF.toLowerCase()) ||
-        (p.nota_fiscal ?? "").toLowerCase().includes(searchNF.toLowerCase()) ||
-        (p.vendedora_nome ?? "").toLowerCase().includes(searchNF.toLowerCase()))
-    : filtrados;
+  const filtradosSearch = useMemo(() => {
+    const base = filtroStatus === "todos" ? pedidos : pedidos.filter(p => p.status === filtroStatus);
+    if (!searchNF.trim()) return base;
+    const q = searchNF.toLowerCase();
+    return base.filter(p =>
+      p.cliente_nome.toLowerCase().includes(q) ||
+      (p.nota_fiscal ?? "").toLowerCase().includes(q) ||
+      (p.vendedora_nome ?? "").toLowerCase().includes(q));
+  }, [pedidos, filtroStatus, searchNF]);
 
   const mesAtual  = new Date().toISOString().slice(0, 7);
   const custosMes = useMemo(() =>
