@@ -809,9 +809,10 @@ export default function Estoque() {
   const handleConcluir = useCallback((i: StockItem) => setConcluirRetrabalhoItem(i), []);
 
   // Stats da aba atual (filtrados)
-  const statsLow = filteredItems.filter((i) => i.quantity > 0 && i.quantity <= i.min_quantity).length;
-  const statsOk = filteredItems.filter((i) => i.quantity > i.min_quantity).length;
-  const statsEmpty = filteredItems.filter((i) => i.quantity === 0).length;
+  // Conta apenas peças com min_quantity configurado para ok/baixo (ignora min=0)
+  const statsLow   = filteredItems.filter((i) => i.min_quantity > 0 && i.quantity > 0 && i.quantity <= i.min_quantity).length;
+  const statsOk    = filteredItems.filter((i) => i.quantity > 0 && (i.min_quantity === 0 || i.quantity > i.min_quantity)).length;
+  const statsEmpty = filteredItems.filter((i) => i.min_quantity > 0 && i.quantity === 0).length;
   const totalQty = filteredItems.reduce((s, i) => s + i.quantity, 0);
 
   // Alerta global de estoque baixo (badge no header)

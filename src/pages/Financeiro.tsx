@@ -1062,43 +1062,173 @@ function NFViewerModal({ pedido, onClose }: NFViewerModalProps) {
 
   function viewDanfe() {
     const esc = escHtml;
-    const itensRows = (pedido?.itens ?? []).map((i, idx) =>
-      `<tr><td>${idx + 1}</td><td>${esc(i.device_model)}</td><td style="text-align:center">${i.quantidade}</td></tr>`
-    ).join("");
+    const itensList = pedido?.itens ?? [];
+    const totalPecas = itensList.reduce((s, i) => s + i.quantidade, 0);
+    const totalValor = itensList.reduce((s, i) => s + i.quantidade * (i.valor_unitario ?? 0), 0);
+    const nfNum = pedido?.nota_fiscal ?? "—";
+    const emitidaEm = pedido?.nf_criada_em ? new Date(pedido.nf_criada_em).toLocaleString("pt-BR") : "—";
+    const chave = pedido?.chave_acesso_nfe ?? "";
+    const chaveFmt = chave.replace(/(.{4})/g, "$1 ").trim();
+
+    const itensRows = itensList.map((i, idx) => {
+      const vlr = (i.valor_unitario ?? 0);
+      const total = i.quantidade * vlr;
+      return `<tr>
+        <td class="c">${idx + 1}</td>
+        <td>${esc(i.device_model ?? "—")}</td>
+        <td class="c">UN</td>
+        <td class="r">${i.quantidade}</td>
+        <td class="r">R$ ${vlr.toFixed(2).replace(".",",")}</td>
+        <td class="r"><strong>R$ ${total.toFixed(2).replace(".",",")}</strong></td>
+      </tr>`;
+    }).join("");
+
     const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>NF-e — ${esc(pedido?.nota_fiscal)}</title>
+<html><head><meta charset="UTF-8"><title>DANFE — ${esc(nfNum)}</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
-body{padding:24px;color:#111;font-size:12px}
-h1{font-size:18px;font-weight:800;color:#3b0764;margin-bottom:4px}
-.header{border:2px solid #ddd6fe;border-radius:8px;padding:14px 16px;margin-bottom:16px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
-.box{border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px}
-.box-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7c3aed;margin-bottom:4px}
-.box-val{font-size:13px;font-weight:600;color:#111}
-.box-sub{font-size:10px;color:#666;margin-top:2px;font-family:monospace}
-table{width:100%;border-collapse:collapse;margin-bottom:16px}
-th{background:#f3f0ff;color:#5b21b6;font-size:10px;text-transform:uppercase;padding:7px 10px;border-bottom:2px solid #ddd6fe;text-align:left}
-td{padding:6px 10px;border-bottom:1px solid #f0eeff;font-size:11px}
-tr:nth-child(even) td{background:#faf9ff}
-.chave{background:#f3f0ff;border:1px solid #ddd6fe;border-radius:6px;padding:8px 12px;font-family:monospace;font-size:10px;word-break:break-all;color:#5b21b6;margin-bottom:12px}
-.footer{font-size:10px;color:#999;text-align:right}
-@media print{body{padding:12px}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;background:#fff;padding:8mm}
+  .danfe{width:100%;max-width:210mm;margin:0 auto}
+  /* Cabeçalho */
+  .cabecalho{display:grid;grid-template-columns:40mm 1fr 55mm;border:1px solid #333;margin-bottom:2mm}
+  .cab-logo{padding:3mm;border-right:1px solid #333;display:flex;align-items:center;justify-content:center}
+  .cab-logo span{font-size:13pt;font-weight:900;color:#333;letter-spacing:-1px}
+  .cab-centro{padding:3mm;border-right:1px solid #333;text-align:center}
+  .cab-centro .danfe-title{font-size:12pt;font-weight:900;letter-spacing:2px;margin-bottom:1mm}
+  .cab-centro .doc-fiscal{font-size:7pt;color:#555;margin-bottom:2mm}
+  .cab-centro .nf-num{font-size:10pt;font-weight:700}
+  .cab-nfe{padding:3mm;font-size:7pt}
+  .cab-nfe .lbl{font-size:6pt;font-weight:700;text-transform:uppercase;color:#555}
+  .cab-nfe .val{font-size:8pt;font-weight:600;margin-bottom:2mm}
+  /* Chave */
+  .chave-box{border:1px solid #333;border-top:none;padding:2mm 3mm;display:grid;grid-template-columns:auto 1fr;gap:3mm;align-items:center;margin-bottom:2mm}
+  .chave-box .lbl{font-size:6pt;font-weight:700;text-transform:uppercase;color:#555;white-space:nowrap}
+  .chave-box .val{font-family:monospace;font-size:8pt;letter-spacing:1px;word-break:break-all}
+  /* Blocos */
+  .bloco{border:1px solid #ccc;margin-bottom:2mm}
+  .bloco-title{background:#f0f0f0;font-size:6.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:1.5mm 3mm;border-bottom:1px solid #ccc;color:#333}
+  .bloco-body{padding:2mm 3mm;display:grid;gap:1mm}
+  .bloco-row{display:grid;gap:4mm}
+  .col2{grid-template-columns:1fr 1fr}
+  .col3{grid-template-columns:1fr 1fr 1fr}
+  .col4{grid-template-columns:2fr 1fr 1fr 1fr}
+  .campo .lbl{font-size:6pt;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:0.5mm}
+  .campo .val{font-size:8.5pt;font-weight:600}
+  /* Tabela itens */
+  .itens-table{width:100%;border-collapse:collapse;font-size:8pt}
+  .itens-table th{background:#eee;font-size:6.5pt;text-transform:uppercase;padding:2mm 2mm;border:1px solid #ccc;font-weight:700;color:#333}
+  .itens-table td{padding:1.5mm 2mm;border:1px solid #ddd;vertical-align:top}
+  .itens-table tr:nth-child(even) td{background:#fafafa}
+  .c{text-align:center} .r{text-align:right}
+  /* Totais */
+  .totais{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2mm;margin-top:2mm}
+  .total-box{border:1px solid #ccc;padding:2mm 3mm;text-align:right}
+  .total-box .lbl{font-size:6pt;text-transform:uppercase;color:#555;font-weight:700}
+  .total-box .val{font-size:11pt;font-weight:900;color:#111}
+  .total-box.destaque{background:#111;color:#fff;border-color:#111}
+  .total-box.destaque .lbl{color:#aaa}
+  .total-box.destaque .val{color:#fff}
+  /* Footer */
+  .rodape{margin-top:3mm;border-top:1px solid #ccc;padding-top:2mm;font-size:7pt;color:#777;display:flex;justify-content:space-between}
+  @media print{body{padding:4mm}@page{margin:6mm}}
 </style></head>
-<body>
-<div class="header">
-  <h1>NF-e — ${esc(pedido?.nota_fiscal)}</h1>
-  <p style="font-size:11px;color:#666;margin-top:4px">Emitida em: ${pedido?.nf_criada_em ? new Date(pedido.nf_criada_em).toLocaleString("pt-BR") : "—"} &nbsp;·&nbsp; Protocolo: <strong>${esc(pedido?.protocolo_sefaz)}</strong></p>
-</div>
-<div class="grid2">
-  <div class="box"><div class="box-title">Destinatário</div><div class="box-val">${esc(pedido?.cliente_nome)}</div>${pedido?.cliente_documento ? `<div class="box-sub">${esc(pedido.cliente_documento)}</div>` : ""}${pedido?.cliente_telefone ? `<div class="box-sub">Tel: ${esc(pedido.cliente_telefone)}</div>` : ""}</div>
-  <div class="box"><div class="box-title">Vendedora</div><div class="box-val">${esc(pedido?.vendedora_nome ?? "—")}</div></div>
-</div>
-${pedido?.chave_acesso_nfe ? `<p style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:4px;text-transform:uppercase">Chave de Acesso NF-e</p><div class="chave">${esc(pedido.chave_acesso_nfe)}</div>` : ""}
-<p style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:6px;text-transform:uppercase">Itens</p>
-<table><thead><tr><th>#</th><th>Descrição</th><th style="text-align:center">Qtd.</th></tr></thead><tbody>${itensRows}</tbody></table>
-<div class="footer">Zomini Usinagens Especiais · ${esc(pedido?.nota_fiscal)}</div>
-</body></html>`;
+<body><div class="danfe">
+
+  <!-- Cabeçalho -->
+  <div class="cabecalho">
+    <div class="cab-logo"><span>ZOMINI</span></div>
+    <div class="cab-centro">
+      <div class="danfe-title">DANFE</div>
+      <div class="doc-fiscal">Documento Auxiliar da Nota Fiscal Eletrônica</div>
+      <div class="doc-fiscal">Entrada / Saída</div>
+      <div class="nf-num">Nº ${esc(nfNum)}</div>
+    </div>
+    <div class="cab-nfe">
+      <div class="lbl">Protocolo de Autorização</div>
+      <div class="val">${esc(pedido?.protocolo_sefaz ?? "—")}</div>
+      <div class="lbl">Data de Emissão</div>
+      <div class="val">${esc(emitidaEm)}</div>
+      <div class="lbl">Destinatário</div>
+      <div class="val">${esc(pedido?.cliente_nome ?? "—")}</div>
+    </div>
+  </div>
+
+  ${chave ? `<div class="chave-box">
+    <div class="lbl">Chave de<br>Acesso NF-e</div>
+    <div class="val">${esc(chaveFmt)}</div>
+  </div>` : ""}
+
+  <!-- Emitente -->
+  <div class="bloco">
+    <div class="bloco-title">Identificação do Emitente</div>
+    <div class="bloco-body">
+      <div class="bloco-row col2">
+        <div class="campo"><div class="lbl">Razão Social</div><div class="val">Zomini Usinagens Especiais</div></div>
+        <div class="campo"><div class="lbl">CNPJ</div><div class="val">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Destinatário -->
+  <div class="bloco">
+    <div class="bloco-title">Destinatário / Remetente</div>
+    <div class="bloco-body">
+      <div class="bloco-row col3">
+        <div class="campo"><div class="lbl">Nome / Razão Social</div><div class="val">${esc(pedido?.cliente_nome ?? "—")}</div></div>
+        <div class="campo"><div class="lbl">CPF / CNPJ</div><div class="val">${esc(pedido?.cliente_documento ?? "—")}</div></div>
+        <div class="campo"><div class="lbl">Telefone</div><div class="val">${esc(pedido?.cliente_telefone ?? "—")}</div></div>
+      </div>
+      <div class="bloco-row">
+        <div class="campo"><div class="lbl">Endereço</div><div class="val">${esc(pedido?.cliente_endereco ?? "—")}</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Itens -->
+  <div class="bloco">
+    <div class="bloco-title">Dados dos Produtos / Serviços</div>
+    <div class="bloco-body" style="padding:0">
+      <table class="itens-table">
+        <thead><tr>
+          <th class="c" style="width:8mm">#</th>
+          <th>Descrição do Produto</th>
+          <th class="c" style="width:10mm">Un.</th>
+          <th class="r" style="width:14mm">Qtd.</th>
+          <th class="r" style="width:22mm">Vlr. Unit.</th>
+          <th class="r" style="width:22mm">Vlr. Total</th>
+        </tr></thead>
+        <tbody>${itensRows}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Totais -->
+  <div class="totais">
+    <div class="total-box">
+      <div class="lbl">Total de Itens</div>
+      <div class="val">${totalPecas} un.</div>
+    </div>
+    <div class="total-box">
+      <div class="lbl">Frete</div>
+      <div class="val">R$ ${(pedido?.frete ?? 0).toFixed(2).replace(".",",")}</div>
+    </div>
+    <div class="total-box destaque">
+      <div class="lbl">Valor Total da NF</div>
+      <div class="val">R$ ${(totalValor + (pedido?.frete ?? 0)).toFixed(2).replace(".",",")}</div>
+    </div>
+  </div>
+
+  ${pedido?.observacoes ? `<div class="bloco" style="margin-top:2mm">
+    <div class="bloco-title">Informações Complementares</div>
+    <div class="bloco-body"><div class="campo"><div class="val" style="font-size:8pt">${esc(pedido.observacoes)}</div></div></div>
+  </div>` : ""}
+
+  <div class="rodape">
+    <span>Zomini Usinagens Especiais</span>
+    <span>${esc(nfNum)} · Emitida em ${esc(emitidaEm)}</span>
+  </div>
+
+</div></body></html>`;
     const w = window.open("", "_blank");
     if (!w) { toast.error("Popup bloqueado. Permita popups para visualizar a NF."); return; }
     w.document.open(); w.document.write(html); w.document.close();
@@ -1690,8 +1820,19 @@ function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirN
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function downloadXml() {
-    const blob = new Blob([pedido.xml_nfe!], { type: "application/xml" });
+  const [downloadingXml, setDownloadingXml] = useState(false);
+  async function downloadXml() {
+    if (downloadingXml) return;
+    let xml = pedido.xml_nfe;
+    if (!xml) {
+      setDownloadingXml(true);
+      const { data } = await supabase
+        .from("pedidos_comerciais").select("xml_nfe").eq("id", pedido.id).single();
+      xml = (data as { xml_nfe?: string | null } | null)?.xml_nfe ?? null;
+      setDownloadingXml(false);
+    }
+    if (!xml) { toast.error("XML não disponível para este pedido."); return; }
+    const blob = new Blob([xml], { type: "application/xml" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
@@ -1808,11 +1949,14 @@ function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirN
                 <FileCheck2 size={13} />Ver NF
               </button>
             )}
-            {/* Botão download XML */}
-            {pedido.xml_nfe && (
-              <button type="button" onClick={downloadXml}
+            {/* Botão download XML — busca sob demanda se necessário */}
+            {(pedido.status === "faturado" || pedido.status === "enviado") && (
+              <button type="button" onClick={downloadXml} disabled={downloadingXml}
                 className="h-9 px-3 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 hover:bg-violet-200 transition-colors">
-                <Download size={13} />XML
+                {downloadingXml
+                  ? <span className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full" />
+                  : <Download size={13} />}
+                XML
               </button>
             )}
             {isPronto && (

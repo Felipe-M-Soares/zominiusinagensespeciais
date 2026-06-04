@@ -31,13 +31,14 @@ interface Props {
 // 203 dpi → 1mm = 8 dots
 // 50mm = 400 dots largura | 45mm = 360 dots altura
 
-function buildZpl(model: string, reference: string, lote: string): string {
+function buildZpl(model: string, reference: string): string {
   const labelW = 400;
   const labelH = 360;
 
+  // Referência centralizada, ocupa ~70% da altura
   const refText = reference;
   const refMaxW = Math.round(labelW * 0.90);
-  const refH = 110;
+  const refH = 140;
   const refCharW = Math.round(refH * 0.6);
   const refFitsChars = Math.floor(refMaxW / refCharW);
   const refW = refText.length <= refFitsChars
@@ -45,16 +46,7 @@ function buildZpl(model: string, reference: string, lote: string): string {
     : Math.floor(refMaxW / refText.length);
   const refFontH = Math.round(refW / 0.6);
   const refX = Math.round((labelW - refText.length * refW) / 2);
-
-  const loteText = lote;
-  const loteH = 70;
-  const loteCharW = Math.round(loteH * 0.6);
-  const loteFitsChars = Math.floor(refMaxW / loteCharW);
-  const loteW = loteText.length <= loteFitsChars
-    ? loteCharW
-    : Math.floor(refMaxW / loteText.length);
-  const loteFontH = Math.round(loteW / 0.6);
-  const loteX = Math.round((labelW - loteText.length * loteW) / 2);
+  const refY = Math.round((labelH - refFontH) / 2);
 
   return [
     "^XA",
@@ -62,11 +54,11 @@ function buildZpl(model: string, reference: string, lote: string): string {
     `^LL${labelH}`,
     "^CI28",
     "^LH0,0",
+    // Modelo no topo
     `^FO10,8^A0N,22,13^FB${labelW - 20},2,,C^FD${model}^FS`,
     `^FO0,38^GB${labelW},2,2^FS`,
-    `^FO${refX},55^A0N,${refFontH},${refW}^FD${refText}^FS`,
-    `^FO0,${labelH - 88},${labelW},2,2^GB${labelW},2,2^FS`,
-    `^FO${loteX},${labelH - 80}^A0N,${loteFontH},${loteW}^FD${loteText}^FS`,
+    // Referência centralizada
+    `^FO${refX},${refY}^A0N,${refFontH},${refW}^FD${refText}^FS`,
     "^PQ2",
     "^XZ",
   ].join("\n");
@@ -95,7 +87,7 @@ async function sendZplDirect(zpl: string): Promise<boolean> {
  * printLabelFallback — fallback via window.print() com @page 50×45mm.
  * Usado quando o Zebra Browser Print não está disponível.
  */
-function printLabelFallback(model: string, reference: string, lote: string, copies = 2) {
+function printLabelFallback(model: string, reference: string, copies = 2) {
   const id = "__label_print_frame__";
   document.getElementById(id)?.remove();
 
@@ -103,15 +95,12 @@ function printLabelFallback(model: string, reference: string, lote: string, copi
   const refFontSize = reference.length > 8
     ? Math.max(14, Math.floor(refMaxPx / reference.length * 1.55))
     : 44;
-  const loteFontSize = Math.max(12, Math.min(28, Math.floor(refMaxPx / lote.length * 1.55)));
 
   const labelHTML = Array.from({ length: copies }).map(() => `
     <div class="label">
       <div class="model">${model}</div>
       <div class="sep"></div>
       <div class="ref" style="font-size:${refFontSize}px">${reference}</div>
-      <div class="sep"></div>
-      <div class="lote" style="font-size:${loteFontSize}px">${lote}</div>
     </div>
   `).join("");
 
@@ -124,7 +113,6 @@ function printLabelFallback(model: string, reference: string, lote: string, copi
     .model { font-size: 7.5pt; font-weight: bold; text-align: center; padding: 1.5mm 1mm 1mm; line-height: 1.2; white-space: nowrap; overflow: hidden; color: #222; }
     .sep { height: 0.3mm; background: #555; width: 100%; }
     .ref { flex: 1; display: flex; align-items: center; justify-content: center; font-weight: 800; text-align: center; letter-spacing: -0.3px; padding: 0 1mm; color: #000; }
-    .lote { height: 12mm; display: flex; align-items: center; justify-content: center; font-weight: 700; text-align: center; color: #000; }
   </style></head><body>${labelHTML}</body></html>`;
 
   const iframe = document.createElement("iframe");
@@ -140,19 +128,16 @@ function printLabelFallback(model: string, reference: string, lote: string, copi
 }
 
 
-function LabelPreview({ model, reference, lote }: { model: string; reference: string; lote: string }) {
+function LabelPreview({ model, reference }: { model: string; reference: string }) {
   // Proporção 50x45 mm → renderiza como 250x225px
   const W = 250;
   const H = 225;
 
-  // Calcula tamanho de fonte para referência (preenche ~80% da largura)
   const refMaxPx = W * 0.82;
   const refBaseFontSize = 44;
   const refFontSize = reference.length > 8
     ? Math.max(14, Math.floor(refMaxPx / reference.length * 1.55))
     : refBaseFontSize;
-
-  const loteFontSize = Math.max(12, Math.min(28, Math.floor(refMaxPx / lote.length * 1.55)));
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -169,32 +154,19 @@ function LabelPreview({ model, reference, lote }: { model: string; reference: st
           {model}
         </div>
 
-        {/* Separador superior */}
+        {/* Separador */}
         <div className="h-px bg-gray-400 mx-0" />
 
-        {/* Referência (grande, centralizada) */}
+        {/* Referência (grande, centralizada, ocupa resto da etiqueta) */}
         <div
           className="flex items-center justify-center px-2"
-          style={{ height: H * 0.42 }}
+          style={{ height: H - 32 }}
         >
           <span
             style={{ fontSize: refFontSize, lineHeight: 1, fontWeight: 800, letterSpacing: -0.5 }}
             className="text-center text-black leading-none tracking-tight"
           >
             {reference}
-          </span>
-        </div>
-
-        {/* Separador inferior */}
-        <div className="h-px bg-gray-400 mx-0" />
-
-        {/* Lote (inferior) */}
-        <div
-          className="flex items-center justify-center px-2"
-          style={{ height: H * 0.28 }}
-        >
-          <span style={{ fontSize: loteFontSize, fontWeight: 700 }} className="text-center text-black">
-            {lote}
           </span>
         </div>
       </div>
@@ -217,14 +189,14 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
     if (printing) return;
     setPrinting(true);
     try {
-      const zpl = buildZpl(row!.model, row!.reference, row!.lote);
+      const zpl = buildZpl(row!.model, row!.reference);
       const sent = await sendZplDirect(zpl);
       if (sent) {
         toast.success("Enviado para a ZD220 — 2 cópias impressas");
         onClose();
       } else {
         // Fallback: diálogo de impressão do sistema com @page 50×45mm
-        printLabelFallback(row!.model, row!.reference, row!.lote, 2);
+        printLabelFallback(row!.model, row!.reference, 2);
         toast.info("Zebra Browser Print não encontrado — abrindo diálogo de impressão", { duration: 5000 });
         onClose();
       }
@@ -234,7 +206,7 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
       <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
@@ -253,7 +225,7 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
 
         {/* Preview */}
         <div className="p-5 flex flex-col items-center gap-4">
-          <LabelPreview model={row.model} reference={row.reference} lote={row.lote} />
+          <LabelPreview model={row.model} reference={row.reference} />
 
           {/* Info */}
           <div className="w-full rounded-xl bg-muted/20 border border-border/20 px-4 py-3 space-y-1.5 text-[12px]">
@@ -414,7 +386,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
                   size="sm"
                   variant="outline"
                   className="h-8 gap-1.5 text-xs rounded-lg shrink-0 border-violet-500/30 text-violet-600 hover:bg-violet-500/10"
-                  onClick={() => setPreviewRow(row)}
+                  onClick={(e) => { e.stopPropagation(); setPreviewRow(row); }}
                 >
                   <Eye className="h-3.5 w-3.5" />
                   Ver e imprimir
