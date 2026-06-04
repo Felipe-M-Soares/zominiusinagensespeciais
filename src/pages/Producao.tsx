@@ -25,6 +25,7 @@ const ParadasPanel      = lazy(() => import("@/components/producao/ParadasPanel"
 const QualidadePanel    = lazy(() => import("@/components/producao/QualidadeProducaoPanel").then(m => ({ default: m.QualidadeProducaoPanel })));
 const MateriaPrimaPanel = lazy(() => import("@/components/producao/MateriaPrimaPanel").then(m => ({ default: m.MateriaPrimaPanel })));
 const RelatoriosPanel   = lazy(() => import("@/components/producao/RelatoriosPanel").then(m => ({ default: m.RelatoriosPanel })));
+const ImportadorPPI51  = lazy(() => import("@/components/producao/ImportadorPPI51").then(m => ({ default: m.ImportadorPPI51 })));
 
 type ProdView = "menu"|"dashboard"|"controle"|"planejamento"|"maquinas"|"produtos"|"paradas"|"qualidade"|"materiaprima"|"relatorios";
 
@@ -43,7 +44,7 @@ const MODULES: ProdModule[] = [
   { id:"paradas",     label:"Controle de Paradas",        sublabel:"Registro, motivos, cronômetro automático e indicadores de perda",     Icon:OctagonPause,    color:"text-red-600 dark:text-red-400",      bg:"bg-red-500/10",    border:"border-red-500/20"    },
   { id:"qualidade",   label:"Refugo e Qualidade",         sublabel:"Defeitos, fotos, controle dimensional e índice de perdas",            Icon:ShieldAlert,     color:"text-orange-600 dark:text-orange-400",bg:"bg-orange-500/10", border:"border-orange-500/20" },
   { id:"materiaprima",label:"Controle de Matéria-Prima",  sublabel:"Estoque, baixa automática, rastreabilidade e alertas de lote",        Icon:Boxes,           color:"text-teal-600 dark:text-teal-400",    bg:"bg-teal-500/10",   border:"border-teal-500/20"   },
-  { id:"relatorios",  label:"Relatórios",                 sublabel:"Produção diária/mensal, eficiência, paradas, exportação PDF/Excel",   Icon:FileBarChart2,   color:"text-indigo-600 dark:text-indigo-400",bg:"bg-indigo-500/10", border:"border-indigo-500/20" },
+  { id:"relatorios",  label:"Relatórios & Import PPI-51",                 sublabel:"Produção diária/mensal, eficiência, paradas, exportação PDF/Excel",   Icon:FileBarChart2,   color:"text-indigo-600 dark:text-indigo-400",bg:"bg-indigo-500/10", border:"border-indigo-500/20" },
 ];
 
 // Nav tabs para módulos de Produção (só aparece quando dentro de um módulo)
@@ -175,7 +176,7 @@ export default function Producao() {
             {view === "paradas"      && <ParadasPanel />}
             {view === "qualidade"    && <QualidadePanel />}
             {view === "materiaprima" && <MateriaPrimaPanel />}
-            {view === "relatorios"   && <RelatoriosPanel />}
+            {view === "relatorios"   && <RelatoriosPanel onImport={() => setImportOpen(true)} />}
           </Suspense>
         )}
         </div>

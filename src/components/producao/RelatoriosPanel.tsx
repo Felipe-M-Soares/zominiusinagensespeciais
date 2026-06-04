@@ -30,7 +30,7 @@ interface RelData {
   refugo?: {tipo:string;quantidade:number}[];
 }
 
-export function RelatoriosPanel() {
+export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
   const [relatorio,setRelatorio]=useState<RelatorioTipo|null>(null);
   const [dataInicio,setDataInicio]=useState(()=>{const d=new Date();d.setDate(d.getDate()-14);return d.toISOString().split("T")[0];});
   const [dataFim,setDataFim]=useState(()=>new Date().toISOString().split("T")[0]);
@@ -106,6 +106,20 @@ export function RelatoriosPanel() {
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
+      {onImport && (
+        <button
+          onClick={onImport}
+          className="w-full flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/5 hover:bg-green-500/10 px-4 py-3 transition-colors"
+        >
+          <span className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center text-green-600">
+            📥
+          </span>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-green-700 dark:text-green-400">Importar PPI-51 (Excel)</p>
+            <p className="text-[11px] text-muted-foreground">Migre dados históricos do arquivo Excel para o sistema</p>
+          </div>
+        </button>
+      )}
       {/* Filtro de período */}
       <div className="rounded-2xl border bg-card/60 p-4">
         <p className="text-sm font-medium mb-3">Período</p>
