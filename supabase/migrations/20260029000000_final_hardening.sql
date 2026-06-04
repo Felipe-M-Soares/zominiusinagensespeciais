@@ -22,10 +22,9 @@ CREATE INDEX IF NOT EXISTS idx_stock_items_fase_qty
 CREATE INDEX IF NOT EXISTS idx_pedidos_status_created
   ON public.pedidos_comerciais (status, created_at DESC);
 
--- audit_log: limpeza de registros antigos (>90 dias) via índice
-CREATE INDEX IF NOT EXISTS idx_audit_log_cleanup
-  ON public.audit_log (created_at)
-  WHERE created_at < now() - INTERVAL '90 days';
+-- audit_log: índice em created_at para queries de limpeza e listagem
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at
+  ON public.audit_log (created_at DESC);
 
 -- ── GRANTs faltantes em funções ───────────────────────────────────────────────
 
