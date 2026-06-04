@@ -268,42 +268,41 @@ export function AdminDevices() {
 
       toast.info(`Importando ${deduped.length} dispositivos...`);
 
-      // 4. Upsert em batches via supabase client (onConflict udi_di).
-      // Não apaga o catálogo — atualiza existentes e insere novos.
-      // Muito mais seguro e rápido que DELETE + INSERT (sem risco de timeout).
-      const BATCH = 200; // Batch menor para evitar timeout em conexões lentas
+      // 4. Upsert em batches PARALELOS via supabase client (onConflict udi_di).
+      // Paralelismo de 5 batches simultâneos para máxima velocidade.
+      const BATCH = 500;
+      const PARALLEL = 5;
       let inserted = 0;
       let skipped  = 0;
-      // Coleta os IDs dos devices inseridos para criar stock_items depois
       const insertedDeviceIds: string[] = [];
 
-      const totalBatches = Math.ceil(deduped.length / BATCH);
-      for (let i = 0; i < deduped.length; i += BATCH) {
-        const batchNum = Math.floor(i / BATCH) + 1;
-        const batch = deduped.slice(i, i + BATCH);
+      const batches: (typeof deduped)[] = [];
+      for (let i = 0; i < deduped.length; i += BATCH) batches.push(deduped.slice(i, i + BATCH));
+      const totalBatches = batches.length;
 
-        // Mostra progresso
-        toast.info(`Importando... ${batchNum}/${totalBatches}`, { id: "import-progress" });
+      toast.info(`Importando ${deduped.length} dispositivos em ${totalBatches} grupos...`, { id: "import-progress" });
 
-        // Retry automático até 3x em caso de falha de rede
-        let upserted: { id: string }[] | null = null;
-        let lastErr: string | null = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const { data, error } = await supabase
-            .from("devices")
+      // Processa em grupos de PARALLEL batches simultâneos
+      for (let g = 0; g < batches.length; g += PARALLEL) {
+        const group = batches.slice(g, g + PARALLEL);
+        const groupNum = Math.floor(g / PARALLEL) + 1;
+        const totalGroups = Math.ceil(totalBatches / PARALLEL);
+        toast.info(`Importando... ${groupNum}/${totalGroups}`, { id: "import-progress" });
+
+        const results = await Promise.all(group.map(batch =>
+          supabase.from("devices")
             .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
-            .select("id");
-          if (!error) { upserted = data as { id: string }[]; lastErr = null; break; }
-          lastErr = error.message;
-          if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-        }
+            .select("id")
+        ));
 
-        if (lastErr) {
-          logger.error(`Batch ${batchNum} error:`, lastErr);
-          skipped += batch.length;
-        } else {
-          inserted += batch.length;
-          if (upserted) insertedDeviceIds.push(...upserted.map((d: { id: string }) => d.id));
+        for (const { data, error } of results) {
+          if (error) {
+            logger.error("Batch error:", error.message);
+            skipped += BATCH;
+          } else {
+            inserted += data?.length ?? 0;
+            if (data) insertedDeviceIds.push(...(data as { id: string }[]).map(d => d.id));
+          }
         }
       }
 
@@ -315,40 +314,38 @@ export function AdminDevices() {
       // 5. Cria stock_item na fase "intermediaria" para cada device importado que ainda não tem.
       // Busca os que já existem e insere apenas os novos — evita conflito com o
       // partial unique index (stock_items_device_intermediaria_unique).
+      // 5. Cria stock_items para os novos devices em paralelo
       let stockCreated = 0;
       if (insertedDeviceIds.length > 0) {
-        for (let i = 0; i < insertedDeviceIds.length; i += BATCH) {
-          const idBatch = insertedDeviceIds.slice(i, i + BATCH);
+        // Busca todos os que já têm stock_item de uma vez
+        const { data: existing } = await supabase
+          .from("stock_items")
+          .select("device_id")
+          .in("device_id", insertedDeviceIds)
+          .eq("fase", "intermediaria");
 
-          // Descobre quais já têm stock_item intermediaria
-          const { data: existing } = await supabase
-            .from("stock_items")
-            .select("device_id")
-            .in("device_id", idBatch)
-            .eq("fase", "intermediaria");
+        const existingIds = new Set((existing ?? []).map((r: { device_id: string }) => r.device_id));
+        const toInsert = insertedDeviceIds
+          .filter(id => !existingIds.has(id))
+          .map(device_id => ({
+            device_id,
+            quantity: 0,
+            quantity_reserved: 0,
+            min_quantity: 0,
+            fase: "intermediaria" as const,
+          }));
 
-          const existingIds = new Set((existing ?? []).map((r: { device_id: string }) => r.device_id));
-          const toInsert = idBatch
-            .filter(id => !existingIds.has(id))
-            .map(device_id => ({
-              device_id,
-              quantity: 0,
-              quantity_reserved: 0,
-              min_quantity: 0,
-              fase: "intermediaria" as const,
-            }));
+        if (toInsert.length > 0) {
+          // Insere em batches paralelos
+          const stockBatches: (typeof toInsert)[] = [];
+          for (let i = 0; i < toInsert.length; i += BATCH) stockBatches.push(toInsert.slice(i, i + BATCH));
 
-          if (toInsert.length > 0) {
-            const { data: stockInserted, error: stockErr } = await supabase
-              .from("stock_items")
-              .insert(toInsert)
-              .select("id");
-
-            if (stockErr) {
-              logger.warn(`Stock insert batch warning:`, stockErr.message);
-            } else {
-              stockCreated += stockInserted?.length ?? 0;
-            }
+          const stockResults = await Promise.all(
+            stockBatches.map(b => supabase.from("stock_items").insert(b).select("id"))
+          );
+          for (const { data, error } of stockResults) {
+            if (error) logger.warn("Stock insert warning:", error.message);
+            else stockCreated += data?.length ?? 0;
           }
         }
       }
