@@ -164,26 +164,35 @@ export function AdminDevices() {
     const ref    = g(r, "reference","referencia","ref","Referencia");
     const model  = g(r, "model","modelo","nome","Model","Modelo");
     const cls    = g(r, "classification_code","Codigo_Classificacao","classe","Classe","Classification_Code") || "III";
+    // Garante que todos os campos NOT NULL tenham valor (mesmo que placeholder)
     return {
       udi_di:               tr(udi, 200),
       reference:            tr(ref || udi, 200),
       model:                tr(model, 300),
-      internal_code:        tr(g(r,"internal_code","codigo_interno","Codigo_Interno"), 100),
-      anvisa_registration:  tr(g(r,"anvisa_registration","registro_anvisa","Anvisa","anvisa"), 100),
-      brand_name:           tr(g(r,"brand_name","marca","Marca","Brand_Name"), 200),
-      primary_material:     tr(g(r,"primary_material","material","Material","material_principal"), 200),
-      secondary_material:   tr(g(r,"secondary_material","material_secundario"), 200),
-      surface_treatment:    tr(g(r,"surface_treatment","tratamento_superficie"), 200),
-      classification_code:  tr(cls, 50),
+      internal_code:        tr(g(r,"internal_code","codigo_interno","Codigo_Interno"), 100) || "—",
+      anvisa_registration:  tr(g(r,"anvisa_registration","registro_anvisa","Anvisa","anvisa"), 100) || "—",
+      brand_name:           tr(g(r,"brand_name","marca","Marca","Brand_Name"), 200) || "",
+      primary_material:     tr(g(r,"primary_material","material","Material","material_principal"), 200) || "—",
+      secondary_material:   tr(g(r,"secondary_material","material_secundario"), 200) || null,
+      surface_treatment:    tr(g(r,"surface_treatment","tratamento_superficie"), 200) || null,
+      classification_code:  tr(cls, 50) || "III",
       risk_class:           (["I","II","III","IV"].includes(cls) ? cls : "III") as "I"|"II"|"III"|"IV",
       sterile:              toBool(g(r,"sterile","esteril","Esteril","Estéril","labeled_as_a_sterile_device","labeledasasteriledevice","Labeled As A Sterile Device?")),
       single_use:           toBool(g(r,"single_use","uso_unico","Uso_Unico","labeled_as_a_single_use_device","labeledasasingleusedevice","Labeled As A Single-Use Device?")),
       implantable:          true,
       intended_use:         tr(g(r,"intended_use","uso_pretendido","gmdn","descricao") || "Componente protético para implante dentário", 1000),
       body_region:          tr(g(r,"body_region","regiao_corpo","categoria") || "Oral", 200),
-      compatible_systems:   [] as string[],
-      manufacturer_country: tr(g(r,"manufacturer_country","pais_fabricante","pais"), 100),
-      exocad_compatibility: tr(g(r,"exocad_compatibility","exocad"), 200),
+      compatible_systems:   [] as unknown as string[],
+      manufacturer_country: tr(g(r,"manufacturer_country","pais_fabricante","pais"), 100) || "",
+      exocad_compatibility: tr(g(r,"exocad_compatibility","exocad"), 200) || "",
+      preco_venda:          0,
+      preco_custo:          0,
+      desconto_max_pct:     0,
+      margem_minima_pct:    0,
+      ncm:                  tr(g(r,"ncm"), 20) || "90213990",
+      cfop_padrao:          tr(g(r,"cfop_padrao","cfop"), 10) || "5102",
+      unidade:              tr(g(r,"unidade"), 10) || "UN",
+      ativo:                true,
     };
   }
 
