@@ -1177,20 +1177,30 @@ export default function Estoque() {
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs text-muted-foreground">
               {totalQty.toLocaleString("pt-BR")} unidade{totalQty !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
-              {" "}({filteredItems.length} tipo{filteredItems.length !== 1 ? "s" : ""})
+              {" "}({(
+                activeView === "intermediaria" ? (qtyByFase.count_intermediaria || filteredItems.length) :
+                activeView === "expedicao"     ? (qtyByFase.count_expedicao     || filteredItems.length) :
+                activeView === "retrabalho"    ? (qtyByFase.count_retrabalho    || filteredItems.length) :
+                filteredItems.length
+              ).toLocaleString("pt-BR")} tipo{(
+                activeView === "intermediaria" ? (qtyByFase.count_intermediaria || filteredItems.length) :
+                activeView === "expedicao"     ? (qtyByFase.count_expedicao     || filteredItems.length) :
+                activeView === "retrabalho"    ? (qtyByFase.count_retrabalho    || filteredItems.length) :
+                filteredItems.length
+              ) !== 1 ? "s" : ""})
               {hasActiveFilters && <span className="text-primary/70"> (filtrado)</span>}
             </p>
-            {activeView !== "retrabalho" && statsOk > 0 && (
+            {activeView === "expedicao" && statsOk > 0 && (
               <span className="flex items-center gap-1 text-[11px] text-success font-medium">
                 <TrendingUp className="h-3 w-3" /> {statsOk} ok
               </span>
             )}
-            {activeView !== "retrabalho" && statsLow > 0 && (
+            {activeView === "expedicao" && statsLow > 0 && (
               <span className="flex items-center gap-1 text-[11px] text-warning font-medium">
                 <TrendingDown className="h-3 w-3" /> {statsLow} baixo
               </span>
             )}
-            {activeView === "intermediaria" && statsEmpty > 0 && (
+            {activeView === "expedicao" && statsEmpty > 0 && (
               <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
                 <AlertTriangle className="h-3 w-3" /> {statsEmpty} vazio
               </span>

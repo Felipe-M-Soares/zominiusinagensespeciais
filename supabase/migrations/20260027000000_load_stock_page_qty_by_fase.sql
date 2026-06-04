@@ -97,11 +97,14 @@ BEGIN
   lote_counts AS (SELECT item_id, COUNT(*) AS lote_count FROM lotes_com_saldo GROUP BY item_id)
   SELECT jsonb_object_agg(item_id::text, lote_count) INTO v_lote_map FROM lote_counts;
 
-  -- 5. Totais por fase (para exibir total real independente da paginação)
+  -- 5. Totais por fase (quantidade e contagem de tipos, independente da paginação)
   SELECT jsonb_build_object(
-    'intermediaria', COALESCE(SUM(quantity) FILTER (WHERE fase = 'intermediaria'), 0)::bigint,
-    'expedicao',     COALESCE(SUM(quantity) FILTER (WHERE fase = 'expedicao'), 0)::bigint,
-    'retrabalho',    COALESCE(SUM(quantity) FILTER (WHERE fase = 'retrabalho'), 0)::bigint
+    'intermediaria',       COALESCE(SUM(quantity) FILTER (WHERE fase = 'intermediaria'), 0)::bigint,
+    'expedicao',           COALESCE(SUM(quantity) FILTER (WHERE fase = 'expedicao'), 0)::bigint,
+    'retrabalho',          COALESCE(SUM(quantity) FILTER (WHERE fase = 'retrabalho'), 0)::bigint,
+    'count_intermediaria', COALESCE(COUNT(*) FILTER (WHERE fase = 'intermediaria'), 0)::bigint,
+    'count_expedicao',     COALESCE(COUNT(*) FILTER (WHERE fase = 'expedicao'), 0)::bigint,
+    'count_retrabalho',    COALESCE(COUNT(*) FILTER (WHERE fase = 'retrabalho'), 0)::bigint
   ) INTO v_qty_by_fase FROM public.stock_items;
 
   RETURN jsonb_build_object(
