@@ -113,7 +113,8 @@ export function useOfflineSync() {
   }, [syncQueue, refreshPendingCount]);
 
   // ── Salva com fallback offline ─────────────────────────────────────────────
-  async function saveWithFallback<T extends { id: string }>(
+  // useCallback garante referência estável
+  const saveWithFallback = useCallback(async function<T extends { id: string }>(
     supabaseTable: string,
     offlineTable: OfflineTable,
     operation: SyncQueueItem["operation"],
@@ -157,10 +158,11 @@ export function useOfflineSync() {
       await refreshPendingCount();
       return { data: itemToStore, error: null, savedOffline: true };
     }
-  }
+  }, [refreshPendingCount]);
 
   // ── Carrega dados (online primeiro, fallback offline) ──────────────────────
-  async function loadWithFallback<T extends { id: string }>(
+  // useCallback garante referência estável — evita loop infinito em dependências
+  const loadWithFallback = useCallback(async function<T extends { id: string }>(
     supabaseTable: string,
     offlineTable: OfflineTable,
     query?: (q: ReturnType<typeof supabase.from>) => ReturnType<typeof supabase.from>
@@ -180,10 +182,9 @@ export function useOfflineSync() {
       }
     }
 
-    // Offline ou erro: usa cache IndexedDB
     const cached = await dbGetAll<T>(offlineTable);
     return cached;
-  }
+  }, []);
 
   return {
     isOnline,
