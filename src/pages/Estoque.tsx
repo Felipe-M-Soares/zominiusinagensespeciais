@@ -848,7 +848,7 @@ export default function Estoque() {
     // Check for active orders referencing this item before deleting
     const { data: ativos } = await supabase
       .from("pedido_itens")
-      .select("pedido_id, pedidos_comerciais!inner(status, cliente_nome)")
+      .select("pedido_id, pedidos_comerciais!inner(status)")
       .eq("stock_item_id", resetItem.id)
       .in("pedidos_comerciais.status", ["aberto", "separando", "pendente"]);
 
