@@ -995,6 +995,7 @@ export default function Estoque() {
           retrabalhoItems={retrabalhoItems}
           loading={loading}
           pedidosPendentes={pedidosPendentes}
+          qtyByFase={qtyByFase}
         />
 
         {/* Dashboard View */}

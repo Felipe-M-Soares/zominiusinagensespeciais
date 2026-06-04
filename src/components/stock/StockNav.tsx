@@ -35,6 +35,7 @@ interface StockNavProps {
   retrabalhoItems: StockItem[];
   loading: boolean;
   pedidosPendentes?: number;
+  qtyByFase?: { intermediaria: number; expedicao: number; retrabalho: number; count_intermediaria: number; count_expedicao: number; count_retrabalho: number };
 }
 
 // ── Configuração das abas ──────────────────────────────────────────────────────
@@ -116,6 +117,7 @@ export function StockNav({
   retrabalhoItems,
   loading,
   pedidosPendentes = 0,
+  qtyByFase,
 }: StockNavProps) {
   const [animating, setAnimating] = useState<ActiveView | null>(null);
   // Ref para evitar closure stale no handleClick (activeView pode ficar desatualizado
@@ -133,12 +135,12 @@ export function StockNav({
     [onViewChange]
   );
 
-  // Contagens para badges
+  // Badges com totais reais do RPC (não limitados pela paginação)
   const counts: Partial<Record<ActiveView, number>> = {
-    intermediaria: intermediariaItems.length,
-    expedicao: expedicaoItems.length,
-    retrabalho: retrabalhoItems.length,
-    pedidos: pedidosPendentes || undefined,
+    intermediaria: qtyByFase?.count_intermediaria || undefined,
+    expedicao:     qtyByFase?.count_expedicao     || undefined,
+    retrabalho:    qtyByFase?.count_retrabalho     || undefined,
+    pedidos:       pedidosPendentes                || undefined,
   };
 
   return (
