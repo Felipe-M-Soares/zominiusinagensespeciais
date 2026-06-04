@@ -258,7 +258,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             {collapsed ? (
               <button
-                onClick={() => onNav("/")}
+                onClick={() => handleNav("/")}
                 className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 hover:bg-primary/20 transition-colors"
                 title="Ir para Componentes"
               >
@@ -266,7 +266,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             ) : (
               <button
-                onClick={() => onNav("/")}
+                onClick={() => handleNav("/")}
                 className="flex-1 min-w-0 hover:opacity-80 transition-opacity cursor-pointer"
                 title="Ir para Componentes"
               >
