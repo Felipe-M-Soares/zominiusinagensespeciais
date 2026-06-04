@@ -61,10 +61,12 @@ $f01$;
 GRANT EXECUTE ON FUNCTION public.cleanup_audit_log() TO authenticated;
 
 -- ── Trigger de limpeza automática do audit_log ────────────────────────────────
+-- Nota: limpeza é feita via função RPC chamada periodicamente.
+-- Para automatizar, configure um cron job no Supabase:
+--   Supabase Dashboard → Database → Cron Jobs → New Job
+--   Schedule: 0 2 * * *  (todo dia às 2h)
+--   Command: SELECT public.cleanup_audit_log();
 DROP TRIGGER IF EXISTS trg_cleanup_audit_log ON public.audit_log;
-CREATE TRIGGER trg_cleanup_audit_log
-  AFTER INSERT ON public.audit_log
-  FOR EACH STATEMENT EXECUTE FUNCTION public.cleanup_audit_log();
 
 -- ── Comentários de documentação nas tabelas principais ───────────────────────
 COMMENT ON TABLE public.profiles    IS 'Perfis de usuário: aprovação, bloqueio, login interno';
