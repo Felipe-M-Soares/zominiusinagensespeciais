@@ -64,11 +64,13 @@ export function useStock(search: string) {
     items: StockItem[];
     totalCount: number;
     loteMap: Map<string, number>;
+    qtyByFase: { intermediaria: number; expedicao: number; retrabalho: number };
   }>(cacheKey);
 
   const [items, setItems] = useState<StockItem[]>(cached?.items ?? []);
   const [totalCount, setTotalCount] = useState(cached?.totalCount ?? 0);
   const [loteMap, setLoteMap] = useState<Map<string, number>>(cached?.loteMap ?? new Map());
+  const [qtyByFase, setQtyByFase] = useState(cached?.qtyByFase ?? { intermediaria: 0, expedicao: 0, retrabalho: 0 });
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const genRef = useRef<number>(0);
@@ -154,6 +156,7 @@ export function useStock(search: string) {
         items:        Record<string, unknown>[];
         reserved_map: Record<string, number>;
         lote_map:     Record<string, number>;
+        qty_by_fase?: { intermediaria: number; expedicao: number; retrabalho: number };
       };
 
       const reservedMap = payload.reserved_map ?? {};
@@ -178,9 +181,12 @@ export function useStock(search: string) {
         Object.entries(loteMapRaw).map(([k, v]) => [k, v as number])
       );
 
+      const newQtyByFase = payload.qty_by_fase ?? { intermediaria: 0, expedicao: 0, retrabalho: 0 };
+
       setItems(normalized);
       setTotalCount(payload.total_count ?? normalized.length);
       setLoteMap(newLoteMap);
+      setQtyByFase(newQtyByFase);
       lastLoadRef.current = Date.now();
 
       // Persiste no cache — navegação de volta é instantânea (sem spinner)
@@ -188,6 +194,7 @@ export function useStock(search: string) {
         items:      normalized,
         totalCount: payload.total_count ?? normalized.length,
         loteMap:    newLoteMap,
+        qtyByFase:  newQtyByFase,
       });
     } catch (e: unknown) {
       if ((e as { name?: string })?.name !== "AbortError") {
@@ -218,7 +225,7 @@ export function useStock(search: string) {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [search, loadItems]);
 
-  return { items, totalCount, loteMap, loading, error, refetch: () => loadItems(search) };
+  return { items, totalCount, loteMap, qtyByFase, loading, error, refetch: () => loadItems(search) };
 }
 
 // ─── Hook de movimentos de um item ────────────────────────────────────────────

@@ -1821,8 +1821,14 @@ function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirN
   }
 
   const [downloadingXml, setDownloadingXml] = useState(false);
+  // Detecta se a NF foi emitida em modo teste (chave fake = termina em zeros)
+  const isTesteNF = !!(pedido.chave_acesso_nfe?.endsWith("00000000000000000000"));
   async function downloadXml() {
     if (downloadingXml) return;
+    if (isTesteNF) {
+      toast.info("XML não disponível em modo Homologação — emita em modo Produção para gerar o XML real.");
+      return;
+    }
     let xml = pedido.xml_nfe;
     if (!xml) {
       setDownloadingXml(true);
@@ -1831,7 +1837,7 @@ function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirN
       xml = (data as { xml_nfe?: string | null } | null)?.xml_nfe ?? null;
       setDownloadingXml(false);
     }
-    if (!xml) { toast.error("XML não disponível para este pedido."); return; }
+    if (!xml) { toast.error("XML não disponível — esta NF pode ter sido emitida em modo Homologação."); return; }
     const blob = new Blob([xml], { type: "application/xml" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -3836,7 +3842,7 @@ export default function Financeiro() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
                 {filtradosSearch.map(p => <PedidoCard key={p.id} pedido={p} onEmitirNF={setSefazPedido} onVerNF={setNfViewerPedido} />)}
               </div>
             )}

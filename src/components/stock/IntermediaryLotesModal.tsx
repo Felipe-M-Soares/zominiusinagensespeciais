@@ -183,20 +183,18 @@ interface PrintPreviewModalProps {
 
 function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
   const [printing, setPrinting] = useState(false);
-  if (!row) return null;
 
   async function handlePrint() {
-    if (printing) return;
+    if (!row || printing) return;
     setPrinting(true);
     try {
-      const zpl = buildZpl(row!.model, row!.reference);
+      const zpl = buildZpl(row.model, row.reference);
       const sent = await sendZplDirect(zpl);
       if (sent) {
         toast.success("Enviado para a ZD220 — 2 cópias impressas");
         onClose();
       } else {
-        // Fallback: diálogo de impressão do sistema com @page 50×45mm
-        printLabelFallback(row!.model, row!.reference, 2);
+        printLabelFallback(row.model, row.reference, 2);
         toast.info("Zebra Browser Print não encontrado — abrindo diálogo de impressão", { duration: 5000 });
         onClose();
       }
@@ -205,63 +203,66 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
     }
   }
 
+  // Usa Dialog do Radix separado para evitar conflito com o Dialog pai
   return (
-    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
-      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <Dialog open={!!row} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm rounded-2xl p-0 overflow-hidden gap-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
-          <div className="flex items-center gap-2">
+        <DialogHeader className="px-5 py-4 border-b border-border/30">
+          <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
             <Eye className="h-4 w-4 text-primary" />
-            <p className="text-sm font-semibold">Prévia da Etiqueta</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+            Prévia da Etiqueta
+          </DialogTitle>
+        </DialogHeader>
 
-        {/* Preview */}
-        <div className="p-5 flex flex-col items-center gap-4">
-          <LabelPreview model={row.model} reference={row.reference} />
+        {row && (
+          <>
+            {/* Preview */}
+            <div className="p-5 flex flex-col items-center gap-4">
+              <LabelPreview model={row.model} reference={row.reference} />
 
-          {/* Info */}
-          <div className="w-full rounded-xl bg-muted/20 border border-border/20 px-4 py-3 space-y-1.5 text-[12px]">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Package className="h-3.5 w-3.5 shrink-0 text-primary/60" />
-              <span className="font-medium text-foreground truncate">{row.model}</span>
+              {/* Info */}
+              <div className="w-full rounded-xl bg-muted/20 border border-border/20 px-4 py-3 space-y-1.5 text-[12px]">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Package className="h-3.5 w-3.5 shrink-0 text-primary/60" />
+                  <span className="font-medium text-foreground truncate">{row.model}</span>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span className="text-[11px] font-mono text-foreground/70">{row.reference}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Tag className="h-3.5 w-3.5 shrink-0 text-primary/60" />
+                  <span className="font-bold font-mono text-primary">{row.lote}</span>
+                  <span className="ml-auto text-muted-foreground/60">{row.saldo} un.</span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <span className="text-[11px] font-mono text-foreground/70">{row.reference}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Tag className="h-3.5 w-3.5 shrink-0 text-primary/60" />
-              <span className="font-bold font-mono text-primary">{row.lote}</span>
-              <span className="ml-auto text-muted-foreground/60">{row.saldo} un.</span>
-            </div>
-          </div>
-        </div>
 
-        {/* Actions */}
-        <div className="flex gap-2 px-5 pb-5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button type="button" onClick={handlePrint} disabled={printing} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-95 text-white text-sm font-semibold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed">
-            {printing
-              ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              : <Printer className="h-3.5 w-3.5" />}
-            {printing ? "Enviando…" : "Imprimir (2 cópias)"}
-          </button>
-        </div>
-      </div>
-    </div>
+            {/* Actions */}
+            <div className="flex gap-2 px-5 pb-5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={printing}
+                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-95 text-white text-sm font-semibold transition-all flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {printing
+                  ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <Printer className="h-3.5 w-3.5" />}
+                {printing ? "Enviando…" : "Imprimir (2 cópias)"}
+              </button>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

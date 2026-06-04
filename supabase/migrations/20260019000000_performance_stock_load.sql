@@ -85,6 +85,7 @@ DECLARE
   v_items        jsonb;
   v_reserved_map jsonb;
   v_lote_map     jsonb;
+  v_qty_by_fase  jsonb;
   v_limit        integer;
 BEGIN
   -- SEG: rejeita chamadas não autenticadas
@@ -220,12 +221,21 @@ BEGIN
   INTO v_lote_map
   FROM lote_counts;
 
-  -- ── 5. Retorna payload unificado ──────────────────────────────────────────
+  -- ── 5. Totais de quantidade por fase (para o header do Estoque) ─────────
+  SELECT jsonb_build_object(
+    'intermediaria', COALESCE(SUM(quantity) FILTER (WHERE fase = 'intermediaria'), 0)::bigint,
+    'expedicao',     COALESCE(SUM(quantity) FILTER (WHERE fase = 'expedicao'), 0)::bigint,
+    'retrabalho',    COALESCE(SUM(quantity) FILTER (WHERE fase = 'retrabalho'), 0)::bigint
+  ) INTO v_qty_by_fase
+  FROM public.stock_items;
+
+  -- ── 6. Retorna payload unificado ──────────────────────────────────────────
   RETURN jsonb_build_object(
     'total_count',  v_total,
     'items',        COALESCE(v_items,        '[]'::jsonb),
     'reserved_map', COALESCE(v_reserved_map, '{}'::jsonb),
-    'lote_map',     COALESCE(v_lote_map,     '{}'::jsonb)
+    'lote_map',     COALESCE(v_lote_map,     '{}'::jsonb),
+    'qty_by_fase',  COALESCE(v_qty_by_fase,  '{}'::jsonb)
   );
 END;
 $f02$;

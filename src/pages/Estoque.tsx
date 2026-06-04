@@ -678,7 +678,7 @@ export default function Estoque() {
   const adminMenuRef = useRef<HTMLDivElement>(null);
 
   // ── Dados do servidor ─────────────────────────────────────────────────────
-  const { items: allItems, totalCount, loteMap, loading, error, refetch } = useStock(querySearch);
+  const { items: allItems, totalCount, loteMap, qtyByFase, loading, error, refetch } = useStock(querySearch);
 
   // Derivados dos dados (não são hooks — apenas cálculos puros)
   const intermediariaItemsAll = allItems.filter((i) => i.fase === "intermediaria");
@@ -813,7 +813,14 @@ export default function Estoque() {
   const statsLow   = filteredItems.filter((i) => i.min_quantity > 0 && i.quantity > 0 && i.quantity <= i.min_quantity).length;
   const statsOk    = filteredItems.filter((i) => i.quantity > 0 && (i.min_quantity === 0 || i.quantity > i.min_quantity)).length;
   const statsEmpty = filteredItems.filter((i) => i.min_quantity > 0 && i.quantity === 0).length;
-  const totalQty = filteredItems.reduce((s, i) => s + i.quantity, 0);
+  // Usa qtyByFase do RPC para mostrar o total real de todas as peças (não só a página atual)
+  const totalQty = activeView === "intermediaria"
+    ? (qtyByFase.intermediaria || filteredItems.reduce((s, i) => s + i.quantity, 0))
+    : activeView === "expedicao"
+    ? (qtyByFase.expedicao || filteredItems.reduce((s, i) => s + i.quantity, 0))
+    : activeView === "retrabalho"
+    ? (qtyByFase.retrabalho || filteredItems.reduce((s, i) => s + i.quantity, 0))
+    : filteredItems.reduce((s, i) => s + i.quantity, 0);
 
   // Alerta global de estoque baixo (badge no header)
   const globalLowCount = allItems.filter(i => i.quantity > 0 && i.quantity <= i.min_quantity).length;
