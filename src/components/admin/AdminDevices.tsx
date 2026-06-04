@@ -268,34 +268,38 @@ export function AdminDevices() {
 
       toast.info(`Importando ${deduped.length} dispositivos...`);
 
-      // 4. Apaga catálogo atual e insere em batches diretamente via supabase client.
-      // O RLS já garante que só admins conseguem fazer DELETE e INSERT na tabela devices.
-      // Isso elimina a dependência da Edge Function (que estava causando erros de CORS/rede).
-      const { error: deleteError } = await supabase
-        .from("devices")
-        .delete()
-        .neq("id", "00000000-0000-0000-0000-000000000000");
-
-      if (deleteError) {
-        toast.error("Erro ao limpar catálogo: " + deleteError.message);
-        return;
-      }
-
-      const BATCH = 500;
+      // 4. Upsert em batches via supabase client (onConflict udi_di).
+      // Não apaga o catálogo — atualiza existentes e insere novos.
+      // Muito mais seguro e rápido que DELETE + INSERT (sem risco de timeout).
+      const BATCH = 200; // Batch menor para evitar timeout em conexões lentas
       let inserted = 0;
       let skipped  = 0;
       // Coleta os IDs dos devices inseridos para criar stock_items depois
       const insertedDeviceIds: string[] = [];
 
+      const totalBatches = Math.ceil(deduped.length / BATCH);
       for (let i = 0; i < deduped.length; i += BATCH) {
+        const batchNum = Math.floor(i / BATCH) + 1;
         const batch = deduped.slice(i, i + BATCH);
-        const { data: upserted, error } = await supabase
-          .from("devices")
-          .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
-          .select("id");
 
-        if (error) {
-          logger.error(`Batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
+        // Mostra progresso
+        toast.info(`Importando... ${batchNum}/${totalBatches}`, { id: "import-progress" });
+
+        // Retry automático até 3x em caso de falha de rede
+        let upserted: { id: string }[] | null = null;
+        let lastErr: string | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const { data, error } = await supabase
+            .from("devices")
+            .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false })
+            .select("id");
+          if (!error) { upserted = data as { id: string }[]; lastErr = null; break; }
+          lastErr = error.message;
+          if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        }
+
+        if (lastErr) {
+          logger.error(`Batch ${batchNum} error:`, lastErr);
           skipped += batch.length;
         } else {
           inserted += batch.length;

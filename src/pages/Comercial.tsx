@@ -68,7 +68,6 @@ import {
   Send,
   Star,
 } from "lucide-react";
-import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { Logo } from "@/components/Logo";
@@ -2164,22 +2163,6 @@ export default function Comercial() {
   }, [user?.id, userEmail]);
 
   // Tema
-  const [isDark, setIsDark] = useState(() => {
-    const theme = getStoredTheme();
-    if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return theme === "dark";
-  });
-
-  // Aplica o tema salvo ao montar a página
-  useEffect(() => {
-    applyTheme(getStoredTheme());
-  }, []);
-
-  const toggleTheme = useCallback(() => {
-    const next = !isDark;
-    setIsDark(next);
-    applyTheme(next ? "dark" : "light");
-  }, [isDark]);
 
   // Sub-tabs
   type SubTab = "dashboard" | "pedidos" | "clientes" | "historico";

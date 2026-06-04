@@ -16,7 +16,6 @@ import { logger } from "@/lib/logger";
 import { escHtml } from "@/lib/escHtml";
 import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
-import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import {
@@ -3549,16 +3548,6 @@ export default function Financeiro() {
     });
   }, []);
 
-  const [isDark, setIsDark] = useState(() => {
-    const t = getStoredTheme();
-    return t === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : t === "dark";
-  });
-
-  useEffect(() => { applyTheme(getStoredTheme()); }, []);
-
-  const toggleTheme = useCallback(() => {
-    setIsDark(v => { applyTheme(!v ? "dark" : "light"); return !v; });
-  }, []);
 
   const canAccess = isAdmin || role === "financeiro";
   const abortRef  = useRef<AbortController | null>(null);
