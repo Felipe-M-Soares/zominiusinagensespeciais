@@ -525,6 +525,14 @@ export function AdminDevices() {
           </Button>
           <Button
             variant="outline"
+            className="gap-1.5 border-violet-500/40 text-violet-600 hover:bg-violet-500/10"
+            onClick={() => setImgUploaderOpen(true)}
+          >
+            <FileImage className="h-4 w-4" />
+            Imagens
+          </Button>
+          <Button
+            variant="outline"
             className="text-destructive border-destructive/40 hover:bg-destructive/10"
             onClick={() => setDeleteAllConfirm(true)}
             disabled={deletingAll || totalCount === 0}
