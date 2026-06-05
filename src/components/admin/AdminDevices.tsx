@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert, FileImage } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { logger } from "@/lib/logger";
