@@ -77,7 +77,7 @@ export function DeviceCard({ device, onClick }: Props) {
 
     {/* Imagem do componente */}
     <div className={cn(
-      "w-full overflow-hidden bg-muted/20 flex items-center justify-center transition-all",
+      "w-full overflow-hidden bg-white flex items-center justify-center transition-all",
       hasImage ? "h-36" : "h-0"
     )}>
       {hasImage && (
