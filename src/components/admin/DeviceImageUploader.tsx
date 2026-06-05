@@ -120,56 +120,66 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
 
     setUploading(true);
 
-    for (const item of toUpload) {
-      // Atualiza status → uploading
-      setResults(prev => prev.map(r =>
-        r.file === item.file ? { ...r, status: "uploading" } : r
-      ));
+    // Marca todos como "uploading"
+    setResults(prev => prev.map(r =>
+      r.status === "pending" ? { ...r, status: "uploading" } : r
+    ));
 
-      try {
-        // Nome do arquivo no storage: reference.webp (sempre .webp para padronizar)
-        // Preserva a extensão original para não recomprimir
-        const ext      = item.file.name.split(".").pop()!.toLowerCase();
-        const path     = `${item.refName}.${ext}`;
+    // ── PASSO 1: Upload de todos os arquivos em paralelo (20 simultâneos) ────
+    // Mesmo padrão do import de peças: batches paralelos direto pelo cliente
+    const PARALLEL = 20;
+    const urlMap = new Map<string, string>(); // file → publicUrl
 
-        // Upload (upsert = substitui se já existir)
-        const { error: upErr } = await supabase.storage
-          .from("devices-images")
-          .upload(path, item.file, {
-            upsert:      true,
-            contentType: item.file.type,
-            cacheControl: "31536000", // 1 ano de cache
-          });
+    async function uploadFile(item: FileResult): Promise<void> {
+      const ext  = item.file.name.split(".").pop()!.toLowerCase();
+      const path = `${item.refName}.${ext}`;
 
-        if (upErr) throw upErr;
+      const { error } = await supabase.storage
+        .from("devices-images")
+        .upload(path, item.file, {
+          upsert:      true,
+          contentType: item.file.type,
+          cacheControl: "31536000",
+        });
 
-        // URL pública
-        const { data: urlData } = supabase.storage
-          .from("devices-images")
-          .getPublicUrl(path);
+      if (error) throw error;
 
-        const publicUrl = urlData.publicUrl;
-
-        // Atualiza icon_url no banco
-        const { error: dbErr } = await supabase
-          .from("devices")
-          .update({ icon_url: publicUrl })
-          .eq("id", item.deviceId!);
-
-        if (dbErr) throw dbErr;
-
-        setResults(prev => prev.map(r =>
-          r.file === item.file ? { ...r, status: "done", url: publicUrl } : r
-        ));
-
-      } catch (e: unknown) {
-        setResults(prev => prev.map(r =>
-          r.file === item.file
-            ? { ...r, status: "error", error: e instanceof Error ? e.message : String(e) }
-            : r
-        ));
-      }
+      const { data } = supabase.storage.from("devices-images").getPublicUrl(path);
+      urlMap.set(item.refName, data.publicUrl);
     }
+
+    const uploadErrors = new Map<string, string>();
+
+    for (let i = 0; i < toUpload.length; i += PARALLEL) {
+      const batch = toUpload.slice(i, i + PARALLEL);
+      const settled = await Promise.allSettled(batch.map(uploadFile));
+      settled.forEach((res, idx) => {
+        if (res.status === "rejected") {
+          const msg = res.reason instanceof Error ? res.reason.message : String(res.reason);
+          uploadErrors.set(batch[idx].refName, msg);
+        }
+      });
+    }
+
+    // ── PASSO 2: Atualiza icon_url em batch de 500 (igual ao import de peças) ─
+    const toUpdate = toUpload
+      .filter(item => urlMap.has(item.refName))
+      .map(item => ({ id: item.deviceId!, icon_url: urlMap.get(item.refName)! }));
+
+    const DB_BATCH = 500;
+    for (let i = 0; i < toUpdate.length; i += DB_BATCH) {
+      const batch = toUpdate.slice(i, i + DB_BATCH);
+      await supabase.from("devices").upsert(batch, { onConflict: "id" });
+    }
+
+    // ── Atualiza status visual ─────────────────────────────────────────────────
+    setResults(prev => prev.map(r => {
+      if (r.status !== "uploading") return r;
+      if (uploadErrors.has(r.refName))
+        return { ...r, status: "error", error: uploadErrors.get(r.refName) };
+      const url = urlMap.get(r.refName);
+      return url ? { ...r, status: "done", url } : r;
+    }));
 
     setUploading(false);
     setDone(true);
