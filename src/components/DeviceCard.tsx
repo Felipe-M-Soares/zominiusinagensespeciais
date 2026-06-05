@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import type { Device } from "@/types/device";
 import { Badge } from "@/components/ui/badge";
 import { Shield, Package, Globe, Cpu, Activity, Copy, Check } from "lucide-react";
@@ -44,7 +45,8 @@ export function countryFlag(country: string): string {
 }
 
 export function DeviceCard({ device, onClick }: Props) {
-  const [copied, setCopied] = useState(false);
+  const [copied,    setCopied]    = useState(false);
+  const [imgError,  setImgError]  = useState(false);
 
   const handleCopyUDI = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -55,6 +57,8 @@ export function DeviceCard({ device, onClick }: Props) {
       setTimeout(() => setCopied(false), 1800);
     });
   };
+
+  const hasImage = !!(device.icon_url && !imgError);
 
   return (
   <div
@@ -70,6 +74,23 @@ export function DeviceCard({ device, onClick }: Props) {
   >
     {/* Top accent bar */}
     <div className="h-0.5 bg-gradient-to-r from-transparent via-brand to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
+
+    {/* Imagem do componente */}
+    <div className={cn(
+      "w-full overflow-hidden bg-muted/20 flex items-center justify-center transition-all",
+      hasImage ? "h-36" : "h-0"
+    )}>
+      {hasImage && (
+        <img
+          src={device.icon_url!}
+          alt={device.model}
+          loading="lazy"
+          decoding="async"
+          onError={() => setImgError(true)}
+          className="h-full w-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+        />
+      )}
+    </div>
 
     <div className="p-4 space-y-3">
       {/* Header */}

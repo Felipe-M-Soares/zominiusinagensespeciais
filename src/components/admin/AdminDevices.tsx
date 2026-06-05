@@ -4,6 +4,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchDevicesPage } from "@/lib/supabaseUtils";
 import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
+import { DeviceImageUploader } from "@/components/admin/DeviceImageUploader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -74,6 +75,7 @@ const emptyDevice: Omit<TablesInsert<"devices">, "id" | "created_at" | "updated_
 };
 
 export function AdminDevices() {
+  const [imgUploaderOpen, setImgUploaderOpen] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
@@ -728,5 +730,11 @@ export function AdminDevices() {
         </DialogContent>
       </Dialog>
     </div>
+      {imgUploaderOpen && (
+        <DeviceImageUploader
+          onClose={() => setImgUploaderOpen(false)}
+          onDone={() => setImgUploaderOpen(false)}
+        />
+      )}
   );
 }
