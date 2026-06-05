@@ -504,6 +504,7 @@ export function AdminDevices() {
   };
 
   return (
+    <>
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -736,5 +737,6 @@ export function AdminDevices() {
           onDone={() => setImgUploaderOpen(false)}
         />
       )}
+    </>
   );
 }
