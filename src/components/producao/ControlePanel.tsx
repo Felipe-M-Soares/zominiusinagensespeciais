@@ -195,6 +195,16 @@ function NovoApontamentoModal({
       toast.error("Preencha: máquina, produto, quantidade produzida e operador");
       return;
     }
+    // Impede data futura — apontamento deve ser de hoje ou passado
+    if (form.data > new Date().toISOString().split("T")[0]) {
+      toast.error("Data do apontamento não pode ser no futuro.");
+      return;
+    }
+    // Impede quantidade negativa
+    if (parseInt(form.qtde_produzida) < 0) {
+      toast.error("Quantidade produzida não pode ser negativa.");
+      return;
+    }
     setSaving(true);
     try {
       const prod = produtos.find(p => p.codigo === form.produto);

@@ -22,6 +22,24 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Rate limiting: 3 exclusões por dia por IP (ação destrutiva)
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rlKey = `del:${ip}`;
+  const rlStore = (globalThis as Record<string, unknown>).__delRlStore as Map<string, { count: number; reset: number }> | undefined
+    ?? new Map<string, { count: number; reset: number }>();
+  (globalThis as Record<string, unknown>).__delRlStore = rlStore;
+  const now = Date.now();
+  const rl = rlStore.get(rlKey) ?? { count: 0, reset: now + 86_400_000 };
+  if (now > rl.reset) { rl.count = 0; rl.reset = now + 86_400_000; }
+  rl.count++;
+  rlStore.set(rlKey, rl);
+  if (rl.count > 3) {
+    return new Response(JSON.stringify({ error: "Limite diário atingido." }), {
+      status: 429,
+      headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "86400" },
+    });
+  }
+
   try {
     // CODE-006: Validate env vars early with informative error
     let supabaseUrl: string, supabaseAnonKey: string, serviceRoleKey: string;

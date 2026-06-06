@@ -32,6 +32,10 @@ import { sanitizeQuery } from "@/lib/sanitize";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
+import { lazy, Suspense } from "react";
+const DashboardGeral   = lazy(() => import("@/components/qualidade/DashboardGeral").then(m => ({ default: m.DashboardGeral })));
+const CertificadosPanel   = lazy(() => import("@/components/qualidade/CertificadosPanel").then(m => ({ default: m.CertificadosPanel })));
+const RastreabilidadePanel = lazy(() => import("@/components/qualidade/RastreabilidadePanel").then(m => ({ default: m.RastreabilidadePanel })));
 import { PageNav } from "@/components/PageNav";
 import type { PageNavTab } from "@/components/PageNav";
 import type { StockFase, AllMovement } from "@/hooks/useStock";
@@ -40,7 +44,7 @@ import { toast } from "sonner";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type QualidadeView = "pipeline" | "rastreamento" | "historico" | "gs1";
+type QualidadeView = "dashboard" | "pipeline" | "rastreamento" | "rastreabilidade_pos" | "historico" | "gs1" | "certificados";
 
 type FaseNum = 1 | 2 | 3 | 4 | 5;
 type StatusReg =
@@ -92,10 +96,13 @@ interface Suggestion { device_id: string; model: string; reference: string }
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const TABS: PageNavTab<QualidadeView>[] = [
+  { id: "dashboard",    label: "Dashboard",    Icon: LayoutDashboard,activeColor: "text-emerald-500", activeBg: "bg-emerald-500/10", activeBorder: "border-emerald-500/40"},
   { id: "pipeline",     label: "Pipeline",     Icon: ClipboardCheck, activeColor: "text-violet-500",  activeBg: "bg-violet-500/10",  activeBorder: "border-violet-500/40" },
   { id: "rastreamento", label: "Rastreamento", Icon: Search,         activeColor: "text-blue-500",    activeBg: "bg-blue-500/10",    activeBorder: "border-blue-500/40"   },
   { id: "historico",    label: "Histórico",    Icon: History,        activeColor: "text-amber-500",   activeBg: "bg-amber-500/10",   activeBorder: "border-amber-500/40"  },
-  { id: "gs1",          label: "GS1",          Icon: Barcode,        activeColor: "text-teal-500",    activeBg: "bg-teal-500/10",    activeBorder: "border-teal-500/40"   },
+  { id: "rastreabilidade_pos", label: "Rastreab. Pós-venda", Icon: MapPin, activeColor: "text-rose-500", activeBg: "bg-rose-500/10", activeBorder: "border-rose-500/40" },
+  { id: "certificados", label: "Certificados", Icon: Shield,         activeColor: "text-teal-500",    activeBg: "bg-teal-500/10",    activeBorder: "border-teal-500/40"   },
+  { id: "gs1",          label: "GS1",          Icon: Barcode,        activeColor: "text-cyan-500",    activeBg: "bg-cyan-500/10",    activeBorder: "border-cyan-500/40"   },
 ];
 
 const FASE_CONFIG: Record<StockFase, { label: string; Icon: React.ElementType; color: string; bg: string; border: string }> = {

@@ -103,6 +103,16 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
   const [result, setResult]     = useState<ImportResult | null>(null);
 
   const handleFile = useCallback(async (f: File) => {
+    // Valida tamanho máximo: 50MB (arquivo xlsm grande pode travar o browser)
+    if (f.size > 50 * 1024 * 1024) {
+      toast.error("Arquivo muito grande. Limite: 50MB.");
+      return;
+    }
+    // Valida extensão
+    if (!/\.(xlsm|xlsx|xls)$/i.test(f.name)) {
+      toast.error("Arquivo inválido. Use .xlsm, .xlsx ou .xls");
+      return;
+    }
     setFile(f);
     setResult(null);
     setLoading(true);

@@ -26,8 +26,10 @@ const QualidadePanel    = lazy(() => import("@/components/producao/QualidadeProd
 const MateriaPrimaPanel = lazy(() => import("@/components/producao/MateriaPrimaPanel").then(m => ({ default: m.MateriaPrimaPanel })));
 const RelatoriosPanel   = lazy(() => import("@/components/producao/RelatoriosPanel").then(m => ({ default: m.RelatoriosPanel })));
 const ImportadorPPI51  = lazy(() => import("@/components/producao/ImportadorPPI51").then(m => ({ default: m.ImportadorPPI51 })));
+const FerramentasPanel  = lazy(() => import("@/components/producao/FerramentasPanel").then(m => ({ default: m.FerramentasPanel })));
+const MetasPanel        = lazy(() => import("@/components/producao/MetasPanel").then(m => ({ default: m.MetasPanel })));
 
-type ProdView = "menu"|"dashboard"|"controle"|"planejamento"|"maquinas"|"produtos"|"paradas"|"qualidade"|"materiaprima"|"relatorios";
+type ProdView = "menu"|"dashboard"|"controle"|"planejamento"|"metas"|"maquinas"|"produtos"|"paradas"|"qualidade"|"ferramentas"|"materiaprima"|"relatorios";
 
 interface ProdModule {
   id: ProdView; label: string; sublabel: string;
@@ -44,6 +46,8 @@ const MODULES: ProdModule[] = [
   { id:"paradas",     label:"Controle de Paradas",        sublabel:"Registro, motivos, cronômetro automático e indicadores de perda",     Icon:OctagonPause,    color:"text-red-600 dark:text-red-400",      bg:"bg-red-500/10",    border:"border-red-500/20"    },
   { id:"qualidade",   label:"Refugo e Qualidade",         sublabel:"Defeitos, fotos, controle dimensional e índice de perdas",            Icon:ShieldAlert,     color:"text-orange-600 dark:text-orange-400",bg:"bg-orange-500/10", border:"border-orange-500/20" },
   { id:"materiaprima",label:"Controle de Matéria-Prima",  sublabel:"Estoque, baixa automática, rastreabilidade e alertas de lote",        Icon:Boxes,           color:"text-teal-600 dark:text-teal-400",    bg:"bg-teal-500/10",   border:"border-teal-500/20"   },
+  { id:"metas",       label:"Metas de Produção",        sublabel:"Defina e acompanhe metas mensais de OEE, disponibilidade e peças produzidas.", Icon:Target,         color:"text-emerald-600 dark:text-emerald-400",bg:"bg-emerald-500/10",border:"border-emerald-500/20" },
+  { id:"ferramentas", label:"Ferramentas CNC",            sublabel:"Vida útil de brocas, insertos e pastilhas. Alertas de troca preventiva.", Icon:Wrench,         color:"text-rose-600 dark:text-rose-400",    bg:"bg-rose-500/10",   border:"border-rose-500/20"   },
   { id:"relatorios",  label:"Relatórios & Import PPI-51",                 sublabel:"Produção diária/mensal, eficiência, paradas, exportação PDF/Excel",   Icon:FileBarChart2,   color:"text-indigo-600 dark:text-indigo-400",bg:"bg-indigo-500/10", border:"border-indigo-500/20" },
 ];
 
@@ -78,6 +82,12 @@ function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:b
         </button>
       )}
     </div>
+      {importOpen && (
+        <Suspense fallback={null}>
+          <ImportadorPPI51 onClose={() => setImportOpen(false)} />
+        </Suspense>
+      )}
+    </>
   );
 }
 
@@ -121,6 +131,12 @@ function ProdMenu({ isAdmin, onSelect }: { isAdmin:boolean; onSelect:(v:ProdView
         ))}
       </div>
     </div>
+      {importOpen && (
+        <Suspense fallback={null}>
+          <ImportadorPPI51 onClose={() => setImportOpen(false)} />
+        </Suspense>
+      )}
+    </>
   );
 }
 
@@ -129,12 +145,14 @@ export default function Producao() {
   const { isOnline, pendingCount, syncing, syncQueue } = useOfflineSync();
   const isAdmin = role === "admin";
   const [view, setView] = useState<ProdView>("menu");
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => { applyTheme(getStoredTheme()); }, []);
 
   const currentModule = MODULES.find(m => m.id === view);
 
   return (
+    <>
     <div className="flex flex-col h-full bg-transparent">
       {/* Header harmonizado */}
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
@@ -175,6 +193,8 @@ export default function Producao() {
             {view === "produtos"     && <ProdutosPanel isAdmin={isAdmin} />}
             {view === "paradas"      && <ParadasPanel />}
             {view === "qualidade"    && <QualidadePanel />}
+            {view === "metas"        && <MetasPanel />}
+            {view === "ferramentas"  && <FerramentasPanel />}
             {view === "materiaprima" && <MateriaPrimaPanel />}
             {view === "relatorios"   && <RelatoriosPanel onImport={() => setImportOpen(true)} />}
           </Suspense>
@@ -182,5 +202,11 @@ export default function Producao() {
         </div>
       </main>
     </div>
+      {importOpen && (
+        <Suspense fallback={null}>
+          <ImportadorPPI51 onClose={() => setImportOpen(false)} />
+        </Suspense>
+      )}
+    </>
   );
 }

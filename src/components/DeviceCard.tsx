@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { Device } from "@/types/device";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +47,9 @@ export function countryFlag(country: string): string {
 export function DeviceCard({ device, onClick }: Props) {
   const [copied,    setCopied]    = useState(false);
   const [imgError,  setImgError]  = useState(false);
+
+  // Reseta imgError quando icon_url muda (ex: imagem atualizada em sessão ativa)
+  useEffect(() => { setImgError(false); }, [device.icon_url]);
 
   const handleCopyUDI = (e: React.MouseEvent) => {
     e.stopPropagation();

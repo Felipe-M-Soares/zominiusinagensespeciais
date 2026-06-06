@@ -306,6 +306,38 @@ Deno.serve(async (req: Request) => {
       { status: 405, headers: { ...cors, "Content-Type": "application/json" } });
   }
 
+  // ── Autenticação obrigatória — verifica JWT do usuário ──────────────────
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace("Bearer ", "").trim();
+  if (!token) {
+    return new Response(JSON.stringify({ sucesso: false, erro: "Não autenticado." }),
+      { status: 401, headers: { ...cors, "Content-Type": "application/json" } });
+  }
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const { createClient } = await import("npm:@supabase/supabase-js@2");
+    const userClient = createClient(supabaseUrl, supabaseAnon, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: { user }, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !user) {
+      return new Response(JSON.stringify({ sucesso: false, erro: "Sessão inválida." }),
+        { status: 401, headers: { ...cors, "Content-Type": "application/json" } });
+    }
+    // Verifica que o usuário tem role financeiro ou admin
+    const { data: roleData } = await userClient
+      .from("user_roles").select("role").eq("user_id", user.id).single();
+    if (!roleData || !["admin","financeiro"].includes(roleData.role)) {
+      return new Response(JSON.stringify({ sucesso: false, erro: "Acesso não autorizado." }),
+        { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+    }
+  } catch {
+    return new Response(JSON.stringify({ sucesso: false, erro: "Falha na autenticação." }),
+      { status: 401, headers: { ...cors, "Content-Type": "application/json" } });
+  }
+
   try {
     const { dadosFiscais: d } = await req.json() as Payload;
     const c = getConfig();

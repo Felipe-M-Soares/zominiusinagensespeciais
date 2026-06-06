@@ -15,7 +15,7 @@
  *  6. Reporta: ✅ matched | ⚠️ sem match | ❌ erro
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   Upload, X, CheckCircle2, AlertTriangle, XCircle,
   FileImage, ArrowUpCircle, Loader2,
@@ -24,6 +24,23 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+
+// Componente de thumbnail que usa URL.createObjectURL de forma segura
+// com revokeObjectURL no cleanup para evitar memory leak
+function BlobThumb({ file, uploadedUrl }: { file: File; uploadedUrl?: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (uploadedUrl) { setSrc(uploadedUrl); return; }
+    const url = URL.createObjectURL(file);
+    setSrc(url);
+    return () => URL.revokeObjectURL(url); // cleanup garante sem memory leak
+  }, [file, uploadedUrl]);
+  return (
+    <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted/40 shrink-0 flex items-center justify-center">
+      {src && <img src={src} alt="" className="h-full w-full object-contain" />}
+    </div>
+  );
+}
 
 interface FileResult {
   file:      File;
@@ -44,6 +61,15 @@ function norm(s: string) {
 // Remove extensão do nome do arquivo
 function stemName(filename: string) {
   return filename.replace(/\.[^.]+$/, "");
+}
+
+// Sanitiza o nome para uso como path no storage
+// Remove chars perigosos: /, \, .., null bytes, etc.
+function sanitizePath(name: string): string {
+  return name
+    .replace(/\.\.+/g, ".")          // bloqueia path traversal (..)
+    .replace(/[\/\\<>:"|?*\x00]/g, "_") // chars inválidos → _
+    .trim();
 }
 
 interface Props {
@@ -132,7 +158,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
 
     async function uploadFile(item: FileResult): Promise<void> {
       const ext  = item.file.name.split(".").pop()!.toLowerCase();
-      const path = `${item.refName}.${ext}`;
+      const path = `${sanitizePath(item.refName)}.${ext}`;
 
       const { error } = await supabase.storage
         .from("devices-images")
@@ -275,18 +301,8 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                       r.status === "error"    && "bg-red-500/5",
                     )}
                   >
-                    {/* Thumbnail */}
-                    <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted/40 shrink-0 flex items-center justify-center">
-                      {r.status === "done" && r.url ? (
-                        <img src={r.url} alt="" className="h-full w-full object-contain" />
-                      ) : (
-                        <img
-                          src={URL.createObjectURL(r.file)}
-                          alt=""
-                          className="h-full w-full object-contain"
-                        />
-                      )}
-                    </div>
+                    {/* Thumbnail — usa URL do storage se disponível, senão data URL via FileReader */}
+                    <BlobThumb file={r.file} uploadedUrl={r.status === "done" ? r.url : undefined} />
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">

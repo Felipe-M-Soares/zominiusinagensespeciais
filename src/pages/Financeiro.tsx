@@ -10,6 +10,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { lazy, Suspense } from "react";
+const ContasPanel = lazy(() => import("@/components/financeiro/ContasPanel").then(m => ({ default: m.ContasPanel })));
 import { TableSkeleton } from "@/components/PageSkeleton";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
@@ -2670,10 +2672,18 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
       const u = new URL(url);
       if (u.protocol !== "https:") return false;
       const h = u.hostname.toLowerCase();
+      // IPv4 privados / loopback
       if (h === "localhost" || h === "0.0.0.0" || h.endsWith(".local")) return false;
       if (/^127\./.test(h) || /^10\./.test(h) || /^169\.254\./.test(h)) return false;
       if (/^192\.168\./.test(h)) return false;
       if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(h)) return false;
+      // IPv6 loopback e link-local
+      if (h === "::1" || h === "[::1]" || h.startsWith("fe80")) return false;
+      // Cloud metadata endpoints (AWS, GCP, Azure)
+      if (h === "169.254.169.254" || h === "metadata.google.internal") return false;
+      if (h === "100.100.100.200") return false; // Alibaba Cloud
+      // Sem IP direto — exige domínio (previne bypass via DNS rebinding)
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return false;
       return true;
     } catch { return false; }
   }

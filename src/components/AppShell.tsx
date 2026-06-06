@@ -37,6 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Comercial",   icon: ShoppingBag, path: "/comercial", roles: ["admin","comercial"] },
   { label: "Financeiro",  icon: Receipt,     path: "/financeiro",roles: ["admin","financeiro"] },
   { label: "Produção",    icon: Factory,     path: "/producao",  roles: ["admin","producao"] },
+  { label: "Compras",     icon: ShoppingCart, path: "/compras",   roles: ["admin","estoque","financeiro"] },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
