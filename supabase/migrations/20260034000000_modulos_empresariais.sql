@@ -296,6 +296,7 @@ BEGIN
 END;
 $f02$;
 
+DROP TRIGGER IF EXISTS trg_criar_conta_receber ON public.pedidos_comerciais;
 CREATE TRIGGER trg_criar_conta_receber
   AFTER UPDATE OF status ON public.pedidos_comerciais
   FOR EACH ROW EXECUTE FUNCTION public.criar_conta_receber_nfe();
@@ -327,6 +328,7 @@ BEGIN
 END;
 $f03$;
 
+DROP TRIGGER IF EXISTS trg_rastreabilidade_pos_venda ON public.pedidos_comerciais;
 CREATE TRIGGER trg_rastreabilidade_pos_venda
   AFTER UPDATE OF status ON public.pedidos_comerciais
   FOR EACH ROW EXECUTE FUNCTION public.criar_rastreabilidade_pos_venda();
