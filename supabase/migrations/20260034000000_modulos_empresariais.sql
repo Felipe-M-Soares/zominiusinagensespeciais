@@ -208,39 +208,47 @@ ALTER TABLE public.metas_producao ENABLE ROW LEVEL SECURITY;
 -- Fornecedores
 DROP POLICY IF EXISTS "forn_select" ON public.fornecedores;
 CREATE POLICY "forn_select" ON public.fornecedores FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "forn_write" ON public.fornecedores;
 CREATE POLICY "forn_write"  ON public.fornecedores FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro'));
 
 -- Pedidos de compra
 DROP POLICY IF EXISTS "pc_select" ON public.pedidos_compra;
 CREATE POLICY "pc_select" ON public.pedidos_compra FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "pc_write" ON public.pedidos_compra;
 CREATE POLICY "pc_write"  ON public.pedidos_compra FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro'));
 DROP POLICY IF EXISTS "pci_select" ON public.pedido_compra_itens;
 CREATE POLICY "pci_select" ON public.pedido_compra_itens FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "pci_write" ON public.pedido_compra_itens;
 CREATE POLICY "pci_write"  ON public.pedido_compra_itens FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro'));
 
 -- Contas
 DROP POLICY IF EXISTS "cf_select" ON public.contas_financeiras;
 CREATE POLICY "cf_select" ON public.contas_financeiras FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "cf_write" ON public.contas_financeiras;
 CREATE POLICY "cf_write"  ON public.contas_financeiras FOR ALL USING (public.get_my_role() IN ('admin','financeiro'));
 
 -- Ferramentas
 DROP POLICY IF EXISTS "ferr_select" ON public.ferramentas_cnc;
 CREATE POLICY "ferr_select" ON public.ferramentas_cnc FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "ferr_write" ON public.ferramentas_cnc;
 CREATE POLICY "ferr_write"  ON public.ferramentas_cnc FOR ALL USING (public.get_my_role() IN ('admin','producao'));
 
 -- Certificados
 DROP POLICY IF EXISTS "cert_select" ON public.certificados;
 CREATE POLICY "cert_select" ON public.certificados FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "cert_write" ON public.certificados;
 CREATE POLICY "cert_write"  ON public.certificados FOR ALL USING (public.get_my_role() IN ('admin','qualidade'));
 
 -- Rastreabilidade
 DROP POLICY IF EXISTS "rastr_select" ON public.rastreabilidade_pos_venda;
 CREATE POLICY "rastr_select" ON public.rastreabilidade_pos_venda FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "rastr_write" ON public.rastreabilidade_pos_venda;
 CREATE POLICY "rastr_write"  ON public.rastreabilidade_pos_venda FOR ALL USING (public.get_my_role() IN ('admin','qualidade','comercial'));
 
 -- Metas
 DROP POLICY IF EXISTS "metas_select" ON public.metas_producao;
 CREATE POLICY "metas_select" ON public.metas_producao FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "metas_write" ON public.metas_producao;
 CREATE POLICY "metas_write"  ON public.metas_producao FOR ALL USING (public.get_my_role() IN ('admin','producao'));
 
 -- ── GRANTs ────────────────────────────────────────────────────────────────────
@@ -282,14 +290,12 @@ BEGIN
       NEW.id,
       NEW.nota_fiscal,
       NEW.faturado_por
-    )
-    ON CONFLICT DO NOTHING;
+    );
   END IF;
   RETURN NEW;
 END;
 $f02$;
 
-DROP TRIGGER IF EXISTS trg_criar_conta_receber ON public.pedidos_comerciais;
 CREATE TRIGGER trg_criar_conta_receber
   AFTER UPDATE OF status ON public.pedidos_comerciais
   FOR EACH ROW EXECUTE FUNCTION public.criar_conta_receber_nfe();
@@ -321,7 +327,6 @@ BEGIN
 END;
 $f03$;
 
-DROP TRIGGER IF EXISTS trg_rastreabilidade_pos_venda ON public.pedidos_comerciais;
 CREATE TRIGGER trg_rastreabilidade_pos_venda
   AFTER UPDATE OF status ON public.pedidos_comerciais
   FOR EACH ROW EXECUTE FUNCTION public.criar_rastreabilidade_pos_venda();
@@ -332,10 +337,13 @@ VALUES ('certificados', 'certificados', false, 10485760,
         ARRAY['application/pdf','image/jpeg','image/png','image/webp'])
 ON CONFLICT (id) DO NOTHING;
 
+DROP POLICY IF EXISTS "cert_storage_select" ON storage.objects;
 CREATE POLICY "cert_storage_select" ON storage.objects FOR SELECT TO authenticated
   USING (bucket_id = 'certificados');
+DROP POLICY IF EXISTS "cert_storage_insert" ON storage.objects;
 CREATE POLICY "cert_storage_insert" ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (bucket_id = 'certificados' AND public.is_admin_user());
+DROP POLICY IF EXISTS "cert_storage_delete" ON storage.objects;
 CREATE POLICY "cert_storage_delete" ON storage.objects FOR DELETE TO authenticated
   USING (bucket_id = 'certificados' AND public.is_admin_user());
 
@@ -386,11 +394,16 @@ $f04$;
 
 GRANT EXECUTE ON FUNCTION public.dashboard_gerencial() TO authenticated;
 
--- Seed: certificados iniciais padrão
-INSERT INTO public.certificados (nome, tipo, orgao_emissor, alerta_dias, observacoes) VALUES
+-- Seed: certificados iniciais padrão (só insere se a tabela estiver vazia)
+DO $seed$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.certificados LIMIT 1) THEN
+    INSERT INTO public.certificados (nome, tipo, orgao_emissor, alerta_dias, observacoes) (nome, tipo, orgao_emissor, alerta_dias, observacoes) VALUES
   ('ISO 13485 — Sistema de Gestão da Qualidade',     'iso',     'Bureau Veritas / DNV', 90, 'Obrigatório para fabricantes de DM Classe II e III'),
   ('Autorização de Funcionamento ANVISA (AFE)',      'anvisa',  'ANVISA',               90, 'Renovar a cada 2 anos'),
   ('Licença de Funcionamento ANVISA (LFE)',          'anvisa',  'ANVISA',               90, 'Renovar anualmente'),
   ('Cadastro Nacional de Pessoa Jurídica (CNPJ)',    'outros',  'Receita Federal',       30, 'Verificar situação cadastral anualmente'),
-  ('Inscrição Estadual',                             'outros',  'SEFAZ Estadual',        30, 'Verificar situação anualmente')
-ON CONFLICT DO NOTHING;
+  ('Inscrição Estadual',                             'outros',  'SEFAZ Estadual',        30, 'Verificar situação anualmente');
+  END IF;
+END;
+$seed$;
