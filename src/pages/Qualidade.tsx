@@ -14,7 +14,7 @@
  */
 
 import {
-  useState, useEffect, useCallback, useRef, memo, useMemo,
+  useState, useEffect, useCallback, useRef, memo, useMemo, lazy, Suspense,
 } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -23,7 +23,7 @@ import {
   ShieldAlert, AlertCircle, CheckCircle2, Copy, RefreshCw,
   ArrowDownCircle, ArrowUpCircle, ExternalLink, Hash, Barcode,
   FileText, AlertTriangle, ChevronRight, X, Save, Loader2,
-  CalendarClock, ClipboardCheck, BadgeCheck,
+  CalendarClock, ClipboardCheck, BadgeCheck, LayoutDashboard, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,7 +32,6 @@ import { sanitizeQuery } from "@/lib/sanitize";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { lazy, Suspense } from "react";
 const DashboardGeral   = lazy(() => import("@/components/qualidade/DashboardGeral").then(m => ({ default: m.DashboardGeral })));
 const CertificadosPanel   = lazy(() => import("@/components/qualidade/CertificadosPanel").then(m => ({ default: m.CertificadosPanel })));
 const RastreabilidadePanel = lazy(() => import("@/components/qualidade/RastreabilidadePanel").then(m => ({ default: m.RastreabilidadePanel })));

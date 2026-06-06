@@ -20,6 +20,7 @@ import {
   Factory,
   Cpu,
   ShieldCheck,
+  ShoppingCart,
 } from "lucide-react";
 
 interface NavItem {

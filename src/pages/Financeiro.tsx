@@ -5,13 +5,11 @@
  */
 
 import {
-  useState, useEffect, useCallback, useRef, useMemo,
+  useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { lazy, Suspense } from "react";
-const ContasPanel = lazy(() => import("@/components/financeiro/ContasPanel").then(m => ({ default: m.ContasPanel })));
 import { TableSkeleton } from "@/components/PageSkeleton";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
@@ -20,6 +18,8 @@ import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
+
+const ContasPanel = lazy(() => import("@/components/financeiro/ContasPanel").then(m => ({ default: m.ContasPanel })));
 import {
   ArrowLeft, Receipt, CheckCircle2, Package, User, Clock, Printer,
   Truck, ChevronDown, ChevronUp, Send, X, RefreshCw,
