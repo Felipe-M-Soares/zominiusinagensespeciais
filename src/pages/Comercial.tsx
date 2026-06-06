@@ -2320,7 +2320,11 @@ export default function Comercial() {
     if (filtroDataFim && p.created_at > filtroDataFim + "T23:59:59") return false;
     return true;
   }), [pedidos, filtroStatus, filtroDataInicio, filtroDataFim]);
-  const pedidosPendentes = useMemo(() => pedidos.filter(p => p.status === "pendente").length, [pedidos]);
+  const pedidosPendentes  = useMemo(() => pedidos.filter(p => p.status === "pendente").length, [pedidos]);
+  const pedidosAtrasados  = useMemo(() => pedidos.filter(p =>
+    p.prazo_entrega && !["cancelado","enviado","faturado"].includes(p.status) &&
+    new Date(p.prazo_entrega) < new Date()
+  ).length, [pedidos]);
   const clientesFiltrados = useMemo(() => clientes.filter(c =>
     c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
     (c.documento ?? "").includes(clienteSearchFilter) ||

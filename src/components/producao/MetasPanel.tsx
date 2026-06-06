@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Target, Plus, RefreshCw, X } from "lucide-react";
+import { Target, Plus, RefreshCw, X, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -90,7 +90,11 @@ export function MetasPanel() {
               <div key={label} className="space-y-1">
                 <div className="flex justify-between text-[12px]">
                   <span>{label}</span>
-                  <span className={g.ok?"text-green-600 font-bold":"text-red-600 font-bold"}>{real.toFixed(1)}% / {meta}%</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={g.ok?"text-green-600 font-bold":"text-red-600 font-bold"}>{real.toFixed(1)}%</span>
+                    <span className="text-muted-foreground text-[10px]">/ meta {meta}%</span>
+                    {g.ok ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600"/> : <AlertTriangle className="h-3.5 w-3.5 text-red-500"/>}
+                  </div>
                 </div>
                 <div className="h-2 rounded-full bg-muted overflow-hidden">
                   <div className={cn("h-full rounded-full transition-all",g.color)} style={{width:`${g.pct}%`}}/>

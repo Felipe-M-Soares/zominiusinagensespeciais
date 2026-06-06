@@ -173,6 +173,10 @@ export function ContasPanel() {
                 <p className="text-sm font-medium truncate">{c.descricao}</p>
                 <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
                   <span>Venc: {new Date(c.data_vencimento+"T12:00:00").toLocaleDateString("pt-BR")}</span>
+                  {c.status === "aberto" && (() => {
+                    const dias = Math.ceil((new Date(c.data_vencimento).getTime() - Date.now()) / 86400000);
+                    return dias <= 7 && dias >= 0 ? <span className="text-amber-600 font-semibold">{dias === 0 ? "vence hoje" : `${dias}d`}</span> : null;
+                  })()}
                   {c.nota_fiscal&&<span>NF: {c.nota_fiscal}</span>}
                   <span className={cn("px-1.5 py-0.5 rounded-full font-medium",statusColor(c.status))}>{c.status}</span>
                 </div>

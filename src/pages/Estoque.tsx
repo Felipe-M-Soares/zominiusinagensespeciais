@@ -909,6 +909,11 @@ export default function Estoque() {
             <div className="flex items-center gap-2">
               <Boxes className="h-4 w-4 text-primary" />
               <h1 className="text-sm font-semibold">Estoque</h1>
+            {globalLowCount > 0 && (
+              <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-600 dark:text-red-400">
+                <AlertTriangle className="h-3 w-3" />{globalLowCount} crítico{globalLowCount !== 1 ? "s" : ""}
+              </span>
+            )}
             </div>
           </div>
 

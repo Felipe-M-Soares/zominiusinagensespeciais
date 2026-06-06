@@ -10,7 +10,7 @@ import { getStoredTheme, applyTheme } from "@/lib/theme";
 import {
   ChevronRight, LayoutDashboard, ClipboardList, CalendarClock,
   Settings2, Package, OctagonPause, ShieldAlert, Boxes, FileBarChart2,
-  Factory, WifiOff, RefreshCw, ArrowLeft,
+  Factory, WifiOff, RefreshCw, ArrowLeft, Wrench, Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/LoadingScreen";

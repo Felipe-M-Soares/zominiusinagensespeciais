@@ -409,3 +409,17 @@ BEGIN
   END IF;
 END;
 $seed$;
+
+-- ── RPC: atualiza status das ferramentas baseado em % de vida útil ────────────
+CREATE OR REPLACE FUNCTION public.atualizar_status_ferramentas()
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $f05$
+  UPDATE public.ferramentas_cnc SET
+    status = CASE
+      WHEN vida_util_pecas > 0 AND pecas_produzidas >= vida_util_pecas        THEN 'substituir'
+      WHEN vida_util_pecas > 0 AND pecas_produzidas >= (vida_util_pecas * 0.8) THEN 'alerta'
+      ELSE 'ativo'
+    END,
+    updated_at = now()
+  WHERE status != 'inativo' AND vida_util_pecas > 0;
+$f05$;
+GRANT EXECUTE ON FUNCTION public.atualizar_status_ferramentas() TO authenticated;

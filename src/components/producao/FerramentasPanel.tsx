@@ -24,6 +24,8 @@ export function FerramentasPanel() {
 
   const load=useCallback(async()=>{
     setLoading(true);
+    // Atualiza status baseado em % de uso antes de carregar
+    await supabase.rpc("atualizar_status_ferramentas").catch(() => null);
     const[{data:f},{data:m}]=await Promise.all([
       supabase.from("ferramentas_cnc").select("*").order("status").order("codigo"),
       supabase.from("maquinas_producao").select("codigo,nome").order("codigo"),

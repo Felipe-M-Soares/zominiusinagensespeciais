@@ -19,7 +19,9 @@ import { friendlyError } from "@/lib/errorMessages";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
-const ContasPanel = lazy(() => import("@/components/financeiro/ContasPanel").then(m => ({ default: m.ContasPanel })));
+const ContasPanel        = lazy(() => import("@/components/financeiro/ContasPanel").then(m => ({ default: m.ContasPanel })));
+const FornecedoresPanel  = lazy(() => import("@/components/compras/FornecedoresPanel").then(m => ({ default: m.FornecedoresPanel })));
+const PedidosCompraPanel = lazy(() => import("@/components/compras/PedidosCompraPanel").then(m => ({ default: m.PedidosCompraPanel })));
 import {
   ArrowLeft, Receipt, CheckCircle2, Package, User, Clock, Printer,
   Truck, ChevronDown, ChevronUp, Send, X, RefreshCw,
@@ -3528,7 +3530,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
 
 // ─── Página Principal ────────────────────────────────────────────────────────
 
-type FinTab = "dashboard" | "nfe" | "compras_producao" | "compras_empresa" | "custos" | "bancos" | "precos";
+type FinTab = "dashboard" | "nfe" | "contas" | "fornecedores" | "compras" | "compras_producao" | "compras_empresa" | "custos" | "bancos" | "precos";
 
 export default function Financeiro() {
   const navigate = useNavigate();
@@ -3698,6 +3700,9 @@ export default function Financeiro() {
   const TABS: { id: FinTab; label: string; icon: typeof Receipt; badge?: number }[] = [
     { id: "dashboard",        label: "Dashboard",        icon: BarChart2   },
     { id: "nfe",              label: "NF-e / SEFAZ",     icon: FileCheck2, badge: prontos },
+    { id: "contas",           label: "Contas",            icon: DollarSign  },
+    { id: "fornecedores",     label: "Fornecedores",      icon: Building2   },
+    { id: "compras",          label: "Pedidos Compra",    icon: ShoppingCart},
     { id: "compras_producao", label: "Compras Produção",  icon: Factory     },
     { id: "compras_empresa",  label: "Compras Empresa",   icon: Building2   },
     { id: "custos",           label: "Custos",            icon: Zap         },
@@ -3849,6 +3854,15 @@ export default function Financeiro() {
           </>
         )}
 
+        {activeTab === "contas" && (
+          <Suspense fallback={null}><ContasPanel/></Suspense>
+        )}
+        {activeTab === "fornecedores" && (
+          <Suspense fallback={null}><FornecedoresPanel/></Suspense>
+        )}
+        {activeTab === "compras" && (
+          <Suspense fallback={null}><PedidosCompraPanel/></Suspense>
+        )}
         {activeTab === "compras_producao" && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">

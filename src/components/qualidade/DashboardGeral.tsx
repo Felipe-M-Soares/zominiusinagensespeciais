@@ -60,6 +60,12 @@ export function DashboardGeral() {
 
   useEffect(()=>{load();},[load]);
 
+  // Auto-refresh a cada 5 minutos
+  useEffect(()=>{
+    const id = setInterval(load, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  },[load]);
+
   if(loading&&!kpis) return(
     <div className="flex items-center justify-center py-20 text-muted-foreground text-sm gap-2">
       <RefreshCw className="h-4 w-4 animate-spin"/>Carregando KPIs...

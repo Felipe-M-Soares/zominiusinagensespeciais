@@ -36,7 +36,13 @@ export function CertificadosPanel() {
   const load=useCallback(async()=>{
     setLoading(true);
     const{data}=await supabase.from("certificados").select("*").order("data_validade");
-    if(data) setItems(data as Cert[]);
+    if(data) {
+      const sorted = (data as Cert[]).sort((a, b) => {
+        const order = { vencido: 0, vencendo: 1, valido: 2, renovacao: 3 };
+        return (order[statusAuto(a) as keyof typeof order] ?? 2) - (order[statusAuto(b) as keyof typeof order] ?? 2);
+      });
+      setItems(sorted);
+    }
     setLoading(false);
   },[]);
 
