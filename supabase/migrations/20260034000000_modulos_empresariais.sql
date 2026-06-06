@@ -400,7 +400,7 @@ GRANT EXECUTE ON FUNCTION public.dashboard_gerencial() TO authenticated;
 DO $seed$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.certificados LIMIT 1) THEN
-    INSERT INTO public.certificados (nome, tipo, orgao_emissor, alerta_dias, observacoes) (nome, tipo, orgao_emissor, alerta_dias, observacoes) VALUES
+    INSERT INTO public.certificados (nome, tipo, orgao_emissor, alerta_dias, observacoes) VALUES
   ('ISO 13485 — Sistema de Gestão da Qualidade',     'iso',     'Bureau Veritas / DNV', 90, 'Obrigatório para fabricantes de DM Classe II e III'),
   ('Autorização de Funcionamento ANVISA (AFE)',      'anvisa',  'ANVISA',               90, 'Renovar a cada 2 anos'),
   ('Licença de Funcionamento ANVISA (LFE)',          'anvisa',  'ANVISA',               90, 'Renovar anualmente'),
