@@ -82,12 +82,6 @@ function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:b
         </button>
       )}
     </div>
-      {importOpen && (
-        <Suspense fallback={null}>
-          <ImportadorPPI51 onClose={() => setImportOpen(false)} />
-        </Suspense>
-      )}
-    </>
   );
 }
 
@@ -131,12 +125,6 @@ function ProdMenu({ isAdmin, onSelect }: { isAdmin:boolean; onSelect:(v:ProdView
         ))}
       </div>
     </div>
-      {importOpen && (
-        <Suspense fallback={null}>
-          <ImportadorPPI51 onClose={() => setImportOpen(false)} />
-        </Suspense>
-      )}
-    </>
   );
 }
 
