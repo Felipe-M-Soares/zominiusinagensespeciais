@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS public.fornecedores (
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.fornecedores ENABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS trg_fornecedores_updated_at ON public.fornecedores;
 CREATE TRIGGER trg_fornecedores_updated_at BEFORE UPDATE ON public.fornecedores
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -65,6 +66,7 @@ CREATE TABLE IF NOT EXISTS public.pedido_compra_itens (
 
 ALTER TABLE public.pedidos_compra ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pedido_compra_itens ENABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS trg_pedidos_compra_updated_at ON public.pedidos_compra;
 CREATE TRIGGER trg_pedidos_compra_updated_at BEFORE UPDATE ON public.pedidos_compra
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -92,6 +94,7 @@ CREATE TABLE IF NOT EXISTS public.contas_financeiras (
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.contas_financeiras ENABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS trg_contas_updated_at ON public.contas_financeiras;
 CREATE TRIGGER trg_contas_updated_at BEFORE UPDATE ON public.contas_financeiras
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -127,6 +130,7 @@ CREATE TABLE IF NOT EXISTS public.ferramentas_cnc (
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.ferramentas_cnc ENABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS trg_ferramentas_updated_at ON public.ferramentas_cnc;
 CREATE TRIGGER trg_ferramentas_updated_at BEFORE UPDATE ON public.ferramentas_cnc
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
@@ -150,6 +154,7 @@ CREATE TABLE IF NOT EXISTS public.certificados (
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.certificados ENABLE ROW LEVEL SECURITY;
+DROP TRIGGER IF EXISTS trg_certificados_updated_at ON public.certificados;
 CREATE TRIGGER trg_certificados_updated_at BEFORE UPDATE ON public.certificados
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
