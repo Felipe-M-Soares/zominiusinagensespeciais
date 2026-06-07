@@ -83,7 +83,7 @@ export function DashboardPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data: res, error } = await supabase.rpc("resumo_mensal_producao", {
+    const { data: res, error } = await (supabase.rpc as any)("resumo_mensal_producao", {
       p_mes: mes, p_ano: ano,
     });
     if (!error && res) setData(res as ResumoMensal);

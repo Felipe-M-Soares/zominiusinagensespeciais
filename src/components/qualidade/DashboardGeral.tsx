@@ -54,8 +54,10 @@ export function DashboardGeral() {
   const load=useCallback(async()=>{
     setLoading(true);
     setError(null);
-    await supabase.rpc("atualizar_status_vencido").catch(()=>null);
-    const{data,error:rpcErr}=await supabase.rpc("dashboard_gerencial");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.rpc as any)("atualizar_status_vencido").catch(()=>null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const{data,error:rpcErr}=await (supabase.rpc as any)("dashboard_gerencial");
     if(rpcErr){setError(rpcErr.message);}
     else if(data){setKpis(data as KPIs);setUpdated(new Date());}
     setLoading(false);

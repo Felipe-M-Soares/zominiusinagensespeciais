@@ -87,7 +87,8 @@ export function ContasPanel() {
 
   const load = useCallback(async()=>{
     setLoading(true);
-    await supabase.rpc("atualizar_status_vencido");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.rpc as any)("atualizar_status_vencido");
     const{data}=await supabase.from("contas_financeiras").select("*").order("data_vencimento");
     if(data) setContas(data as Conta[]);
     setLoading(false);

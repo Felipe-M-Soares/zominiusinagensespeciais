@@ -28,7 +28,7 @@ export function MetasPanel() {
     const fim = new Date(ano,mes,0).toISOString().split("T")[0];
     const[{data:m},{data:oee},{data:maq}] = await Promise.all([
       supabase.from("metas_producao").select("*").eq("mes",mes).eq("ano",ano).order("maquina_codigo"),
-      supabase.rpc("calcular_oee",{p_data_ini:ini,p_data_fim:fim,p_maquina:null}),
+      (supabase.rpc as any)("calcular_oee",{p_data_ini:ini,p_data_fim:fim,p_maquina:null}),
       supabase.from("maquinas_producao").select("codigo").order("codigo"),
     ]);
     if(m) setMetas(m as Meta[]);

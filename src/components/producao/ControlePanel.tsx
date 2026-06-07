@@ -208,7 +208,7 @@ function NovoApontamentoModal({
     setSaving(true);
     try {
       const prod = produtos.find(p => p.codigo === form.produto);
-      const { data, error } = await supabase.rpc("criar_apontamento_ppi51", {
+      const { data, error } = await (supabase.rpc as any)("criar_apontamento_ppi51", {
         p_data:               form.data,
         p_turno:              form.turno,
         p_maquina:            form.maquina,
