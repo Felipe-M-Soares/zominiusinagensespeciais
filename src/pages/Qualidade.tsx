@@ -1357,10 +1357,13 @@ export default function Qualidade() {
         <PageNav tabs={TABS} activeTab={activeView} onTabChange={setActiveView} />
       </div>
       <div className="flex-1 overflow-y-auto p-4">
-        {activeView === "pipeline"     && <PipelinePanel />}
-        {activeView === "rastreamento" && <RastreamentoPanel />}
-        {activeView === "historico"    && <HistoricoPanel />}
-        {activeView === "gs1"          && <GS1Panel />}
+        {activeView === "dashboard"         && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><DashboardGeral/></Suspense>}
+        {activeView === "pipeline"          && <PipelinePanel />}
+        {activeView === "rastreamento"      && <RastreamentoPanel />}
+        {activeView === "rastreabilidade_pos" && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><RastreabilidadePanel/></Suspense>}
+        {activeView === "historico"         && <HistoricoPanel />}
+        {activeView === "certificados"      && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><CertificadosPanel/></Suspense>}
+        {activeView === "gs1"               && <GS1Panel />}
       </div>
     </div>
   );
