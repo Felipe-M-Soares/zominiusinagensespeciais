@@ -854,7 +854,10 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                 const sel_item = totalSel(item.id);
                 return sel_item < item.quantidade;
               });
-              const btnLabel = itensFaltando.length > 0
+              const itensSemEstoque = pedido.itens.filter(item => (lotesDisp[item.id] ?? []).length === 0);
+              const btnLabel = itensSemEstoque.length > 0
+                ? `Sem estoque (${itensSemEstoque.length} ${itensSemEstoque.length > 1 ? "itens" : "item"})`
+                : itensFaltando.length > 0
                 ? `Selecione as peças (${itensFaltando.length} pendente${itensFaltando.length > 1 ? "s" : ""})`
                 : "Iniciar Separação";
               return (
@@ -1121,11 +1124,10 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
 
   if (!pedido) return null;
 
-  // Valida: todos os itens com estoque devem ter total selecionado === quantidade pedida
+  // Valida: todos os itens devem ter seleção completa — sem estoque ou parcial BLOQUEIA
   const canConfirm = pedido.itens.every(item => {
-    const disponiveis = lotesDisponiveis[item.id] ?? [];
-    if (disponiveis.length === 0) return true; // sem estoque, deixa passar com aviso
-    return totalSelecionado(item.id) === item.quantidade;
+    const sel = totalSelecionado(item.id);
+    return sel === item.quantidade && sel > 0;
   });
 
   return (
@@ -1260,15 +1262,46 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
           })}
         </div>
 
-        <div className="px-5 pb-5 pt-3 border-t border-border/20">
+        <div className="px-5 pb-5 pt-3 border-t border-border/20 space-y-2">
+          {/* Mensagem de itens faltando */}
+          {!canConfirm && !saving && !saved && (() => {
+            const faltando = pedido.itens.filter(item => {
+              const sel = totalSelecionado(item.id);
+              return sel < item.quantidade || sel === 0;
+            });
+            return (
+              <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 space-y-0.5">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-destructive">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Não é possível confirmar — itens incompletos:
+                </div>
+                {faltando.map(item => {
+                  const sel = totalSelecionado(item.id);
+                  const semEstoque = (lotesDisponiveis[item.id] ?? []).length === 0;
+                  return (
+                    <p key={item.id} className="text-[11px] text-destructive/80 pl-5">
+                      • {item.device_model}: {semEstoque
+                        ? "sem estoque na expedição"
+                        : `faltam ${item.quantidade - sel} un.`}
+                    </p>
+                  );
+                })}
+              </div>
+            );
+          })()}
           <button
             type="button"
             onClick={handleConfirmar}
             disabled={saving || loading || saved || !canConfirm}
-            className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            className={cn(
+              "w-full h-10 rounded-xl text-white text-sm font-semibold transition-all flex items-center justify-center gap-2",
+              saving || saved ? "bg-blue-600 opacity-70" :
+              canConfirm ? "bg-blue-600 hover:bg-blue-500" :
+              "bg-destructive/80 cursor-not-allowed opacity-90"
+            )}
           >
-            {saving ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : saved ? <CheckCircle2 className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
-            {saved ? "Confirmado!" : "Confirmar e Reservar Peças"}
+            {saving ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : saved ? <CheckCircle2 className="h-4 w-4" /> : canConfirm ? <ArrowRight className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+            {saved ? "Confirmado!" : canConfirm ? "Confirmar e Reservar Peças" : "Peças insuficientes"}
           </button>
         </div>
       </div>
