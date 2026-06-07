@@ -7,8 +7,13 @@ import { supabase } from "@/integrations/supabase/client";
 interface RastrItem {
   id:string; lote:string; device_ref:string; device_model:string; udi_di:string|null;
   quantidade:number; cliente_nome:string; clinica:string|null; cirurgiao:string|null;
+  paciente_codigo:string|null;
   data_envio:string; status_recall:string; observacoes:string|null;
-  pedido_id:string;
+  pedido_id:string; cliente_id:string|null;
+}
+
+interface ClienteInfo {
+  telefone:string|null; email:string|null; documento:string|null; endereco:string|null;
 }
 
 const RECALL_COLOR: Record<string,string> = {
@@ -22,6 +27,7 @@ export function RastreabilidadePanel() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [expanded, setExpanded] = useState<string|null>(null);
+  const [clienteInfo, setClienteInfo] = useState<Record<string,ClienteInfo>>({});
 
   const buscar = useCallback(async () => {
     if(!search.trim()) return;
@@ -34,7 +40,22 @@ export function RastreabilidadePanel() {
       .order("data_envio", { ascending: false })
       .limit(100);
     if(error){ setResults([]); }
-    else if(data) setResults(data as RastrItem[]);
+    else if(data) {
+      setResults(data as RastrItem[]);
+      // Busca dados de contato dos clientes para informação de recall
+      const clienteIds = [...new Set((data as RastrItem[]).filter(r=>r.cliente_id).map(r=>r.cliente_id!))];
+      if(clienteIds.length > 0) {
+        const { data: clientes } = await supabase
+          .from("clientes")
+          .select("id,telefone,email,documento,endereco")
+          .in("id", clienteIds);
+        if(clientes) {
+          const map: Record<string,ClienteInfo> = {};
+          clientes.forEach((cl: ClienteInfo & {id:string}) => { map[cl.id] = cl; });
+          setClienteInfo(map);
+        }
+      }
+    }
     setLoading(false);
   }, [search]);
 
@@ -88,46 +109,56 @@ export function RastreabilidadePanel() {
               r.status_recall==="recall_ativo"?"border-red-500/30 bg-red-500/5":
               r.status_recall==="alerta"?"border-amber-500/30 bg-amber-500/5":
               "border-border/40 bg-card")}>
-              <button className="w-full text-left px-4 py-3 flex items-center gap-3" onClick={()=>setExpanded(expanded===r.id?null:r.id)}>
-                <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center shrink-0",RECALL_COLOR[r.status_recall])}>
-                  {r.status_recall==="normal"?<CheckCircle2 className="h-4 w-4"/>:<AlertTriangle className="h-4 w-4"/>}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold font-mono">{r.lote}</p>
-                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",RECALL_COLOR[r.status_recall])}>{r.status_recall.replace("_"," ")}</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground truncate">{r.device_model} · {r.device_ref} · {r.quantidade} un. → {r.cliente_nome}</p>
-                  <p className="text-[10px] text-muted-foreground">{new Date(r.data_envio+"T12:00:00").toLocaleDateString("pt-BR")}</p>
-                </div>
-                {expanded===r.id?<ChevronUp className="h-4 w-4 text-muted-foreground shrink-0"/>:<ChevronDown className="h-4 w-4 text-muted-foreground shrink-0"/>}
-              </button>
-              {expanded===r.id && (
-                <div className="border-t border-border/20 px-4 pb-4 pt-3 space-y-3">
-                  <div className="grid grid-cols-2 gap-3 text-[11px]">
+              {/* Header compacto */}
+              <div className="px-3 py-2.5 flex items-center gap-2 cursor-pointer" onClick={()=>setExpanded(expanded===r.id?null:r.id)}>
+                <span className={cn("h-2 w-2 rounded-full shrink-0",
+                  r.status_recall==="normal"?"bg-green-500":
+                  r.status_recall==="alerta"?"bg-amber-500":
+                  r.status_recall==="recall_ativo"?"bg-red-500 animate-pulse":"bg-muted-foreground")}/>
+                <p className="text-[12px] font-mono font-semibold">{r.lote}</p>
+                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",RECALL_COLOR[r.status_recall])}>{r.status_recall.replace("_"," ")}</span>
+                <span className="text-[11px] text-muted-foreground truncate flex-1">· {r.device_ref} · {r.quantidade}un → {r.cliente_nome}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">{new Date(r.data_envio+"T12:00:00").toLocaleDateString("pt-BR")}</span>
+                {expanded===r.id?<ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0"/>:<ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0"/>}
+              </div>
+              {expanded===r.id && (() => {
+                const cli = r.cliente_id ? clienteInfo[r.cliente_id] : null;
+                return (
+                <div className="border-t border-border/20 px-3 pb-3 pt-2.5 space-y-2.5">
+                  {/* Produto */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                     <div><p className="text-muted-foreground">Referência</p><p className="font-mono font-medium">{r.device_ref}</p></div>
-                    <div><p className="text-muted-foreground">UDI-DI</p><p className="font-mono font-medium">{r.udi_di||"—"}</p></div>
-                    <div><p className="text-muted-foreground">Quantidade</p><p className="font-medium">{r.quantidade} unidades</p></div>
-                    <div><p className="text-muted-foreground">Data de Envio</p><p className="font-medium">{new Date(r.data_envio+"T12:00:00").toLocaleDateString("pt-BR")}</p></div>
-                    {r.clinica&&<div><p className="text-muted-foreground">Clínica / Hospital</p><p className="font-medium">{r.clinica}</p></div>}
-                    {r.cirurgiao&&<div><p className="text-muted-foreground">Cirurgião</p><p className="font-medium">{r.cirurgiao}</p></div>}
+                    <div><p className="text-muted-foreground">UDI-DI</p><p className="font-mono">{r.udi_di||"—"}</p></div>
+                    <div><p className="text-muted-foreground">Quantidade</p><p className="font-medium">{r.quantidade} un.</p></div>
+                    <div><p className="text-muted-foreground">Envio</p><p className="font-medium">{new Date(r.data_envio+"T12:00:00").toLocaleDateString("pt-BR")}</p></div>
                   </div>
-                  {/* Ações de recall */}
-                  <div className="border-t border-border/20 pt-3">
-                    <p className="text-[10px] text-muted-foreground mb-2">Atualizar status de recall:</p>
-                    <div className="flex gap-2 flex-wrap">
-                      {(["normal","alerta","recall_ativo","devolvido"] as const).map(s=>(
-                        <button key={s} onClick={()=>updateRecall(r.id,s)}
-                          className={cn("h-7 px-2 rounded-lg text-[11px] font-medium border transition-colors",
-                            r.status_recall===s?"bg-primary text-primary-foreground border-primary":"border-input hover:bg-muted/40")}>
-                          {s.replace("_"," ")}
-                        </button>
-                      ))}
+                  {/* Cliente — info de recall */}
+                  <div className="rounded-lg bg-muted/20 px-3 py-2 space-y-1.5">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Contato para Recall</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                      <div><p className="text-muted-foreground">Cliente</p><p className="font-medium">{r.cliente_nome}</p></div>
+                      {cli?.telefone&&<div><p className="text-muted-foreground">Telefone</p><p className="font-medium">{cli.telefone}</p></div>}
+                      {cli?.email&&<div><p className="text-muted-foreground">E-mail</p><p className="font-medium truncate">{cli.email}</p></div>}
+                      {cli?.documento&&<div><p className="text-muted-foreground">CNPJ/CPF</p><p className="font-mono">{cli.documento}</p></div>}
+                      {r.clinica&&<div><p className="text-muted-foreground">Clínica</p><p className="font-medium">{r.clinica}</p></div>}
+                      {r.cirurgiao&&<div><p className="text-muted-foreground">Cirurgião</p><p className="font-medium">{r.cirurgiao}</p></div>}
                     </div>
                   </div>
-                  {r.observacoes&&<p className="text-[11px] text-muted-foreground italic">{r.observacoes}</p>}
+                  {/* Status recall */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-[10px] text-muted-foreground">Status:</p>
+                    {(["normal","alerta","recall_ativo","devolvido"] as const).map(s=>(
+                      <button key={s} onClick={()=>updateRecall(r.id,s)}
+                        className={cn("h-6 px-2 rounded-lg text-[10px] font-medium border transition-colors",
+                          r.status_recall===s?"bg-primary text-primary-foreground border-primary":"border-input hover:bg-muted/40")}>
+                        {s.replace("_"," ")}
+                      </button>
+                    ))}
+                  </div>
+                  {r.observacoes&&<p className="text-[10px] text-muted-foreground italic">{r.observacoes}</p>}
                 </div>
-              )}
+                );
+              })()}
             </div>
           ))}
         </div>

@@ -325,13 +325,9 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   }
 
   const canConfirmar = isPendente && !loadingLotes && pedido.itens.every(item => {
-    const lotes = lotesDisp[item.id] ?? [];
-    // Se há lotes disponíveis, exige seleção completa
-    if (lotes.length > 0) return totalSel(item.id) === item.quantidade;
-    // Se não há lotes disponíveis mas há seleção manual, permite
-    if (totalSel(item.id) > 0) return totalSel(item.id) === item.quantidade;
-    // Se não há lotes e nem seleção, bloqueia
-    return false;
+    const sel = totalSel(item.id);
+    // Exige seleção completa — sem estoque ou seleção parcial trava o botão
+    return sel === item.quantidade && sel > 0;
   });
 
   // All items confirmed (used to enable "Marcar como Pronto" in separando mode with multiple items)
@@ -864,14 +860,16 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
               return (
               <button type="button"
                 onClick={() => {
-                  if (!canConfirmar) {
-                    toast.error("Selecione a quantidade de peças para todos os itens antes de iniciar a separação.");
-                    return;
-                  }
+                  if (!canConfirmar) return;
                   onIniciarSeparacao(pedido, sel, expIdByItem);
                 }}
-                disabled={loadingLotes}
-                className="flex-1 h-9 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none">
+                disabled={!canConfirmar || loadingLotes}
+                className={cn(
+                  "flex-1 h-9 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:pointer-events-none",
+                  canConfirmar
+                    ? "bg-blue-500/10 hover:bg-blue-500/20 text-blue-600"
+                    : "bg-destructive/10 text-destructive opacity-80 cursor-not-allowed"
+                )}>
                 <PackageCheck className="h-3.5 w-3.5" />
                 {btnLabel}
               </button>
