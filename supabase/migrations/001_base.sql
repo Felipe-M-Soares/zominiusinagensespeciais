@@ -143,14 +143,17 @@ BEGIN NEW.updated_at = now(); RETURN NEW; END;
 $f02$;
 
 -- ── Triggers updated_at ───────────────────────────────────────────────────────
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_devices_updated_at ON public.devices;
 CREATE TRIGGER update_devices_updated_at
   BEFORE UPDATE ON public.devices
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_manuals_updated_at ON public.manuals;
 CREATE TRIGGER update_manuals_updated_at
   BEFORE UPDATE ON public.manuals
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
