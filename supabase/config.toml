@@ -17,8 +17,3 @@ project_id = "jemlaugllnwuswpkfzjy"
     verify_jwt = false
   [functions.auto-approve]
     verify_jwt = false
-
-[experimental]
-  # Desabilita preview branches automáticos do Supabase GitHub App
-  # O deploy é gerenciado pelo Vercel + migrations manuais via supabase db push
-  previews_enabled = false
