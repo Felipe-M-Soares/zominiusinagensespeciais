@@ -48,13 +48,16 @@ const BRL=(v:number)=>v.toLocaleString("pt-BR",{style:"currency",currency:"BRL",
 export function DashboardGeral() {
   const [kpis,setKpis]=useState<KPIs|null>(null);
   const [loading,setLoading]=useState(true);
+  const [error,setError]=useState<string|null>(null);
   const [updated,setUpdated]=useState<Date|null>(null);
 
   const load=useCallback(async()=>{
     setLoading(true);
-    await supabase.rpc("atualizar_status_vencido");
-    const{data}=await supabase.rpc("dashboard_gerencial");
-    if(data){setKpis(data as KPIs);setUpdated(new Date());}
+    setError(null);
+    await supabase.rpc("atualizar_status_vencido").catch(()=>null);
+    const{data,error:rpcErr}=await supabase.rpc("dashboard_gerencial");
+    if(rpcErr){setError(rpcErr.message);}
+    else if(data){setKpis(data as KPIs);setUpdated(new Date());}
     setLoading(false);
   },[]);
 
@@ -69,6 +72,14 @@ export function DashboardGeral() {
   if(loading&&!kpis) return(
     <div className="flex items-center justify-center py-20 text-muted-foreground text-sm gap-2">
       <RefreshCw className="h-4 w-4 animate-spin"/>Carregando KPIs...
+    </div>
+  );
+  if(error) return(
+    <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+      <AlertTriangle className="h-10 w-10 text-amber-500 opacity-60"/>
+      <p className="text-sm font-medium text-muted-foreground">Dashboard indisponível</p>
+      <p className="text-[11px] text-muted-foreground max-w-xs">A função de KPIs ainda não foi ativada no banco. Execute <code className="bg-muted px-1 rounded">supabase db push</code> para aplicar a migration 034.</p>
+      <button onClick={load} className="mt-2 h-8 px-4 rounded-lg bg-muted hover:bg-muted/80 text-sm transition-colors">Tentar novamente</button>
     </div>
   );
   if(!kpis) return null;

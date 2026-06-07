@@ -27,13 +27,14 @@ export function RastreabilidadePanel() {
     if(!search.trim()) return;
     setLoading(true);
     setSearched(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("rastreabilidade_pos_venda")
       .select("*")
       .or(`lote.ilike.%${search}%,device_ref.ilike.%${search}%,device_model.ilike.%${search}%,cliente_nome.ilike.%${search}%,udi_di.ilike.%${search}%`)
       .order("data_envio", { ascending: false })
       .limit(100);
-    if(data) setResults(data as RastrItem[]);
+    if(error){ setResults([]); }
+    else if(data) setResults(data as RastrItem[]);
     setLoading(false);
   }, [search]);
 
