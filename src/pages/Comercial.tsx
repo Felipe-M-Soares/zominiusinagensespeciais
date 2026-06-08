@@ -2397,7 +2397,7 @@ export default function Comercial() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto"><div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+      <main className="flex-1 overflow-y-auto"><div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 space-y-4">
         {!canAccess ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
             <ShoppingBag className="h-12 w-12 text-muted-foreground/20" />
@@ -2435,27 +2435,31 @@ export default function Comercial() {
             {/* ── Aba Pedidos ── */}
             {subTab === "pedidos" && (
               <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {(["todos","pendente","faturado","cancelado"] as const).map(s => (
-                    <button key={s} type="button" onClick={() => setFiltroStatus(s)}
-                      className={cn("h-7 px-3 rounded-full text-[11px] font-semibold border transition-colors",
-                        filtroStatus === s ? "bg-violet-600 text-white border-violet-600" : "bg-background text-muted-foreground border-border/50 hover:border-violet-400")}>
-                      {s === "todos" ? "Todos" : s.charAt(0).toUpperCase() + s.slice(1)}
-                    </button>
-                  ))}
-                  <div className="flex items-center gap-1.5 ml-auto">
+                <div className="flex flex-col gap-2">
+                  {/* Linha 1: filtros de status */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(["todos","pendente","faturado","cancelado"] as const).map(s => (
+                      <button key={s} type="button" onClick={() => setFiltroStatus(s)}
+                        className={cn("h-7 px-3 rounded-full text-[11px] font-semibold border transition-colors",
+                          filtroStatus === s ? "bg-violet-600 text-white border-violet-600" : "bg-background text-muted-foreground border-border/50 hover:border-violet-400")}>
+                        {s === "todos" ? "Todos" : s.charAt(0).toUpperCase() + s.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Linha 2: filtros de data + botão novo pedido */}
+                  <div className="flex items-center gap-1.5">
                     <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}
-                      className="h-7 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
-                    <span className="text-[10px] text-muted-foreground">até</span>
+                      className="h-7 flex-1 min-w-0 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+                    <span className="text-[10px] text-muted-foreground shrink-0">até</span>
                     <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}
-                      className="h-7 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+                      className="h-7 flex-1 min-w-0 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
                     {(filtroDataInicio || filtroDataFim) && (
                       <button type="button" onClick={() => { setFiltroDataInicio(""); setFiltroDataFim(""); }}
-                        className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50 text-muted-foreground">
+                        className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg hover:bg-muted/50 text-muted-foreground">
                         <X className="h-3 w-3" />
                       </button>
                     )}
-                    <Button size="sm" className="h-7 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setPedidoComCliente(null); setNovoPedidoOpen(true); }}>
+                    <Button size="sm" className="h-7 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0 ml-auto" onClick={() => { setPedidoComCliente(null); setNovoPedidoOpen(true); }}>
                       <Plus className="h-3.5 w-3.5" /> Novo
                     </Button>
                   </div>

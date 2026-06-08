@@ -23,6 +23,8 @@ interface PageNavProps<T extends string> {
   activeTab: T;
   onTabChange: (tab: T) => void;
   loading?: boolean;
+  /** Quando true, usa grid flex-wrap em 2 linhas em vez de scroll horizontal (útil p/ muitas abas) */
+  wrap?: boolean;
 }
 
 export function PageNav<T extends string>({
@@ -30,6 +32,7 @@ export function PageNav<T extends string>({
   activeTab,
   onTabChange,
   loading = false,
+  wrap = false,
 }: PageNavProps<T>) {
   const [animating, setAnimating] = useState<T | null>(null);
   const activeRef = useRef<T>(activeTab);
@@ -47,7 +50,66 @@ export function PageNav<T extends string>({
 
   return (
     <div className="space-y-2">
-      {/* py-1 garante espaço vertical para a borda/sombra do container interno não ser clipada pelo overflow-x-auto */}
+      {wrap ? (
+        /* Modo wrap: grid flex-wrap, 2 linhas para muitas abas */
+        <div className="rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5">
+          <div className="flex flex-wrap gap-1.5">
+            {tabs.map((tab) => {
+              const isActive = tab.id === activeTab;
+              const isAnimating = animating === tab.id;
+              const activeColor = tab.activeColor ?? "text-primary";
+              const activeBg    = tab.activeBg    ?? "bg-primary/10";
+              const activeBorder= tab.activeBorder ?? "border-primary/40";
+              const badgeBg     = tab.badgeBg     ?? "bg-primary/15";
+              const badgeText   = tab.badgeText   ?? "text-primary";
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleClick(tab.id)}
+                  className={cn(
+                    "relative flex items-center gap-1.5 py-1.5 px-2.5 rounded-xl border transition-all duration-200",
+                    isActive
+                      ? cn(activeBg, activeBorder)
+                      : "border-transparent hover:bg-muted/30"
+                  )}
+                  aria-label={tab.label}
+                  aria-pressed={isActive}
+                >
+                  {!loading && tab.badge !== undefined && tab.badge > 0 && (
+                    <span className={cn(
+                      "absolute top-0.5 right-0.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center px-[3px] leading-none",
+                      isActive ? cn(badgeBg, badgeText) : "bg-muted/60 text-muted-foreground"
+                    )}>
+                      {tab.badge}
+                    </span>
+                  )}
+                  <div className={cn(
+                    "flex items-center justify-center w-6 h-6 rounded-full transition-all duration-200",
+                    isActive ? activeBg : ""
+                  )}>
+                    <tab.Icon
+                      className={cn(
+                        "h-[15px] w-[15px] transition-all duration-200",
+                        isActive ? cn(activeColor, "scale-110") : "text-muted-foreground"
+                      )}
+                      style={isAnimating ? { animation: "pageNavPop 0.35s cubic-bezier(.36,.07,.19,.97)" } : {}}
+                    />
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-medium leading-tight",
+                    isActive ? activeColor : "text-muted-foreground"
+                  )}>
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+      /* Modo padrão: scroll horizontal */
+      /* py-1 garante espaço vertical para a borda/sombra do container interno não ser clipada pelo overflow-x-auto */
       <div className="overflow-x-auto scrollbar-none -mx-1 px-1 py-1">
         <div className="flex items-stretch gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5 min-w-max sm:min-w-0">
           {tabs.map((tab) => {
@@ -119,6 +181,7 @@ export function PageNav<T extends string>({
           })}
         </div>
       </div>
+      )} {/* fim do bloco modo padrão / wrap */}
 
       <style>{`
         @keyframes pageNavPop {

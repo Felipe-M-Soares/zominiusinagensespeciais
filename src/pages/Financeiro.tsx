@@ -306,12 +306,14 @@ function StepBar({ step, total, labels }: { step: number; total: number; labels:
 function TestBadge({ modoTeste }: { modoTeste: boolean }) {
   return (
     <span className={cn(
-      "text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0",
+      "text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 leading-none",
       modoTeste
         ? "border-orange-500/40 bg-orange-500/8 text-orange-500"
         : "border-green-500/40 bg-green-500/8 text-green-600"
     )}>
-      {modoTeste ? "Homologação" : "Produção"}
+      {/* Mobile: abreviado · Desktop: texto completo */}
+      <span className="sm:hidden">{modoTeste ? "Homo" : "Prod"}</span>
+      <span className="hidden sm:inline">{modoTeste ? "Homologação" : "Produção"}</span>
     </span>
   );
 }
@@ -3756,6 +3758,7 @@ export default function Financeiro() {
           tabs={PAGE_NAV_TABS}
           activeTab={activeTab}
           onTabChange={setActiveTab}
+          wrap
         />
 
         {activeTab === "dashboard" && (
