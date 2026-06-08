@@ -454,8 +454,23 @@ export function AdminDevices() {
   const handleDeleteAllDevices = async () => {
     setDeletingAll(true);
     try {
+      // 1. Apaga tabelas dependentes (FK constraints) antes de apagar devices
+      const deps = [
+        "rastreabilidade_pos_venda",
+        "stock_items",
+        "pedido_itens",
+      ];
+      for (const table of deps) {
+        const { error: depErr } = await supabase
+          .from(table as "stock_items")
+          .delete()
+          .neq("id", "00000000-0000-0000-0000-000000000000");
+        if (depErr) throw new Error(`Erro ao limpar ${table}: ${depErr.message}`);
+      }
+
+      // 2. Apaga os devices em lotes
       let deleted = 0;
-      const MAX_ITERATIONS = 200; // protege contra loop infinito (máx 100.000 registros)
+      const MAX_ITERATIONS = 200;
       let iterations = 0;
 
       while (iterations < MAX_ITERATIONS) {
@@ -482,9 +497,10 @@ export function AdminDevices() {
       }
       setPage(0);
       fetchDevices("", 0);
-    } catch (err) {
-      logger.error("deleteAll error:", err);
-      toast.error("Erro ao excluir todas as peças");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : (err as {message?:string})?.message ?? "Erro desconhecido";
+      logger.error("deleteAll error:", msg);
+      toast.error(`Erro ao excluir: ${msg}`);
     } finally {
       setDeletingAll(false);
       setDeleteAllConfirm(false);
