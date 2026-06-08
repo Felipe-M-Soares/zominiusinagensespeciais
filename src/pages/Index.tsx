@@ -254,7 +254,7 @@ const Index = () => {
           </div>
         ) : (
           <>
-            <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-2 sm:gap-3 grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {devices.map((device) => (
                 <DeviceCard key={device.udi_di} device={device} onClick={setSelectedDevice} />
               ))}

@@ -1626,6 +1626,7 @@ function NotificacoesBell({ userId }: { userId: string }) {
   const ref = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
+    if (!userId) return;
     const { data } = await supabase
       .from("notificacoes")
       .select("id, titulo, mensagem, lida, created_at")
@@ -1635,7 +1636,7 @@ function NotificacoesBell({ userId }: { userId: string }) {
     setNotifs((data as typeof notifs) ?? []);
   }, [userId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (userId) load(); }, [load, userId]);
 
   // Realtime subscription — recebe notificação instantaneamente e mostra toast
   useEffect(() => {

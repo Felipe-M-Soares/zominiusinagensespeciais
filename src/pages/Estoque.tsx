@@ -635,18 +635,27 @@ export default function Estoque() {
   async function clearAllHistory() {
     setClearingHist(true);
     try {
+      // Apaga rastreabilidade (FK para pedido_itens)
+      const { error: e0 } = await supabase.from("rastreabilidade_pos_venda").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (e0) throw e0;
+      // Apaga itens dos pedidos
       const { error: e1 } = await supabase.from("pedido_itens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (!e1) await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (!e1) await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (!e1) await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
       if (e1) throw e1;
-      toast.success("Histórico apagado com sucesso.");
+      // Apaga pedidos
+      const { error: e2 } = await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (e2) throw e2;
+      // Apaga movimentos de estoque
+      const { error: e3 } = await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (e3) throw e3;
+      // Zera quantidades mas MANTÉM os stock_items (peças regularizadas ficam com qty=0)
+      const { error: e4 } = await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
+      if (e4) throw e4;
+      toast.success("Histórico apagado. Peças cadastradas mantidas com saldo zerado.");
       setClearHistConfirm(false);
       refetch();
-    } catch (_e) {
-      toast.error("Erro ao apagar histórico. Tente novamente.", {
-        action: { label: "Tentar novamente", onClick: clearAllHistory }
-      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : (err as {message?:string})?.message ?? "Erro desconhecido";
+      toast.error(`Erro ao apagar histórico: ${msg}`);
     } finally {
       setClearingHist(false);
     }

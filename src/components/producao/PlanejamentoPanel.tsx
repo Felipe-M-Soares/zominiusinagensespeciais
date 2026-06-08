@@ -88,7 +88,7 @@ function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-md bg-card rounded-t-2xl sm:rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">{isEdit?"Editar OP":"Nova Ordem de Produção"}</h3>
           <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>

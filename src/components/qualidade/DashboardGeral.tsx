@@ -55,7 +55,7 @@ export function DashboardGeral() {
     setLoading(true);
     setError(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.rpc as any)("atualizar_status_vencido").catch(()=>null);
+    try { await (supabase.rpc as any)("atualizar_status_vencido"); } catch { /* silencioso */ }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const{data,error:rpcErr}=await (supabase.rpc as any)("dashboard_gerencial");
     if(rpcErr){setError(rpcErr.message);}

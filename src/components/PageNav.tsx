@@ -47,7 +47,8 @@ export function PageNav<T extends string>({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-stretch gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5">
+      <div className="overflow-x-auto scrollbar-none -mx-1 px-1">
+      <div className="flex items-stretch gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5 min-w-max sm:min-w-0">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab;
           const isAnimating = animating === tab.id;
@@ -115,6 +116,7 @@ export function PageNav<T extends string>({
             </button>
           );
         })}
+      </div>
       </div>
 
       <style>{`

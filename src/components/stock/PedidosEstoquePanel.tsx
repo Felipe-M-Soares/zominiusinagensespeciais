@@ -330,10 +330,19 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     return sel === item.quantidade && sel > 0;
   });
 
-  // All items confirmed (used to enable "Marcar como Pronto" in separando mode with multiple items)
+  // All items confirmed (multi-item: each must be individually confirmed)
   const allItemsConfirmed = isSeparando && pedido.itens.length > 1
     ? pedido.itens.every(item => confirmedItems.has(item.id))
     : true;
+
+  // Marcar como Pronto só libera se TODOS os itens tiverem seleção completa
+  const canMarcarPronto = isSeparando && pedido.itens.every(item => {
+    // Multi-item: usa confirmedItems (cada item confirmado individualmente)
+    if (pedido.itens.length > 1) return confirmedItems.has(item.id);
+    // Item único: verifica seleção de lotes
+    const sel = totalSel(item.id);
+    return sel === item.quantidade && sel > 0;
+  });
 
   // Confirm a single item during separation: save snapshot and mark locally
   async function handleConfirmarItem(item: PedidoItem) {
@@ -905,13 +914,26 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                   )}
                   <button
                     type="button"
-                    onClick={() => onMarcarPronto(pedido, sel, expIdByItem)}
-                    disabled={multiPecas && !allItemsConfirmed}
-                    className="w-full h-9 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                    onClick={() => {
+                      if (!canMarcarPronto) return;
+                      onMarcarPronto(pedido, sel, expIdByItem);
+                    }}
+                    disabled={!canMarcarPronto}
+                    className={cn(
+                      "w-full h-9 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:pointer-events-none",
+                      canMarcarPronto
+                        ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600"
+                        : "bg-destructive/10 text-destructive opacity-80 cursor-not-allowed"
+                    )}
                   >
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    {multiPecas && !allItemsConfirmed
-                      ? `Confirme todas as peças (${totalConfirmed}/${totalPecasTipos})`
+                    {canMarcarPronto
+                      ? <CheckCircle2 className="h-3.5 w-3.5" />
+                      : <AlertTriangle className="h-3.5 w-3.5" />
+                    }
+                    {!canMarcarPronto
+                      ? pedido.itens.length > 1
+                        ? `Confirme todas as peças (${totalConfirmed}/${totalPecasTipos})`
+                        : "Selecione os lotes antes de confirmar"
                       : "Marcar como Pronto"
                     }
                   </button>

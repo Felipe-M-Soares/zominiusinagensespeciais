@@ -19,7 +19,6 @@ import { friendlyError } from "@/lib/errorMessages";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
-const ContasPanel        = lazy(() => import("@/components/financeiro/ContasPanel").then(m => ({ default: m.ContasPanel })));
 const FornecedoresPanel  = lazy(() => import("@/components/compras/FornecedoresPanel").then(m => ({ default: m.FornecedoresPanel })));
 const PedidosCompraPanel = lazy(() => import("@/components/compras/PedidosCompraPanel").then(m => ({ default: m.PedidosCompraPanel })));
 import {
@@ -3700,7 +3699,6 @@ export default function Financeiro() {
   const TABS: { id: FinTab; label: string; icon: typeof Receipt; badge?: number }[] = [
     { id: "dashboard",        label: "Dashboard",        icon: BarChart2   },
     { id: "nfe",              label: "NF-e / SEFAZ",     icon: FileCheck2, badge: prontos },
-    { id: "contas",           label: "Contas",            icon: DollarSign  },
     { id: "fornecedores",     label: "Fornecedores",      icon: Building2   },
     { id: "compras",          label: "Pedidos Compra",    icon: ShoppingCart},
     { id: "compras_producao", label: "Compras Produção",  icon: Factory     },
@@ -3852,10 +3850,6 @@ export default function Financeiro() {
               </div>
             )}
           </>
-        )}
-
-        {activeTab === "contas" && (
-          <Suspense fallback={null}><ContasPanel/></Suspense>
         )}
         {activeTab === "fornecedores" && (
           <Suspense fallback={null}><FornecedoresPanel/></Suspense>
