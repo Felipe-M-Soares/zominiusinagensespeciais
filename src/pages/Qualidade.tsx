@@ -1344,7 +1344,7 @@ export default function Qualidade() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 pt-4 pb-3 border-b border-border/40 bg-card/60 backdrop-blur-sm">
+      <div className="px-3 sm:px-4 pt-4 pb-3 border-b border-border/40 bg-card/60 backdrop-blur-sm">
         <div className="flex items-center gap-3 mb-3">
           <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
             <ShieldCheck className="h-5 w-5 text-violet-500" />
@@ -1356,7 +1356,7 @@ export default function Qualidade() {
         </div>
         <PageNav tabs={TABS} activeTab={activeView} onTabChange={setActiveView} />
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4">
         {activeView === "dashboard"         && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><DashboardGeral/></Suspense>}
         {activeView === "pipeline"          && <PipelinePanel />}
         {activeView === "rastreamento"      && <RastreamentoPanel />}

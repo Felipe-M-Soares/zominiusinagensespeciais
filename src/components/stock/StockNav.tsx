@@ -146,7 +146,7 @@ export function StockNav({
   return (
     <div className="space-y-2">
       {/* ── Barra de ícones ── */}
-      <div className="overflow-x-auto scrollbar-none -mx-1 px-1"><div className="flex items-stretch gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5 min-w-max sm:min-w-0">
+      <div className="overflow-x-auto scrollbar-none -mx-1 px-1 py-1"><div className="flex items-stretch gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5 min-w-max sm:min-w-0">
         {TABS.map((tab) => {
           const isActive = tab.id === activeView;
           const count = counts[tab.id];
