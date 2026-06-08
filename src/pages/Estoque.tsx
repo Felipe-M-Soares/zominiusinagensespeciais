@@ -635,18 +635,21 @@ export default function Estoque() {
   async function clearAllHistory() {
     setClearingHist(true);
     try {
+      // Ordem: itens → pedidos → movimentos → zera estoque
       const { error: e1 } = await supabase.from("pedido_itens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (!e1) await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (!e1) await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (!e1) await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
       if (e1) throw e1;
+      const { error: e2 } = await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (e2) throw e2;
+      const { error: e3 } = await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (e3) throw e3;
+      const { error: e4 } = await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
+      if (e4) throw e4;
       toast.success("Histórico apagado com sucesso.");
       setClearHistConfirm(false);
       refetch();
-    } catch (_e) {
-      toast.error("Erro ao apagar histórico. Tente novamente.", {
-        action: { label: "Tentar novamente", onClick: clearAllHistory }
-      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : (err as {message?:string})?.message ?? "Erro desconhecido";
+      toast.error(`Erro ao apagar histórico: ${msg}`);
     } finally {
       setClearingHist(false);
     }
