@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const FornecedoresPanel  = lazy(() => import("@/components/compras/FornecedoresPanel").then(m => ({ default: m.FornecedoresPanel })));
 const PedidosCompraPanel = lazy(() => import("@/components/compras/PedidosCompraPanel").then(m => ({ default: m.PedidosCompraPanel })));
@@ -3530,6 +3531,7 @@ type FinTab = "dashboard" | "nfe" | "contas" | "fornecedores" | "compras" | "com
 export default function Financeiro() {
   const navigate = useNavigate();
   const { isAdmin, role } = useAuth();
+  const isMobile = useIsMobile();
 
   const [pedidos,       setPedidos]       = useState<Pedido[]>([]);
   const [nfViewerPedido, setNfViewerPedido] = useState<Pedido | null>(null);
@@ -3752,7 +3754,7 @@ export default function Financeiro() {
           tabs={PAGE_NAV_TABS}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          cols={3}
+          cols={isMobile ? 3 : undefined}
         />
 
         {activeTab === "dashboard" && (
