@@ -54,12 +54,30 @@ export function DashboardGeral() {
   const load=useCallback(async()=>{
     setLoading(true);
     setError(null);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     try { await (supabase.rpc as any)("atualizar_status_vencido"); } catch { /* silencioso */ }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const{data,error:rpcErr}=await (supabase.rpc as any)("dashboard_gerencial");
-    if(rpcErr){setError(rpcErr.message);}
-    else if(data){setKpis(data as KPIs);setUpdated(new Date());}
+    try {
+      const { data, error: rpcErr } = await (supabase.rpc as any)("dashboard_gerencial");
+      if (rpcErr) {
+        setError(rpcErr.message ?? JSON.stringify(rpcErr));
+      } else if (data) {
+        // Preenche campos ausentes com 0 para não quebrar a UI
+        const safe: KPIs = {
+          estoque_intermediario_qty: 0, estoque_expedicao_qty: 0, estoque_critico: 0,
+          pedidos_pendentes: 0, pedidos_prontos: 0, pedidos_atrasados: 0, faturamento_mes: 0,
+          contas_receber_abertas: 0, contas_receber_vencidas: 0,
+          contas_pagar_abertas: 0, contas_pagar_vencidas: 0, contas_vencer_7d: 0,
+          oee_mes: 0, apontamentos_hoje: 0, pecas_produzidas_mes: 0,
+          devices_vencendo_anvisa: 0, devices_anvisa_vencidos: 0,
+          certificados_vencendo: 0, certificados_vencidos: 0,
+          ferramentas_alerta: 0, recall_ativos: 0,
+          ...data,
+        };
+        setKpis(safe);
+        setUpdated(new Date());
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Erro desconhecido ao carregar KPIs");
+    }
     setLoading(false);
   },[]);
 
@@ -77,11 +95,22 @@ export function DashboardGeral() {
     </div>
   );
   if(error) return(
-    <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+    <div className="flex flex-col items-center justify-center py-20 gap-4 text-center px-4">
       <AlertTriangle className="h-10 w-10 text-amber-500 opacity-60"/>
-      <p className="text-sm font-medium text-muted-foreground">Dashboard indisponível</p>
-      <p className="text-[11px] text-muted-foreground max-w-xs">A função de KPIs ainda não foi ativada no banco. Execute <code className="bg-muted px-1 rounded">supabase db push</code> para aplicar a migration 034.</p>
-      <button onClick={load} className="mt-2 h-8 px-4 rounded-lg bg-muted hover:bg-muted/80 text-sm transition-colors">Tentar novamente</button>
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-foreground">Dashboard indisponível</p>
+        <p className="text-[11px] text-muted-foreground max-w-sm">
+          A função <code className="bg-muted px-1 rounded font-mono">dashboard_gerencial</code> retornou um erro.
+          Execute os scripts <strong>fix_034_tables.sql</strong> e <strong>fix_dashboard_gerencial.sql</strong> no SQL Editor do Supabase.
+        </p>
+      </div>
+      <div className="w-full max-w-sm rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-left">
+        <p className="text-[10px] font-semibold text-destructive/70 uppercase tracking-wide mb-1">Erro do banco</p>
+        <p className="text-[11px] text-destructive font-mono break-all">{error}</p>
+      </div>
+      <button onClick={load} className="h-8 px-4 rounded-lg bg-muted hover:bg-muted/80 text-sm transition-colors">
+        Tentar novamente
+      </button>
     </div>
   );
   if(!kpis) return null;
