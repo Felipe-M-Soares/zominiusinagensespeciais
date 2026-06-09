@@ -1,50 +1,52 @@
 /**
  * DeviceImageUploader — Upload em massa de imagens de componentes
  *
- * Regra de matching:
- *   nome do arquivo (sem extensão) === device.reference  (case-insensitive, trim)
+ * Regra de matching (EXATA):
+ *   nome do arquivo (sem extensão) === device.reference
+ *   Normalização: trim + colapso de espaços múltiplos + case-insensitive
+ *   ⚠️  Letras a mais NÃO fazem match. Ex: "CCAHC 09X" ≠ "CCAHC 09"
  *
- * Ex: arquivo "CCAHC 09.webp" → atualiza o device cuja reference = "CCAHC 09"
+ * Modos de entrada:
+ *   1. Selecionar Pasta  → varre pasta e subpastas via webkitdirectory
+ *   2. Selecionar Arquivos → seleção manual múltipla
+ *   3. Drag & Drop        → soltar arquivos ou pasta
  *
- * O componente:
- *  1. Recebe N arquivos de uma vez (drag & drop ou seletor)
- *  2. Para cada arquivo, faz match com a reference dos devices
- *  3. Mostra preview antes de confirmar
- *  4. Faz upload para Supabase Storage (bucket devices-images)
- *  5. Atualiza icon_url no banco para os devices matched
- *  6. Reporta: ✅ matched | ⚠️ sem match | ❌ erro
+ * Fluxo:
+ *  1. Carrega arquivos → match com references do banco
+ *  2. Mostra preview (✅ com match | ⚠️ sem match)
+ *  3. Upload para Supabase Storage (bucket devices-images)
+ *  4. Atualiza icon_url no banco em batch
  */
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   Upload, X, CheckCircle2, AlertTriangle, XCircle,
-  FileImage, ArrowUpCircle, Loader2,
+  FileImage, ArrowUpCircle, Loader2, FolderOpen, Files,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-// Componente de thumbnail que usa URL.createObjectURL de forma segura
-// com revokeObjectURL no cleanup para evitar memory leak
+// ── Thumbnail seguro com revoke ──────────────────────────────────────────────
 function BlobThumb({ file, uploadedUrl }: { file: File; uploadedUrl?: string }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     if (uploadedUrl) { setSrc(uploadedUrl); return; }
     const url = URL.createObjectURL(file);
     setSrc(url);
-    return () => URL.revokeObjectURL(url); // cleanup garante sem memory leak
+    return () => URL.revokeObjectURL(url);
   }, [file, uploadedUrl]);
   return (
-    <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted/40 shrink-0 flex items-center justify-center">
-      {src && <img src={src} alt="" className="h-full w-full object-contain" />}
+    <div className="h-10 w-10 rounded-lg overflow-hidden bg-white border border-border/30 shrink-0 flex items-center justify-center">
+      {src && <img src={src} alt="" className="h-full w-full object-contain p-0.5" />}
     </div>
   );
 }
 
 interface FileResult {
   file:      File;
-  refName:   string;     // nome sem extensão
+  refName:   string;
   deviceId:  string | null;
   reference: string | null;
   model:     string | null;
@@ -53,28 +55,27 @@ interface FileResult {
   error?:    string;
 }
 
-// Normaliza string para comparação: lowercase + trim + colapsa espaços
+// Normaliza para comparação: lowercase + trim + colapsa espaços
 function norm(s: string) {
   return s.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
-// Remove extensão do nome do arquivo
+// Remove extensão
 function stemName(filename: string) {
   return filename.replace(/\.[^.]+$/, "");
 }
 
-// Sanitiza o nome para uso como path no storage
-// Remove chars perigosos: /, \, .., null bytes, etc.
+// Sanitiza path para storage
 function sanitizePath(name: string): string {
   return name
-    .replace(/\.\.+/g, ".")          // bloqueia path traversal (..)
-    .replace(/[\/\\<>:"|?*\x00]/g, "_") // chars inválidos → _
+    .replace(/\.\.+/g, ".")
+    .replace(/[\/\\<>:"|?*\x00]/g, "_")
     .trim();
 }
 
 interface Props {
   onClose: () => void;
-  onDone:  () => void;   // chamado ao finalizar para recarregar os cards
+  onDone:  () => void;
 }
 
 export function DeviceImageUploader({ onClose, onDone }: Props) {
@@ -82,55 +83,104 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
   const [uploading, setUploading] = useState(false);
   const [done,      setDone]      = useState(false);
 
-  // ── Processa arquivos selecionados ─────────────────────────────────────────
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const filesInputRef  = useRef<HTMLInputElement>(null);
+
+  // ── Processa lista de arquivos ───────────────────────────────────────────
   const processFiles = useCallback(async (files: FileList | File[]) => {
+    // Filtra apenas imagens; ignora arquivos ocultos (._xxx) gerados pelo macOS
     const arr = Array.from(files).filter(f =>
-      /\.(webp|jpg|jpeg|png|gif)$/i.test(f.name)
+      /\.(webp|jpg|jpeg|png|gif)$/i.test(f.name) &&
+      !f.name.startsWith("._") &&
+      !f.name.startsWith(".")
     );
+
     if (arr.length === 0) {
-      toast.error("Selecione imagens (.webp, .jpg, .png)");
+      toast.error("Nenhuma imagem encontrada (.webp, .jpg, .png, .gif)");
       return;
     }
 
-    // Busca todos os devices de uma vez
+    // Busca todas as references do banco de uma vez
     const { data: devices, error } = await supabase
       .from("devices")
       .select("id, reference, model");
 
     if (error || !devices) {
-      toast.error("Erro ao buscar componentes");
+      toast.error("Erro ao buscar componentes do banco");
       return;
     }
 
-    // Mapa: reference normalizada → device
+    // Mapa: reference normalizada → device (matching EXATO após norm)
     const devMap = new Map(
       devices.map(d => [norm(d.reference || ""), d])
     );
 
     const fileResults: FileResult[] = arr.map(file => {
-      const refName = stemName(file.name);
-      const dev     = devMap.get(norm(refName));
+      const refName   = stemName(file.name);          // nome sem extensão
+      const normRef   = norm(refName);                // normalizado
+      const dev       = devMap.get(normRef) ?? null;  // match exato
+
       return {
         file,
         refName,
-        deviceId:  dev?.id   || null,
-        reference: dev?.reference || null,
-        model:     dev?.model || null,
+        deviceId:  dev?.id        ?? null,
+        reference: dev?.reference ?? null,
+        model:     dev?.model     ?? null,
         status:    dev ? "pending" : "no_match",
       };
+    });
+
+    // Ordena: com match primeiro, sem match depois
+    fileResults.sort((a, b) => {
+      if (a.status === b.status) return a.refName.localeCompare(b.refName);
+      return a.status === "pending" ? -1 : 1;
     });
 
     setResults(fileResults);
     setDone(false);
   }, []);
 
-  // ── Drag & Drop ────────────────────────────────────────────────────────────
-  const onDrop = useCallback((e: React.DragEvent) => {
+  // ── Drag & Drop (aceita pasta ou arquivos soltos) ────────────────────────
+  const onDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
+
+    // Tenta ler como FileSystemEntries para suportar pastas via DnD
+    const items = Array.from(e.dataTransfer.items ?? []);
+    const allFiles: File[] = [];
+
+    async function readEntry(entry: FileSystemEntry): Promise<void> {
+      if (entry.isFile) {
+        await new Promise<void>(res => {
+          (entry as FileSystemFileEntry).file(f => { allFiles.push(f); res(); });
+        });
+      } else if (entry.isDirectory) {
+        const reader = (entry as FileSystemDirectoryEntry).createReader();
+        await new Promise<void>(res => {
+          function readBatch() {
+            reader.readEntries(async entries => {
+              if (entries.length === 0) { res(); return; }
+              await Promise.all(entries.map(readEntry));
+              readBatch();
+            });
+          }
+          readBatch();
+        });
+      }
+    }
+
+    if (items.length > 0 && items[0].webkitGetAsEntry) {
+      const entries = items
+        .map(i => i.webkitGetAsEntry())
+        .filter((e): e is FileSystemEntry => !!e);
+      await Promise.all(entries.map(readEntry));
+      if (allFiles.length > 0) { processFiles(allFiles); return; }
+    }
+
+    // Fallback: DataTransfer.files normais
     processFiles(e.dataTransfer.files);
   }, [processFiles]);
 
-  // ── Contagens para preview ─────────────────────────────────────────────────
+  // ── Contagens ────────────────────────────────────────────────────────────
   const counts = useMemo(() => ({
     matched:  results.filter(r => r.status === "pending").length,
     noMatch:  results.filter(r => r.status === "no_match").length,
@@ -139,32 +189,28 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
     errors:   results.filter(r => r.status === "error").length,
   }), [results]);
 
-  // ── Upload ─────────────────────────────────────────────────────────────────
+  // ── Upload ────────────────────────────────────────────────────────────────
   async function handleUpload() {
     const toUpload = results.filter(r => r.status === "pending");
     if (toUpload.length === 0) return;
 
     setUploading(true);
-
-    // Marca todos como "uploading"
     setResults(prev => prev.map(r =>
       r.status === "pending" ? { ...r, status: "uploading" } : r
     ));
 
-    // ── PASSO 1: Upload de todos os arquivos em paralelo (20 simultâneos) ────
-    // Mesmo padrão do import de peças: batches paralelos direto pelo cliente
     const PARALLEL = 20;
-    const urlMap = new Map<string, string>(); // file → publicUrl
+    const urlMap = new Map<string, string>();
 
-    async function uploadFile(item: FileResult): Promise<void> {
+    async function uploadOne(item: FileResult): Promise<void> {
       const ext  = item.file.name.split(".").pop()!.toLowerCase();
       const path = `${sanitizePath(item.refName)}.${ext}`;
 
       const { error } = await supabase.storage
         .from("devices-images")
         .upload(path, item.file, {
-          upsert:      true,
-          contentType: item.file.type,
+          upsert:       true,
+          contentType:  item.file.type,
           cacheControl: "31536000",
         });
 
@@ -177,8 +223,8 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
     const uploadErrors = new Map<string, string>();
 
     for (let i = 0; i < toUpload.length; i += PARALLEL) {
-      const batch = toUpload.slice(i, i + PARALLEL);
-      const settled = await Promise.allSettled(batch.map(uploadFile));
+      const batch   = toUpload.slice(i, i + PARALLEL);
+      const settled = await Promise.allSettled(batch.map(uploadOne));
       settled.forEach((res, idx) => {
         if (res.status === "rejected") {
           const msg = res.reason instanceof Error ? res.reason.message : String(res.reason);
@@ -187,18 +233,19 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
       });
     }
 
-    // ── PASSO 2: Atualiza icon_url em batch de 500 (igual ao import de peças) ─
+    // Atualiza icon_url em batch de 500
     const toUpdate = toUpload
       .filter(item => urlMap.has(item.refName))
-      .map(item => ({ id: item.deviceId!, icon_url: urlMap.get(item.refName)! }));
+      .map(item    => ({ id: item.deviceId!, icon_url: urlMap.get(item.refName)! }));
 
     const DB_BATCH = 500;
     for (let i = 0; i < toUpdate.length; i += DB_BATCH) {
-      const batch = toUpdate.slice(i, i + DB_BATCH);
-      await supabase.from("devices").upsert(batch, { onConflict: "id" });
+      await supabase.from("devices").upsert(
+        toUpdate.slice(i, i + DB_BATCH),
+        { onConflict: "id" }
+      );
     }
 
-    // ── Atualiza status visual ─────────────────────────────────────────────────
     setResults(prev => prev.map(r => {
       if (r.status !== "uploading") return r;
       if (uploadErrors.has(r.refName))
@@ -220,6 +267,14 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
     if (s === "no_match")  return <AlertTriangle className="h-4 w-4 text-amber-500" />;
   };
 
+  function resetar() {
+    setResults([]);
+    setDone(false);
+    // Limpa os inputs para permitir re-selecionar a mesma pasta
+    if (folderInputRef.current) folderInputRef.current.value = "";
+    if (filesInputRef.current)  filesInputRef.current.value  = "";
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
       <div className="w-full max-w-2xl bg-card rounded-t-2xl sm:rounded-2xl border border-border/40 shadow-2xl flex flex-col max-h-[90vh]">
@@ -229,51 +284,112 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
           <div className="flex items-center gap-2">
             <FileImage className="h-4 w-4 text-primary" />
             <div>
-              <h3 className="font-semibold text-sm">Upload de Imagens</h3>
+              <h3 className="font-semibold text-sm">Upload de Imagens em Massa</h3>
               <p className="text-[11px] text-muted-foreground">
-                Nome do arquivo = Referência do componente
+                Nome do arquivo (sem extensão) = Referência exata do componente
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40">
+          <button
+            onClick={onClose}
+            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
 
-          {/* Drop zone */}
+          {/* Zona de entrada — só aparece se ainda não carregou arquivos */}
           {results.length === 0 && (
-            <label
-              className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/50 p-10 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
-              onDrop={onDrop}
-              onDragOver={e => e.preventDefault()}
-            >
-              <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-                <Upload className="h-7 w-7 text-primary" />
+            <div className="space-y-3">
+
+              {/* Drag & Drop area */}
+              <div
+                className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/50 p-8 hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                onDrop={onDrop}
+                onDragOver={e => e.preventDefault()}
+              >
+                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <Upload className="h-6 w-6 text-primary" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold">Arraste uma pasta ou arquivos aqui</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Ou use os botões abaixo para selecionar
+                  </p>
+                </div>
               </div>
-              <div className="text-center">
-                <p className="text-sm font-semibold">Arraste as imagens ou clique para selecionar</p>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  O nome de cada arquivo deve ser idêntico à referência do componente
-                </p>
-                <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
-                  Ex: <span className="text-primary">CCAHC 09.webp</span> → reference "CCAHC 09"
-                </p>
+
+              {/* Botões de seleção */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Selecionar Pasta (varre subpastas automaticamente) */}
+                <button
+                  type="button"
+                  onClick={() => folderInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-muted/30 p-4 hover:bg-primary/5 hover:border-primary/40 transition-colors"
+                >
+                  <FolderOpen className="h-7 w-7 text-primary/70" />
+                  <div className="text-center">
+                    <p className="text-[13px] font-semibold">Selecionar Pasta</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Varre pasta e subpastas
+                    </p>
+                  </div>
+                </button>
+
+                {/* Selecionar arquivos individuais */}
+                <button
+                  type="button"
+                  onClick={() => filesInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-muted/30 p-4 hover:bg-primary/5 hover:border-primary/40 transition-colors"
+                >
+                  <Files className="h-7 w-7 text-primary/70" />
+                  <div className="text-center">
+                    <p className="text-[13px] font-semibold">Selecionar Arquivos</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Escolha múltiplos arquivos
+                    </p>
+                  </div>
+                </button>
               </div>
+
+              {/* Nota de matching */}
+              <p className="text-[11px] text-muted-foreground text-center bg-muted/30 rounded-lg px-3 py-2">
+                O nome de cada arquivo deve ser <strong>idêntico</strong> à referência do componente.
+                Espaços e capitalização são ignorados, mas letras a mais <strong>não fazem match</strong>.
+                <br />
+                <span className="font-mono text-primary">CCAHC 09.webp</span> → referência <span className="font-mono text-primary">CCAHC 09</span>
+              </p>
+
+              {/* Inputs ocultos */}
+              {/* Pasta: webkitdirectory varre tudo recursivamente */}
               <input
+                ref={folderInputRef}
                 type="file"
-                accept="image/*"
+                // @ts-ignore — atributo não-padrão suportado por todos os browsers modernos
+                webkitdirectory=""
                 multiple
+                accept="image/*"
                 className="hidden"
                 onChange={e => { if (e.target.files) processFiles(e.target.files); }}
               />
-            </label>
+              {/* Arquivos individuais */}
+              <input
+                ref={filesInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={e => { if (e.target.files) processFiles(e.target.files); }}
+              />
+            </div>
           )}
 
-          {/* Resumo */}
+          {/* Preview e resultados */}
           {results.length > 0 && (
             <>
+              {/* Cards de resumo */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3 text-center">
                   <p className="text-xl font-bold text-green-600">{counts.matched}</p>
@@ -289,7 +405,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                 </div>
               </div>
 
-              {/* Lista */}
+              {/* Lista de arquivos */}
               <div className="rounded-xl border border-border/40 overflow-hidden divide-y divide-border/20 max-h-72 overflow-y-auto">
                 {results.map((r, i) => (
                   <div
@@ -301,15 +417,13 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                       r.status === "error"    && "bg-red-500/5",
                     )}
                   >
-                    {/* Thumbnail — usa URL do storage se disponível, senão data URL via FileReader */}
                     <BlobThumb file={r.file} uploadedUrl={r.status === "done" ? r.url : undefined} />
 
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <p className="font-mono font-medium truncate">{r.refName}</p>
                       {r.status === "no_match" ? (
                         <p className="text-amber-600 text-[10px]">
-                          ⚠️ Nenhum componente com esta referência
+                          Nenhum componente com esta referência exata
                         </p>
                       ) : r.status === "error" ? (
                         <p className="text-red-500 text-[10px] truncate">{r.error}</p>
@@ -318,18 +432,14 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                       ) : null}
                     </div>
 
-                    {/* Status */}
-                    <div className="shrink-0">
-                      {statusIcon(r.status)}
-                    </div>
+                    <div className="shrink-0">{statusIcon(r.status)}</div>
                   </div>
                 ))}
               </div>
 
-              {/* Resetar */}
               {!uploading && (
                 <button
-                  onClick={() => { setResults([]); setDone(false); }}
+                  onClick={resetar}
                   className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                 >
                   ← Selecionar outros arquivos
@@ -355,7 +465,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <ArrowUpCircle className="h-4 w-4" />}
               {uploading
-                ? `Enviando...`
+                ? "Enviando..."
                 : `Enviar ${counts.matched} imagem${counts.matched !== 1 ? "ns" : ""}`}
             </Button>
           )}
@@ -364,6 +474,9 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
             <div className="flex-1 flex items-center justify-center gap-2 text-green-600 text-sm font-medium">
               <CheckCircle2 className="h-4 w-4" />
               {counts.done} imagem{counts.done !== 1 ? "ns" : ""} atualizada{counts.done !== 1 ? "s" : ""}
+              {counts.errors > 0 && (
+                <span className="text-red-500 ml-2">({counts.errors} erro{counts.errors !== 1 ? "s" : ""})</span>
+              )}
             </div>
           )}
         </div>
