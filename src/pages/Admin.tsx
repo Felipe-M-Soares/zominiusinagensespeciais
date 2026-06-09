@@ -2,12 +2,23 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { AdminDevices } from "@/components/admin/AdminDevices";
 import { AdminUsers } from "@/components/admin/AdminUsers";
+import { DashboardGeral } from "@/components/qualidade/DashboardGeral";
 import { PageNav } from "@/components/PageNav";
-import { Settings, Cpu, Users } from "lucide-react";
+import { Settings, Cpu, Users, LayoutDashboard } from "lucide-react";
 
-type AdminTab = "devices" | "users";
+type AdminTab = "dashboard" | "devices" | "users";
 
 const ADMIN_TABS = [
+  {
+    id: "dashboard" as AdminTab,
+    label: "Dashboard",
+    Icon: LayoutDashboard,
+    activeColor: "text-emerald-600 dark:text-emerald-400",
+    activeBg: "bg-emerald-500/10",
+    activeBorder: "border-emerald-500/40",
+    badgeBg: "bg-emerald-500/15",
+    badgeText: "text-emerald-600 dark:text-emerald-400",
+  },
   {
     id: "devices" as AdminTab,
     label: "Dispositivos",
@@ -32,9 +43,7 @@ const ADMIN_TABS = [
 
 export default function Admin() {
   const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<AdminTab>("devices");
-
-
+  const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
 
   return (
     <div className="flex flex-col h-full bg-transparent">
@@ -45,25 +54,25 @@ export default function Admin() {
             <h1 className="text-sm font-semibold">Admin</h1>
           </div>
           <div className="flex items-center gap-1">
-
           </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-7xl mx-auto px-4 py-4 space-y-4 h-full flex flex-col">
-        <div className="rounded-xl border bg-primary/5 border-primary/20 text-primary/80 px-4 py-3 text-[12px]">
-          Gerencie dispositivos cadastrados no sistema e controle o acesso dos usuários.
-        </div>
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 space-y-4 h-full flex flex-col">
+          <div className="rounded-xl border bg-primary/5 border-primary/20 text-primary/80 px-4 py-3 text-[12px]">
+            Gerencie dispositivos cadastrados no sistema e controle o acesso dos usuários.
+          </div>
 
-        <PageNav
-          tabs={ADMIN_TABS}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-        />
+          <PageNav
+            tabs={ADMIN_TABS}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
 
-        {activeTab === "devices" && <AdminDevices />}
-        {activeTab === "users"   && <AdminUsers />}
+          {activeTab === "dashboard" && <DashboardGeral />}
+          {activeTab === "devices"   && <AdminDevices />}
+          {activeTab === "users"     && <AdminUsers />}
         </div>
       </main>
     </div>

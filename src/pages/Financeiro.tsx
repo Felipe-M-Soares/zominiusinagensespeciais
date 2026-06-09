@@ -2727,14 +2727,14 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
           modoTeste ? "bg-orange-500/10" : "bg-green-500/10")}>
           <TestTube2 className={cn("h-5 w-5", modoTeste ? "text-orange-500" : "text-green-600")} />
         </div>
-        <div className="flex-1">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold">{modoTeste ? "Modo Homologação (Teste)" : "Modo Produção"}</p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-bold leading-snug">{modoTeste ? "Modo Homologação (Teste)" : "Modo Produção"}</p>
             <button type="button" onClick={onToggleModoTeste}
-              className={cn("h-5 w-10 rounded-full transition-colors relative shrink-0",
+              className={cn("h-4 w-7 sm:h-5 sm:w-10 min-w-[28px] sm:min-w-[40px] rounded-full transition-colors relative shrink-0 mt-0.5",
                 modoTeste ? "bg-orange-500" : "bg-muted/50")}>
-              <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-background shadow transition-all duration-200",
-                modoTeste ? "left-[calc(100%-18px)]" : "left-0.5")} />
+              <span className={cn("absolute top-0.5 h-3 w-3 sm:h-4 sm:w-4 rounded-full bg-background shadow transition-all duration-200",
+                modoTeste ? "left-[calc(100%-14px)] sm:left-[calc(100%-18px)]" : "left-0.5")} />
             </button>
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">
