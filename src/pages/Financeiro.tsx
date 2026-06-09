@@ -304,16 +304,10 @@ function StepBar({ step, total, labels }: { step: number; total: number; labels:
 // ─── TestBadge ───────────────────────────────────────────────────────────────
 
 function TestBadge({ modoTeste }: { modoTeste: boolean }) {
+  if (!modoTeste) return null; // Produção é o padrão — não precisa de badge
   return (
-    <span className={cn(
-      "text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 leading-none",
-      modoTeste
-        ? "border-orange-500/40 bg-orange-500/8 text-orange-500"
-        : "border-green-500/40 bg-green-500/8 text-green-600"
-    )}>
-      {/* Mobile: abreviado · Desktop: texto completo */}
-      <span className="sm:hidden">{modoTeste ? "Homo" : "Prod"}</span>
-      <span className="hidden sm:inline">{modoTeste ? "Homologação" : "Produção"}</span>
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-orange-500/40 bg-orange-500/8 text-orange-500 leading-none shrink-0 whitespace-nowrap">
+      Homo
     </span>
   );
 }
@@ -2737,9 +2731,9 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
             <p className="text-sm font-bold">{modoTeste ? "Modo Homologação (Teste)" : "Modo Produção"}</p>
             <button type="button" onClick={onToggleModoTeste}
               className={cn("h-5 w-10 rounded-full transition-colors relative shrink-0",
-                modoTeste ? "bg-orange-500" : "bg-green-500")}>
-              <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-background text-foreground shadow transition-all",
-                modoTeste ? "left-0.5" : "left-[calc(100%-18px)]")} />
+                modoTeste ? "bg-orange-500" : "bg-muted/50")}>
+              <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-background shadow transition-all duration-200",
+                modoTeste ? "left-[calc(100%-18px)]" : "left-0.5")} />
             </button>
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">
@@ -3758,7 +3752,7 @@ export default function Financeiro() {
           tabs={PAGE_NAV_TABS}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          wrap
+          cols={3}
         />
 
         {activeTab === "dashboard" && (
