@@ -8,10 +8,6 @@ import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { type Theme, getStoredTheme, applyTheme } from "@/lib/theme";
 
-// Re-exporta para compatibilidade com imports legados que apontam para esta página.
-// ATENÇÃO: novos imports devem usar @/lib/theme diretamente.
-export { getStoredTheme, applyTheme };
-
 const Settings = () => {
   const { user } = useAuth();
   const navigate = useNavigate();

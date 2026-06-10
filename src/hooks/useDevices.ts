@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
+import { sanitizeQuery } from "@/lib/sanitize";
 import type { Tables } from "@/integrations/supabase/types";
 import type { Device } from "@/types/device";
 
@@ -40,21 +41,6 @@ function toDevice(d: DbDevice): Device {
   };
 }
 
-/**
- * SECURITY: Sanitiza a string de busca para uso seguro nos filtros PostgREST (.or()).
- * Caracteres como `,`, `(`, `)` têm significado sintático no parser do PostgREST
- * e podem ser usados para injetar condições de filtro adicionais se não forem
- * removidos. Ex.: "x%,udi_di.neq." injetaria um segundo filtro na query.
- * Também remove curingas extras (`%`, `_`) que o usuário poderia usar para
- * forçar full-table-scans caros via ILIKE.
- */
-function sanitizeSearchQuery(raw: string): string {
-  return raw
-    .trim()
-    .slice(0, 200) // limita o tamanho para evitar queries absurdas
-    .replace(/[(),]/g, "")    // remove metacaracteres do parser PostgREST
-    .replace(/[%_\\]/g, "\\$&"); // escapa curingas ILIKE nativos do Postgres
-}
 
 async function queryDevices(
   search: string,
@@ -69,7 +55,7 @@ async function queryDevices(
     .order("model")
     .range(offset, offset + PAGE_SIZE - 1);
 
-  const q = sanitizeSearchQuery(search);
+  const q = sanitizeQuery(search);
   if (q) {
     query = query.or(
       [

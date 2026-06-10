@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
 import { AdminDevices } from "@/components/admin/AdminDevices";
 import { AdminUsers } from "@/components/admin/AdminUsers";
 import { DashboardGeral } from "@/components/qualidade/DashboardGeral";
@@ -42,7 +41,6 @@ const ADMIN_TABS = [
 ];
 
 export default function Admin() {
-  const { signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
 
   return (

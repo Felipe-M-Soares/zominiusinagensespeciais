@@ -83,10 +83,11 @@ export function AdminDevices() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debouncedFn = useDebounce((value: string) => setDebouncedSearch(value), 300);
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
     debouncedFn(value);
-  }, []);
+  }, [debouncedFn]);
   const [editDevice, setEditDevice] = useState<Partial<TablesInsert<"devices">> | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
