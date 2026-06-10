@@ -55,9 +55,19 @@ interface FileResult {
   error?:    string;
 }
 
-// Normaliza para comparação: lowercase + trim + colapsa espaços
-function norm(s: string) {
-  return s.toLowerCase().trim().replace(/\s+/g, " ");
+// Normaliza para comparação:
+// 1. Remove acentos (CABEÇA → CABECA, para tolerar variação de encoding)
+// 2. Lowercase + trim
+// 3. Remove TODOS os espaços (ADE 3318NC = ADE3318NC = ade3318nc)
+// Isso resolve a principal causa de falha: espaços inconsistentes
+// antes de sufixos como NC, ST, B, N, R entre arquivos e banco.
+function norm(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")   // remove diacríticos (acentos)
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "");              // remove todos os espaços
 }
 
 // Remove extensão
