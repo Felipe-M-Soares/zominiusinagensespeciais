@@ -1,21 +1,17 @@
 /**
  * DeviceImageUploader — Upload em massa de imagens de componentes
  *
- * Regra de matching (EXATA):
- *   nome do arquivo (sem extensão) === device.reference
- *   Normalização: trim + colapso de espaços múltiplos + case-insensitive
- *   ⚠️  Letras a mais NÃO fazem match. Ex: "CCAHC 09X" ≠ "CCAHC 09"
+ * Regras de matching (em ordem de prioridade):
+ *   1. Exato:   nome do arquivo === reference (após normalização)
+ *   2. Família: arquivo cobre múltiplas peças que diferem apenas no dígito
+ *               de altura/variante no meio do código numérico.
+ *               Ex: "PIM 4818N" → PIM 48181N, PIM 48182N ... PIM 48186N
+ *               Ex: "EAE 3318NC" → EAE 3318172NC, EAE 3318173NC, EAE 3318174NC ...
+ *               Regra: mesmas letras prefixo + dígitos do arquivo são prefixo
+ *               dos dígitos do banco + mesmo sufixo de letras.
  *
- * Modos de entrada:
- *   1. Selecionar Pasta  → varre pasta e subpastas via webkitdirectory
- *   2. Selecionar Arquivos → seleção manual múltipla
- *   3. Drag & Drop        → soltar arquivos ou pasta
- *
- * Fluxo:
- *  1. Carrega arquivos → match com references do banco
- *  2. Mostra preview (✅ com match | ⚠️ sem match)
- *  3. Upload para Supabase Storage (bucket devices-images)
- *  4. Atualiza icon_url no banco em batch
+ * Uma imagem de família é enviada UMA VEZ ao Storage e seu URL é linkado
+ * a TODAS as peças da família no banco (icon_url em batch).
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
@@ -28,7 +24,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-// ── Thumbnail seguro com revoke ──────────────────────────────────────────────
+// ── Thumbnail ────────────────────────────────────────────────────────────────
 function BlobThumb({ file, uploadedUrl }: { file: File; uploadedUrl?: string }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
@@ -44,33 +40,35 @@ function BlobThumb({ file, uploadedUrl }: { file: File; uploadedUrl?: string }) 
   );
 }
 
-interface FileResult {
-  file:      File;
-  refName:   string;
-  deviceId:  string | null;
-  reference: string | null;
-  model:     string | null;
-  status:    "pending" | "uploading" | "done" | "error" | "no_match";
-  url?:      string;
-  error?:    string;
+interface Device {
+  id: string;
+  reference: string;
+  model: string;
 }
 
-// Normaliza para comparação:
-// 1. Remove acentos (CABEÇA → CABECA, para tolerar variação de encoding)
-// 2. Lowercase + trim
-// 3. Remove TODOS os espaços (ADE 3318NC = ADE3318NC = ade3318nc)
-// Isso resolve a principal causa de falha: espaços inconsistentes
-// antes de sufixos como NC, ST, B, N, R entre arquivos e banco.
+interface FileResult {
+  file:       File;
+  refName:    string;
+  // uma imagem pode cobrir várias peças (família)
+  deviceIds:  string[];
+  references: string[];
+  model:      string | null;
+  status:     "pending" | "uploading" | "done" | "error" | "no_match";
+  url?:       string;
+  error?:     string;
+}
+
+// Normaliza: remove acentos, lowercase, remove espaços
 function norm(s: string): string {
   return s
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")   // remove diacríticos (acentos)
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, "");              // remove todos os espaços
+    .replace(/\s+/g, "");
 }
 
-// Remove extensão
+// Remove extensão do arquivo
 function stemName(filename: string) {
   return filename.replace(/\.[^.]+$/, "");
 }
@@ -81,6 +79,42 @@ function sanitizePath(name: string): string {
     .replace(/\.\.+/g, ".")
     .replace(/[\/\\<>:"|?*\x00]/g, "_")
     .trim();
+}
+
+/**
+ * Encontra todas as peças do banco que correspondem ao arquivo.
+ *
+ * Match exato:    norm(file) === norm(ref)
+ * Match família:  mesmas letras-prefixo + dígitos do arquivo são prefixo
+ *                 dos dígitos do banco + mesmo sufixo de letras.
+ *
+ * Exemplo família:
+ *   arquivo  "PIM 4818N"  → norm "pim4818n"
+ *   banco    "PIM 48181N" → norm "pim48181n"  ← pim + 48181 + n
+ *   regra: prefixLetters="pim", fileDigits="4818", suffix="n"
+ *          bank digits "48181" starts with "4818" ✓
+ */
+function findMatches(fileNorm: string, devices: Device[]): Device[] {
+  // Pass 1: exact
+  const exact = devices.filter(d => norm(d.reference) === fileNorm);
+  if (exact.length > 0) return exact;
+
+  // Pass 2: family — split norm into (letters)(digits)(letters)
+  const m = fileNorm.match(/^([a-z]*)(\d+)([a-z]*)$/);
+  if (!m) return [];
+
+  const [, prefixLetters, fileDigits, suffixLetters] = m;
+
+  return devices.filter(d => {
+    const dn = norm(d.reference);
+    const dm = dn.match(/^([a-z]*)(\d+)([a-z]*)$/);
+    if (!dm) return false;
+    return (
+      dm[1] === prefixLetters &&          // mesmas letras iniciais
+      dm[2].startsWith(fileDigits) &&     // dígitos do banco começam com os do arquivo
+      dm[3] === suffixLetters             // mesmo sufixo de letras
+    );
+  });
 }
 
 interface Props {
@@ -96,9 +130,8 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const filesInputRef  = useRef<HTMLInputElement>(null);
 
-  // ── Processa lista de arquivos ───────────────────────────────────────────
+  // ── Processa arquivos ────────────────────────────────────────────────────
   const processFiles = useCallback(async (files: FileList | File[]) => {
-    // Filtra apenas imagens; ignora arquivos ocultos (._xxx) gerados pelo macOS
     const arr = Array.from(files).filter(f =>
       /\.(webp|jpg|jpeg|png|gif)$/i.test(f.name) &&
       !f.name.startsWith("._") &&
@@ -110,7 +143,6 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
       return;
     }
 
-    // Busca todas as references do banco de uma vez
     const { data: devices, error } = await supabase
       .from("devices")
       .select("id, reference, model");
@@ -120,27 +152,35 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
       return;
     }
 
-    // Mapa: reference normalizada → device (matching EXATO após norm)
-    const devMap = new Map(
-      devices.map(d => [norm(d.reference || ""), d])
-    );
+    // Deduplica por nome de arquivo — mesmo arquivo em múltiplas subpastas
+    // usa apenas a primeira ocorrência
+    const seen = new Map<string, FileResult>();
 
-    const fileResults: FileResult[] = arr.map(file => {
-      const refName   = stemName(file.name);          // nome sem extensão
-      const normRef   = norm(refName);                // normalizado
-      const dev       = devMap.get(normRef) ?? null;  // match exato
+    for (const file of arr) {
+      const refName  = stemName(file.name);
+      const fileNorm = norm(refName);
 
-      return {
+      if (seen.has(fileNorm)) continue; // já processado
+
+      const matched = findMatches(fileNorm, devices as Device[]);
+
+      seen.set(fileNorm, {
         file,
         refName,
-        deviceId:  dev?.id        ?? null,
-        reference: dev?.reference ?? null,
-        model:     dev?.model     ?? null,
-        status:    dev ? "pending" : "no_match",
-      };
-    });
+        deviceIds:  matched.map(d => d.id),
+        references: matched.map(d => d.reference),
+        model:      matched.length === 1
+                      ? matched[0].model
+                      : matched.length > 1
+                        ? `${matched.length} peças (família)`
+                        : null,
+        status: matched.length > 0 ? "pending" : "no_match",
+      });
+    }
 
-    // Ordena: com match primeiro, sem match depois
+    const fileResults = Array.from(seen.values());
+
+    // Ordena: com match primeiro
     fileResults.sort((a, b) => {
       if (a.status === b.status) return a.refName.localeCompare(b.refName);
       return a.status === "pending" ? -1 : 1;
@@ -150,11 +190,9 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
     setDone(false);
   }, []);
 
-  // ── Drag & Drop (aceita pasta ou arquivos soltos) ────────────────────────
+  // ── Drag & Drop ──────────────────────────────────────────────────────────
   const onDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
-
-    // Tenta ler como FileSystemEntries para suportar pastas via DnD
     const items = Array.from(e.dataTransfer.items ?? []);
     const allFiles: File[] = [];
 
@@ -185,21 +223,24 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
       await Promise.all(entries.map(readEntry));
       if (allFiles.length > 0) { processFiles(allFiles); return; }
     }
-
-    // Fallback: DataTransfer.files normais
     processFiles(e.dataTransfer.files);
   }, [processFiles]);
 
   // ── Contagens ────────────────────────────────────────────────────────────
-  const counts = useMemo(() => ({
-    matched:  results.filter(r => r.status === "pending").length,
-    noMatch:  results.filter(r => r.status === "no_match").length,
-    total:    results.length,
-    done:     results.filter(r => r.status === "done").length,
-    errors:   results.filter(r => r.status === "error").length,
-  }), [results]);
+  const counts = useMemo(() => {
+    const matched  = results.filter(r => r.status === "pending");
+    const totalDev = matched.reduce((s, r) => s + r.deviceIds.length, 0);
+    return {
+      matchedFiles: matched.length,
+      matchedDevs:  totalDev,
+      noMatch:      results.filter(r => r.status === "no_match").length,
+      total:        results.length,
+      done:         results.filter(r => r.status === "done").length,
+      errors:       results.filter(r => r.status === "error").length,
+    };
+  }, [results]);
 
-  // ── Upload ────────────────────────────────────────────────────────────────
+  // ── Upload ───────────────────────────────────────────────────────────────
   async function handleUpload() {
     const toUpload = results.filter(r => r.status === "pending");
     if (toUpload.length === 0) return;
@@ -210,7 +251,8 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
     ));
 
     const PARALLEL = 20;
-    const urlMap = new Map<string, string>();
+    const urlMap   = new Map<string, string>(); // refName → publicUrl
+    const uploadErrors = new Map<string, string>();
 
     async function uploadOne(item: FileResult): Promise<void> {
       const ext  = item.file.name.split(".").pop()!.toLowerCase();
@@ -225,12 +267,9 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
         });
 
       if (error) throw error;
-
       const { data } = supabase.storage.from("devices-images").getPublicUrl(path);
       urlMap.set(item.refName, data.publicUrl);
     }
-
-    const uploadErrors = new Map<string, string>();
 
     for (let i = 0; i < toUpload.length; i += PARALLEL) {
       const batch   = toUpload.slice(i, i + PARALLEL);
@@ -243,10 +282,15 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
       });
     }
 
-    // Atualiza icon_url em batch de 500
-    const toUpdate = toUpload
-      .filter(item => urlMap.has(item.refName))
-      .map(item    => ({ id: item.deviceId!, icon_url: urlMap.get(item.refName)! }));
+    // Monta lista de updates: cada device recebe a URL da sua imagem de família
+    const toUpdate: { id: string; icon_url: string }[] = [];
+    for (const item of toUpload) {
+      const url = urlMap.get(item.refName);
+      if (!url) continue;
+      for (const id of item.deviceIds) {
+        toUpdate.push({ id, icon_url: url });
+      }
+    }
 
     const DB_BATCH = 500;
     for (let i = 0; i < toUpdate.length; i += DB_BATCH) {
@@ -280,7 +324,6 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
   function resetar() {
     setResults([]);
     setDone(false);
-    // Limpa os inputs para permitir re-selecionar a mesma pasta
     if (folderInputRef.current) folderInputRef.current.value = "";
     if (filesInputRef.current)  filesInputRef.current.value  = "";
   }
@@ -296,25 +339,19 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
             <div>
               <h3 className="font-semibold text-sm">Upload de Imagens em Massa</h3>
               <p className="text-[11px] text-muted-foreground">
-                Nome do arquivo (sem extensão) = Referência exata do componente
+                Arquivo cobre a família inteira — ex: PIM 4818N → todas as alturas
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40"
-          >
+          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
 
-          {/* Zona de entrada — só aparece se ainda não carregou arquivos */}
           {results.length === 0 && (
             <div className="space-y-3">
-
-              {/* Drag & Drop area */}
               <div
                 className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/50 p-8 hover:border-primary/50 hover:bg-primary/5 transition-colors"
                 onDrop={onDrop}
@@ -325,85 +362,45 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-semibold">Arraste uma pasta ou arquivos aqui</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    Ou use os botões abaixo para selecionar
-                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Ou use os botões abaixo</p>
                 </div>
               </div>
 
-              {/* Botões de seleção */}
               <div className="grid grid-cols-2 gap-3">
-                {/* Selecionar Pasta (varre subpastas automaticamente) */}
-                <button
-                  type="button"
-                  onClick={() => folderInputRef.current?.click()}
-                  className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-muted/30 p-4 hover:bg-primary/5 hover:border-primary/40 transition-colors"
-                >
+                <button type="button" onClick={() => folderInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-muted/30 p-4 hover:bg-primary/5 hover:border-primary/40 transition-colors">
                   <FolderOpen className="h-7 w-7 text-primary/70" />
                   <div className="text-center">
                     <p className="text-[13px] font-semibold">Selecionar Pasta</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Varre pasta e subpastas
-                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Varre pasta e subpastas</p>
                   </div>
                 </button>
-
-                {/* Selecionar arquivos individuais */}
-                <button
-                  type="button"
-                  onClick={() => filesInputRef.current?.click()}
-                  className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-muted/30 p-4 hover:bg-primary/5 hover:border-primary/40 transition-colors"
-                >
+                <button type="button" onClick={() => filesInputRef.current?.click()}
+                  className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-muted/30 p-4 hover:bg-primary/5 hover:border-primary/40 transition-colors">
                   <Files className="h-7 w-7 text-primary/70" />
                   <div className="text-center">
                     <p className="text-[13px] font-semibold">Selecionar Arquivos</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Escolha múltiplos arquivos
-                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Escolha múltiplos arquivos</p>
                   </div>
                 </button>
               </div>
 
-              {/* Nota de matching */}
-              <p className="text-[11px] text-muted-foreground text-center bg-muted/30 rounded-lg px-3 py-2">
-                O nome de cada arquivo deve ser <strong>idêntico</strong> à referência do componente.
-                Espaços e capitalização são ignorados, mas letras a mais <strong>não fazem match</strong>.
-                <br />
-                <span className="font-mono text-primary">CCAHC 09.webp</span> → referência <span className="font-mono text-primary">CCAHC 09</span>
-              </p>
-
-              {/* Inputs ocultos */}
-              {/* Pasta: webkitdirectory varre tudo recursivamente */}
-              <input
-                ref={folderInputRef}
-                type="file"
-                // @ts-ignore — atributo não-padrão suportado por todos os browsers modernos
-                webkitdirectory=""
-                multiple
-                accept="image/*"
-                className="hidden"
-                onChange={e => { if (e.target.files) processFiles(e.target.files); }}
-              />
-              {/* Arquivos individuais */}
-              <input
-                ref={filesInputRef}
-                type="file"
-                multiple
-                accept="image/*"
-                className="hidden"
-                onChange={e => { if (e.target.files) processFiles(e.target.files); }}
-              />
+              <input ref={folderInputRef} type="file"
+                // @ts-ignore
+                webkitdirectory="" multiple accept="image/*" className="hidden"
+                onChange={e => { if (e.target.files) processFiles(e.target.files); }} />
+              <input ref={filesInputRef} type="file"
+                multiple accept="image/*" className="hidden"
+                onChange={e => { if (e.target.files) processFiles(e.target.files); }} />
             </div>
           )}
 
-          {/* Preview e resultados */}
           {results.length > 0 && (
             <>
-              {/* Cards de resumo */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3 text-center">
-                  <p className="text-xl font-bold text-green-600">{counts.matched}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Com match</p>
+                  <p className="text-xl font-bold text-green-600">{counts.matchedDevs}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Peças cobertas</p>
                 </div>
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
                   <p className="text-xl font-bold text-amber-600">{counts.noMatch}</p>
@@ -411,47 +408,41 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                 </div>
                 <div className="rounded-xl border border-border/40 p-3 text-center">
                   <p className="text-xl font-bold">{counts.total}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Arquivos únicos</p>
                 </div>
               </div>
 
-              {/* Lista de arquivos */}
               <div className="rounded-xl border border-border/40 overflow-hidden divide-y divide-border/20 max-h-72 overflow-y-auto">
                 {results.map((r, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2 text-[12px]",
-                      r.status === "no_match" && "bg-amber-500/5",
-                      r.status === "done"     && "bg-green-500/5",
-                      r.status === "error"    && "bg-red-500/5",
-                    )}
-                  >
+                  <div key={i} className={cn(
+                    "flex items-center gap-3 px-3 py-2 text-[12px]",
+                    r.status === "no_match" && "bg-amber-500/5",
+                    r.status === "done"     && "bg-green-500/5",
+                    r.status === "error"    && "bg-red-500/5",
+                  )}>
                     <BlobThumb file={r.file} uploadedUrl={r.status === "done" ? r.url : undefined} />
-
                     <div className="flex-1 min-w-0">
                       <p className="font-mono font-medium truncate">{r.refName}</p>
                       {r.status === "no_match" ? (
-                        <p className="text-amber-600 text-[10px]">
-                          Nenhum componente com esta referência exata
-                        </p>
+                        <p className="text-amber-600 text-[10px]">Nenhuma peça com esta referência</p>
                       ) : r.status === "error" ? (
                         <p className="text-red-500 text-[10px] truncate">{r.error}</p>
                       ) : r.model ? (
                         <p className="text-muted-foreground text-[10px] truncate">{r.model}</p>
                       ) : null}
                     </div>
-
+                    {r.deviceIds.length > 1 && r.status !== "no_match" && (
+                      <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full shrink-0">
+                        ×{r.deviceIds.length}
+                      </span>
+                    )}
                     <div className="shrink-0">{statusIcon(r.status)}</div>
                   </div>
                 ))}
               </div>
 
               {!uploading && (
-                <button
-                  onClick={resetar}
-                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                >
+                <button onClick={resetar} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">
                   ← Selecionar outros arquivos
                 </button>
               )}
@@ -459,31 +450,26 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex gap-3 px-5 py-4 border-t border-border/30 shrink-0">
           <Button variant="outline" className="flex-1" onClick={onClose} disabled={uploading}>
             {done ? "Fechar" : "Cancelar"}
           </Button>
 
-          {counts.matched > 0 && !done && (
-            <Button
-              className="flex-1 gap-2"
-              onClick={handleUpload}
-              disabled={uploading}
-            >
+          {counts.matchedFiles > 0 && !done && (
+            <Button className="flex-1 gap-2" onClick={handleUpload} disabled={uploading}>
               {uploading
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <ArrowUpCircle className="h-4 w-4" />}
               {uploading
                 ? "Enviando..."
-                : `Enviar ${counts.matched} imagem${counts.matched !== 1 ? "ns" : ""}`}
+                : `Enviar ${counts.matchedFiles} arquivo${counts.matchedFiles !== 1 ? "s" : ""} → ${counts.matchedDevs} peça${counts.matchedDevs !== 1 ? "s" : ""}`}
             </Button>
           )}
 
           {done && (
             <div className="flex-1 flex items-center justify-center gap-2 text-green-600 text-sm font-medium">
               <CheckCircle2 className="h-4 w-4" />
-              {counts.done} imagem{counts.done !== 1 ? "ns" : ""} atualizada{counts.done !== 1 ? "s" : ""}
+              {counts.done} arquivo{counts.done !== 1 ? "s" : ""} enviado{counts.done !== 1 ? "s" : ""}
               {counts.errors > 0 && (
                 <span className="text-red-500 ml-2">({counts.errors} erro{counts.errors !== 1 ? "s" : ""})</span>
               )}
