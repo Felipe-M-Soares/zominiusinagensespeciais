@@ -664,6 +664,12 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     </div>` : ""}
   </div>
 
+  <!-- Vendedora -->
+  <div style="font-size:10px; margin-bottom:4px; color:#555;">
+    Vendedora: <strong style="color:#111">${escHtml(pedido.vendedora_nome ?? "—")}</strong>
+    ${pedido.prazo_entrega ? ` &nbsp;|&nbsp; Prazo de entrega: <strong style="color:#111">${new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR")}</strong>` : ""}
+  </div>
+
   <!-- Dados do cliente -->
   <div class="cliente-box">
     <div class="cliente-title">Destinatário</div>
@@ -678,8 +684,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       <div>
         ${cl?.telefone ? `Telefone: ${escHtml(cl.telefone)}<br>` : ""}
         ${cl?.email ? `E-mail: ${escHtml(cl.email)}<br>` : ""}
-        Vendedora: <strong>${escHtml(pedido.vendedora_nome ?? "—")}</strong><br>
-        ${pedido.prazo_entrega ? `Prazo: <strong>${new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR")}</strong>` : ""}
       </div>
     </div>
   </div>
