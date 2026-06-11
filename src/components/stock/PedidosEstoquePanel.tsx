@@ -458,61 +458,108 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       grouped.get(key)!.push(row);
     }
 
+    // Monta mapa de device_id por stock_item_id para lookup de NCM/CFOP/preço
+    const stockToDevice = new Map<string, string>(
+      pedido.itens.map(i => [i.stock_item_id, i.device_id ?? ""])
+    );
+
     let rowIdx = 0;
     let tableBody = "";
+    let subtotalGeral = 0;
     for (const [, rows] of grouped) {
       rowIdx++;
       const first = rows[0];
       const tipoTotal = rows.reduce((s, r) => s + r.quantidade, 0);
 
-      // Lotes inline — todos os badges na mesma célula
-      const lotesBadges = rows
-        .filter(r => r.lote && !LOTE_PH.has(r.lote.toLowerCase()))
-        .map(r => `<span class="lote-badge">${escHtml(r.lote)}</span>`)
-        .join(" ");
-      const lotesCell = lotesBadges || `<span class="lote-empty">—</span>`;
+      // Preço unitário — busca nos pedido_itens ou nos devices
+      const itemPreco = itemPrecoMap.get(first.stock_item_id ?? "");
+      const deviceId = stockToDevice.get(first.stock_item_id ?? "") ?? "";
+      const dev = devMap.get(deviceId);
+      let precoUnit = itemPreco?.preco_unitario ?? dev?.preco_venda ?? 0;
+      const precoComDesconto = desconto > 0 ? precoUnit * (1 - desconto / 100) : precoUnit;
+      const valorTotal = precoComDesconto * tipoTotal;
+      subtotalGeral += valorTotal;
+
+      const ncm = dev?.ncm ?? "—";
+      const cfop = dev?.cfop_padrao ?? "—";
+      const ipi = "0,00%"; // IPI padrão — ajustar conforme necessidade fiscal
+
+      const precoFmt = (v: number) => v > 0 ? "R$ " + v.toFixed(2).replace(".", ",") : "—";
 
       tableBody += `<tr>
         <td class="col-num">${rowIdx}</td>
         <td class="col-model">
-          <span class="model-name">${escHtml(first.model)}</span>
-          <span class="model-ref">${escHtml(first.reference)}</span>
+          <span class="model-name">${escHtml(first.model ?? "")}</span>
+          <span class="model-ref">${escHtml(first.reference ?? "")}</span>
+          <span class="model-meta">NCM: ${ncm} &nbsp;|&nbsp; CFOP: ${cfop} &nbsp;|&nbsp; IPI: ${ipi}</span>
         </td>
-        <td class="col-lotes">${lotesCell}</td>
+        <td class="col-preco">${precoFmt(precoComDesconto)}</td>
         <td class="col-qty">${tipoTotal}</td>
+        <td class="col-total">${precoFmt(valorTotal)}</td>
       </tr>`;
     }
 
     const totalPecas = printRows.reduce((s, r) => s + r.quantidade, 0);
     const totalTipos = grouped.size;
+    const totalComFrete = subtotalGeral + frete;
+    const fmtVal = (v: number) => "R$ " + v.toFixed(2).replace(".", ",");
 
-    // Busca dados adicionais do pedido (forma pagamento, endereço, preços)
-    const { data: pedidoExtra } = await supabase
-      .from("pedidos_comerciais")
-      .select("forma_pagamento, parcelas, endereco_entrega, usar_endereco_cliente")
-      .eq("id", pedido.id)
-      .maybeSingle();
+    // Busca dados completos do pedido e cliente
+    const [{ data: pedidoExtra }, { data: clienteData }, { data: itensPreco }, { data: devicesData }] = await Promise.all([
+      supabase.from("pedidos_comerciais")
+        .select("forma_pagamento, parcelas, endereco_entrega, usar_endereco_cliente, desconto_pct, frete")
+        .eq("id", pedido.id).maybeSingle(),
+      supabase.from("clientes")
+        .select("documento, ie, telefone, email, logradouro, numero, bairro, municipio, uf, cep, c_mun, endereco")
+        .eq("id", pedido.cliente_id).maybeSingle(),
+      supabase.from("pedido_itens")
+        .select("stock_item_id, quantidade, preco_unitario, valor_total")
+        .eq("pedido_id", pedido.id),
+      supabase.from("devices")
+        .select("id, ncm, cfop_padrao, preco_venda, margem_minima_pct")
+        .in("id", pedido.itens.map(i => i.device_id).filter(Boolean)),
+    ]);
 
-    const { data: clienteData } = await supabase
-      .from("clientes")
-      .select("endereco, documento")
-      .eq("id", pedido.cliente_id)
-      .maybeSingle();
+    type ClienteExtra = {
+      documento?: string; ie?: string; telefone?: string; email?: string;
+      logradouro?: string; numero?: string; bairro?: string; municipio?: string;
+      uf?: string; cep?: string; c_mun?: string; endereco?: string;
+    };
+    type PedidoExtra = {
+      forma_pagamento?: string; parcelas?: number; endereco_entrega?: string;
+      usar_endereco_cliente?: boolean; desconto_pct?: number; frete?: number;
+    };
+    type DeviceExtra = { id: string; ncm?: string; cfop_padrao?: string; preco_venda?: number };
+    type ItemPreco = { stock_item_id: string; quantidade: number; preco_unitario?: number; valor_total?: number };
 
-    const enderecoCliente = (clienteData as { endereco?: string; documento?: string } | null)?.endereco ?? "";
-    const documentoCliente = (clienteData as { endereco?: string; documento?: string } | null)?.documento ?? "";
-    const extra = pedidoExtra as { forma_pagamento?: string; parcelas?: number; endereco_entrega?: string; usar_endereco_cliente?: boolean } | null;
-    const enderecoEntrega = extra?.usar_endereco_cliente !== false ? enderecoCliente : (extra?.endereco_entrega ?? "");
+    const cl = clienteData as ClienteExtra | null;
+    const ex = pedidoExtra as PedidoExtra | null;
+    const devMap = new Map<string, DeviceExtra>(
+      ((devicesData ?? []) as DeviceExtra[]).map(d => [d.id, d])
+    );
+    const itemPrecoMap = new Map<string, ItemPreco>(
+      ((itensPreco ?? []) as ItemPreco[]).map(i => [i.stock_item_id, i])
+    );
+
+    // Endereço de entrega
+    const endFormatado = cl?.logradouro
+      ? `${cl.logradouro}${cl.numero ? ", " + cl.numero : ""}${cl.bairro ? " — " + cl.bairro : ""}${cl.municipio ? " — " + cl.municipio : ""}${cl.uf ? "/" + cl.uf : ""}${cl.cep ? " — CEP " + cl.cep : ""}`
+      : (cl?.endereco ?? "");
+    const enderecoEntrega = ex?.usar_endereco_cliente !== false
+      ? endFormatado
+      : (ex?.endereco_entrega ?? endFormatado);
 
     const fmtPagamento: Record<string, string> = {
-      dinheiro: "Dinheiro", pix: "PIX", boleto: "Boleto",
+      dinheiro: "A VISTA — Dinheiro", pix: "A VISTA — PIX", boleto: "Boleto",
       cartao_debito: "Cartão de Débito", cartao_credito: "Cartão de Crédito",
     };
-    const pagamentoLabel = extra?.forma_pagamento
-      ? fmtPagamento[extra.forma_pagamento] ?? extra.forma_pagamento
-      : "Não informado";
-    const parcelasLabel = extra?.forma_pagamento === "cartao_credito" && (extra?.parcelas ?? 1) > 1
-      ? ` — ${extra.parcelas}x` : "";
+    const pagamentoLabel = ex?.forma_pagamento
+      ? fmtPagamento[ex.forma_pagamento] ?? ex.forma_pagamento
+      : "A VISTA";
+    const parcelasLabel = ex?.forma_pagamento === "cartao_credito" && (ex?.parcelas ?? 1) > 1
+      ? ` — ${ex.parcelas}x` : "";
+    const desconto = ex?.desconto_pct ?? pedido.desconto_pct ?? 0;
+    const frete = ex?.frete ?? 0;
 
     const html = `<!DOCTYPE html>
 <html>
@@ -521,57 +568,53 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   <title>Pedido ${pedido.id.slice(0,8).toUpperCase()} — ${escHtml(pedido.cliente_nome)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; padding: 20px 24px; color: #111; font-size: 12px; }
+    body { font-family: Arial, sans-serif; padding: 20px 24px; color: #111; font-size: 11px; }
 
-    /* ── Cabeçalho empresa ── */
-    .empresa-header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 2px solid #111; margin-bottom: 12px; }
-    .empresa-nome { font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
-    .empresa-info { font-size: 10px; color: #444; line-height: 1.6; margin-top: 3px; }
-    .empresa-contato { text-align: right; font-size: 10px; color: #444; line-height: 1.7; }
+    .empresa-header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 10px; border-bottom: 2px solid #111; margin-bottom: 10px; }
+    .empresa-nome { font-size: 14px; font-weight: 800; text-transform: uppercase; }
+    .empresa-info { font-size: 9.5px; color: #444; line-height: 1.7; margin-top: 2px; }
+    .empresa-contato { text-align: right; font-size: 9.5px; color: #444; line-height: 1.7; }
 
-    /* ── Info do pedido ── */
-    .pedido-info { display: flex; gap: 0; border: 1px solid #ccc; margin-bottom: 10px; }
-    .pedido-info-col { flex: 1; padding: 6px 10px; border-right: 1px solid #ccc; font-size: 11px; }
+    .pedido-info { display: flex; border: 1px solid #bbb; margin-bottom: 8px; }
+    .pedido-info-col { flex: 1; padding: 5px 8px; border-right: 1px solid #bbb; font-size: 10px; }
     .pedido-info-col:last-child { border-right: none; }
-    .pedido-info-label { font-size: 9px; text-transform: uppercase; color: #888; font-weight: 600; margin-bottom: 2px; }
-    .pedido-info-val { font-weight: 700; color: #111; }
+    .pedido-info-label { font-size: 8px; text-transform: uppercase; color: #999; font-weight: 700; margin-bottom: 1px; }
+    .pedido-info-val { font-weight: 700; color: #111; font-size: 11px; }
 
-    /* ── Dados do cliente ── */
-    .cliente-box { border: 1px solid #ccc; padding: 8px 12px; margin-bottom: 10px; font-size: 11px; line-height: 1.7; }
-    .cliente-box strong { font-size: 12px; }
+    .cliente-box { border: 1px solid #bbb; padding: 7px 10px; margin-bottom: 8px; font-size: 10px; line-height: 1.8; }
+    .cliente-title { font-size: 8px; text-transform: uppercase; color: #999; font-weight: 700; margin-bottom: 4px; }
     .cliente-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
 
-    /* ── Tabela de itens ── */
-    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-    th { text-align: left; padding: 7px 8px; background: #f0f0f0; border: 1px solid #ccc; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
-    td { padding: 6px 8px; border: 1px solid #ddd; vertical-align: middle; font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th { text-align: left; padding: 6px 7px; background: #f0f0f0; border: 1px solid #bbb; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 5px 7px; border: 1px solid #ddd; vertical-align: top; font-size: 10px; }
     tr:nth-child(even) td { background: #fafafa; }
-    .col-num { width: 24px; text-align: center; color: #888; }
-    .col-model { width: 40%; }
-    .col-lotes { }
-    .col-qty { width: 60px; text-align: right; font-weight: 800; font-size: 13px; }
-    .model-name { display: block; font-weight: 700; font-size: 11px; }
-    .model-ref { display: block; font-family: monospace; font-size: 9px; color: #888; margin-top: 1px; }
-    .lote-badge { display: inline-block; background: #eee; font-family: monospace; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; border: 1px solid #ccc; margin: 1px 2px 1px 0; }
-    .lote-empty { color: #bbb; font-size: 10px; }
+    .col-num { width: 22px; text-align: center; color: #999; }
+    .col-model { width: 42%; }
+    .col-preco { width: 80px; text-align: right; white-space: nowrap; }
+    .col-qty { width: 45px; text-align: center; font-weight: 800; }
+    .col-total { width: 90px; text-align: right; font-weight: 700; white-space: nowrap; }
+    .model-name { display: block; font-weight: 700; font-size: 10.5px; }
+    .model-ref { display: block; font-family: monospace; font-size: 8.5px; color: #888; }
+    .model-meta { display: block; font-size: 8px; color: #aaa; margin-top: 2px; }
 
-    /* ── Totais e rodapé ── */
-    .totais { border: 1px solid #ccc; padding: 8px 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
-    .totais-left { font-size: 11px; }
-    .totais-right { text-align: right; font-size: 11px; }
-    .total-val { font-size: 16px; font-weight: 800; }
+    .totais-box { border: 1px solid #bbb; margin-bottom: 14px; }
+    .totais-row { display: flex; justify-content: space-between; padding: 5px 10px; border-bottom: 1px solid #eee; font-size: 10px; }
+    .totais-row:last-child { border-bottom: none; font-weight: 800; font-size: 12px; background: #f5f5f5; }
+    .totais-label { color: #666; }
+    .totais-val { font-weight: 600; }
 
-    .assinaturas { display: flex; justify-content: space-between; margin-top: 32px; gap: 40px; }
-    .assinatura { flex: 1; border-top: 1px solid #333; padding-top: 6px; text-align: center; font-size: 10px; color: #555; }
+    .obs-box { background: #f9f9f9; border-left: 3px solid #999; padding: 5px 8px; margin-bottom: 8px; font-size: 10px; color: #555; }
 
-    .obs-box { background: #f9f9f9; border-left: 3px solid #888; padding: 6px 10px; margin-bottom: 10px; font-size: 11px; color: #555; }
+    .assinaturas { display: flex; justify-content: space-between; margin-top: 36px; gap: 40px; }
+    .assinatura { flex: 1; border-top: 1px solid #333; padding-top: 5px; text-align: center; font-size: 9.5px; color: #555; }
 
     @media print { button { display: none } body { padding: 12px } }
   </style>
 </head>
 <body>
 
-  <!-- Cabeçalho da empresa -->
+  <!-- Cabeçalho empresa -->
   <div class="empresa-header">
     <div>
       <div class="empresa-nome">Zomini Usinagens Especiais Ltda. ME</div>
@@ -591,7 +634,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   <!-- Info do pedido -->
   <div class="pedido-info">
     <div class="pedido-info-col">
-      <div class="pedido-info-label">Nº do Pedido</div>
+      <div class="pedido-info-label">NRO. Pedido</div>
       <div class="pedido-info-val">${pedido.id.slice(0,8).toUpperCase()}</div>
     </div>
     <div class="pedido-info-col">
@@ -607,22 +650,31 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       <div class="pedido-info-val">${now}</div>
     </div>
     <div class="pedido-info-col">
-      <div class="pedido-info-label">Pgto.</div>
+      <div class="pedido-info-label">PGTO.</div>
       <div class="pedido-info-val">${pagamentoLabel}${parcelasLabel}</div>
     </div>
+    ${desconto > 0 ? `<div class="pedido-info-col">
+      <div class="pedido-info-label">Desconto</div>
+      <div class="pedido-info-val">${desconto}%</div>
+    </div>` : ""}
   </div>
 
   <!-- Dados do cliente -->
   <div class="cliente-box">
+    <div class="cliente-title">Destinatário</div>
     <div class="cliente-grid">
       <div>
-        <strong>${escHtml(pedido.cliente_nome)}</strong><br>
-        ${documentoCliente ? `CPF/CNPJ: ${escHtml(documentoCliente)}<br>` : ""}
-        ${enderecoEntrega ? `Endereço: ${escHtml(enderecoEntrega)}` : "<span style='color:#bbb'>Endereço não informado</span>"}
+        <strong style="font-size:11px">${escHtml(pedido.cliente_nome)}</strong><br>
+        ${cl?.documento ? `CPF/CNPJ: ${escHtml(cl.documento)}<br>` : ""}
+        ${cl?.ie ? `IE: ${escHtml(cl.ie)}<br>` : ""}
+        ${cl?.c_mun ? `Cód. Município: ${escHtml(cl.c_mun)}<br>` : ""}
+        ${enderecoEntrega ? `End.: ${escHtml(enderecoEntrega)}` : ""}
       </div>
       <div>
+        ${cl?.telefone ? `Telefone: ${escHtml(cl.telefone)}<br>` : ""}
+        ${cl?.email ? `E-mail: ${escHtml(cl.email)}<br>` : ""}
         Vendedora: <strong>${escHtml(pedido.vendedora_nome ?? "—")}</strong><br>
-        ${pedido.prazo_entrega ? `Prazo de entrega: <strong>${new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR")}</strong>` : ""}
+        ${pedido.prazo_entrega ? `Prazo: <strong>${new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR")}</strong>` : ""}
       </div>
     </div>
   </div>
@@ -635,21 +687,21 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       <tr>
         <th class="col-num">#</th>
         <th class="col-model">Descrição / Item</th>
-        <th class="col-lotes">Lotes</th>
-        <th class="col-qty" style="text-align:right">Qtd.</th>
+        <th class="col-preco" style="text-align:right">R$ Unit.</th>
+        <th class="col-qty" style="text-align:center">Qtd.</th>
+        <th class="col-total" style="text-align:right">Valor (R$)</th>
       </tr>
     </thead>
     <tbody>${tableBody}</tbody>
   </table>
 
   <!-- Totais -->
-  <div class="totais">
-    <div class="totais-left">
-      Total de itens: <strong>${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}</strong>
-    </div>
-    <div class="totais-right">
-      <span style="font-size:11px;color:#666">TOTAL DE PEÇAS</span><br>
-      <span class="total-val">${totalPecas} un.</span>
+  <div class="totais-box">
+    ${frete > 0 ? `<div class="totais-row"><span class="totais-label">Subtotal dos itens</span><span class="totais-val">${fmtVal(subtotalGeral)}</span></div>
+    <div class="totais-row"><span class="totais-label">Frete</span><span class="totais-val">${fmtVal(frete)}</span></div>` : ""}
+    <div class="totais-row">
+      <span class="totais-label">VALOR TOTAL DOS ITENS${frete > 0 ? " + FRETE" : ""}</span>
+      <span class="totais-val">${fmtVal(totalComFrete)}</span>
     </div>
   </div>
 
