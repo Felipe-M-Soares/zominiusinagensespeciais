@@ -41,7 +41,6 @@ function PublicGuard({ children }: { children: React.ReactNode }) {
 }
 
 // ── Layout protegido: AppShell montado UMA vez para todas as rotas internas ───
-// Usa <Outlet /> do React Router — sem Routes aninhado, sem problema de matching.
 function ProtectedLayout() {
   const { user, loading, approved, blocked } = useAuth();
   if (loading) return <LoadingScreen />;
@@ -78,11 +77,8 @@ function PendingApprovalRoute() {
 }
 
 function IndexRoute() {
-  const { role, loading, approved } = useAuth();
+  const { loading, approved } = useAuth();
   if (loading || approved === null) return <LoadingScreen />;
-  if (role === "comercial")  return <Navigate to="/comercial"  replace />;
-  if (role === "financeiro") return <Navigate to="/financeiro" replace />;
-  if (role === "producao")   return <Navigate to="/producao"   replace />;
   return <Index />;
 }
 
