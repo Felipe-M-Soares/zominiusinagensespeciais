@@ -740,6 +740,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 interface PedidoCardProps {
   pedido: PedidoCompleto;
   isAdmin: boolean;
+  canConfirm?: boolean;
   onFaturar: (p: PedidoCompleto) => void;
   onCancelar: (p: PedidoCompleto) => void;
   onAdicionarPeca: (p: PedidoCompleto) => void;
@@ -747,7 +748,7 @@ interface PedidoCardProps {
   onComentar: (p: PedidoCompleto) => void;
 }
 
-function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar }: PedidoCardProps) {
+function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const temDesconto = pedido.desconto_pct > 0;
@@ -1031,7 +1032,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca, o
           )}
 
           {/* ── Ações Admin (confirmar / cancelar) ── */}
-          {pedido.status === "pendente" && isAdmin && (
+          {pedido.status === "pendente" && (isAdmin || canConfirm) && (
             <div className="flex gap-2">
               <button
                 type="button"
@@ -2478,7 +2479,7 @@ export default function Comercial() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {pedidosFiltrados.map(p => (
-                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)} />
+                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} canConfirm={isAdmin || isVendedora} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)} />
                     ))}
                   </div>
                 )}
