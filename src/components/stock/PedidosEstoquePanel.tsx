@@ -450,6 +450,62 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       }
     }
 
+    // ── Busca dados completos do pedido e cliente (antes de montar tableBody) ──
+    const [{ data: pedidoExtra }, { data: clienteData }, { data: itensPreco }, { data: devicesData }] = await Promise.all([
+      supabase.from("pedidos_comerciais")
+        .select("forma_pagamento, parcelas, endereco_entrega, usar_endereco_cliente, desconto_pct, frete")
+        .eq("id", pedido.id).maybeSingle(),
+      supabase.from("clientes")
+        .select("documento, ie, telefone, email, logradouro, numero, bairro, municipio, uf, cep, c_mun, endereco")
+        .eq("id", pedido.cliente_id).maybeSingle(),
+      supabase.from("pedido_itens")
+        .select("stock_item_id, quantidade, preco_unitario, valor_total")
+        .eq("pedido_id", pedido.id),
+      supabase.from("devices")
+        .select("id, ncm, cfop_padrao, preco_venda, margem_minima_pct")
+        .in("id", pedido.itens.map(i => i.device_id).filter(Boolean)),
+    ]);
+
+    type ClienteExtra = {
+      documento?: string; ie?: string; telefone?: string; email?: string;
+      logradouro?: string; numero?: string; bairro?: string; municipio?: string;
+      uf?: string; cep?: string; c_mun?: string; endereco?: string;
+    };
+    type PedidoExtra = {
+      forma_pagamento?: string; parcelas?: number; endereco_entrega?: string;
+      usar_endereco_cliente?: boolean; desconto_pct?: number; frete?: number;
+    };
+    type DeviceExtra = { id: string; ncm?: string; cfop_padrao?: string; preco_venda?: number };
+    type ItemPreco = { stock_item_id: string; quantidade: number; preco_unitario?: number; valor_total?: number };
+
+    const cl = clienteData as ClienteExtra | null;
+    const ex = pedidoExtra as PedidoExtra | null;
+    const devMap = new Map<string, DeviceExtra>(
+      ((devicesData ?? []) as DeviceExtra[]).map(d => [d.id, d])
+    );
+    const itemPrecoMap = new Map<string, ItemPreco>(
+      ((itensPreco ?? []) as ItemPreco[]).map(i => [i.stock_item_id, i])
+    );
+
+    const endFormatado = cl?.logradouro
+      ? `${cl.logradouro}${cl.numero ? ", " + cl.numero : ""}${cl.bairro ? " — " + cl.bairro : ""}${cl.municipio ? " — " + cl.municipio : ""}${cl.uf ? "/" + cl.uf : ""}${cl.cep ? " — CEP " + cl.cep : ""}`
+      : (cl?.endereco ?? "");
+    const enderecoEntrega = ex?.usar_endereco_cliente !== false
+      ? endFormatado
+      : (ex?.endereco_entrega ?? endFormatado);
+
+    const fmtPagamento: Record<string, string> = {
+      dinheiro: "A VISTA — Dinheiro", pix: "A VISTA — PIX", boleto: "Boleto",
+      cartao_debito: "Cartão de Débito", cartao_credito: "Cartão de Crédito",
+    };
+    const pagamentoLabel = ex?.forma_pagamento
+      ? fmtPagamento[ex.forma_pagamento] ?? ex.forma_pagamento
+      : "A VISTA";
+    const parcelasLabel = ex?.forma_pagamento === "cartao_credito" && (ex?.parcelas ?? 1) > 1
+      ? ` — ${ex.parcelas}x` : "";
+    const desconto = ex?.desconto_pct ?? pedido.desconto_pct ?? 0;
+    const frete = ex?.frete ?? 0;
+
     // ── Agrupa por tipo de peça (model + reference) para separadores na página ──
     const grouped = new Map<string, typeof printRows>();
     for (const row of printRows) {
@@ -503,63 +559,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const totalTipos = grouped.size;
     const totalComFrete = subtotalGeral + frete;
     const fmtVal = (v: number) => "R$ " + v.toFixed(2).replace(".", ",");
-
-    // Busca dados completos do pedido e cliente
-    const [{ data: pedidoExtra }, { data: clienteData }, { data: itensPreco }, { data: devicesData }] = await Promise.all([
-      supabase.from("pedidos_comerciais")
-        .select("forma_pagamento, parcelas, endereco_entrega, usar_endereco_cliente, desconto_pct, frete")
-        .eq("id", pedido.id).maybeSingle(),
-      supabase.from("clientes")
-        .select("documento, ie, telefone, email, logradouro, numero, bairro, municipio, uf, cep, c_mun, endereco")
-        .eq("id", pedido.cliente_id).maybeSingle(),
-      supabase.from("pedido_itens")
-        .select("stock_item_id, quantidade, preco_unitario, valor_total")
-        .eq("pedido_id", pedido.id),
-      supabase.from("devices")
-        .select("id, ncm, cfop_padrao, preco_venda, margem_minima_pct")
-        .in("id", pedido.itens.map(i => i.device_id).filter(Boolean)),
-    ]);
-
-    type ClienteExtra = {
-      documento?: string; ie?: string; telefone?: string; email?: string;
-      logradouro?: string; numero?: string; bairro?: string; municipio?: string;
-      uf?: string; cep?: string; c_mun?: string; endereco?: string;
-    };
-    type PedidoExtra = {
-      forma_pagamento?: string; parcelas?: number; endereco_entrega?: string;
-      usar_endereco_cliente?: boolean; desconto_pct?: number; frete?: number;
-    };
-    type DeviceExtra = { id: string; ncm?: string; cfop_padrao?: string; preco_venda?: number };
-    type ItemPreco = { stock_item_id: string; quantidade: number; preco_unitario?: number; valor_total?: number };
-
-    const cl = clienteData as ClienteExtra | null;
-    const ex = pedidoExtra as PedidoExtra | null;
-    const devMap = new Map<string, DeviceExtra>(
-      ((devicesData ?? []) as DeviceExtra[]).map(d => [d.id, d])
-    );
-    const itemPrecoMap = new Map<string, ItemPreco>(
-      ((itensPreco ?? []) as ItemPreco[]).map(i => [i.stock_item_id, i])
-    );
-
-    // Endereço de entrega
-    const endFormatado = cl?.logradouro
-      ? `${cl.logradouro}${cl.numero ? ", " + cl.numero : ""}${cl.bairro ? " — " + cl.bairro : ""}${cl.municipio ? " — " + cl.municipio : ""}${cl.uf ? "/" + cl.uf : ""}${cl.cep ? " — CEP " + cl.cep : ""}`
-      : (cl?.endereco ?? "");
-    const enderecoEntrega = ex?.usar_endereco_cliente !== false
-      ? endFormatado
-      : (ex?.endereco_entrega ?? endFormatado);
-
-    const fmtPagamento: Record<string, string> = {
-      dinheiro: "A VISTA — Dinheiro", pix: "A VISTA — PIX", boleto: "Boleto",
-      cartao_debito: "Cartão de Débito", cartao_credito: "Cartão de Crédito",
-    };
-    const pagamentoLabel = ex?.forma_pagamento
-      ? fmtPagamento[ex.forma_pagamento] ?? ex.forma_pagamento
-      : "A VISTA";
-    const parcelasLabel = ex?.forma_pagamento === "cartao_credito" && (ex?.parcelas ?? 1) > 1
-      ? ` — ${ex.parcelas}x` : "";
-    const desconto = ex?.desconto_pct ?? pedido.desconto_pct ?? 0;
-    const frete = ex?.frete ?? 0;
 
     const html = `<!DOCTYPE html>
 <html>
