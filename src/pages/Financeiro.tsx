@@ -17,7 +17,6 @@ import { escHtml } from "@/lib/escHtml";
 import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
 import { PageNav } from "@/components/PageNav";
-import { TabelaPrecos } from "@/components/TabelaPrecos";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -68,6 +67,10 @@ interface Pedido {
   frete: number;
   observacoes: string | null;
   nota_fiscal: string | null;
+  forma_pagamento?: string | null;
+  parcelas?: number;
+  endereco_entrega?: string | null;
+  usar_endereco_cliente?: boolean;
   protocolo_sefaz?: string | null;
   chave_acesso_nfe?: string | null;
   desconto_pct?: number;
@@ -266,7 +269,13 @@ function initDados(pedido: Pedido, numero: string): DadosFiscais {
         cst: "00",
       };
     }),
-    tipoPagamento: "01",
+    tipoPagamento: (() => {
+      const m: Record<string, string> = {
+        dinheiro: "01", pix: "17", boleto: "15",
+        cartao_debito: "04", cartao_credito: "03",
+      };
+      return m[pedido.forma_pagamento ?? ""] ?? "01";
+    })(),
     valorTotal:    "0.00",
     modFrete:      "9",
     valorFrete:    (pedido.frete ?? 0).toFixed(2),
@@ -3576,9 +3585,10 @@ export default function Financeiro() {
       .select(`
         id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
         nota_fiscal, protocolo_sefaz, chave_acesso_nfe, desconto_pct,
-        rastreio_envio, transportadora,
+        rastreio_envio, transportadora, forma_pagamento, parcelas,
+        endereco_entrega, usar_endereco_cliente,
         created_at, separado_em, nf_criada_em, enviado_em,
-        clientes(nome, documento, telefone, email, endereco),
+        clientes(nome, documento, telefone, email, endereco, logradouro, numero, bairro, municipio, uf, cep),
         pedido_itens(
           id, stock_item_id, lote, quantidade,
           stock_items(devices(id, model, reference, ncm, cfop_padrao, preco_venda, desconto_max_pct))
@@ -3600,14 +3610,20 @@ export default function Financeiro() {
     if (data) {
       setPedidos((data as Record<string, unknown>[]).map(p => {
         // clientes pode ser null se o RLS impediu — usamos fallback seguro
-        const cli = (p.clientes as { nome?: string; documento?: string; telefone?: string; email?: string; endereco?: string } | null) ?? {};
+        const cli = (p.clientes as { nome?: string; documento?: string; telefone?: string; email?: string; endereco?: string; logradouro?: string; numero?: string; bairro?: string; municipio?: string; uf?: string; cep?: string } | null) ?? {};
+        const enderecoFormatado = cli.logradouro
+          ? `${cli.logradouro}${cli.numero ? ", " + cli.numero : ""}${cli.bairro ? " — " + cli.bairro : ""}${cli.municipio ? " — " + cli.municipio : ""}${cli.uf ? "/" + cli.uf : ""}${cli.cep ? " CEP " + cli.cep : ""}`
+          : (cli.endereco ?? "");
+        const pedidoEndEntrega = (p.usar_endereco_cliente as boolean) !== false
+          ? enderecoFormatado
+          : ((p.endereco_entrega as string | null) ?? enderecoFormatado);
         return {
           id: p.id as string,
           cliente_nome:     cli.nome      ?? "(cliente sem acesso)",
           cliente_documento: cli.documento,
           cliente_telefone:  cli.telefone,
           cliente_email:     cli.email,
-          cliente_endereco:  cli.endereco,
+          cliente_endereco:  pedidoEndEntrega,
           vendedora_nome: p.vendedora_nome as string | null,
           vendedora_id:   p.vendedora_id   as string | null,
           status:         p.status as string,
@@ -3620,6 +3636,10 @@ export default function Financeiro() {
           rastreio_envio: (p.rastreio_envio as string | null) ?? null,
           transportadora: (p.transportadora as string | null) ?? null,
           desconto_pct:     (p.desconto_pct as number) ?? 0,
+          forma_pagamento:  (p.forma_pagamento as string | null) ?? null,
+          parcelas:         (p.parcelas as number) ?? 1,
+          endereco_entrega: (p.endereco_entrega as string | null) ?? null,
+          usar_endereco_cliente: (p.usar_endereco_cliente as boolean) ?? true,
           created_at:   p.created_at as string,
           separado_em:  p.separado_em  as string | null,
           nf_criada_em: p.nf_criada_em as string | null,
@@ -3960,7 +3980,7 @@ export default function Financeiro() {
                 </div>
               </div>
             </div>
-            <TabelaPrecos modoTeste={modoTeste} canEdit={true} />
+            <PainelTabelaPrecos modoTeste={modoTeste} />
           </div>
         )}
       </div>
