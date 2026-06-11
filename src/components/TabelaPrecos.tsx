@@ -5,7 +5,7 @@
  *   canEdit: boolean — true para financeiro, false para comercial (somente leitura)
  *   modoTeste: boolean — passa false normalmente
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
