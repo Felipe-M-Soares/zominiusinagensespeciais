@@ -74,6 +74,7 @@ interface LoteSeparado {
 
 interface Pedido {
   id: string;
+  cliente_id: string;
   cliente_nome: string;
   vendedora_nome: string | null;
   vendedora_id: string | null;
@@ -81,6 +82,8 @@ interface Pedido {
   frete: number;
   observacoes: string | null;
   created_at: string;
+  desconto_pct?: number;
+  prazo_entrega?: string | null;
   itens: PedidoItem[];
   lotes_separados: LoteSeparado[] | null;
   itens_raw: { stock_item_id: string; lote: string; quantidade: number; device_model?: string; device_reference?: string }[];
@@ -527,11 +530,13 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       const first = rows[0];
       const tipoTotal = rows.reduce((s, r) => s + r.quantidade, 0);
 
-      // Preço unitário — busca nos pedido_itens ou nos devices
+      // Preço unitário — busca nos pedido_itens ou nos devices como fallback
       const itemPreco = itemPrecoMap.get(first.stock_item_id ?? "");
       const deviceId = stockToDevice.get(first.stock_item_id ?? "") ?? "";
       const dev = devMap.get(deviceId);
-      let precoUnit = itemPreco?.preco_unitario ?? dev?.preco_venda ?? 0;
+      // Se preco_unitario do pedido_item for 0 ou nulo, usa preco_venda do device
+      const precoFromItem = itemPreco?.preco_unitario ?? 0;
+      let precoUnit = precoFromItem > 0 ? precoFromItem : (dev?.preco_venda ?? 0);
       const precoComDesconto = desconto > 0 ? precoUnit * (1 - desconto / 100) : precoUnit;
       const valorTotal = precoComDesconto * tipoTotal;
       subtotalGeral += valorTotal;
@@ -608,7 +613,8 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     .assinaturas { display: flex; justify-content: space-between; margin-top: 36px; gap: 40px; }
     .assinatura { flex: 1; border-top: 1px solid #333; padding-top: 5px; text-align: center; font-size: 9.5px; color: #555; }
 
-    @media print { button { display: none } body { padding: 12px } }
+    @page { size: A4 portrait; margin: 15mm 15mm 15mm 15mm; }
+    @media print { button { display: none } body { padding: 0 } }
   </style>
 </head>
 <body>
@@ -1718,7 +1724,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         .from("pedidos_comerciais")
         .select(`
           id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
-          created_at, lotes_separados, separado_em,
+          created_at, lotes_separados, separado_em, desconto_pct, prazo_entrega,
           clientes!inner(nome),
           pedido_itens(
             id, stock_item_id, lote, quantidade,
@@ -1737,6 +1743,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
       const mapped: Pedido[] = data.map((p: Record<string, unknown>) => ({
         id: p.id as string,
+        cliente_id: p.cliente_id as string,
         cliente_nome: (p.clientes as { nome: string }).nome,
         vendedora_nome: p.vendedora_nome as string | null,
         vendedora_id: p.vendedora_id as string | null,
@@ -1744,6 +1751,8 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         frete: (p.frete as number) ?? 0,
         observacoes: p.observacoes as string | null,
         created_at: p.created_at as string,
+        desconto_pct: (p.desconto_pct as number) ?? 0,
+        prazo_entrega: (p.prazo_entrega as string | null) ?? null,
         lotes_separados: (p.lotes_separados as LoteSeparado[] | null) ?? null,
         itens: (() => {
           const raw = ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
