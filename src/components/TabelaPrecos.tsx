@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
 import { escHtml } from "@/lib/escHtml";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { Edit3 } from "lucide-react";
+import { Edit3, Tag, TrendingDown, Percent, AlertTriangle, X, RefreshCw, FileSpreadsheet, Printer, ChevronDown, ChevronUp, Package } from "lucide-react";
 
 // ─── PainelTabelaPrecos ───────────────────────────────────────────────────────
 
