@@ -17,6 +17,7 @@ import { escHtml } from "@/lib/escHtml";
 import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
 import { PageNav } from "@/components/PageNav";
+import { TabelaPrecos } from "@/components/TabelaPrecos";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -3959,7 +3960,7 @@ export default function Financeiro() {
                 </div>
               </div>
             </div>
-            <PainelTabelaPrecos modoTeste={modoTeste} />
+            <TabelaPrecos modoTeste={modoTeste} canEdit={true} />
           </div>
         )}
       </div>
