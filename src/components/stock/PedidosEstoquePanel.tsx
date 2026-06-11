@@ -33,6 +33,9 @@ import {
   Minus,
   Plus,
   Printer,
+  RotateCcw,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -107,6 +110,7 @@ function statusColor(status: string) {
   if (status === "pronto") return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
   if (status === "faturado") return "bg-violet-500/10 text-violet-600 border-violet-500/20";
   if (status === "enviado") return "bg-success/10 text-success border-success/20";
+  if (status === "retorno") return "bg-orange-500/10 text-orange-600 border-orange-500/20";
   return "bg-muted/30 text-muted-foreground border-border/30";
 }
 
@@ -118,6 +122,7 @@ function statusLabel(status: string) {
     faturado: "Faturado",
     enviado: "Enviado",
     cancelado: "Cancelado",
+    retorno: "Retorno",
   };
   return map[status] ?? status;
 }
@@ -145,10 +150,13 @@ interface PedidoCardProps {
   onMarcarPronto: (pedido: Pedido, lotesSelecionados: LoteSelecao, expIdByItem: Record<string, string>) => void;
   onCancelar: (pedido: Pedido) => void;
   onEditarItem: (pedido: Pedido, item: PedidoItem) => void;
+  onRetornar: (pedido: Pedido) => void;
+  onRemoverItem: (pedido: Pedido, item: PedidoItem) => void;
+  onEditarEndereco: (pedido: Pedido) => void;
   isAdmin: boolean;
 }
 
-function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, isAdmin }: PedidoCardProps) {
+function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, onRetornar, onRemoverItem, onEditarEndereco, isAdmin }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -749,6 +757,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       isPendente   ? "border-amber-500/25 bg-amber-500/3" :
       isSeparando  ? "border-blue-500/25 bg-blue-500/3" :
       pedido.status === "pronto" ? "border-emerald-500/25 bg-emerald-500/3" :
+      pedido.status === "retorno" ? "border-orange-500/25 bg-orange-500/3" :
       "border-border/30 bg-card"
     )}>
       {/* Header */}
@@ -808,9 +817,21 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                         <p className="text-[12px] font-semibold truncate">{firstItem.device_model}</p>
                         <p className="text-[10px] text-muted-foreground font-mono">{firstItem.device_reference}</p>
                       </div>
-                      <div className="flex flex-col items-end shrink-0">
-                        <span className="text-[10px] text-muted-foreground/60 leading-none">pedido</span>
-                        <span className="text-[13px] font-bold">{groupTotalPedido} un.</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] text-muted-foreground/60 leading-none">pedido</span>
+                          <span className="text-[13px] font-bold">{groupTotalPedido} un.</span>
+                        </div>
+                        {(isSeparando || pedido.status === "pronto") && (
+                          <button
+                            type="button"
+                            onClick={() => onRemoverItem(pedido, firstItem)}
+                            className="h-6 w-6 flex items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive transition-colors"
+                            title="Remover peça do pedido"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1125,6 +1146,24 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Aguardando Nota Fiscal
               </div>
+            )}
+
+            {/* Botão Retornar — disponível para separando e pronto */}
+            {(isSeparando || pedido.status === "pronto") && (
+              <button type="button" onClick={() => onRetornar(pedido)}
+                className="h-9 w-9 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 flex items-center justify-center transition-colors shrink-0"
+                title="Retornar pedido ao comercial">
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            {/* Botão Editar Endereço */}
+            {(isPendente || isSeparando || pedido.status === "pronto") && (
+              <button type="button" onClick={() => onEditarEndereco(pedido)}
+                className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground flex items-center justify-center transition-colors shrink-0"
+                title="Editar endereço de entrega">
+                <MapPin className="h-3.5 w-3.5" />
+              </button>
             )}
 
             {(isPendente || isSeparando) && isAdmin && (
@@ -1628,6 +1667,280 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
   );
 }
 
+// ─── Modal Retornar Pedido ao Comercial ──────────────────────────────────────
+
+interface RetornarPedidoModalProps {
+  pedido: Pedido | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function RetornarPedidoModal({ pedido, onClose, onSuccess }: RetornarPedidoModalProps) {
+  const { user } = useAuth();
+  const [motivo, setMotivo] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (pedido) setMotivo(""); }, [pedido]);
+
+  if (!pedido) return null;
+
+  async function handleRetornar() {
+    if (!pedido) return;
+    setSaving(true);
+    try {
+      // Muda status para "retorno" — mantém reservas intactas
+      const { error } = await supabase
+        .from("pedidos_comerciais")
+        .update({ status: "retorno", observacoes: motivo.trim() ? ("[RETORNO] " + motivo.trim()) : null })
+        .eq("id", pedido.id);
+      if (error) throw error;
+
+      // Notifica a vendedora do pedido
+      if (pedido.vendedora_id) {
+        await supabase.from("notificacoes").insert({
+          user_id: pedido.vendedora_id,
+          titulo: "Pedido retornado ao comercial",
+          mensagem: `O pedido de ${pedido.cliente_nome} foi retornado pelo estoque para revisão.${motivo.trim() ? " Motivo: " + motivo.trim() : ""}`,
+        });
+      }
+
+      toast.success("Pedido retornado ao comercial. Reservas mantidas.");
+      onSuccess();
+      onClose();
+    } catch (_e) {
+      toast.error("Erro ao retornar pedido.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0">
+            <RotateCcw className="h-4 w-4 text-orange-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Retornar ao Comercial?</p>
+            <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
+          </div>
+        </div>
+        <div className="rounded-xl bg-orange-500/8 border border-orange-500/20 px-3 py-2.5 text-[12px] text-orange-700 dark:text-orange-400">
+          As peças reservadas permanecem reservadas. O status ficará como <strong>Retorno</strong> até o comercial fazer as alterações.
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Motivo (opcional)</label>
+          <textarea
+            value={motivo}
+            onChange={e => setMotivo(e.target.value)}
+            placeholder="Ex: Quantidade errada, peça indisponível no lote..."
+            rows={3}
+            maxLength={500}
+            className="w-full rounded-xl border border-border/50 bg-background text-sm px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
+          <button type="button" onClick={handleRetornar} disabled={saving} className="flex-1 h-9 rounded-xl bg-orange-500 hover:bg-orange-400 text-white text-sm font-semibold transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
+            {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+            Retornar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal Remover Peça do Pedido ─────────────────────────────────────────────
+
+interface RemoverItemModalProps {
+  pedido: Pedido | null;
+  item: PedidoItem | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function RemoverItemModal({ pedido, item, onClose, onSuccess }: RemoverItemModalProps) {
+  const { user } = useAuth();
+  const [saving, setSaving] = useState(false);
+
+  if (!pedido || !item) return null;
+
+  async function handleRemover() {
+    if (!pedido || !item) return;
+    setSaving(true);
+    try {
+      // Remove todos os pedido_itens desse stock_item no pedido
+      const { error } = await supabase
+        .from("pedido_itens")
+        .delete()
+        .in("id", item.ids);
+      if (error) throw error;
+
+      // Libera reserva via decremento direto no stock_item
+      const { data: siData } = await supabase
+        .from("stock_items")
+        .select("quantity_reserved")
+        .eq("id", item.stock_item_id)
+        .maybeSingle();
+      const currReserved = (siData as { quantity_reserved?: number } | null)?.quantity_reserved ?? 0;
+      await supabase
+        .from("stock_items")
+        .update({ quantity_reserved: Math.max(0, currReserved - item.quantidade) })
+        .eq("id", item.stock_item_id);
+
+      // Calcula novo total do pedido para notificação
+      const { data: itensRestantes } = await supabase
+        .from("pedido_itens")
+        .select("quantidade, preco_unitario")
+        .eq("pedido_id", pedido.id);
+
+      const novoTotal = (itensRestantes ?? []).reduce((s: number, i: { quantidade: number; preco_unitario?: number }) => {
+        return s + (i.quantidade * (i.preco_unitario ?? 0));
+      }, 0);
+
+      const descontoLabel = pedido.desconto_pct > 0 ? ` (com ${pedido.desconto_pct}% desc.)` : "";
+      const totalFmt = novoTotal > 0
+        ? "R$ " + (novoTotal * (1 - (pedido.desconto_pct ?? 0) / 100)).toFixed(2).replace(".", ",")
+        : null;
+
+      // Notifica vendedora
+      if (pedido.vendedora_id) {
+        await supabase.from("notificacoes").insert({
+          user_id: pedido.vendedora_id,
+          titulo: "Peça removida do pedido pelo estoque",
+          mensagem: `A peça "${item.device_model}" (${item.quantidade} un.) foi removida do pedido de ${pedido.cliente_nome} pelo estoque.${totalFmt ? ` Novo valor do pedido: ${totalFmt}${descontoLabel}.` : ""}`,
+        });
+      }
+
+      toast.success(`${item.device_model} removida do pedido.`);
+      onSuccess();
+      onClose();
+    } catch (_e) {
+      toast.error("Erro ao remover peça.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Remover peça do pedido?</p>
+            <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
+          </div>
+        </div>
+        <div className="rounded-xl bg-muted/20 border border-border/20 px-3 py-2.5 space-y-1">
+          <p className="text-[12px] font-semibold">{item.device_model}</p>
+          <p className="text-[11px] text-muted-foreground font-mono">{item.device_reference}</p>
+          <p className="text-[11px] text-muted-foreground">{item.quantidade} un. serão liberadas da reserva</p>
+        </div>
+        <div className="rounded-xl bg-amber-500/8 border border-amber-500/20 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+          O comercial será notificado automaticamente com o novo valor do pedido.
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
+          <button type="button" onClick={handleRemover} disabled={saving} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
+            {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Remover peça
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal Editar Endereço de Entrega ─────────────────────────────────────────
+
+interface EditarEnderecoModalProps {
+  pedido: Pedido | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function EditarEnderecoModal({ pedido, onClose, onSuccess }: EditarEnderecoModalProps) {
+  const [endereco, setEndereco] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!pedido) return;
+    // Carrega endereço atual
+    supabase
+      .from("pedidos_comerciais")
+      .select("endereco_entrega, usar_endereco_cliente")
+      .eq("id", pedido.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setEndereco((data as { endereco_entrega?: string } | null)?.endereco_entrega ?? "");
+      });
+  }, [pedido]);
+
+  if (!pedido) return null;
+
+  async function handleSalvar() {
+    if (!pedido) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("pedidos_comerciais")
+        .update({
+          endereco_entrega: endereco.trim() || null,
+          usar_endereco_cliente: !endereco.trim(),
+        })
+        .eq("id", pedido.id);
+      if (error) throw error;
+      toast.success("Endereço de entrega atualizado.");
+      onSuccess();
+      onClose();
+    } catch (_e) {
+      toast.error("Erro ao salvar endereço.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+            <MapPin className="h-4 w-4 text-blue-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Editar Endereço de Entrega</p>
+            <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Novo endereço</label>
+          <textarea
+            value={endereco}
+            onChange={e => setEndereco(e.target.value)}
+            placeholder="Rua, número, bairro, cidade/UF, CEP..."
+            rows={3}
+            maxLength={400}
+            className="w-full rounded-xl border border-border/50 bg-background text-sm px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+          />
+          <p className="text-[10px] text-muted-foreground/60">Deixe em branco para usar o endereço cadastrado do cliente.</p>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
+          <button type="button" onClick={handleSalvar} disabled={saving} className="flex-1 h-9 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
+            {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <MapPin className="h-3.5 w-3.5" />}
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── SearchBar isolada (uncontrolled) ─────────────────────────────────────────
 
 interface SearchBarPedidosProps {
@@ -1665,6 +1978,9 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   const [cancelarPedido, setCancelarPedido] = useState<Pedido | null>(null);
   const [cancelando, setCancelando] = useState(false);
   const [editarItem, setEditarItem] = useState<{ pedido: Pedido; item: PedidoItem } | null>(null);
+  const [retornarPedido, setRetornarPedido] = useState<Pedido | null>(null);
+  const [removerItem, setRemoverItem] = useState<{ pedido: Pedido; item: PedidoItem } | null>(null);
+  const [editarEndereco, setEditarEndereco] = useState<Pedido | null>(null);
 
   async function handleIniciarSeparacao(
     pedido: Pedido,
@@ -1738,7 +2054,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
             )
           )
         `)
-        .in("status", ["pendente", "separando", "pronto"])
+        .in("status", ["pendente", "separando", "pronto", "retorno"])
         .order("created_at", { ascending: false })
         .abortSignal(ctrl.signal);
 
@@ -2189,6 +2505,9 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
               onMarcarPronto={handleMarcarPronto}
               onCancelar={setCancelarPedido}
               onEditarItem={(pedido, item) => setEditarItem({ pedido, item })}
+              onRetornar={setRetornarPedido}
+              onRemoverItem={(pedido, item) => setRemoverItem({ pedido, item })}
+              onEditarEndereco={setEditarEndereco}
               isAdmin={isAdmin}
             />
           ))}
@@ -2200,6 +2519,28 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         pedido={editarItem?.pedido ?? null}
         item={editarItem?.item ?? null}
         onClose={() => setEditarItem(null)}
+        onSuccess={loadPedidos}
+      />
+
+      {/* Retornar pedido */}
+      <RetornarPedidoModal
+        pedido={retornarPedido}
+        onClose={() => setRetornarPedido(null)}
+        onSuccess={loadPedidos}
+      />
+
+      {/* Remover item */}
+      <RemoverItemModal
+        pedido={removerItem?.pedido ?? null}
+        item={removerItem?.item ?? null}
+        onClose={() => setRemoverItem(null)}
+        onSuccess={loadPedidos}
+      />
+
+      {/* Editar endereço */}
+      <EditarEnderecoModal
+        pedido={editarEndereco}
+        onClose={() => setEditarEndereco(null)}
         onSuccess={loadPedidos}
       />
 

@@ -67,6 +67,7 @@ import {
   MessageSquare,
   Send,
   Star,
+  RotateCcw,
 } from "lucide-react";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
@@ -127,7 +128,7 @@ interface PedidoCompleto {
   cliente_id: string;
   cliente_nome: string;
   vendedora_nome: string | null;
-  status: "pendente" | "separando" | "pronto" | "faturado" | "enviado" | "cancelado";
+  status: "pendente" | "separando" | "pronto" | "faturado" | "enviado" | "cancelado" | "retorno";
   observacoes: string | null;
   desconto_pct: number;
   prazo_entrega: string | null;
@@ -828,6 +829,44 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 }
 
 
+// ─── Botão Reenviar Pedido Retornado ──────────────────────────────────────────
+
+function ReenviarPedidoRetornadoBtn({ pedidoId, onComentar }: { pedidoId: string; onComentar: () => void }) {
+  const [saving, setSaving] = useState(false);
+
+  async function handleReenviar() {
+    setSaving(true);
+    const { error } = await supabase
+      .from("pedidos_comerciais")
+      .update({ status: "pendente", observacoes: null })
+      .eq("id", pedidoId);
+    setSaving(false);
+    if (error) { toast.error("Erro ao reenviar pedido."); return; }
+    toast.success("Pedido reenviado! Aguardando confirmação do estoque.");
+  }
+
+  return (
+    <div className="flex gap-2">
+      <button
+        type="button"
+        onClick={onComentar}
+        className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl text-[11px] font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-500/10 border border-orange-500/30 transition-colors"
+      >
+        <MessageSquare className="h-3.5 w-3.5" /> Ver motivo
+      </button>
+      <button
+        type="button"
+        onClick={handleReenviar}
+        disabled={saving}
+        className="flex-1 h-9 rounded-xl bg-orange-500 hover:bg-orange-400 text-white text-[11px] font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+      >
+        {saving ? <div className="h-3.5 w-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+        Reenviar ao Estoque
+      </button>
+    </div>
+  );
+}
+
 // ─── Card de Pedido ───────────────────────────────────────────────────────────
 
 interface PedidoCardProps {
@@ -935,6 +974,17 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
       statusBtnBg: "bg-muted/30",
       statusBtnText: "text-muted-foreground",
       statusBtnBorder: "border-border",
+    },
+    retorno: {
+      accent: "#f97316",
+      badgeBg: "bg-orange-50 dark:bg-orange-950/50",
+      badgeText: "text-orange-700 dark:text-orange-300",
+      badgeBorder: "border-orange-300 dark:border-orange-700",
+      label: "Retorno",
+      icon: <RotateCcw className="h-3 w-3" />,
+      statusBtnBg: "bg-orange-50 dark:bg-orange-950/30",
+      statusBtnText: "text-orange-700 dark:text-orange-300",
+      statusBtnBorder: "border-orange-200 dark:border-orange-800",
     },
   };
 
@@ -1152,8 +1202,8 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
           )}
 
           {/* ── Indicadores de estado (sem ação) ── */}
-          {(["separando","pronto","faturado","enviado","cancelado"] as const).includes(
-            pedido.status as "separando"|"pronto"|"faturado"|"enviado"|"cancelado"
+          {(["separando","pronto","faturado","enviado","cancelado","retorno"] as const).includes(
+            pedido.status as "separando"|"pronto"|"faturado"|"enviado"|"cancelado"|"retorno"
           ) && (
             <div className={cn(
               "flex items-center justify-center gap-1.5 h-9 rounded-xl text-[11px] font-bold border",
@@ -1164,7 +1214,13 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
               {pedido.status === "faturado"  && <><CheckCircle2 className="h-3.5 w-3.5" />Nota fiscal emitida</>}
               {pedido.status === "enviado"   && <><Truck className="h-3.5 w-3.5" />Enviado ao cliente! 🎉</>}
               {pedido.status === "cancelado" && <><Ban className="h-3.5 w-3.5" />Pedido cancelado</>}
+              {pedido.status === "retorno"   && <><RotateCcw className="h-3.5 w-3.5" />Retornado pelo estoque — revise</>}
             </div>
+          )}
+
+          {/* Botão reenviar pedido retornado */}
+          {pedido.status === "retorno" && (
+            <ReenviarPedidoRetornadoBtn pedidoId={pedido.id} onComentar={() => onComentar(pedido)} />
           )}
 
         </div>
@@ -1556,10 +1612,11 @@ function HistoricoClienteModal({ clienteId, clientes, onClose }: {
     faturado: "bg-violet-500/10 text-violet-600",
     enviado: "bg-green-500/10 text-green-600",
     cancelado: "bg-muted/30 text-muted-foreground",
+    retorno: "bg-orange-500/10 text-orange-600",
   };
   const statusLabels: Record<string, string> = {
     pendente: "Pendente", separando: "Separando", pronto: "Pronto",
-    faturado: "Faturado", enviado: "Enviado", cancelado: "Cancelado",
+    faturado: "Faturado", enviado: "Enviado", cancelado: "Cancelado", retorno: "Retorno",
   };
 
   return (
@@ -2275,7 +2332,7 @@ export default function Comercial() {
   // Pedidos
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>([]);
   const [loadingPedidos, setLoadingPedidos] = useState(true);
-  const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "pronto" | "enviado" | "cancelado">("todos");
+  const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "pronto" | "enviado" | "retorno" | "cancelado">("todos");
   const [novoPedidoOpen, setNovoPedidoOpen] = useState(false);
   const [faturarPedido, setFaturarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<PedidoCompleto | null>(null);
@@ -2544,7 +2601,7 @@ export default function Comercial() {
                 <div className="flex flex-col gap-2">
                   {/* Linha 1: filtros de status */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {(["todos","pendente","pronto","enviado","cancelado"] as const).map(s => (
+                    {(["todos","pendente","pronto","enviado","retorno","cancelado"] as const).map(s => (
                       <button key={s} type="button" onClick={() => setFiltroStatus(s)}
                         className={cn("h-7 px-3 rounded-full text-[11px] font-semibold border transition-colors",
                           filtroStatus === s ? "bg-violet-600 text-white border-violet-600" : "bg-background text-muted-foreground border-border/50 hover:border-violet-400")}>
