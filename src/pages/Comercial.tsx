@@ -74,6 +74,7 @@ import { Logo } from "@/components/Logo";
 
 import { formatLote, loteValido, displayLote } from "@/lib/lote";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
+import { TabelaPrecos } from "@/components/TabelaPrecos";
 import { escHtml } from "@/lib/escHtml";
 
 
@@ -302,6 +303,11 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const [prazoEntrega, setPrazoEntrega] = useState("");
   const [favoritas, setFavoritas] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [formaPagamento, setFormaPagamento] = useState("");
+  const [parcelas, setParcelas] = useState(1);
+  const [enderecoEntrega, setEnderecoEntrega] = useState("");
+  const [usarEnderecoCliente, setUsarEnderecoCliente] = useState(true);
+  const [precoMap, setPrecoMap] = useState<Record<string, number>>({});
 
   // Carrega favoritas do usuário atual
   useEffect(() => {
@@ -350,11 +356,27 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       })));
     } else {
       setItens([]); setObs(""); setDesconto(0); setPrazoEntrega("");
+      setFormaPagamento(""); setParcelas(1); setEnderecoEntrega(""); setUsarEnderecoCliente(true);
     }
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
     setSelectedPeca(null); setQtd(1);
     loadClientes();
+    loadPrecos();
   }, [open, clienteFixo, duplicarDe]);
+
+  async function loadPrecos() {
+    const { data } = await supabase
+      .from("devices")
+      .select("id, preco_venda")
+      .gt("preco_venda", 0);
+    if (data) {
+      const map: Record<string, number> = {};
+      (data as { id: string; preco_venda: number }[]).forEach(r => {
+        map[r.id] = r.preco_venda;
+      });
+      setPrecoMap(map);
+    }
+  }
 
   async function loadClientes() {
     const { data } = await supabase.from("clientes").select("*").order("nome");
@@ -449,12 +471,14 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         updated[idx] = { ...updated[idx], quantidade: updated[idx].quantidade + qtd };
         return updated;
       }
+      const preco = precoMap[selectedPeca!.device_id] ?? 0;
       return [...prev, {
         stock_item_id: selectedPeca!.id,
         lote: "",
         quantidade: qtd,
         device_model: selectedPeca!.device?.model ?? "",
         device_reference: selectedPeca!.device?.reference ?? "",
+        preco_unitario: preco,
       }];
     });
     setSelectedPeca(null); setPecaSearch(""); setQtd(1);
@@ -473,6 +497,11 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       // FIX: usa criarPedidoComReserva para garantir que reserve_stock
       // seja chamado e quantity_reserved seja incrementado corretamente no banco.
       // Antes: inseria pedido_itens com quantidade_reservada: 0 e nunca chamava reserve_stock.
+      const clienteSelecionado = clientes.find(c => c.id === clienteId);
+      const endFinal = usarEnderecoCliente
+        ? (clienteSelecionado?.endereco ?? null)
+        : (enderecoEntrega.trim() || null);
+
       const result = await criarPedidoComReserva({
         clienteId,
         itens: itens.map(i => ({
@@ -480,12 +509,17 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           lote: i.lote || null,
           quantidade: i.quantidade,
           device_model: i.device_model,
+          preco_unitario: (i as { preco_unitario?: number }).preco_unitario ?? 0,
         })),
         vendedoraId: user?.id,
         vendedoraNome,
         observacoes: obs || null,
         descontoPct: desconto,
         prazoEntrega: prazoEntrega || null,
+        formaPagamento: formaPagamento || null,
+        parcelas: formaPagamento === "cartao_credito" ? parcelas : 1,
+        enderecoEntrega: endFinal,
+        usarEnderecoCliente,
       });
 
       if (!result.ok) {
@@ -654,7 +688,12 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                       <p className="text-[12px] font-medium truncate">{item.device_model}</p>
                       <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
                     </div>
-                    <span className="text-[12px] font-bold shrink-0">{item.quantidade} un.</span>
+                    <div className="text-right shrink-0">
+                      <span className="text-[12px] font-bold block">{item.quantidade} un.</span>
+                      {(item as {preco_unitario?: number}).preco_unitario ? (
+                        <span className="text-[10px] text-emerald-600">R$ {((item as {preco_unitario?: number}).preco_unitario! * item.quantidade * (1 - desconto/100)).toFixed(2).replace(".",",")}</span>
+                      ) : null}
+                    </div>
                     <button type="button" onClick={() => setItens(prev => prev.filter((_, i) => i !== idx))} className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors">
                       <X className="h-3 w-3" />
                     </button>
@@ -667,41 +706,95 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           {/* ── Desconto do Pedido ── */}
           <div className="space-y-2">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto por Peça</label>
-            <div className="flex items-center gap-2">
-              <select
-                value={![0,5,10,15,20,25,30,40,50].includes(desconto) && desconto > 0 ? "outro" : String(desconto)}
+            <div className="relative flex items-center">
+              <input
+                type="number"
+                min={0}
+                max={99.9}
+                step={0.1}
+                value={desconto === 0 ? "" : desconto}
                 onChange={e => {
-                  if (e.target.value !== "outro") setDesconto(Number(e.target.value));
+                  const raw = e.target.value;
+                  if (raw === "" || raw === "0") { setDesconto(0); return; }
+                  const v = parseFloat(raw.replace(",", "."));
+                  if (!isNaN(v)) setDesconto(Math.min(99.9, Math.max(0, v)));
                 }}
-                className="flex-1 h-10 rounded-xl border border-border bg-background px-3 text-[13px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all [&>option]:bg-background [&>option]:text-foreground"
-              >
-                <option value="0">Sem desconto</option>
-                <option value="5">5%</option>
-                <option value="10">10%</option>
-                <option value="15">15%</option>
-                <option value="20">20%</option>
-                <option value="25">25%</option>
-                <option value="30">30%</option>
-                <option value="40">40%</option>
-                <option value="50">50%</option>
-                <option value="outro">Outro...</option>
-              </select>
-              {(![0,5,10,15,20,25,30,40,50].includes(desconto) && desconto > 0) && (
-                <input
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={desconto}
-                  onChange={e => setDesconto(Math.min(99, Math.max(1, parseInt(e.target.value) || 1)))}
-                  className="w-20 h-10 rounded-xl border border-emerald-500 bg-emerald-600 text-white text-center text-[13px] font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                />
-              )}
+                placeholder="0"
+                className="w-full h-10 rounded-xl border border-border bg-background pl-4 pr-10 text-[15px] font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
+              />
+              <span className="absolute right-3 text-[15px] font-bold text-muted-foreground pointer-events-none">%</span>
             </div>
             {desconto > 0 && (
               <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 px-1">
                 <span className="h-4 w-4 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[9px] font-black shrink-0">✓</span>
                 {desconto}% aplicado individualmente em cada peça
               </p>
+            )}
+          </div>
+
+          {/* ── Forma de Pagamento ── */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Forma de Pagamento</label>
+            <select
+              value={formaPagamento}
+              onChange={e => { setFormaPagamento(e.target.value); setParcelas(1); }}
+              className="w-full h-10 rounded-xl border border-border bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+            >
+              <option value="">Não informado</option>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="pix">PIX</option>
+              <option value="boleto">Boleto</option>
+              <option value="cartao_debito">Cartão de Débito</option>
+              <option value="cartao_credito">Cartão de Crédito</option>
+            </select>
+            {formaPagamento === "cartao_credito" && (
+              <div className="flex items-center gap-2 mt-2">
+                <label className="text-[11px] text-muted-foreground shrink-0">Parcelas:</label>
+                <select
+                  value={parcelas}
+                  onChange={e => setParcelas(Number(e.target.value))}
+                  className="flex-1 h-9 rounded-xl border border-border bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                >
+                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                    <option key={n} value={n}>{n}x {n === 1 ? "(à vista)" : "sem juros"}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* ── Endereço de Entrega ── */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Endereço de Entrega</label>
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => setUsarEnderecoCliente(true)}
+                className={`flex-1 h-8 rounded-xl text-[12px] font-medium border transition-colors ${usarEnderecoCliente ? "bg-violet-600 text-white border-violet-600" : "border-border text-muted-foreground hover:bg-muted/30"}`}
+              >
+                Endereço do cliente
+              </button>
+              <button
+                type="button"
+                onClick={() => setUsarEnderecoCliente(false)}
+                className={`flex-1 h-8 rounded-xl text-[12px] font-medium border transition-colors ${!usarEnderecoCliente ? "bg-violet-600 text-white border-violet-600" : "border-border text-muted-foreground hover:bg-muted/30"}`}
+              >
+                Outro endereço
+              </button>
+            </div>
+            {usarEnderecoCliente ? (
+              <p className="text-[12px] text-muted-foreground px-1">
+                {clientes.find(c => c.id === clienteId)?.endereco || "Cliente sem endereço cadastrado"}
+              </p>
+            ) : (
+              <input
+                type="text"
+                value={enderecoEntrega}
+                onChange={e => setEnderecoEntrega(e.target.value)}
+                placeholder="Rua, número, cidade..."
+                maxLength={300}
+                className="w-full h-10 rounded-xl border border-border/50 bg-background text-sm px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+              />
             )}
           </div>
 
@@ -740,6 +833,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 interface PedidoCardProps {
   pedido: PedidoCompleto;
   isAdmin: boolean;
+  canConfirm?: boolean;
   onFaturar: (p: PedidoCompleto) => void;
   onCancelar: (p: PedidoCompleto) => void;
   onAdicionarPeca: (p: PedidoCompleto) => void;
@@ -747,7 +841,7 @@ interface PedidoCardProps {
   onComentar: (p: PedidoCompleto) => void;
 }
 
-function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar }: PedidoCardProps) {
+function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const temDesconto = pedido.desconto_pct > 0;
@@ -1004,10 +1098,12 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca, o
 
           {/* ── Ações rápidas: comentar e duplicar ── */}
           <div className="flex gap-2">
-            <button type="button" onClick={() => onComentar(pedido)}
-              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors">
-              <MessageSquare className="h-3 w-3" /> Comentários
-            </button>
+            {pedido.status === "pendente" && (
+              <button type="button" onClick={() => onComentar(pedido)}
+                className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors">
+                <MessageSquare className="h-3 w-3" /> Comentários
+              </button>
+            )}
             <button type="button" onClick={() => onDuplicar(pedido)}
               className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors">
               <Copy className="h-3 w-3" /> Duplicar
@@ -1031,7 +1127,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, onAdicionarPeca, o
           )}
 
           {/* ── Ações Admin (confirmar / cancelar) ── */}
-          {pedido.status === "pendente" && isAdmin && (
+          {pedido.status === "pendente" && (isAdmin || canConfirm) && (
             <div className="flex gap-2">
               <button
                 type="button"
@@ -2166,7 +2262,7 @@ export default function Comercial() {
   // Tema
 
   // Sub-tabs
-  type SubTab = "dashboard" | "pedidos" | "clientes" | "historico";
+  type SubTab = "dashboard" | "pedidos" | "clientes" | "historico" | "precos";
   const [subTab, setSubTab] = useState<SubTab>("pedidos");
   const [historicoOpen, setHistoricoOpen] = useState(false);
 
@@ -2179,7 +2275,7 @@ export default function Comercial() {
   // Pedidos
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>([]);
   const [loadingPedidos, setLoadingPedidos] = useState(true);
-  const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "faturado" | "cancelado">("todos");
+  const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "pronto" | "enviado" | "cancelado">("todos");
   const [novoPedidoOpen, setNovoPedidoOpen] = useState(false);
   const [faturarPedido, setFaturarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<PedidoCompleto | null>(null);
@@ -2374,6 +2470,16 @@ export default function Comercial() {
       badgeBg: "bg-cyan-500/15",
       badgeText: "text-cyan-600 dark:text-cyan-400",
     },
+    {
+      id: "precos" as SubTab,
+      label: "Tabela de Preços",
+      Icon: Tag,
+      activeColor: "text-emerald-600 dark:text-emerald-400",
+      activeBg: "bg-emerald-500/10",
+      activeBorder: "border-emerald-500/40",
+      badgeBg: "bg-emerald-500/15",
+      badgeText: "text-emerald-600 dark:text-emerald-400",
+    },
   ];
 
   return (
@@ -2438,7 +2544,7 @@ export default function Comercial() {
                 <div className="flex flex-col gap-2">
                   {/* Linha 1: filtros de status */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {(["todos","pendente","faturado","cancelado"] as const).map(s => (
+                    {(["todos","pendente","pronto","enviado","cancelado"] as const).map(s => (
                       <button key={s} type="button" onClick={() => setFiltroStatus(s)}
                         className={cn("h-7 px-3 rounded-full text-[11px] font-semibold border transition-colors",
                           filtroStatus === s ? "bg-violet-600 text-white border-violet-600" : "bg-background text-muted-foreground border-border/50 hover:border-violet-400")}>
@@ -2478,7 +2584,7 @@ export default function Comercial() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {pedidosFiltrados.map(p => (
-                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)} />
+                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} canConfirm={isAdmin || isVendedora} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)} />
                     ))}
                   </div>
                 )}
@@ -2542,6 +2648,11 @@ export default function Comercial() {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ── Aba Tabela de Preços ── */}
+            {subTab === "precos" && (
+              <TabelaPrecos modoTeste={false} canEdit={false} />
             )}
           </>
         )}

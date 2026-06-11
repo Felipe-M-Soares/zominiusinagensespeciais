@@ -927,71 +927,75 @@ export default function Estoque() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            {isAdmin && (
-              <>
-                <div className="hidden sm:flex items-center gap-1.5">
-                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setListOpen(true)}>
-                    <List className="h-3.5 w-3.5" /> Lista
+            <>
+              <div className="hidden sm:flex items-center gap-1.5">
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setListOpen(true)}>
+                  <List className="h-3.5 w-3.5" /> Lista
+                </Button>
+                {activeView === "intermediaria" && (
+                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-primary border-primary/40 hover:bg-primary/10" onClick={() => setIntermediaryLotesOpen(true)}>
+                    <Tag className="h-3.5 w-3.5" /> Lotes
                   </Button>
-                  {activeView === "intermediaria" && (
-                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-primary border-primary/40 hover:bg-primary/10" onClick={() => setIntermediaryLotesOpen(true)}>
-                      <Tag className="h-3.5 w-3.5" /> Lotes
+                )}
+                {isAdmin && (
+                  <>
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10" onClick={() => setExcelImportOpen(true)}>
+                      <FileSpreadsheet className="h-3.5 w-3.5" /> Importar Excel
                     </Button>
-                  )}
-                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10" onClick={() => setExcelImportOpen(true)}>
-                    <FileSpreadsheet className="h-3.5 w-3.5" /> Importar Excel
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
-                    <DatabaseBackup className="h-3.5 w-3.5" /> Backup
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => setClearHistConfirm(true)}
-                    title="Apagar todo o histórico"
-                    className="h-8 w-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-colors"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                  <Button size="sm" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setAddOpen(true)}>
-                    <Plus className="h-3.5 w-3.5" /> Adicionar
-                  </Button>
-                </div>
-                <div className="relative sm:hidden" ref={adminMenuRef}>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 w-8 p-0 rounded-lg"
-                    onClick={() => setAdminMenuOpen((v) => !v)}
-                  >
-                    <Menu className="h-4 w-4" />
-                  </Button>
-                  {adminMenuOpen && (
-                    <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-border bg-card shadow-xl z-50 overflow-hidden">
-                      {[
-                        { label: "Adicionar Peça", icon: Plus, action: () => setAddOpen(true) },
-                        { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
-                        ...(activeView === "intermediaria" ? [{ label: "Lotes do Intermediário", icon: Tag, action: () => setIntermediaryLotesOpen(true) }] : []),
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
+                      <DatabaseBackup className="h-3.5 w-3.5" /> Backup
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setClearHistConfirm(true)}
+                      title="Apagar todo o histórico"
+                      className="h-8 w-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+                <Button size="sm" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setAddOpen(true)}>
+                  <Plus className="h-3.5 w-3.5" /> Adicionar
+                </Button>
+              </div>
+              <div className="relative sm:hidden" ref={adminMenuRef}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0 rounded-lg"
+                  onClick={() => setAdminMenuOpen((v) => !v)}
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+                {adminMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-border bg-card shadow-xl z-50 overflow-hidden">
+                    {[
+                      { label: "Adicionar Peça", icon: Plus, action: () => setAddOpen(true) },
+                      { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
+                      ...(activeView === "intermediaria" ? [{ label: "Lotes do Intermediário", icon: Tag, action: () => setIntermediaryLotesOpen(true) }] : []),
+                      ...(isAdmin ? [
                         { label: "Importar Excel / PDF", icon: FileSpreadsheet, action: () => setExcelImportOpen(true) },
                         { label: "Backup", icon: DatabaseBackup, action: () => setBackupOpen(true) },
                         { label: "Apagar Histórico", icon: Trash2, action: () => setClearHistConfirm(true), danger: true },
-                      ].map(({ label, icon: Icon, action, danger }) => (
-                        <button
-                          key={label}
-                          type="button"
-                          className={cn(
-                            "w-full flex items-center gap-2 px-3 py-2.5 text-[13px] hover:bg-accent/50 transition-colors border-b border-border/30 last:border-0",
-                            danger ? "text-destructive" : "text-foreground"
-                          )}
-                          onClick={() => { action(); setAdminMenuOpen(false); }}
-                        >
-                          <Icon className="h-3.5 w-3.5" /> {label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
+                      ] : []),
+                    ].map(({ label, icon: Icon, action, danger }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-2.5 text-[13px] hover:bg-accent/50 transition-colors border-b border-border/30 last:border-0",
+                          danger ? "text-destructive" : "text-foreground"
+                        )}
+                        onClick={() => { action(); setAdminMenuOpen(false); }}
+                      >
+                        <Icon className="h-3.5 w-3.5" /> {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           </div>
         </div>
       </header>
@@ -1254,7 +1258,7 @@ export default function Estoque() {
                       ? "Peças enviadas para retrabalho aparecerão aqui"
                       : "Mova peças da aba Intermediário para cá após embalar"}
             </p>
-            {isAdmin && !querySearch && !hasActiveFilters && activeView === "intermediaria" && (
+            {!querySearch && !hasActiveFilters && activeView === "intermediaria" && (
               <Button className="mt-2 gap-1.5 rounded-xl" onClick={() => setAddOpen(true)}>
                 <Plus className="h-4 w-4" /> Adicionar primeira peça
               </Button>

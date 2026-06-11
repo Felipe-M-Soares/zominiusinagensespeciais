@@ -74,6 +74,7 @@ interface LoteSeparado {
 
 interface Pedido {
   id: string;
+  cliente_id: string;
   cliente_nome: string;
   vendedora_nome: string | null;
   vendedora_id: string | null;
@@ -81,6 +82,8 @@ interface Pedido {
   frete: number;
   observacoes: string | null;
   created_at: string;
+  desconto_pct?: number;
+  prazo_entrega?: string | null;
   itens: PedidoItem[];
   lotes_separados: LoteSeparado[] | null;
   itens_raw: { stock_item_id: string; lote: string; quantidade: number; device_model?: string; device_reference?: string }[];
@@ -450,6 +453,62 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       }
     }
 
+    // ── Busca dados completos do pedido e cliente (antes de montar tableBody) ──
+    const [{ data: pedidoExtra }, { data: clienteData }, { data: itensPreco }, { data: devicesData }] = await Promise.all([
+      supabase.from("pedidos_comerciais")
+        .select("forma_pagamento, parcelas, endereco_entrega, usar_endereco_cliente, desconto_pct, frete")
+        .eq("id", pedido.id).maybeSingle(),
+      supabase.from("clientes")
+        .select("documento, ie, telefone, email, logradouro, numero, bairro, municipio, uf, cep, c_mun, endereco")
+        .eq("id", pedido.cliente_id).maybeSingle(),
+      supabase.from("pedido_itens")
+        .select("stock_item_id, quantidade, preco_unitario, valor_total")
+        .eq("pedido_id", pedido.id),
+      supabase.from("devices")
+        .select("id, ncm, cfop_padrao, preco_venda, margem_minima_pct")
+        .in("id", pedido.itens.map(i => i.device_id).filter(Boolean)),
+    ]);
+
+    type ClienteExtra = {
+      documento?: string; ie?: string; telefone?: string; email?: string;
+      logradouro?: string; numero?: string; bairro?: string; municipio?: string;
+      uf?: string; cep?: string; c_mun?: string; endereco?: string;
+    };
+    type PedidoExtra = {
+      forma_pagamento?: string; parcelas?: number; endereco_entrega?: string;
+      usar_endereco_cliente?: boolean; desconto_pct?: number; frete?: number;
+    };
+    type DeviceExtra = { id: string; ncm?: string; cfop_padrao?: string; preco_venda?: number };
+    type ItemPreco = { stock_item_id: string; quantidade: number; preco_unitario?: number; valor_total?: number };
+
+    const cl = clienteData as ClienteExtra | null;
+    const ex = pedidoExtra as PedidoExtra | null;
+    const devMap = new Map<string, DeviceExtra>(
+      ((devicesData ?? []) as DeviceExtra[]).map(d => [d.id, d])
+    );
+    const itemPrecoMap = new Map<string, ItemPreco>(
+      ((itensPreco ?? []) as ItemPreco[]).map(i => [i.stock_item_id, i])
+    );
+
+    const endFormatado = cl?.logradouro
+      ? `${cl.logradouro}${cl.numero ? ", " + cl.numero : ""}${cl.bairro ? " — " + cl.bairro : ""}${cl.municipio ? " — " + cl.municipio : ""}${cl.uf ? "/" + cl.uf : ""}${cl.cep ? " — CEP " + cl.cep : ""}`
+      : (cl?.endereco ?? "");
+    const enderecoEntrega = ex?.usar_endereco_cliente !== false
+      ? endFormatado
+      : (ex?.endereco_entrega ?? endFormatado);
+
+    const fmtPagamento: Record<string, string> = {
+      dinheiro: "A VISTA — Dinheiro", pix: "A VISTA — PIX", boleto: "Boleto",
+      cartao_debito: "Cartão de Débito", cartao_credito: "Cartão de Crédito",
+    };
+    const pagamentoLabel = ex?.forma_pagamento
+      ? fmtPagamento[ex.forma_pagamento] ?? ex.forma_pagamento
+      : "A VISTA";
+    const parcelasLabel = ex?.forma_pagamento === "cartao_credito" && (ex?.parcelas ?? 1) > 1
+      ? ` — ${ex.parcelas}x` : "";
+    const desconto = ex?.desconto_pct ?? pedido.desconto_pct ?? 0;
+    const frete = ex?.frete ?? 0;
+
     // ── Agrupa por tipo de peça (model + reference) para separadores na página ──
     const grouped = new Map<string, typeof printRows>();
     for (const row of printRows) {
@@ -458,89 +517,209 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       grouped.get(key)!.push(row);
     }
 
+    // Monta mapa de device_id por stock_item_id para lookup de NCM/CFOP/preço
+    const stockToDevice = new Map<string, string>(
+      pedido.itens.map(i => [i.stock_item_id, i.device_id ?? ""])
+    );
+
     let rowIdx = 0;
     let tableBody = "";
+    let subtotalGeral = 0;
     for (const [, rows] of grouped) {
       rowIdx++;
       const first = rows[0];
       const tipoTotal = rows.reduce((s, r) => s + r.quantidade, 0);
 
-      // Lotes inline — todos os badges na mesma célula
-      const lotesBadges = rows
-        .filter(r => r.lote && !LOTE_PH.has(r.lote.toLowerCase()))
-        .map(r => `<span class="lote-badge">${escHtml(r.lote)}</span>`)
-        .join(" ");
-      const lotesCell = lotesBadges || `<span class="lote-empty">—</span>`;
+      // Preço unitário — busca nos pedido_itens ou nos devices como fallback
+      const itemPreco = itemPrecoMap.get(first.stock_item_id ?? "");
+      const deviceId = stockToDevice.get(first.stock_item_id ?? "") ?? "";
+      const dev = devMap.get(deviceId);
+      // Se preco_unitario do pedido_item for 0 ou nulo, usa preco_venda do device
+      const precoFromItem = itemPreco?.preco_unitario ?? 0;
+      let precoUnit = precoFromItem > 0 ? precoFromItem : (dev?.preco_venda ?? 0);
+      const precoComDesconto = desconto > 0 ? precoUnit * (1 - desconto / 100) : precoUnit;
+      const valorTotal = precoComDesconto * tipoTotal;
+      subtotalGeral += valorTotal;
+
+      const ncm = dev?.ncm ?? "—";
+      const cfop = dev?.cfop_padrao ?? "—";
+      const ipi = "0,00%"; // IPI padrão — ajustar conforme necessidade fiscal
+
+      const precoFmt = (v: number) => v > 0 ? "R$ " + v.toFixed(2).replace(".", ",") : "—";
 
       tableBody += `<tr>
         <td class="col-num">${rowIdx}</td>
         <td class="col-model">
-          <span class="model-name">${escHtml(first.model)}</span>
-          <span class="model-ref">${escHtml(first.reference)}</span>
+          <span class="model-name">${escHtml(first.model ?? "")}</span>
+          <span class="model-ref">${escHtml(first.reference ?? "")}</span>
+          <span class="model-meta">NCM: ${ncm} &nbsp;|&nbsp; CFOP: ${cfop} &nbsp;|&nbsp; IPI: ${ipi}</span>
         </td>
-        <td class="col-lotes">${lotesCell}</td>
+        <td class="col-preco">${precoFmt(precoComDesconto)}</td>
         <td class="col-qty">${tipoTotal}</td>
+        <td class="col-total">${precoFmt(valorTotal)}</td>
       </tr>`;
     }
 
     const totalPecas = printRows.reduce((s, r) => s + r.quantidade, 0);
     const totalTipos = grouped.size;
+    const totalComFrete = subtotalGeral + frete;
+    const fmtVal = (v: number) => "R$ " + v.toFixed(2).replace(".", ",");
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Pedido — ${escHtml(pedido.cliente_nome)}</title>
+  <title>Pedido ${pedido.id.slice(0,8).toUpperCase()} — ${escHtml(pedido.cliente_nome)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; padding: 24px 28px; color: #111; font-size: 13px; }
-    .header { margin-bottom: 18px; border-bottom: 2px solid #ddd6fe; padding-bottom: 14px; }
-    h1 { font-size: 20px; font-weight: 800; color: #3b0764; margin-bottom: 6px; }
-    .meta { font-size: 12px; color: #555; display: flex; flex-wrap: wrap; gap: 12px; }
-    .meta strong { color: #333; }
-    .obs { font-size: 12px; color: #666; background: #f9f5ff; border-left: 3px solid #a78bfa; padding: 8px 12px; margin-bottom: 14px; border-radius: 0 6px 6px 0; }
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; padding: 8px 10px; background: #f3f0ff; color: #5b21b6; border-bottom: 2px solid #ddd6fe; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-    td { padding: 7px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
-    tr:nth-child(even) td { background: #faf9ff; }
-    .col-num { width: 28px; color: #bbb; font-size: 11px; }
-    .col-model { width: 38%; }
-    .col-lotes { }
-    .col-qty { width: 80px; text-align: right; font-weight: 800; font-size: 15px; color: #3b0764; white-space: nowrap; }
-    .model-name { display: block; font-weight: 600; font-size: 12px; color: #1a1a2e; }
-    .model-ref { display: block; font-family: monospace; font-size: 10px; color: #888; margin-top: 1px; }
-    .lote-badge { display: inline-block; background: #f3f0ff; color: #5b21b6; font-family: monospace; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; border: 1px solid #ddd6fe; margin: 1px 2px 1px 0; }
-    .lote-empty { color: #bbb; font-size: 11px; }
-    .footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #eee; display: flex; justify-content: space-between; font-size: 11px; color: #999; }
-    .footer strong { color: #5b21b6; }
-    @media print { button { display: none } body { padding: 16px } }
+    body { font-family: Arial, sans-serif; padding: 20px 24px; color: #111; font-size: 11px; }
+
+    .empresa-header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 10px; border-bottom: 2px solid #111; margin-bottom: 10px; }
+    .empresa-nome { font-size: 14px; font-weight: 800; text-transform: uppercase; }
+    .empresa-info { font-size: 9.5px; color: #444; line-height: 1.7; margin-top: 2px; }
+    .empresa-contato { text-align: right; font-size: 9.5px; color: #444; line-height: 1.7; }
+
+    .pedido-info { display: flex; border: 1px solid #bbb; margin-bottom: 8px; }
+    .pedido-info-col { flex: 1; padding: 5px 8px; border-right: 1px solid #bbb; font-size: 10px; }
+    .pedido-info-col:last-child { border-right: none; }
+    .pedido-info-label { font-size: 8px; text-transform: uppercase; color: #999; font-weight: 700; margin-bottom: 1px; }
+    .pedido-info-val { font-weight: 700; color: #111; font-size: 11px; }
+
+    .cliente-box { border: 1px solid #bbb; padding: 7px 10px; margin-bottom: 8px; font-size: 10px; line-height: 1.8; }
+    .cliente-title { font-size: 8px; text-transform: uppercase; color: #999; font-weight: 700; margin-bottom: 4px; }
+    .cliente-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th { text-align: left; padding: 6px 7px; background: #f0f0f0; border: 1px solid #bbb; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 5px 7px; border: 1px solid #ddd; vertical-align: top; font-size: 10px; }
+    tr:nth-child(even) td { background: #fafafa; }
+    .col-num { width: 22px; text-align: center; color: #999; }
+    .col-model { width: 42%; }
+    .col-preco { width: 80px; text-align: right; white-space: nowrap; }
+    .col-qty { width: 45px; text-align: center; font-weight: 800; }
+    .col-total { width: 90px; text-align: right; font-weight: 700; white-space: nowrap; }
+    .model-name { display: block; font-weight: 700; font-size: 10.5px; }
+    .model-ref { display: block; font-family: monospace; font-size: 8.5px; color: #888; }
+    .model-meta { display: block; font-size: 8px; color: #aaa; margin-top: 2px; }
+
+    .totais-box { border: 1px solid #bbb; margin-bottom: 14px; }
+    .totais-row { display: flex; justify-content: space-between; padding: 5px 10px; border-bottom: 1px solid #eee; font-size: 10px; }
+    .totais-row:last-child { border-bottom: none; font-weight: 800; font-size: 12px; background: #f5f5f5; }
+    .totais-label { color: #666; }
+    .totais-val { font-weight: 600; }
+
+    .obs-box { background: #f9f9f9; border-left: 3px solid #999; padding: 5px 8px; margin-bottom: 8px; font-size: 10px; color: #555; }
+
+    .assinaturas { display: flex; justify-content: space-between; margin-top: 36px; gap: 40px; }
+    .assinatura { flex: 1; border-top: 1px solid #333; padding-top: 5px; text-align: center; font-size: 9.5px; color: #555; }
+
+    @page { size: A4 portrait; margin: 15mm 15mm 15mm 15mm; }
+    @media print { button { display: none } body { padding: 0 } }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>📦 Pedido</h1>
-    <div class="meta">
-      <span>Cliente: <strong>${escHtml(pedido.cliente_nome)}</strong></span>
-      <span>Vendedora: <strong>${escHtml(pedido.vendedora_nome)}</strong></span>
-      <span>Gerado em: <strong>${now}</strong></span>
+
+  <!-- Cabeçalho empresa -->
+  <div class="empresa-header">
+    <div>
+      <div class="empresa-nome">Zomini Usinagens Especiais Ltda. ME</div>
+      <div class="empresa-info">
+        CNPJ: 00.000.000/0000-00 &nbsp;|&nbsp; IE: 000.000.000.000<br>
+        Av. Fictícia, 1000 — Jardim Exemplo — Indaiatuba/SP — CEP 13.000-000
+      </div>
+    </div>
+    <div class="empresa-contato">
+      <strong>CONTATO:</strong><br>
+      contato@zomini.com.br<br>
+      www.zomini.com.br<br>
+      (19) 00000-0000
     </div>
   </div>
-  ${pedido.observacoes ? `<div class="obs">Obs: ${escHtml(pedido.observacoes)}</div>` : ""}
+
+  <!-- Info do pedido -->
+  <div class="pedido-info">
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">NRO. Pedido</div>
+      <div class="pedido-info-val">${pedido.id.slice(0,8).toUpperCase()}</div>
+    </div>
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">Tipo</div>
+      <div class="pedido-info-val">COMÉRCIO</div>
+    </div>
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">Status</div>
+      <div class="pedido-info-val">${pedido.status.toUpperCase()}</div>
+    </div>
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">Data</div>
+      <div class="pedido-info-val">${now}</div>
+    </div>
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">PGTO.</div>
+      <div class="pedido-info-val">${pagamentoLabel}${parcelasLabel}</div>
+    </div>
+    ${desconto > 0 ? `<div class="pedido-info-col">
+      <div class="pedido-info-label">Desconto</div>
+      <div class="pedido-info-val">${desconto}%</div>
+    </div>` : ""}
+  </div>
+
+  <!-- Vendedora -->
+  <div style="font-size:10px; margin-bottom:4px; color:#555;">
+    Vendedora: <strong style="color:#111">${escHtml(pedido.vendedora_nome ?? "—")}</strong>
+    ${pedido.prazo_entrega ? ` &nbsp;|&nbsp; Prazo de entrega: <strong style="color:#111">${new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR")}</strong>` : ""}
+  </div>
+
+  <!-- Dados do cliente -->
+  <div class="cliente-box">
+    <div class="cliente-title">Destinatário</div>
+    <div class="cliente-grid">
+      <div>
+        <strong style="font-size:11px">${escHtml(pedido.cliente_nome)}</strong><br>
+        ${cl?.documento ? `CPF/CNPJ: ${escHtml(cl.documento)}<br>` : ""}
+        ${cl?.ie ? `IE: ${escHtml(cl.ie)}<br>` : ""}
+        ${cl?.c_mun ? `Cód. Município: ${escHtml(cl.c_mun)}<br>` : ""}
+        ${enderecoEntrega ? `End.: ${escHtml(enderecoEntrega)}` : ""}
+      </div>
+      <div>
+        ${cl?.telefone ? `Telefone: ${escHtml(cl.telefone)}<br>` : ""}
+        ${cl?.email ? `E-mail: ${escHtml(cl.email)}<br>` : ""}
+      </div>
+    </div>
+  </div>
+
+  ${pedido.observacoes ? `<div class="obs-box"><strong>Obs:</strong> ${escHtml(pedido.observacoes)}</div>` : ""}
+
+  <!-- Tabela de itens -->
   <table>
     <thead>
       <tr>
         <th class="col-num">#</th>
-        <th class="col-model">Peça</th>
-        <th class="col-lotes">Lotes</th>
-        <th class="col-qty" style="text-align:right">Qtd.</th>
+        <th class="col-model">Descrição / Item</th>
+        <th class="col-preco" style="text-align:right">R$ Unit.</th>
+        <th class="col-qty" style="text-align:center">Qtd.</th>
+        <th class="col-total" style="text-align:right">Valor (R$)</th>
       </tr>
     </thead>
     <tbody>${tableBody}</tbody>
   </table>
-  <div class="footer">
-    <span>Total: <strong>${totalPecas} peças</strong> em <strong>${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}</strong></span>
-    <span>Zomini Usinagens Especiais</span>
+
+  <!-- Totais -->
+  <div class="totais-box">
+    ${frete > 0 ? `<div class="totais-row"><span class="totais-label">Subtotal dos itens</span><span class="totais-val">${fmtVal(subtotalGeral)}</span></div>
+    <div class="totais-row"><span class="totais-label">Frete</span><span class="totais-val">${fmtVal(frete)}</span></div>` : ""}
+    <div class="totais-row">
+      <span class="totais-label">VALOR TOTAL DOS ITENS${frete > 0 ? " + FRETE" : ""}</span>
+      <span class="totais-val">${fmtVal(totalComFrete)}</span>
+    </div>
   </div>
+
+  <!-- Assinaturas -->
+  <div class="assinaturas">
+    <div class="assinatura">Zomini Usinagens Especiais Ltda. ME</div>
+    <div class="assinatura">${escHtml(pedido.cliente_nome)}</div>
+  </div>
+
 </body>
 </html>`;
     const w = window.open("", "_blank");
@@ -1549,7 +1728,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         .from("pedidos_comerciais")
         .select(`
           id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
-          created_at, lotes_separados, separado_em,
+          created_at, lotes_separados, separado_em, desconto_pct, prazo_entrega,
           clientes!inner(nome),
           pedido_itens(
             id, stock_item_id, lote, quantidade,
@@ -1568,6 +1747,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
       const mapped: Pedido[] = data.map((p: Record<string, unknown>) => ({
         id: p.id as string,
+        cliente_id: p.cliente_id as string,
         cliente_nome: (p.clientes as { nome: string }).nome,
         vendedora_nome: p.vendedora_nome as string | null,
         vendedora_id: p.vendedora_id as string | null,
@@ -1575,6 +1755,8 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         frete: (p.frete as number) ?? 0,
         observacoes: p.observacoes as string | null,
         created_at: p.created_at as string,
+        desconto_pct: (p.desconto_pct as number) ?? 0,
+        prazo_entrega: (p.prazo_entrega as string | null) ?? null,
         lotes_separados: (p.lotes_separados as LoteSeparado[] | null) ?? null,
         itens: (() => {
           const raw = ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
