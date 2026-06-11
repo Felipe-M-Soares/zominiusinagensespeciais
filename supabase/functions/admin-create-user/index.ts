@@ -7,12 +7,10 @@ function getRequiredEnv(key: string): string {
   return value;
 }
 
-// Gera email interno a partir do login: login@interno.conceptus
 function loginToEmail(login: string): string {
   return `${login.toLowerCase().trim()}@interno.conceptus`;
 }
 
-// Rate limiting: max 10 requests per minute per IP for admin operations
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 function checkRateLimit(ip: string, maxReq = 10, windowMs = 60_000): boolean {
   const now = Date.now();
@@ -35,7 +33,6 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Rate limit by IP (DDoS / brute-force protection)
   const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     ?? req.headers.get("cf-connecting-ip")
     ?? "unknown";
@@ -46,40 +43,43 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl   = getRequiredEnv("SUPABASE_URL");
-    const supabaseAnon  = getRequiredEnv("SUPABASE_ANON_KEY");
-    const serviceKey    = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseUrl  = getRequiredEnv("SUPABASE_URL");
+    const supabaseAnon = getRequiredEnv("API_ANON_KEY");
+    const serviceKey   = getRequiredEnv("API_SERVICE_KEY");
 
-    // Valida JWT do chamador
     const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
     if (!token) {
       return new Response(JSON.stringify({ error: "Não autenticado" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
     const userClient = createClient(supabaseUrl, supabaseAnon, {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Sessão inválida." }), {
+      return new Response(JSON.stringify({ error: "Sessão inválida: " + (userError?.message ?? "sem usuário") }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const adminClient = createClient(supabaseUrl, serviceKey);
 
-    // Verifica que chamador é admin
-    const { data: roleData } = await adminClient
+    const { data: roleData, error: roleError } = await adminClient
       .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
+    if (roleError) {
+      return new Response(JSON.stringify({ error: "Erro ao verificar role: " + roleError.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     if (roleData?.role !== "admin") {
       return new Response(JSON.stringify({ error: "Apenas administradores podem criar usuários" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // DDoS protection: limit body to 8KB (login+password+name+role = ~400 bytes max)
     const MAX_BODY = 8 * 1024;
     const rawBuf = await req.arrayBuffer();
     if (rawBuf.byteLength > MAX_BODY) {
@@ -88,10 +88,9 @@ Deno.serve(async (req) => {
       });
     }
     let body: Record<string, string> = {};
-    try { body = JSON.parse(new TextDecoder().decode(rawBuf)); } catch { /* invalid json = empty body */ }
+    try { body = JSON.parse(new TextDecoder().decode(rawBuf)); } catch { /* invalid json */ }
     const { login, password, display_name, role: newRole } = body;
 
-    // Valida login (username)
     if (!login || typeof login !== "string" || login.trim().length < 2) {
       return new Response(JSON.stringify({ error: "Login inválido (mínimo 2 caracteres)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -104,7 +103,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Valida senha
     if (!password || typeof password !== "string" || password.length < 8) {
       return new Response(JSON.stringify({ error: "Senha deve ter no mínimo 8 caracteres" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -116,14 +114,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Valida nome
     if (!display_name || typeof display_name !== "string" || display_name.trim().length < 2) {
       return new Response(JSON.stringify({ error: "Nome inválido (mínimo 2 caracteres)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Verifica se login já existe
     const { data: existingProfile } = await adminClient
       .from("profiles").select("user_id").ilike("login", cleanLogin).maybeSingle();
     if (existingProfile) {
@@ -136,7 +132,6 @@ Deno.serve(async (req) => {
     const cleanName = display_name.trim().slice(0, 100);
     const validRole = ["admin", "estoque", "qualidade", "comercial", "financeiro", "producao"].includes(newRole) ? newRole : "estoque";
 
-    // Cria usuário
     const { data: createdUser, error: createError } = await adminClient.auth.admin.createUser({
       email: internalEmail,
       password,
@@ -162,7 +157,6 @@ Deno.serve(async (req) => {
 
     const newUserId = createdUser.user.id;
 
-    // Profile com login + must_change_password = true (usuário define senha no 1º login)
     await adminClient.from("profiles").upsert(
       {
         user_id: newUserId,
@@ -175,7 +169,6 @@ Deno.serve(async (req) => {
       { onConflict: "user_id" }
     );
 
-    // Role — inserido para TODOS os roles, não apenas admin
     await adminClient.from("user_roles").upsert(
       { user_id: newUserId, role: validRole },
       { onConflict: "user_id" }
@@ -184,9 +177,11 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ success: true, user_id: newUserId, login: cleanLogin }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (err) {
-    console.error("admin-create-user error:", err);
-    return new Response(JSON.stringify({ error: "Erro interno." }), {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("admin-create-user error:", msg);
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
