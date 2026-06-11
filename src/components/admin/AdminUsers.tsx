@@ -191,11 +191,13 @@ export function AdminUsers() {
     if (pwdError) { toast.error(pwdError); return; }
     setResettingPassword(true);
     try {
-      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_reset_password", {
-        p_target_user_id: passwordDialog.user_id,
-        p_new_password:   newPassword,
+      const { data, error } = await supabase.functions.invoke("admin-reset-password", {
+        body: {
+          target_user_id: passwordDialog.user_id,
+          new_password:   newPassword,
+        },
       });
-      const errMsg = rpcErr?.message ?? (rpcData as { error?: string } | null)?.error ?? null;
+      const errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
       if (errMsg) {
         toast.error("Erro ao redefinir senha: " + errMsg);
       } else {
@@ -238,13 +240,15 @@ export function AdminUsers() {
     if (pwErr) { toast.error(pwErr); return; }
     setCreatingUser(true);
     try {
-      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_create_user", {
-        p_login:        newUserLogin.trim().toLowerCase(),
-        p_password:     newUserPassword,
-        p_display_name: newUserName.trim(),
-        p_role:         newUserRole,
+      const { data, error } = await supabase.functions.invoke("admin-create-user", {
+        body: {
+          login:        newUserLogin.trim().toLowerCase(),
+          password:     newUserPassword,
+          display_name: newUserName.trim(),
+          role:         newUserRole,
+        },
       });
-      const errMsg = rpcErr?.message ?? (rpcData as { error?: string } | null)?.error ?? null;
+      const errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
       if (errMsg) {
         toast.error("Erro ao criar conta: " + errMsg);
       } else {
