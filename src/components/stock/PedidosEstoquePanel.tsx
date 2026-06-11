@@ -486,61 +486,179 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const totalPecas = printRows.reduce((s, r) => s + r.quantidade, 0);
     const totalTipos = grouped.size;
 
+    // Busca dados adicionais do pedido (forma pagamento, endereço, preços)
+    const { data: pedidoExtra } = await supabase
+      .from("pedidos_comerciais")
+      .select("forma_pagamento, parcelas, endereco_entrega, usar_endereco_cliente")
+      .eq("id", pedido.id)
+      .maybeSingle();
+
+    const { data: clienteData } = await supabase
+      .from("clientes")
+      .select("endereco, documento")
+      .eq("id", pedido.cliente_id)
+      .maybeSingle();
+
+    const enderecoCliente = (clienteData as { endereco?: string; documento?: string } | null)?.endereco ?? "";
+    const documentoCliente = (clienteData as { endereco?: string; documento?: string } | null)?.documento ?? "";
+    const extra = pedidoExtra as { forma_pagamento?: string; parcelas?: number; endereco_entrega?: string; usar_endereco_cliente?: boolean } | null;
+    const enderecoEntrega = extra?.usar_endereco_cliente !== false ? enderecoCliente : (extra?.endereco_entrega ?? "");
+
+    const fmtPagamento: Record<string, string> = {
+      dinheiro: "Dinheiro", pix: "PIX", boleto: "Boleto",
+      cartao_debito: "Cartão de Débito", cartao_credito: "Cartão de Crédito",
+    };
+    const pagamentoLabel = extra?.forma_pagamento
+      ? fmtPagamento[extra.forma_pagamento] ?? extra.forma_pagamento
+      : "Não informado";
+    const parcelasLabel = extra?.forma_pagamento === "cartao_credito" && (extra?.parcelas ?? 1) > 1
+      ? ` — ${extra.parcelas}x` : "";
+
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Pedido — ${escHtml(pedido.cliente_nome)}</title>
+  <title>Pedido ${pedido.id.slice(0,8).toUpperCase()} — ${escHtml(pedido.cliente_nome)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; padding: 24px 28px; color: #111; font-size: 13px; }
-    .header { margin-bottom: 18px; border-bottom: 2px solid #ddd6fe; padding-bottom: 14px; }
-    h1 { font-size: 20px; font-weight: 800; color: #3b0764; margin-bottom: 6px; }
-    .meta { font-size: 12px; color: #555; display: flex; flex-wrap: wrap; gap: 12px; }
-    .meta strong { color: #333; }
-    .obs { font-size: 12px; color: #666; background: #f9f5ff; border-left: 3px solid #a78bfa; padding: 8px 12px; margin-bottom: 14px; border-radius: 0 6px 6px 0; }
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; padding: 8px 10px; background: #f3f0ff; color: #5b21b6; border-bottom: 2px solid #ddd6fe; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-    td { padding: 7px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
-    tr:nth-child(even) td { background: #faf9ff; }
-    .col-num { width: 28px; color: #bbb; font-size: 11px; }
-    .col-model { width: 38%; }
+    body { font-family: Arial, sans-serif; padding: 20px 24px; color: #111; font-size: 12px; }
+
+    /* ── Cabeçalho empresa ── */
+    .empresa-header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 2px solid #111; margin-bottom: 12px; }
+    .empresa-nome { font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
+    .empresa-info { font-size: 10px; color: #444; line-height: 1.6; margin-top: 3px; }
+    .empresa-contato { text-align: right; font-size: 10px; color: #444; line-height: 1.7; }
+
+    /* ── Info do pedido ── */
+    .pedido-info { display: flex; gap: 0; border: 1px solid #ccc; margin-bottom: 10px; }
+    .pedido-info-col { flex: 1; padding: 6px 10px; border-right: 1px solid #ccc; font-size: 11px; }
+    .pedido-info-col:last-child { border-right: none; }
+    .pedido-info-label { font-size: 9px; text-transform: uppercase; color: #888; font-weight: 600; margin-bottom: 2px; }
+    .pedido-info-val { font-weight: 700; color: #111; }
+
+    /* ── Dados do cliente ── */
+    .cliente-box { border: 1px solid #ccc; padding: 8px 12px; margin-bottom: 10px; font-size: 11px; line-height: 1.7; }
+    .cliente-box strong { font-size: 12px; }
+    .cliente-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+
+    /* ── Tabela de itens ── */
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    th { text-align: left; padding: 7px 8px; background: #f0f0f0; border: 1px solid #ccc; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+    td { padding: 6px 8px; border: 1px solid #ddd; vertical-align: middle; font-size: 11px; }
+    tr:nth-child(even) td { background: #fafafa; }
+    .col-num { width: 24px; text-align: center; color: #888; }
+    .col-model { width: 40%; }
     .col-lotes { }
-    .col-qty { width: 80px; text-align: right; font-weight: 800; font-size: 15px; color: #3b0764; white-space: nowrap; }
-    .model-name { display: block; font-weight: 600; font-size: 12px; color: #1a1a2e; }
-    .model-ref { display: block; font-family: monospace; font-size: 10px; color: #888; margin-top: 1px; }
-    .lote-badge { display: inline-block; background: #f3f0ff; color: #5b21b6; font-family: monospace; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; border: 1px solid #ddd6fe; margin: 1px 2px 1px 0; }
-    .lote-empty { color: #bbb; font-size: 11px; }
-    .footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #eee; display: flex; justify-content: space-between; font-size: 11px; color: #999; }
-    .footer strong { color: #5b21b6; }
-    @media print { button { display: none } body { padding: 16px } }
+    .col-qty { width: 60px; text-align: right; font-weight: 800; font-size: 13px; }
+    .model-name { display: block; font-weight: 700; font-size: 11px; }
+    .model-ref { display: block; font-family: monospace; font-size: 9px; color: #888; margin-top: 1px; }
+    .lote-badge { display: inline-block; background: #eee; font-family: monospace; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; border: 1px solid #ccc; margin: 1px 2px 1px 0; }
+    .lote-empty { color: #bbb; font-size: 10px; }
+
+    /* ── Totais e rodapé ── */
+    .totais { border: 1px solid #ccc; padding: 8px 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .totais-left { font-size: 11px; }
+    .totais-right { text-align: right; font-size: 11px; }
+    .total-val { font-size: 16px; font-weight: 800; }
+
+    .assinaturas { display: flex; justify-content: space-between; margin-top: 32px; gap: 40px; }
+    .assinatura { flex: 1; border-top: 1px solid #333; padding-top: 6px; text-align: center; font-size: 10px; color: #555; }
+
+    .obs-box { background: #f9f9f9; border-left: 3px solid #888; padding: 6px 10px; margin-bottom: 10px; font-size: 11px; color: #555; }
+
+    @media print { button { display: none } body { padding: 12px } }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>📦 Pedido</h1>
-    <div class="meta">
-      <span>Cliente: <strong>${escHtml(pedido.cliente_nome)}</strong></span>
-      <span>Vendedora: <strong>${escHtml(pedido.vendedora_nome)}</strong></span>
-      <span>Gerado em: <strong>${now}</strong></span>
+
+  <!-- Cabeçalho da empresa -->
+  <div class="empresa-header">
+    <div>
+      <div class="empresa-nome">Zomini Usinagens Especiais Ltda. ME</div>
+      <div class="empresa-info">
+        CNPJ: 00.000.000/0000-00 &nbsp;|&nbsp; IE: 000.000.000.000<br>
+        Av. Fictícia, 1000 — Jardim Exemplo — Indaiatuba/SP — CEP 13.000-000
+      </div>
+    </div>
+    <div class="empresa-contato">
+      <strong>CONTATO:</strong><br>
+      contato@zomini.com.br<br>
+      www.zomini.com.br<br>
+      (19) 00000-0000
     </div>
   </div>
-  ${pedido.observacoes ? `<div class="obs">Obs: ${escHtml(pedido.observacoes)}</div>` : ""}
+
+  <!-- Info do pedido -->
+  <div class="pedido-info">
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">Nº do Pedido</div>
+      <div class="pedido-info-val">${pedido.id.slice(0,8).toUpperCase()}</div>
+    </div>
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">Tipo</div>
+      <div class="pedido-info-val">COMÉRCIO</div>
+    </div>
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">Status</div>
+      <div class="pedido-info-val">${pedido.status.toUpperCase()}</div>
+    </div>
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">Data</div>
+      <div class="pedido-info-val">${now}</div>
+    </div>
+    <div class="pedido-info-col">
+      <div class="pedido-info-label">Pgto.</div>
+      <div class="pedido-info-val">${pagamentoLabel}${parcelasLabel}</div>
+    </div>
+  </div>
+
+  <!-- Dados do cliente -->
+  <div class="cliente-box">
+    <div class="cliente-grid">
+      <div>
+        <strong>${escHtml(pedido.cliente_nome)}</strong><br>
+        ${documentoCliente ? `CPF/CNPJ: ${escHtml(documentoCliente)}<br>` : ""}
+        ${enderecoEntrega ? `Endereço: ${escHtml(enderecoEntrega)}` : "<span style='color:#bbb'>Endereço não informado</span>"}
+      </div>
+      <div>
+        Vendedora: <strong>${escHtml(pedido.vendedora_nome ?? "—")}</strong><br>
+        ${pedido.prazo_entrega ? `Prazo de entrega: <strong>${new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR")}</strong>` : ""}
+      </div>
+    </div>
+  </div>
+
+  ${pedido.observacoes ? `<div class="obs-box"><strong>Obs:</strong> ${escHtml(pedido.observacoes)}</div>` : ""}
+
+  <!-- Tabela de itens -->
   <table>
     <thead>
       <tr>
         <th class="col-num">#</th>
-        <th class="col-model">Peça</th>
+        <th class="col-model">Descrição / Item</th>
         <th class="col-lotes">Lotes</th>
         <th class="col-qty" style="text-align:right">Qtd.</th>
       </tr>
     </thead>
     <tbody>${tableBody}</tbody>
   </table>
-  <div class="footer">
-    <span>Total: <strong>${totalPecas} peças</strong> em <strong>${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}</strong></span>
-    <span>Zomini Usinagens Especiais</span>
+
+  <!-- Totais -->
+  <div class="totais">
+    <div class="totais-left">
+      Total de itens: <strong>${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}</strong>
+    </div>
+    <div class="totais-right">
+      <span style="font-size:11px;color:#666">TOTAL DE PEÇAS</span><br>
+      <span class="total-val">${totalPecas} un.</span>
+    </div>
   </div>
+
+  <!-- Assinaturas -->
+  <div class="assinaturas">
+    <div class="assinatura">Zomini Usinagens Especiais Ltda. ME</div>
+    <div class="assinatura">${escHtml(pedido.cliente_nome)}</div>
+  </div>
+
 </body>
 </html>`;
     const w = window.open("", "_blank");
