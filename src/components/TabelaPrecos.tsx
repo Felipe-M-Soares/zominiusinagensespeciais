@@ -32,6 +32,10 @@ interface DevicePreco {
   observacoes_preco: string | null;
 }
 
+function fmtCurrency(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean; canEdit?: boolean }) {
   const [devices,    setDevices]    = useState<DevicePreco[]>([]);
   const [loading,    setLoading]    = useState(true);
