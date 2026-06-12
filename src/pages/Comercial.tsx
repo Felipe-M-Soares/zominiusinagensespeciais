@@ -831,18 +831,14 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
 // ─── Botão Reenviar Pedido Retornado ──────────────────────────────────────────
 
-function ReenviarPedidoRetornadoBtn({ pedidoId, onComentar }: { pedidoId: string; onComentar: () => void }) {
-  const [saving, setSaving] = useState(false);
-
+function ReenviarPedidoRetornadoBtn({ pedidoId, onComentar, onReenviar }: { pedidoId: string; onComentar: () => void; onReenviar: () => void }) {
   async function handleReenviar() {
-    setSaving(true);
+    onReenviar(); // otimista — atualiza UI na hora
     const { error } = await supabase
       .from("pedidos_comerciais")
       .update({ status: "pendente", observacoes: null })
       .eq("id", pedidoId);
-    setSaving(false);
-    if (error) { toast.error("Erro ao reenviar pedido."); return; }
-    toast.success("Pedido reenviado! Aguardando confirmação do estoque.");
+    if (error) toast.error("Erro ao reenviar pedido.");
   }
 
   return (
@@ -850,18 +846,18 @@ function ReenviarPedidoRetornadoBtn({ pedidoId, onComentar }: { pedidoId: string
       <button
         type="button"
         onClick={onComentar}
-        className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl text-[11px] font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-500/10 border border-orange-500/30 transition-colors"
+        className="h-9 px-3 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-500/10 border border-orange-500/30 transition-colors shrink-0"
       >
-        <MessageSquare className="h-3.5 w-3.5" /> Ver motivo
+        <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+        Ver motivo
       </button>
       <button
         type="button"
         onClick={handleReenviar}
-        disabled={saving}
-        className="flex-1 h-9 rounded-xl bg-orange-500 hover:bg-orange-400 text-white text-[11px] font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+        className="flex-1 h-9 rounded-xl bg-orange-500 hover:bg-orange-400 active:scale-95 text-white text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 min-w-0"
       >
-        {saving ? <div className="h-3.5 w-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-        Reenviar ao Estoque
+        <Send className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">Reenviar ao Estoque</span>
       </button>
     </div>
   );
@@ -878,9 +874,10 @@ interface PedidoCardProps {
   onAdicionarPeca: (p: PedidoCompleto) => void;
   onDuplicar: (p: PedidoCompleto) => void;
   onComentar: (p: PedidoCompleto) => void;
+  onReenviar: (p: PedidoCompleto) => void;
 }
 
-function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar }: PedidoCardProps) {
+function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const temDesconto = pedido.desconto_pct > 0;
@@ -1220,7 +1217,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
 
           {/* Botão reenviar pedido retornado */}
           {pedido.status === "retorno" && (
-            <ReenviarPedidoRetornadoBtn pedidoId={pedido.id} onComentar={() => onComentar(pedido)} />
+            <ReenviarPedidoRetornadoBtn pedidoId={pedido.id} onComentar={() => onComentar(pedido)} onReenviar={() => onReenviar(pedido)} />
           )}
 
         </div>
@@ -2641,7 +2638,7 @@ export default function Comercial() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {pedidosFiltrados.map(p => (
-                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} canConfirm={isAdmin || isVendedora} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)} />
+                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} canConfirm={isAdmin || isVendedora} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)} onReenviar={p => setPedidos(prev => prev.map(x => x.id === p.id ? { ...x, status: "pendente" as const } : x))} />
                     ))}
                   </div>
                 )}
