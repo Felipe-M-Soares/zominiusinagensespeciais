@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS public.pedidos_comerciais (
                       CHECK (status IN ('pendente','separando','pronto','faturado','enviado','cancelado')),
   observacoes         text,
   frete               numeric(10,2) NOT NULL DEFAULT 0,
-  desconto_pct        integer NOT NULL DEFAULT 0 CHECK (desconto_pct BETWEEN 0 AND 100),
+  desconto_pct        numeric(5,2) NOT NULL DEFAULT 0 CHECK (desconto_pct BETWEEN 0 AND 100),
   separado_por        uuid REFERENCES auth.users(id),
   separado_em         timestamptz,
   faturado_por        uuid REFERENCES auth.users(id),
