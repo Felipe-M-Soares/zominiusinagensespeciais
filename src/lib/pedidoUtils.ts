@@ -24,6 +24,7 @@ export interface CriarPedidoParams {
   parcelas?: number;
   enderecoEntrega?: string | null;
   usarEnderecoCliente?: boolean;
+  frete?: number;
 }
 
 export interface CriarPedidoResult {
@@ -38,7 +39,7 @@ export async function criarPedidoComReserva(
   const {
     clienteId, itens, vendedoraId, vendedoraNome, observacoes,
     descontoPct, prazoEntrega, formaPagamento, parcelas,
-    enderecoEntrega, usarEnderecoCliente,
+    enderecoEntrega, usarEnderecoCliente, frete,
   } = params;
 
   const { data: pedido, error: pedidoErr } = await supabase
@@ -54,6 +55,7 @@ export async function criarPedidoComReserva(
       parcelas: formaPagamento === "cartao_credito" ? (parcelas ?? 1) : 1,
       endereco_entrega: enderecoEntrega ?? null,
       usar_endereco_cliente: usarEnderecoCliente ?? true,
+      frete: frete ?? 0,
     })
     .select()
     .single();

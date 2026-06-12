@@ -132,6 +132,7 @@ interface PedidoCompleto {
   status: "pendente" | "separando" | "pronto" | "faturado" | "enviado" | "cancelado" | "retorno";
   observacoes: string | null;
   desconto_pct: number;
+  frete: number;
   prazo_entrega: string | null;
   created_at: string;
   faturado_em: string | null;
@@ -309,6 +310,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const [formaPagamento, setFormaPagamento] = useState("");
   const [parcelas, setParcelas] = useState(1);
   const [enderecoEntrega, setEnderecoEntrega] = useState("");
+  const [frete, setFrete] = useState(0);
   const [usarEnderecoCliente, setUsarEnderecoCliente] = useState(true);
   const [precoMap, setPrecoMap] = useState<Record<string, number>>({});
 
@@ -370,6 +372,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           setPrazoEntrega(d.prazo_entrega ?? "");
           setEnderecoEntrega(d.endereco_entrega ?? "");
           setUsarEnderecoCliente(d.usar_endereco_cliente ?? true);
+          setFrete((d as { frete?: number }).frete ?? 0);
         });
     } else if (duplicarDe) {
       setClienteId(duplicarDe.cliente_id);
@@ -385,7 +388,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       })));
     } else {
       setItens([]); setObs(""); setDesconto(0); setPrazoEntrega("");
-      setFormaPagamento(""); setParcelas(1); setEnderecoEntrega(""); setUsarEnderecoCliente(true);
+      setFormaPagamento(""); setParcelas(1); setEnderecoEntrega(""); setUsarEnderecoCliente(true); setFrete(0);
     }
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
     setSelectedPeca(null); setQtd(1);
@@ -559,6 +562,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           cliente_id: clienteId,
           status: "pendente",
           desconto_pct: desconto,
+          frete: frete > 0 ? frete : 0,
           observacoes: obs || null,
           prazo_entrega: prazoEntrega || null,
           forma_pagamento: formaPagamento || null,
@@ -590,6 +594,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         vendedoraNome,
         observacoes: obs || null,
         descontoPct: desconto,
+        frete: frete > 0 ? frete : 0,
         prazoEntrega: prazoEntrega || null,
         formaPagamento: formaPagamento || null,
         parcelas: formaPagamento === "cartao_credito" ? parcelas : 1,
@@ -873,6 +878,32 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
             )}
           </div>
 
+          {/* ── Frete ── */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Frete (R$)</label>
+            <div className="relative flex items-center">
+              <span className="absolute left-3 text-[13px] font-medium text-muted-foreground pointer-events-none">R$</span>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={frete === 0 ? "" : frete}
+                onChange={e => {
+                  const v = parseFloat(e.target.value);
+                  setFrete(isNaN(v) || v < 0 ? 0 : v);
+                }}
+                placeholder="0,00"
+                className="w-full h-10 rounded-xl border border-border bg-background pl-9 pr-4 text-[14px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50 transition-all"
+              />
+            </div>
+            {frete > 0 && (
+              <p className="text-[11px] text-violet-600 dark:text-violet-400 flex items-center gap-1.5 px-1">
+                <Truck className="h-3.5 w-3.5 shrink-0" />
+                Frete de R$ {frete.toFixed(2).replace(".", ",")} será adicionado ao pedido
+              </p>
+            )}
+          </div>
+
           {/* ── Observações ── */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Observações</label>
@@ -1142,6 +1173,16 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
             ) : (
               <div className="flex items-center justify-center rounded-xl px-3 py-2 bg-muted/20 border border-border/40 min-w-[54px]">
                 <span className="text-[10px] font-medium text-muted-foreground/50">Sem desc.</span>
+              </div>
+            )}
+            {/* Frete */}
+            {(pedido.frete ?? 0) > 0 && (
+              <div className="flex flex-col items-center justify-center rounded-xl px-2 py-2 border border-violet-500/25 min-w-[50px]"
+                style={{ background: "linear-gradient(135deg,#ede9fe,#ddd6fe)", borderColor: "#c4b5fd" }}>
+                <Truck className="h-3 w-3 text-violet-600 mb-0.5" />
+                <span className="text-[9px] font-bold text-violet-700 leading-none">
+                  R$ {(pedido.frete).toFixed(0)}
+                </span>
               </div>
             )}
           </div>
@@ -2473,7 +2514,7 @@ export default function Comercial() {
     try {
       const { data: pedidosData } = await supabase
         .from("pedidos_comerciais")
-        .select("*, clientes(nome)")
+        .select("*, frete, clientes(nome)")
         .order("created_at", { ascending: false })
         .abortSignal(ctrl.signal);
 
@@ -2500,7 +2541,7 @@ export default function Comercial() {
 
       setPedidos(pedidosData.map((p: Record<string, unknown>) => {
         const c = p.clientes as Record<string, unknown> | null;
-        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
+        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, frete: (p.frete as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
     } catch (_e) {
       toast.error("Erro ao carregar pedidos.", {
