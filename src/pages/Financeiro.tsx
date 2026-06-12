@@ -243,6 +243,7 @@ function calcTotal(itens: ItemFiscal[], frete: number): number {
 }
 
 function initDados(pedido: Pedido, numero: string): DadosFiscais {
+  const desconto = pedido.desconto_pct ?? 0;
   return {
     tipoNota: "nfe",
     numero,
@@ -251,20 +252,25 @@ function initDados(pedido: Pedido, numero: string): DadosFiscais {
     destDocumento: pedido.cliente_documento ?? "",
     destNome:      pedido.cliente_nome ?? "",
     destEmail:     pedido.cliente_email ?? "",
+    // Usa endereço de entrega do pedido (pode ter sido editado pelo estoque)
     destEndereco:  pedido.cliente_endereco ?? "",
     itens: pedido.itens.map(item => {
-      // Prioridade: preco_venda da tabela de preços > valor_unitario do pedido > 0
+      // Prioridade: preco_venda da tabela > valor_unitario do pedido_item > 0
       const precoBase = (item.preco_venda ?? 0) > 0
         ? item.preco_venda!
         : (item.valor_unitario ?? 0);
+      // Aplica desconto do pedido automaticamente
+      const precoFinal = desconto > 0
+        ? precoBase * (1 - desconto / 100)
+        : precoBase;
       return {
         pedido_item_id: item.id,
         descricao:      item.device_model ?? "Produto",
-        ncm:            item.ncm ?? item.ncm ?? "90213990",
+        ncm:            item.ncm ?? "90213990",
         cfop:           item.cfop_padrao ?? item.cfop ?? "5102",
         unidade: "UN",
         quantidade:     item.quantidade,
-        valorUnitario:  precoBase.toFixed(2),
+        valorUnitario:  precoFinal.toFixed(2),
         aliqICMS: "12.00",
         cst: "00",
       };
@@ -279,7 +285,11 @@ function initDados(pedido: Pedido, numero: string): DadosFiscais {
     valorTotal:    "0.00",
     modFrete:      "9",
     valorFrete:    (pedido.frete ?? 0).toFixed(2),
-    informacoesAdicionais: pedido.observacoes ?? "",
+    informacoesAdicionais: [
+      pedido.observacoes,
+      desconto > 0 ? `Desconto de ${desconto}% aplicado individualmente em cada peça.` : "",
+      pedido.parcelas && pedido.parcelas > 1 ? `Parcelado em ${pedido.parcelas}x.` : "",
+    ].filter(Boolean).join(" | "),
   };
 }
 
@@ -1541,11 +1551,23 @@ function SefazModal({
           {step === 2 && (
             <div className="space-y-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dados do Destinatário</p>
+
+              {/* Endereço de entrega do pedido */}
+              {pedido.cliente_endereco && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-blue-500/8 border border-blue-500/20">
+                  <MapPin className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Endereço de entrega do pedido</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 break-words">{pedido.cliente_endereco}</p>
+                  </div>
+                </div>
+              )}
+
               {[
                 { key: "destNome" as const,      label: "Nome / Razão Social *", icon: Building2, placeholder: "RAZÃO SOCIAL", upper: true  },
                 { key: "destDocumento" as const, label: "CPF / CNPJ",            icon: Hash,      placeholder: "000.000.000-00", upper: false },
                 { key: "destEmail" as const,     label: "E-mail",                icon: Mail,      placeholder: "cliente@email.com", upper: false },
-                { key: "destEndereco" as const,  label: "Endereço",              icon: MapPin,    placeholder: "Rua, nº, bairro, cidade — UF", upper: false },
+                { key: "destEndereco" as const,  label: "Endereço de Entrega",    icon: MapPin,    placeholder: "Rua, nº, bairro, cidade — UF", upper: false },
               ].map(f => (
                 <div key={f.key} className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
@@ -1572,34 +1594,11 @@ function SefazModal({
                 Dados Fiscais por Item ({dados.itens.length})
               </p>
               {(pedido?.desconto_pct ?? 0) > 0 && (
-                <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/8 border border-emerald-500/25">
-                  <div className="flex items-center gap-2">
-                    <Percent className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-                      Vendedora informou <strong>{pedido!.desconto_pct}% de desconto</strong> em cada peça
-                    </p>
-                  </div>
-                  <button type="button"
-                    onClick={() => {
-                      const pct = pedido!.desconto_pct ?? 0;
-                      setDados(prev => {
-                        if (!prev) return prev;
-                        return {
-                          ...prev,
-                          itens: prev.itens.map(it => {
-                            // Desconto aplicado individualmente em cada peça
-                            const vOrig = parseFloat(it.valorUnitario) || 0;
-                            if (vOrig <= 0) return it;
-                            const vComDesconto = vOrig * (1 - pct / 100);
-                            return { ...it, valorUnitario: vComDesconto.toFixed(2) };
-                          }),
-                        };
-                      });
-                      toast.success(`Desconto de ${pedido!.desconto_pct}% aplicado em cada peça individualmente`);
-                    }}
-                    className="shrink-0 h-7 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition-colors">
-                    Aplicar desconto
-                  </button>
+                <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-emerald-500/8 border border-emerald-500/25">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    Desconto de <strong>{pedido!.desconto_pct}%</strong> já aplicado automaticamente em cada peça
+                  </p>
                 </div>
               )}
               {dados.itens.map((item, idx) => {
@@ -1758,7 +1757,35 @@ function SefazModal({
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Destinatário</p>
                 <p className="text-[13px] font-semibold">{dados.destNome}</p>
                 {dados.destDocumento && <p className="text-[10px] text-muted-foreground font-mono">{mascararDoc(dados.destDocumento)}</p>}
+                {dados.destEndereco && (
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1 mt-1">
+                    <MapPin className="h-3 w-3 shrink-0 mt-0.5 text-muted-foreground/60" />
+                    {dados.destEndereco}
+                  </p>
+                )}
               </div>
+
+              {/* Resumo financeiro */}
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 space-y-1.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Resumo Financeiro</p>
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground">Forma de pagamento</span>
+                  <span className="font-semibold">{TIPOS_PAGAMENTO.find(t => t.valor === dados.tipoPagamento)?.label ?? dados.tipoPagamento}</span>
+                </div>
+                {(pedido?.desconto_pct ?? 0) > 0 && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Desconto aplicado</span>
+                    <span className="font-semibold text-emerald-600">{pedido!.desconto_pct}% por peça</span>
+                  </div>
+                )}
+                {(pedido?.parcelas ?? 1) > 1 && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Parcelamento</span>
+                    <span className="font-semibold">{pedido!.parcelas}x no cartão</span>
+                  </div>
+                )}
+              </div>
+
               <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-2">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Itens ({dados.itens.length})</p>
                 {dados.itens.map((item, idx) => (
