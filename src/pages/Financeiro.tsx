@@ -1486,7 +1486,7 @@ function SefazModal({
             </div>
             <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border",
               pedido.status === "pronto"   ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" :
-              pedido.status === "faturado" ? "bg-violet-500/10 text-violet-600 border-violet-500/20" :
+              pedido.status === "enviado" ? "bg-sky-500/10 text-sky-600 border-sky-500/20" :
               "bg-muted/30 text-muted-foreground border-border/30")}>
               {statusLabel(pedido.status)}
             </span>
@@ -1913,7 +1913,7 @@ function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirN
   }
 
   const isPronto   = pedido.status === "pronto";
-  const isFaturado = pedido.status === "faturado";
+  const isFaturado = pedido.status === "enviado";
   const isEnviado  = pedido.status === "enviado";
   const accentColor = isPronto ? "#10b981" : isFaturado ? "#7c3aed" : isEnviado ? "#22c55e" : "hsl(var(--muted-foreground))";
   const borderColor = isPronto ? "#34d399" : isFaturado ? "#a78bfa" : isEnviado ? "#4ade80" : "hsl(var(--border))";
@@ -2021,7 +2021,7 @@ function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirN
               </button>
             )}
             {/* Botão download XML — busca sob demanda se necessário */}
-            {(pedido.status === "faturado" || pedido.status === "enviado") && (
+            {pedido.status === "enviado" && (
               <button type="button" onClick={downloadXml} disabled={downloadingXml}
                 className="h-9 px-3 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-semibold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 hover:bg-violet-200 transition-colors">
                 {downloadingXml
@@ -3812,7 +3812,7 @@ export default function Financeiro() {
 
   const { prontos, faturados, enviados } = useMemo(() => ({
     prontos:   pedidos.filter(p => p.status === "pronto").length,
-    faturados: pedidos.filter(p => p.status === "faturado").length,
+    faturados: pedidos.filter(p => p.status === "faturado" || p.status === "enviado").length,
     enviados:  pedidos.filter(p => p.status === "enviado").length,
   }), [pedidos]);
 

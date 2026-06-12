@@ -1179,6 +1179,13 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
               </div>
             )}
 
+            {pedido.status === "enviado" && (
+              <div className="flex-1 h-9 rounded-xl bg-sky-500/5 border border-sky-500/20 text-sky-600 text-[12px] font-medium flex items-center justify-center gap-1.5">
+                <Truck className="h-3.5 w-3.5" />
+                NF emitida — Pedido enviado
+              </div>
+            )}
+
             {/* Botão Retornar — disponível para separando e pronto */}
             {isSeparando && (
               <button type="button" onClick={() => onRetornar(pedido)}
@@ -2302,7 +2309,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   }
 
   // ── Imprimir todos os pedidos do mês ──────────────────────────────────────
-  function handleImprimirTodos() {
+  async function handleImprimirTodos() {
     const now = new Date();
     const nowStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
     const mesAtual = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
@@ -2311,45 +2318,106 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     function escH(s?: string | null) {
       return (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     }
+    function fmtBRL(v: number) {
+      return "R$ " + v.toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
 
     // Filtra pedidos do mês atual
     const pedidosDoMes = filtrados.filter(p => {
       const d = new Date(p.created_at);
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     });
+    const pedidosParaImprimir = pedidosDoMes.length > 0 ? pedidosDoMes : filtrados;
 
-    if (pedidosDoMes.length === 0) {
-      const d = new Date(filtrados[0]?.created_at ?? now.toISOString());
-      // Se não há nenhum do mês atual, imprime todos os visíveis
-      // (pode ser que o filtro de status já restrinja)
+    // ── Busca dados extras em batch ────────────────────────────────────────────
+    const ids = pedidosParaImprimir.map(p => p.id);
+    const clienteIds = [...new Set(pedidosParaImprimir.map(p => p.cliente_id))];
+    const stockIds = [...new Set(pedidosParaImprimir.flatMap(p => p.itens.map(i => i.stock_item_id)))];
+
+    const [exRes, clRes, devRes, itensPrecoRes] = await Promise.all([
+      supabase.from("pedidos_comerciais")
+        .select("id, forma_pagamento, parcelas, endereco_entrega, usar_endereco_cliente, desconto_pct, frete")
+        .in("id", ids),
+      supabase.from("clientes")
+        .select("id, documento, email, telefone, logradouro, numero, bairro, municipio, uf, cep, endereco")
+        .in("id", clienteIds),
+      supabase.from("stock_items")
+        .select("id, devices(id, model, reference, ncm, cfop_padrao, ipi_pct, preco_venda)")
+        .in("id", stockIds),
+      supabase.from("pedido_itens")
+        .select("pedido_id, stock_item_id, quantidade, preco_unitario")
+        .in("pedido_id", ids),
+    ]);
+
+    type ExtraRow = { id: string; forma_pagamento?: string; parcelas?: number; endereco_entrega?: string; usar_endereco_cliente?: boolean; desconto_pct?: number; frete?: number };
+    type ClienteRow = { id: string; documento?: string; email?: string; telefone?: string; logradouro?: string; numero?: string; bairro?: string; municipio?: string; uf?: string; cep?: string; endereco?: string };
+    type DevRow = { id: string; devices?: { model?: string; reference?: string; preco_venda?: number } };
+    type ItemPrecoRow = { pedido_id: string; stock_item_id: string; quantidade: number; preco_unitario?: number };
+
+    const extraMap = new Map<string, ExtraRow>((exRes.data ?? []).map((r: ExtraRow) => [r.id, r]));
+    const clienteMap = new Map<string, ClienteRow>((clRes.data ?? []).map((r: ClienteRow) => [r.id, r]));
+    const devMap = new Map<string, DevRow>((devRes.data ?? []).map((r: DevRow) => [r.id, r]));
+    const itemPrecoMap = new Map<string, ItemPrecoRow[]>();
+    for (const ip of (itensPrecoRes.data ?? []) as ItemPrecoRow[]) {
+      if (!itemPrecoMap.has(ip.pedido_id)) itemPrecoMap.set(ip.pedido_id, []);
+      itemPrecoMap.get(ip.pedido_id)!.push(ip);
     }
 
-    const pedidosParaImprimir = pedidosDoMes.length > 0 ? pedidosDoMes : filtrados;
+    const fmtPgto: Record<string, string> = {
+      dinheiro: "Dinheiro", pix: "PIX", boleto: "Boleto",
+      cartao_debito: "Cartão Débito", cartao_credito: "Cartão Crédito",
+    };
 
     let sections = "";
     let totalGeralPecas = 0;
+    let totalGeralValor = 0;
 
     for (const pedido of pedidosParaImprimir) {
-      const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
+      const ex = extraMap.get(pedido.id);
+      const cl = clienteMap.get(pedido.cliente_id);
+      const itensPreco = itemPrecoMap.get(pedido.id) ?? [];
+      const desconto = ex?.desconto_pct ?? pedido.desconto_pct ?? 0;
+      const frete = ex?.frete ?? 0;
+
+      // Endereço de entrega
+      const endCl = cl?.logradouro
+        ? `${cl.logradouro}${cl.numero ? ", " + cl.numero : ""}${cl.bairro ? " — " + cl.bairro : ""}${cl.municipio ? " — " + cl.municipio : ""}${cl.uf ? "/" + cl.uf : ""}${cl.cep ? " — CEP " + cl.cep : ""}`
+        : (cl?.endereco ?? "");
+      const enderecoEntrega = ex?.usar_endereco_cliente === false && ex?.endereco_entrega
+        ? ex.endereco_entrega : endCl;
+
+      // Pagamento
+      const pgtoLabel = ex?.forma_pagamento ? fmtPgto[ex.forma_pagamento] ?? ex.forma_pagamento : "—";
+      const parcelasLabel = ex?.forma_pagamento === "cartao_credito" && (ex?.parcelas ?? 1) > 1
+        ? ` ${ex.parcelas}x` : "";
+
+      const printRows: { model?: string; reference?: string; lote: string; quantidade: number; precoUnit: number }[] = [];
 
       if (pedido.lotes_separados && pedido.lotes_separados.length > 0) {
-        const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
+        const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number; precoUnit: number }>();
         for (const ls of pedido.lotes_separados) {
           const item = pedido.itens.find(i => i.stock_item_id === ls.stock_item_id)
             ?? pedido.itens.find(i => i.device_model === ls.device_model);
+          const ip = itensPreco.find(i => i.stock_item_id === ls.stock_item_id);
+          const dev = devMap.get(ls.stock_item_id ?? "");
+          const precoUnit = (ip?.preco_unitario ?? 0) > 0
+            ? (ip!.preco_unitario! * (1 - desconto / 100))
+            : ((dev?.devices?.preco_venda ?? 0) * (1 - desconto / 100));
           const key = `${ls.device_model}||${ls.lote}`;
-          const ex = rowMap.get(key);
-          if (ex) ex.quantidade += ls.quantidade;
-          else rowMap.set(key, { model: ls.device_model ?? item?.device_model, reference: item?.device_reference, lote: ls.lote, quantidade: ls.quantidade });
+          const ex2 = rowMap.get(key);
+          if (ex2) ex2.quantidade += ls.quantidade;
+          else rowMap.set(key, { model: ls.device_model ?? item?.device_model, reference: item?.device_reference, lote: ls.lote, quantidade: ls.quantidade, precoUnit });
         }
         for (const row of rowMap.values()) printRows.push(row);
       } else {
         for (const item of pedido.itens) {
-          if (item.lote && !LOTE_PH.has(item.lote.trim().toLowerCase())) {
-            printRows.push({ model: item.device_model, reference: item.device_reference, lote: item.lote, quantidade: item.quantidade });
-          } else {
-            printRows.push({ model: item.device_model, reference: item.device_reference, lote: "", quantidade: item.quantidade });
-          }
+          const ip = itensPreco.find(i => i.stock_item_id === item.stock_item_id);
+          const dev = devMap.get(item.stock_item_id ?? "");
+          const precoUnit = (ip?.preco_unitario ?? 0) > 0
+            ? (ip!.preco_unitario! * (1 - desconto / 100))
+            : ((dev?.devices?.preco_venda ?? 0) * (1 - desconto / 100));
+          const lote = item.lote && !LOTE_PH.has(item.lote.trim().toLowerCase()) ? item.lote : "";
+          printRows.push({ model: item.device_model, reference: item.device_reference, lote, quantidade: item.quantidade, precoUnit });
         }
       }
 
@@ -2360,22 +2428,29 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         grouped.get(key)!.push(row);
       }
 
-      const statusLabel = pedido.status === "pronto" ? "✅ Pronto" : pedido.status === "separando" ? "🔄 Separando" : "⏳ Pendente";
-      const statusColor = pedido.status === "pronto" ? "#166534" : pedido.status === "separando" ? "#1e40af" : "#92400e";
-      const statusBg = pedido.status === "pronto" ? "#dcfce7" : pedido.status === "separando" ? "#dbeafe" : "#fef3c7";
+      const statusLabel = pedido.status === "pronto" ? "Pronto" : pedido.status === "separando" ? "Separando" : pedido.status === "enviado" ? "Enviado" : "Pendente";
+      const statusColor = pedido.status === "pronto" ? "#166534" : pedido.status === "separando" ? "#1e40af" : pedido.status === "enviado" ? "#0369a1" : "#92400e";
+      const statusBg = pedido.status === "pronto" ? "#dcfce7" : pedido.status === "separando" ? "#dbeafe" : pedido.status === "enviado" ? "#e0f2fe" : "#fef3c7";
       const dataPedido = new Date(pedido.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
+      let subtotal = 0;
       let tableRows = "";
       let idx = 0;
       for (const [, rows] of grouped) {
         idx++;
         const first = rows[0];
         const tipoTotal = rows.reduce((s, r) => s + r.quantidade, 0);
+        const itemSubtotal = first.precoUnit * tipoTotal;
+        subtotal += itemSubtotal;
         const lotesBadges = rows
           .filter(r => r.lote && !LOTE_PH.has(r.lote.toLowerCase()))
           .map(r => `<span class="lote-badge">${escH(r.lote)}</span>`)
           .join(" ");
         const lotesCell = lotesBadges || `<span class="lote-empty">—</span>`;
+        const precoCell = first.precoUnit > 0
+          ? `<span class="preco-unit">${fmtBRL(first.precoUnit)}</span>`
+          : `<span class="lote-empty">—</span>`;
+        const totalCell = itemSubtotal > 0 ? fmtBRL(itemSubtotal) : "—";
         tableRows += `<tr>
           <td class="col-num">${idx}</td>
           <td class="col-model">
@@ -2383,26 +2458,45 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
             <span class="model-ref">${escH(first.reference)}</span>
           </td>
           <td class="col-lotes">${lotesCell}</td>
-          <td class="col-qty">${tipoTotal}</td>
+          <td class="col-preco">${precoCell}</td>
+          <td class="col-qty-n">${tipoTotal}</td>
+          <td class="col-total">${totalCell}</td>
         </tr>`;
       }
 
+      const totalComFrete = subtotal + frete;
+      totalGeralValor += totalComFrete;
       const totalPecas = printRows.reduce((s, r) => s + r.quantidade, 0);
       totalGeralPecas += totalPecas;
       const totalTipos = grouped.size;
 
+      const totaisHtml = `
+        <div class="totais-bloco">
+          ${desconto > 0 ? `<div class="totais-row"><span class="totais-lbl">Desconto aplicado</span><span class="totais-val desc">${desconto}% por peça</span></div>` : ""}
+          ${frete > 0 ? `<div class="totais-row"><span class="totais-lbl">Subtotal</span><span class="totais-val">${fmtBRL(subtotal)}</span></div>
+          <div class="totais-row"><span class="totais-lbl">Frete</span><span class="totais-val">${fmtBRL(frete)}</span></div>` : ""}
+          <div class="totais-row total-final"><span class="totais-lbl">TOTAL DO PEDIDO</span><span class="totais-val">${fmtBRL(totalComFrete)}</span></div>
+        </div>`;
+
       sections += `
         <div class="pedido-section">
           <div class="pedido-header">
-            <div class="pedido-header-main">
-              <div class="pedido-title">${escH(pedido.cliente_nome)}</div>
+            <div class="pedido-header-left">
+              <div class="pedido-client">${escH(pedido.cliente_nome)}</div>
               <div class="pedido-meta">
+                ${cl?.documento ? `<span>CPF/CNPJ: <strong>${escH(cl.documento)}</strong></span> &nbsp;·&nbsp;` : ""}
+                ${cl?.telefone ? `<span>Tel: <strong>${escH(cl.telefone)}</strong></span> &nbsp;·&nbsp;` : ""}
+                ${cl?.email ? `<span>Email: <strong>${escH(cl.email)}</strong></span>` : ""}
+              </div>
+              ${enderecoEntrega ? `<div class="pedido-meta" style="margin-top:2px">📍 ${escH(enderecoEntrega)}</div>` : ""}
+              <div class="pedido-meta" style="margin-top:2px">
                 Vendedora: <strong>${escH(pedido.vendedora_nome ?? "—")}</strong>
                 &nbsp;·&nbsp; Data: <strong>${dataPedido}</strong>
+                &nbsp;·&nbsp; ${escH(pgtoLabel)}${parcelasLabel ? " · " + parcelasLabel : ""}
                 ${pedido.observacoes ? `&nbsp;·&nbsp; Obs: ${escH(pedido.observacoes)}` : ""}
               </div>
             </div>
-            <span class="status-badge" style="background:${statusBg};color:${statusColor}">${statusLabel}</span>
+            <span class="status-badge" style="background:${statusBg};color:${statusColor};border-color:${statusColor}40">${statusLabel}</span>
           </div>
           <table>
             <thead>
@@ -2410,13 +2504,16 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
                 <th class="col-num">#</th>
                 <th class="col-model">Peça</th>
                 <th class="col-lotes">Lotes</th>
-                <th class="col-qty" style="text-align:right">Qtd.</th>
+                <th class="col-preco" style="text-align:right">Unit. c/ desc.</th>
+                <th class="col-qty-n" style="text-align:right">Qtd.</th>
+                <th class="col-total" style="text-align:right">Total</th>
               </tr>
             </thead>
             <tbody>${tableRows}</tbody>
           </table>
+          ${totaisHtml}
           <div class="pedido-footer">
-            <span>${totalPecas} peça${totalPecas !== 1 ? "s" : ""} · ${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}</span>
+            ${totalPecas} peça${totalPecas !== 1 ? "s" : ""} · ${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}
           </div>
         </div>`;
     }
@@ -2460,14 +2557,24 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     th.col-qty { text-align: right; }
     td { padding: 5px 8px; border-bottom: 1px solid #efefef; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    .col-num { width: 24px; color: #bbb; font-size: 10px; }
-    .col-model { width: 36%; }
-    .col-lotes { }
-    .col-qty { width: 60px; text-align: right; font-weight: 800; font-size: 13px; color: #111; }
+    .col-num { width: 20px; color: #bbb; font-size: 10px; }
+    .col-model { width: 30%; }
+    .col-lotes { width: 22%; }
+    .col-preco { width: 80px; text-align: right; }
+    .col-qty-n { width: 40px; text-align: right; font-weight: 800; font-size: 12px; color: #111; }
+    .col-total { width: 80px; text-align: right; font-weight: 700; font-size: 11px; color: #111; }
     .model-name { display: block; font-weight: 700; font-size: 11px; }
     .model-ref { display: block; font-family: monospace; font-size: 9px; color: #888; margin-top: 1px; }
+    .preco-unit { font-size: 10px; color: #444; }
     .lote-badge { display: inline-block; background: #f0f0ff; color: #4c1d95; font-family: monospace; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; border: 1px solid #d4d0ee; margin: 1px 2px 1px 0; }
     .lote-empty { color: #ccc; font-size: 10px; }
+    .totais-bloco { padding: 5px 10px; background: #f9f9f9; border-top: 1px solid #e0e0e0; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+    .totais-row { display: flex; gap: 16px; align-items: baseline; }
+    .totais-lbl { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.04em; }
+    .totais-val { font-size: 11px; font-weight: 700; color: #111; min-width: 80px; text-align: right; }
+    .totais-val.desc { color: #16a34a; }
+    .total-final .totais-lbl { font-weight: 700; color: #333; font-size: 10px; }
+    .total-final .totais-val { font-size: 13px; font-weight: 900; color: #111; }
     .pedido-footer { padding: 4px 10px; background: #fafafa; border-top: 1px solid #eee; font-size: 9px; color: #999; }
 
     /* ── Rodapé geral ── */
@@ -2504,7 +2611,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   ${sections}
 
   <div class="page-footer">
-    <span>Total: <strong>${totalGeralPecas} peças</strong> em <strong>${pedidosParaImprimir.length} pedido${pedidosParaImprimir.length !== 1 ? "s" : ""}</strong></span>
+    <span>Total: <strong>${totalGeralPecas} peças</strong> em <strong>${pedidosParaImprimir.length} pedido${pedidosParaImprimir.length !== 1 ? "s" : ""}</strong> &nbsp;·&nbsp; Valor total: <strong>${fmtBRL(totalGeralValor)}</strong></span>
     <span>Zomini Usinagens Especiais Ltda. ME</span>
   </div>
 

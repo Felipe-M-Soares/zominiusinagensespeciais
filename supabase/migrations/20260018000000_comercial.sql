@@ -283,7 +283,7 @@ CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(
 DECLARE v_item RECORD;
 BEGIN
   UPDATE public.pedidos_comerciais SET
-    status='faturado', nota_fiscal=p_nf, chave_acesso_nfe=p_chave_acesso,
+    status='enviado', nota_fiscal=p_nf, chave_acesso_nfe=p_chave_acesso,
     protocolo_sefaz=p_protocolo, dh_autorizacao_nfe=p_dh_autorizacao,
     nf_criada_por=p_user_id, nf_criada_em=now(), enviado_em=now(), xml_nfe=p_xml_nfe
   WHERE id=p_pedido_id AND status='pronto';
