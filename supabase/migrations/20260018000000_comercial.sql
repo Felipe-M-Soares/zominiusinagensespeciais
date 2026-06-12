@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS public.pedidos_comerciais (
   vendedora_id        uuid REFERENCES auth.users(id),
   vendedora_nome      text,
   status              text NOT NULL DEFAULT 'pendente'
-                      CHECK (status IN ('pendente','separando','pronto','faturado','enviado','cancelado')),
+                      CHECK (status IN ('pendente','separando','pronto','faturado','enviado','cancelado','retorno')),
   observacoes         text,
   frete               numeric(10,2) NOT NULL DEFAULT 0,
   desconto_pct        numeric(5,2) NOT NULL DEFAULT 0 CHECK (desconto_pct BETWEEN 0 AND 100),
