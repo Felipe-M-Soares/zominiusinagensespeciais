@@ -1196,10 +1196,13 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
                       </span>
                       <span className="text-[10px] text-muted-foreground ml-0.5">un.</span>
                     </div>
-                    {pedido.status === "pendente" && pedido.itens.length > 1 && (
+                    {pedido.status === "pendente" && (
                       <button
                         type="button"
-                        onClick={() => onRemoverItemComercial(pedido, it)}
+                        onClick={() => {
+                          if (pedido.itens.length <= 1) { toast.error("O pedido precisa ter ao menos 1 peça."); return; }
+                          onRemoverItemComercial(pedido, it);
+                        }}
                         className="h-6 w-6 flex items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/25 text-destructive/60 hover:text-destructive transition-colors shrink-0"
                         title="Remover peça"
                       >
