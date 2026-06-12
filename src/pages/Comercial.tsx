@@ -68,6 +68,7 @@ import {
   Send,
   Star,
   RotateCcw,
+  Pencil,
 } from "lucide-react";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
@@ -278,9 +279,10 @@ interface NovoPedidoModalProps {
   clienteFixo?: Cliente | null;
   expedicaoItems: ReturnType<typeof useStock>["items"];
   duplicarDe?: PedidoCompleto | null;
+  editarPedido?: PedidoCompleto | null; // modo edição (pedido em retorno)
 }
 
-function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems, duplicarDe }: NovoPedidoModalProps) {
+function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems, duplicarDe, editarPedido }: NovoPedidoModalProps) {
   const { user } = useAuth();
 
   // Cliente
@@ -343,7 +345,33 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (!open) return;
     setClienteId(clienteFixo?.id ?? "");
     setClienteSearch(clienteFixo?.nome ?? "");
-    if (duplicarDe) {
+    if (editarPedido) {
+      setClienteId(editarPedido.cliente_id);
+      setClienteSearch(editarPedido.cliente_nome);
+      setDesconto(editarPedido.desconto_pct);
+      setObs(editarPedido.observacoes?.replace(/^\[RETORNO\]\s*/, "") ?? "");
+      setItens(editarPedido.itens.map(i => ({
+        stock_item_id: i.stock_item_id,
+        lote: i.lote ?? null,
+        quantidade: i.quantidade,
+        device_model: i.device_model ?? "",
+        device_reference: i.device_reference ?? "",
+      })));
+      // Carrega forma pagamento e endereço do pedido existente
+      supabase.from("pedidos_comerciais")
+        .select("forma_pagamento, parcelas, prazo_entrega, endereco_entrega, usar_endereco_cliente")
+        .eq("id", editarPedido.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          const d = data as { forma_pagamento?: string; parcelas?: number; prazo_entrega?: string; endereco_entrega?: string; usar_endereco_cliente?: boolean } | null;
+          if (!d) return;
+          setFormaPagamento(d.forma_pagamento ?? "");
+          setParcelas(d.parcelas ?? 1);
+          setPrazoEntrega(d.prazo_entrega ?? "");
+          setEnderecoEntrega(d.endereco_entrega ?? "");
+          setUsarEnderecoCliente(d.usar_endereco_cliente ?? true);
+        });
+    } else if (duplicarDe) {
       setClienteId(duplicarDe.cliente_id);
       setClienteSearch(duplicarDe.cliente_nome);
       setDesconto(duplicarDe.desconto_pct);
@@ -491,17 +519,63 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (itens.length === 0) { toast.error("Adicione ao menos uma peça"); return; }
     setSaving(true);
     try {
-      const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
-      const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
-      // Cria o pedido
-
-      // FIX: usa criarPedidoComReserva para garantir que reserve_stock
-      // seja chamado e quantity_reserved seja incrementado corretamente no banco.
-      // Antes: inseria pedido_itens com quantidade_reservada: 0 e nunca chamava reserve_stock.
       const clienteSelecionado = clientes.find(c => c.id === clienteId);
       const endFinal = usarEnderecoCliente
         ? (clienteSelecionado?.endereco ?? null)
         : (enderecoEntrega.trim() || null);
+
+      // ── Modo edição (pedido em retorno) ──────────────────────────────────
+      if (editarPedido) {
+        // 1. Cancela todas as reservas antigas via cancel_pedido (libera estoque)
+        await supabase.rpc("cancel_pedido", { p_pedido_id: editarPedido.id });
+
+        // 2. Remove itens antigos
+        await supabase.from("pedido_itens").delete().eq("pedido_id", editarPedido.id);
+
+        // 3. Insere novos itens
+        const novosItens = itens.map(i => ({
+          pedido_id: editarPedido.id,
+          stock_item_id: i.stock_item_id,
+          lote: i.lote || null,
+          quantidade: i.quantidade,
+          quantidade_reservada: i.quantidade,
+          preco_unitario: (i as { preco_unitario?: number }).preco_unitario ?? 0,
+        }));
+        const { error: insErr } = await supabase.from("pedido_itens").insert(novosItens);
+        if (insErr) throw insErr;
+
+        // 4. Reserva o novo estoque
+        const reservaResult = await supabase.rpc("reserve_stock", {
+          p_pedido_id: editarPedido.id,
+          p_items: itens.map(i => ({ stock_item_id: i.stock_item_id, quantidade: i.quantidade })),
+        });
+        if ((reservaResult.data as { ok?: boolean } | null)?.ok === false) {
+          toast.error((reservaResult.data as { error?: string })?.error ?? "Estoque insuficiente.");
+          return;
+        }
+
+        // 5. Atualiza cabeçalho do pedido e volta para pendente
+        const { error: updErr } = await supabase.from("pedidos_comerciais").update({
+          cliente_id: clienteId,
+          status: "pendente",
+          desconto_pct: desconto,
+          observacoes: obs || null,
+          prazo_entrega: prazoEntrega || null,
+          forma_pagamento: formaPagamento || null,
+          parcelas: formaPagamento === "cartao_credito" ? parcelas : 1,
+          endereco_entrega: endFinal,
+          usar_endereco_cliente: usarEnderecoCliente,
+        }).eq("id", editarPedido.id);
+        if (updErr) throw updErr;
+
+        toast.success("Pedido atualizado e reenviado ao estoque!");
+        onSuccess();
+        return;
+      }
+
+      // ── Modo criação normal ───────────────────────────────────────────────
+      const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
+      const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
 
       const result = await criarPedidoComReserva({
         clienteId,
@@ -531,7 +605,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       toast.success("Pedido criado! O estoque irá separar os lotes.");
       onSuccess();
     } catch (_e) {
-      toast.error("Erro ao criar pedido.");
+      toast.error("Erro ao salvar pedido.");
     } finally {
       setSaving(false);
     }
@@ -553,8 +627,8 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               <ShoppingCart className="h-4 w-4 text-violet-500" />
             </div>
             <div>
-              <p className="text-[13px] font-bold">Novo Pedido</p>
-              <p className="text-[10px] text-muted-foreground">Preencha cliente, peças e desconto</p>
+              <p className="text-[13px] font-bold">{editarPedido ? "Editar Pedido" : "Novo Pedido"}</p>
+              <p className="text-[10px] text-muted-foreground">{editarPedido ? "Altere peças, desconto, pagamento ou endereço" : "Preencha cliente, peças e desconto"}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
@@ -816,7 +890,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
           <button type="button" onClick={handleSave} disabled={saving || !clienteId || itens.length === 0} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
-            Criar Pedido
+            {editarPedido ? "Salvar e Reenviar" : "Criar Pedido"}
           </button>
         </div>
       </div>
@@ -875,9 +949,11 @@ interface PedidoCardProps {
   onDuplicar: (p: PedidoCompleto) => void;
   onComentar: (p: PedidoCompleto) => void;
   onReenviar: (p: PedidoCompleto) => void;
+  onRemoverItemComercial: (pedido: PedidoCompleto, item: PedidoCompleto["itens"][0]) => void;
+  onEditarPedido: (p: PedidoCompleto) => void;
 }
 
-function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar }: PedidoCardProps) {
+function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar, onRemoverItemComercial, onEditarPedido }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const temDesconto = pedido.desconto_pct > 0;
@@ -1113,11 +1189,23 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
                       )}
                     </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <span className="text-[13px] font-black tabular-nums" style={{ color: s.accent }}>
-                      {it.quantidade}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground ml-0.5">un.</span>
+                  <div className="shrink-0 text-right flex items-center gap-2">
+                    <div>
+                      <span className="text-[13px] font-black tabular-nums" style={{ color: s.accent }}>
+                        {it.quantidade}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground ml-0.5">un.</span>
+                    </div>
+                    {pedido.status === "pendente" && pedido.itens.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoverItemComercial(pedido, it)}
+                        className="h-6 w-6 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 hover:bg-destructive/15 hover:text-destructive text-muted-foreground/50 transition-all"
+                        title="Remover peça"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1213,6 +1301,17 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
               {pedido.status === "cancelado" && <><Ban className="h-3.5 w-3.5" />Pedido cancelado</>}
               {pedido.status === "retorno"   && <><RotateCcw className="h-3.5 w-3.5" />Retornado pelo estoque — revise</>}
             </div>
+          )}
+
+          {/* Editar pedido em retorno */}
+          {pedido.status === "retorno" && (
+            <button
+              type="button"
+              onClick={() => onEditarPedido(pedido)}
+              className="w-full flex items-center justify-center gap-1.5 h-9 rounded-xl text-[12px] font-semibold transition-colors border border-orange-500/40 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+            >
+              <Pencil className="h-3.5 w-3.5 shrink-0" /> Editar Pedido
+            </button>
           )}
 
           {/* Botão reenviar pedido retornado */}
@@ -2351,6 +2450,8 @@ export default function Comercial() {
   const [historicoClienteId, setHistoricoClienteId] = useState<string | null>(null);
   const [comentarioPedidoId, setComentarioPedidoId] = useState<string | null>(null);
   const [duplicandoPedido, setDuplicandoPedido] = useState<PedidoCompleto | null>(null);
+  const [editarPedidoRetorno, setEditarPedidoRetorno] = useState<PedidoCompleto | null>(null);
+  const [removerItemPendente, setRemoverItemPendente] = useState<{ pedido: PedidoCompleto; item: PedidoCompleto["itens"][0] } | null>(null);
   const [filtroDataInicio, setFiltroDataInicio] = useState("");
   const [filtroDataFim, setFiltroDataFim] = useState("");
 
@@ -2638,7 +2739,10 @@ export default function Comercial() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {pedidosFiltrados.map(p => (
-                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} canConfirm={isAdmin || isVendedora} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)} onReenviar={p => setPedidos(prev => prev.map(x => x.id === p.id ? { ...x, status: "pendente" as const } : x))} />
+                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} canConfirm={isAdmin || isVendedora} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)}
+                        onReenviar={p => setPedidos(prev => prev.map(x => x.id === p.id ? { ...x, status: "pendente" as const } : x))}
+                        onRemoverItemComercial={(pedido, item) => setRemoverItemPendente({ pedido, item })}
+                        onEditarPedido={p => setEditarPedidoRetorno(p)} />
                     ))}
                   </div>
                 )}
@@ -2715,11 +2819,12 @@ export default function Comercial() {
 
       {/* ── Modais ── */}
       <NovoPedidoModal
-        open={novoPedidoOpen}
-        onClose={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); setDuplicandoPedido(null); }}
-        onSuccess={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); setDuplicandoPedido(null); loadPedidos(); refetchStock(); }}
+        open={novoPedidoOpen || !!editarPedidoRetorno}
+        onClose={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); setDuplicandoPedido(null); setEditarPedidoRetorno(null); }}
+        onSuccess={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); setDuplicandoPedido(null); setEditarPedidoRetorno(null); loadPedidos(); refetchStock(); }}
         clienteFixo={pedidoComCliente}
         duplicarDe={duplicandoPedido}
+        editarPedido={editarPedidoRetorno}
         expedicaoItems={expedicaoItems}
       />
 
@@ -2783,6 +2888,45 @@ export default function Comercial() {
               <button type="button" onClick={handleDeleteCliente} disabled={deletingCliente} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
                 {deletingCliente ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                 Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remover item de pedido pendente */}
+      {removerItemPendente && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
+                <X className="h-4 w-4 text-destructive" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Remover peça do pedido?</p>
+                <p className="text-[12px] text-muted-foreground mt-0.5">{removerItemPendente.item.device_model}</p>
+              </div>
+            </div>
+            <p className="text-[12px] text-muted-foreground">{removerItemPendente.item.quantidade} un. voltam ao estoque disponível.</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setRemoverItemPendente(null)} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
+              <button type="button" onClick={async () => {
+                const { item, pedido } = removerItemPendente;
+                // Remove da UI imediatamente (otimista)
+                setPedidos(prev => prev.map(p => p.id === pedido.id
+                  ? { ...p, itens: p.itens.filter(i => i.id !== item.id) }
+                  : p
+                ));
+                setRemoverItemPendente(null);
+                // Persiste
+                await supabase.from("pedido_itens").delete().eq("id", item.id);
+                // Libera reserva
+                const { data: si } = await supabase.from("stock_items").select("quantity_reserved").eq("id", item.stock_item_id).maybeSingle();
+                const curr = (si as { quantity_reserved?: number } | null)?.quantity_reserved ?? 0;
+                await supabase.from("stock_items").update({ quantity_reserved: Math.max(0, curr - item.quantidade) }).eq("id", item.stock_item_id);
+                toast.success(`${item.device_model} removida do pedido.`);
+              }} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors flex items-center justify-center gap-1.5">
+                <X className="h-3.5 w-3.5" /> Remover
               </button>
             </div>
           </div>
