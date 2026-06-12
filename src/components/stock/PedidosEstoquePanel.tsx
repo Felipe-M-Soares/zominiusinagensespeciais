@@ -765,7 +765,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();
-    setTimeout(() => { w.focus(); w.print(); }, 250);
   }
 
   // ── Agrupa itens por device para exibir nome/ref uma única vez ────────────
@@ -1190,7 +1189,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
             )}
 
             {/* Botão Editar Endereço */}
-            {(isPendente || isSeparando || pedido.status === "pronto") && (
+            {(isPendente || isSeparando) && (
               <button type="button" onClick={() => onEditarEndereco(pedido)}
                 className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground flex items-center justify-center transition-colors shrink-0"
                 title="Editar endereço de entrega">
@@ -2426,53 +2425,96 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Pedidos do Mês — ${mesAtual}</title>
+  <title>Pedidos — ${mesAtual}</title>
   <style>
+    @page { size: A4 portrait; margin: 14mm 14mm 14mm 14mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; padding: 24px 28px; color: #111; font-size: 13px; }
-    .page-header { margin-bottom: 20px; border-bottom: 3px solid #ddd6fe; padding-bottom: 16px; }
-    .page-header h1 { font-size: 22px; font-weight: 800; color: #3b0764; margin-bottom: 4px; }
-    .page-header p { font-size: 12px; color: #666; }
-    .pedido-section { margin-bottom: 24px; border: 1px solid #e8e4f7; border-radius: 10px; overflow: hidden; page-break-inside: avoid; }
-    .pedido-header { background: #f3f0ff; padding: 10px 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid #ddd6fe; }
-    .pedido-title { font-size: 14px; font-weight: 800; color: #3b0764; }
-    .pedido-meta { font-size: 11px; color: #666; margin-top: 2px; }
-    .status-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+    body { font-family: Arial, sans-serif; background: #fff; color: #111; font-size: 12px; }
+
+    /* ── Cabeçalho da empresa (igual ao pedido individual) ── */
+    .company-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6mm; padding-bottom: 4mm; border-bottom: 3px solid #111; }
+    .company-name { font-size: 17px; font-weight: 900; letter-spacing: -0.02em; text-transform: uppercase; color: #111; }
+    .company-sub { font-size: 9px; color: #555; margin-top: 2px; }
+    .company-contact { text-align: right; font-size: 9px; color: #444; line-height: 1.6; }
+    .company-contact strong { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #111; margin-bottom: 1px; }
+
+    /* ── Info bar do relatório ── */
+    .report-bar { background: #f5f5f5; border: 1px solid #ddd; border-radius: 6px; padding: 6px 10px; margin-bottom: 5mm; display: flex; gap: 18px; align-items: center; }
+    .report-bar-item { font-size: 9px; color: #666; }
+    .report-bar-item strong { font-size: 12px; font-weight: 800; color: #111; display: block; }
+
+    /* ── Seção de cada pedido ── */
+    .pedido-section { margin-bottom: 6mm; border: 1px solid #ccc; border-radius: 4px; overflow: hidden; page-break-inside: avoid; }
+
+    /* cabeçalho do pedido — idêntico ao individual */
+    .pedido-header { background: #f9f9f9; border-bottom: 1.5px solid #ddd; padding: 5px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .pedido-header-left { display: flex; flex-direction: column; gap: 1px; }
+    .pedido-client { font-size: 14px; font-weight: 800; color: #111; }
+    .pedido-meta { font-size: 9px; color: #777; }
+    .pedido-meta strong { color: #333; }
+    .status-badge { font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; border: 1px solid; }
+
+    /* ── Tabela de itens ── */
     table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; padding: 7px 10px; background: #faf9ff; color: #5b21b6; border-bottom: 1px solid #ddd6fe; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
-    td { padding: 6px 10px; border-bottom: 1px solid #f0eeff; vertical-align: middle; }
+    th { text-align: left; padding: 4px 8px; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #555; background: #fafafa; border-bottom: 1px solid #e0e0e0; }
+    th.col-qty { text-align: right; }
+    td { padding: 5px 8px; border-bottom: 1px solid #efefef; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    tr:nth-child(even) td { background: #faf9ff; }
-    .col-num { width: 28px; color: #bbb; font-size: 11px; }
-    .col-model { width: 38%; }
+    .col-num { width: 24px; color: #bbb; font-size: 10px; }
+    .col-model { width: 36%; }
     .col-lotes { }
-    .col-qty { width: 70px; text-align: right; font-weight: 800; font-size: 14px; color: #3b0764; white-space: nowrap; }
-    .model-name { display: block; font-weight: 600; font-size: 12px; color: #1a1a2e; }
-    .model-ref { display: block; font-family: monospace; font-size: 10px; color: #888; margin-top: 1px; }
-    .lote-badge { display: inline-block; background: #f3f0ff; color: #5b21b6; font-family: monospace; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid #ddd6fe; margin: 1px 2px 1px 0; }
-    .lote-empty { color: #bbb; font-size: 11px; }
-    .pedido-footer { padding: 7px 14px; font-size: 11px; color: #888; background: #fafafa; border-top: 1px solid #f0eeff; }
-    .page-footer { margin-top: 24px; padding-top: 12px; border-top: 2px solid #eee; display: flex; justify-content: space-between; font-size: 11px; color: #999; }
-    @media print { button { display: none } body { padding: 16px } .pedido-section { page-break-inside: avoid; } }
+    .col-qty { width: 60px; text-align: right; font-weight: 800; font-size: 13px; color: #111; }
+    .model-name { display: block; font-weight: 700; font-size: 11px; }
+    .model-ref { display: block; font-family: monospace; font-size: 9px; color: #888; margin-top: 1px; }
+    .lote-badge { display: inline-block; background: #f0f0ff; color: #4c1d95; font-family: monospace; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; border: 1px solid #d4d0ee; margin: 1px 2px 1px 0; }
+    .lote-empty { color: #ccc; font-size: 10px; }
+    .pedido-footer { padding: 4px 10px; background: #fafafa; border-top: 1px solid #eee; font-size: 9px; color: #999; }
+
+    /* ── Rodapé geral ── */
+    .page-footer { margin-top: 6mm; padding-top: 3mm; border-top: 1.5px solid #ddd; display: flex; justify-content: space-between; font-size: 10px; color: #555; }
+
+    @media print { button { display: none } }
   </style>
 </head>
 <body>
-  <div class="page-header">
-    <h1>📦 Pedidos — ${mesAtual}</h1>
-    <p>Gerado em: ${nowStr} &nbsp;·&nbsp; ${pedidosParaImprimir.length} pedido${pedidosParaImprimir.length !== 1 ? "s" : ""} &nbsp;·&nbsp; ${totalGeralPecas} peças no total</p>
+
+  <!-- Cabeçalho empresa -->
+  <div class="company-header">
+    <div>
+      <div class="company-name">Zomini Usinagens Especiais Ltda. ME</div>
+      <div class="company-sub">CNPJ: 00.000.000/0000-00 &nbsp;|&nbsp; IE: 000.000.000.000</div>
+      <div class="company-sub">Av. Fictícia, 1000 — Jardim Exemplo — Indaiatuba/SP — CEP 13.000-000</div>
+    </div>
+    <div class="company-contact">
+      <strong>Contato:</strong>
+      contato@zomini.com.br<br>
+      www.zomini.com.br<br>
+      (19) 00000-0000
+    </div>
   </div>
+
+  <!-- Barra de resumo do relatório -->
+  <div class="report-bar">
+    <div class="report-bar-item"><strong>${pedidosParaImprimir.length}</strong>pedido${pedidosParaImprimir.length !== 1 ? "s" : ""}</div>
+    <div class="report-bar-item"><strong>${totalGeralPecas}</strong>peças no total</div>
+    <div class="report-bar-item"><strong>${mesAtual}</strong>período</div>
+    <div class="report-bar-item" style="margin-left:auto">Gerado em: ${nowStr}</div>
+  </div>
+
   ${sections}
+
   <div class="page-footer">
     <span>Total: <strong>${totalGeralPecas} peças</strong> em <strong>${pedidosParaImprimir.length} pedido${pedidosParaImprimir.length !== 1 ? "s" : ""}</strong></span>
-    <span>Zomini Usinagens Especiais</span>
+    <span>Zomini Usinagens Especiais Ltda. ME</span>
   </div>
+
+  <script>window.onload = function() { window.print(); }</script>
 </body>
 </html>`;
 
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();
-    setTimeout(() => { w.focus(); w.print(); }, 250);
   }
 
 
