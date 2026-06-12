@@ -263,11 +263,23 @@ function initDados(pedido: Pedido, numero: string): DadosFiscais {
       const precoFinal = desconto > 0
         ? precoBase * (1 - desconto / 100)
         : precoBase;
+      // Detecta se cliente é de outro estado (interestadual = CFOP 6xxx)
+      const endCliente = pedido.cliente_endereco ?? "";
+      const ufMatch = endCliente.match(/\/([A-Z]{2})/) ?? endCliente.match(/[\s\-]([A-Z]{2})(?:\s|$)/);
+      const ufCliente = ufMatch ? ufMatch[1] : null;
+      const isInter = ufCliente && ufCliente !== "SP";
+      function adaptCFOP(c?: string | null) {
+        const base = (c ?? "5102").toString().trim();
+        if (!base || base === "—") return isInter ? "6102" : "5102";
+        if (base.startsWith("6") || base.startsWith("7")) return base;
+        if (isInter && base.startsWith("5")) return "6" + base.slice(1);
+        return base;
+      }
       return {
         pedido_item_id: item.id,
         descricao:      item.device_model ?? "Produto",
         ncm:            item.ncm ?? "90213990",
-        cfop:           item.cfop_padrao ?? item.cfop ?? "5102",
+        cfop:           adaptCFOP(item.cfop_padrao ?? item.cfop),
         unidade: "UN",
         quantidade:     item.quantidade,
         valorUnitario:  precoFinal.toFixed(2),
@@ -1781,7 +1793,7 @@ function SefazModal({
                 {(pedido?.parcelas ?? 1) > 1 && (
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-muted-foreground">Parcelamento</span>
-                    <span className="font-semibold">{pedido!.parcelas}x no cartão</span>
+                    <span className="font-semibold">{pedido!.parcelas}x sem juros</span>
                   </div>
                 )}
               </div>

@@ -512,10 +512,40 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
     const pagamentoLabel = ex?.forma_pagamento
       ? fmtPagamento[ex.forma_pagamento] ?? ex.forma_pagamento
       : "A VISTA";
+    // Parcelas em linha separada, sem traço
     const parcelasLabel = ex?.forma_pagamento === "cartao_credito" && (ex?.parcelas ?? 1) > 1
-      ? ` — ${ex.parcelas}x` : "";
+      ? `<br><span style="font-weight:400;font-size:10px">${ex.parcelas}x sem juros</span>` : "";
     const desconto = ex?.desconto_pct ?? pedido.desconto_pct ?? 0;
     const frete = ex?.frete ?? 0;
+
+    // ── CFOP por localidade: 5xxx (intraestadual) ou 6xxx (interestadual) ────────
+    // UF da empresa emitente: SP. UF do cliente extraída do endereço.
+    const UF_EMPRESA = "SP";
+    function detectarUF(endereco: string): string | null {
+      // Formatos: "... São Paulo/SP ...", "... — SP ...", "/SP", "SP — CEP", "-SP"
+      const m = endereco.match(/[\s\/\-,]([A-Z]{2})(?:\s|$|—|\s*CEP)/);
+      if (m) return m[1];
+      // Tenta sigla ao final: "... Indaiatuba/SP"
+      const m2 = endereco.match(/\/([A-Z]{2})/);
+      if (m2) return m2[1];
+      return null;
+    }
+    const endCliente = cl?.logradouro
+      ? `${cl?.municipio ?? ""} ${cl?.uf ?? ""}`.trim()
+      : (cl?.endereco ?? enderecoEntrega ?? "");
+    const ufCliente = cl?.uf ?? detectarUF(endCliente);
+    const isInterestadual = ufCliente && ufCliente !== UF_EMPRESA;
+
+    // Mapeia CFOP base: 5102 → 6102 se interestadual; 5405 → 6404; etc.
+    function adaptarCFOP(cfopOriginal: string | null | undefined): string {
+      const c = (cfopOriginal ?? "5102").toString().trim();
+      if (!c || c === "—") return isInterestadual ? "6102" : "5102";
+      // Se já começa com 6 ou 7, mantém (operações com exterior)
+      if (c.startsWith("6") || c.startsWith("7")) return c;
+      // Converte 5xxx → 6xxx se interestadual
+      if (isInterestadual && c.startsWith("5")) return "6" + c.slice(1);
+      return c;
+    }
 
     // ── Agrupa por tipo de peça (model + reference) para separadores na página ──
     const grouped = new Map<string, typeof printRows>();
@@ -550,7 +580,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       subtotalGeral += valorTotal;
 
       const ncm = dev?.ncm ?? "—";
-      const cfop = dev?.cfop_padrao ?? "—";
+      const cfop = adaptarCFOP(dev?.cfop_padrao);
       const ipi = "0,00%"; // IPI padrão — ajustar conforme necessidade fiscal
 
       const precoFmt = (v: number) => v > 0 ? "R$ " + v.toFixed(2).replace(".", ",") : "—";
@@ -675,6 +705,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   <!-- Vendedora -->
   <div style="font-size:10px; margin-bottom:4px; color:#555;">
     Vendedora: <strong style="color:#111">${escHtml(pedido.vendedora_nome ?? "—")}</strong>
+    ${ufCliente ? ` &nbsp;|&nbsp; CFOP: <strong style="color:#111">${isInterestadual ? "6xxx (Interestadual — " + ufCliente + ")" : "5xxx (Intraestadual — SP)"}</strong>` : ""}
     ${pedido.prazo_entrega ? ` &nbsp;|&nbsp; Prazo de entrega: <strong style="color:#111">${new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR")}</strong>` : ""}
   </div>
 
@@ -822,7 +853,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                           <span className="text-[10px] text-muted-foreground/60 leading-none">pedido</span>
                           <span className="text-[13px] font-bold">{groupTotalPedido} un.</span>
                         </div>
-                        {(isSeparando || pedido.status === "pronto") && (
+                        {(isSeparando || pedido.status === "pronto") && pedido.itens.length > 1 && (
                           <button
                             type="button"
                             onClick={() => onRemoverItem(pedido, firstItem)}
@@ -1149,7 +1180,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
             )}
 
             {/* Botão Retornar — disponível para separando e pronto */}
-            {(isSeparando || pedido.status === "pronto") && (
+            {isSeparando && (
               <button type="button" onClick={() => onRetornar(pedido)}
                 className="h-9 w-9 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 flex items-center justify-center transition-colors shrink-0"
                 title="Retornar pedido ao comercial">
