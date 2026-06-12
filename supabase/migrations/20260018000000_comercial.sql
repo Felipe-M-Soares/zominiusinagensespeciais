@@ -406,3 +406,22 @@ ALTER TABLE public.peca_favoritas ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "favoritas_self" ON public.peca_favoritas;
 CREATE POLICY "favoritas_self" ON public.peca_favoritas
   FOR ALL USING (user_id = auth.uid());
+
+-- ── RPC: resolve NCM por device_id (usado pelo botão "Sugerir NCM" no frontend) ──
+CREATE OR REPLACE FUNCTION public.resolve_ncm_device_by_id(p_device_id uuid)
+RETURNS text LANGUAGE plpgsql STABLE SECURITY DEFINER AS $$
+DECLARE
+  v_rec record;
+BEGIN
+  SELECT risk_class, implantable, body_region, classification_code, primary_material
+    INTO v_rec FROM public.devices WHERE id = p_device_id;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  RETURN replace(
+    public.resolve_ncm_device(
+      v_rec.risk_class, v_rec.implantable, v_rec.body_region,
+      v_rec.classification_code, v_rec.primary_material
+    ), '.', ''
+  );
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.resolve_ncm_device_by_id(uuid) TO authenticated;

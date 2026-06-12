@@ -473,7 +473,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         .select("stock_item_id, quantidade, preco_unitario, valor_total")
         .eq("pedido_id", pedido.id),
       supabase.from("devices")
-        .select("id, ncm, cfop_padrao, preco_venda, margem_minima_pct")
+        .select("id, ncm, cfop_padrao, ipi_pct, preco_venda, margem_minima_pct")
         .in("id", pedido.itens.map(i => i.device_id).filter(Boolean)),
     ]);
 
@@ -486,7 +486,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
       forma_pagamento?: string; parcelas?: number; endereco_entrega?: string;
       usar_endereco_cliente?: boolean; desconto_pct?: number; frete?: number;
     };
-    type DeviceExtra = { id: string; ncm?: string; cfop_padrao?: string; preco_venda?: number };
+    type DeviceExtra = { id: string; ncm?: string; cfop_padrao?: string; ipi_pct?: number; preco_venda?: number };
     type ItemPreco = { stock_item_id: string; quantidade: number; preco_unitario?: number; valor_total?: number };
 
     const cl = clienteData as ClienteExtra | null;
@@ -581,7 +581,8 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
       const ncm = dev?.ncm ?? "—";
       const cfop = adaptarCFOP(dev?.cfop_padrao);
-      const ipi = "0,00%"; // IPI padrão — ajustar conforme necessidade fiscal
+      const ipiNum = dev?.ipi_pct ?? 0;
+      const ipi = ipiNum > 0 ? ipiNum.toFixed(2).replace(".", ",") + "%" : "0,00%";
 
       const precoFmt = (v: number) => v > 0 ? "R$ " + v.toFixed(2).replace(".", ",") : "—";
 

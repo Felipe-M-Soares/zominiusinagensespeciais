@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS public.devices (
   margem_minima_pct     integer NOT NULL DEFAULT 0 CHECK (margem_minima_pct BETWEEN 0 AND 100),
   ncm                   text NOT NULL DEFAULT '90213990',
   cfop_padrao           text NOT NULL DEFAULT '5102',
+  ipi_pct               numeric(5,2) NOT NULL DEFAULT 0 CHECK (ipi_pct >= 0 AND ipi_pct <= 100),
   unidade               text NOT NULL DEFAULT 'UN',
   ativo                 boolean NOT NULL DEFAULT true,
   observacoes_preco     text,

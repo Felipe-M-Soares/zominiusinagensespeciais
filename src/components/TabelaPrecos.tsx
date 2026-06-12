@@ -23,6 +23,7 @@ interface DevicePreco {
   internal_code: string;
   ncm: string;
   cfop_padrao: string;
+  ipi_pct: number;
   unidade: string;
   preco_custo: number;
   preco_venda: number;
@@ -57,7 +58,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
     while (keepGoing) {
       const { data, error } = await supabase
         .from("devices")
-        .select("id, model, reference, internal_code, ncm, cfop_padrao, unidade, preco_custo, preco_venda, desconto_max_pct, margem_minima_pct, ativo, observacoes_preco")
+        .select("id, model, reference, internal_code, ncm, cfop_padrao, ipi_pct, unidade, preco_custo, preco_venda, desconto_max_pct, margem_minima_pct, ativo, observacoes_preco")
         .order("model")
         .range(from, from + PAGE - 1);
       if (error) { toast.error(friendlyError(error)); break; }
@@ -85,7 +86,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
         ? ((d.preco_venda - d.preco_custo) / d.preco_venda * 100).toFixed(2)
         : "0.00";
       return [
-        d.model, d.reference, d.internal_code, d.ncm, d.cfop_padrao,
+        d.model, d.reference, d.internal_code, d.ncm, d.cfop_padrao, String(d.ipi_pct ?? 0),
         d.unidade,
         d.preco_custo.toFixed(2).replace(".", ","),
         d.preco_venda.toFixed(2).replace(".", ","),

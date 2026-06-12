@@ -49,6 +49,7 @@ interface PedidoItem {
   ncm?: string;
   cfop?: string;
   cfop_padrao?: string;
+  ipi_pct?: number;
   valor_unitario?: number;
   preco_venda?: number;
   desconto_max_pct?: number;
@@ -93,6 +94,7 @@ interface ItemFiscal {
   quantidade: number;
   valorUnitario: string;
   aliqICMS: string;
+  ipi_pct: string;
   cst: string;
 }
 
@@ -284,6 +286,7 @@ function initDados(pedido: Pedido, numero: string): DadosFiscais {
         quantidade:     item.quantidade,
         valorUnitario:  precoFinal.toFixed(2),
         aliqICMS: "12.00",
+        ipi_pct: (item.ipi_pct ?? 0).toFixed(2),
         cst: "00",
       };
     }),
@@ -1630,21 +1633,35 @@ function SefazModal({
                       <span className="text-[10px] text-muted-foreground shrink-0">{item.quantidade} un.</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { key: "ncm"  as const, label: "NCM (8 díg.) *", ph: "90213990", maxLen: 8, ok: ncmOk  },
-                        { key: "cfop" as const, label: "CFOP (4 díg.) *", ph: "5102",    maxLen: 4, ok: cfopOk },
-                      ].map(f => (
-                        <div key={f.key} className="space-y-1">
-                          <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">{f.label}</label>
-                          <input type="text" inputMode="numeric"
-                            value={item[f.key]}
-                            onChange={e => updItem(idx, f.key, e.target.value.replace(/\D/g,"").slice(0, f.maxLen))}
-                            placeholder={f.ph}
-                            className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                              f.ok ? "border-border/50" : "border-amber-500/60 bg-amber-500/10")}
-                          />
-                        </div>
-                      ))}
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">NCM (8 díg.) *</label>
+                        <input type="text" inputMode="numeric"
+                          value={item.ncm}
+                          onChange={e => updItem(idx, "ncm", e.target.value.replace(/\D/g,"").slice(0, 8))}
+                          placeholder="90213990"
+                          className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                            ncmOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/10")}
+                        />
+                        <button type="button"
+                          onClick={async () => {
+                            const sug = await sugerirNcmParaPeca(item.pedido_item_id, item.descricao, "");
+                            if (sug) { updItem(idx, "ncm", sug.ncm); updItem(idx, "ipi_pct", String(sug.ipi)); toast.success(`NCM ${sug.ncm} — ${sug.desc}`); }
+                            else toast.info("Não foi possível sugerir NCM. Preencha manualmente.");
+                          }}
+                          className="w-full h-6 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 text-[9px] font-semibold transition-colors flex items-center justify-center gap-1">
+                          <Zap size={9} />Sugerir NCM
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">CFOP (4 díg.) *</label>
+                        <input type="text" inputMode="numeric"
+                          value={item.cfop}
+                          onChange={e => updItem(idx, "cfop", e.target.value.replace(/\D/g,"").slice(0, 4))}
+                          placeholder="5102"
+                          className={cn("w-full h-8 rounded-lg border bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
+                            cfopOk ? "border-border/50" : "border-amber-500/60 bg-amber-500/10")}
+                        />
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="space-y-1">
@@ -1663,7 +1680,7 @@ function SefazModal({
                         <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">ICMS %</label>
                         <input type="number" min="0" max="100" step="0.01"
                           value={item.aliqICMS}
-                          onChange={e => updItem(idx, "aliqICMS", e.target.value)}
+                          onChange={e => updItem(idx, "ipi_pct", e.target.value)}
                           className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                         />
                       </div>
@@ -3097,6 +3114,7 @@ interface DevicePreco {
   internal_code: string;
   ncm: string;
   cfop_padrao: string;
+  ipi_pct: number;
   unidade: string;
   preco_custo: number;
   preco_venda: number;
@@ -3104,6 +3122,51 @@ interface DevicePreco {
   margem_minima_pct: number;
   ativo: boolean;
   observacoes_preco: string | null;
+}
+
+// ─── NCM auto-suggest ─────────────────────────────────────────────────────────
+// Tabela TIPI simplificada para dispositivos médico-odontológicos.
+// Complementa o trigger do banco com lógica client-side baseada no nome/ref.
+const NCM_RULES: { pattern: RegExp; ncm: string; desc: string; ipi: number }[] = [
+  // Implantes e fixadores
+  { pattern: /implant|fixture|parafus.*titan|screw.*impl/i,    ncm: "90212910", desc: "Implante dental / parafuso", ipi: 0 },
+  // Pilares e próteses
+  { pattern: /pilar|abutment|pr[oó]tese|coroa|crown/i,         ncm: "90213990", desc: "Prótese / componente protético", ipi: 0 },
+  // Instrumentos / brocas / fresas
+  { pattern: /broca|fresa|drill|bur|instrumen|tool|kit\s/i,    ncm: "90184990", desc: "Instrumento odontológico", ipi: 0 },
+  // Componentes de conexão / transfer / análogo
+  { pattern: /transfer|analog|análog|captur|impression/i,      ncm: "90213990", desc: "Componente de moldagem/transferência", ipi: 0 },
+  // Torquímetro / chaves
+  { pattern: /torqu|chave|ratchet|wrench|driver/i,             ncm: "90183990", desc: "Instrumento cirúrgico/odontológico", ipi: 0 },
+  // Membranas / enxertos
+  { pattern: /membran|enxert|graft|colog[eê]n|collagen/i,      ncm: "30059099", desc: "Material de enxerto / membrana", ipi: 0 },
+  // Biomateriais / osso sintético
+  { pattern: /biomateri|osso|bone|oss[eé]o|xeno|alo|allogen/i, ncm: "30059099", desc: "Biomaterial / substituto ósseo", ipi: 0 },
+  // Parafusos em geral (não implante)
+  { pattern: /parafuso|screw/i,                                 ncm: "90213990", desc: "Parafuso protético", ipi: 0 },
+  // Cicatrizadores / caps / cover
+  { pattern: /cicatriz|healing|cover\s*screw|tap|tampa/i,      ncm: "90213990", desc: "Cicatrizador / cap", ipi: 0 },
+  // Componentes de munhão / UCLA
+  { pattern: /ucla|munhão|munhao|calcinável|calcinable/i,       ncm: "90213990", desc: "Componente UCLA / calcinável", ipi: 0 },
+];
+
+async function sugerirNcmParaPeca(deviceId: string, model: string, reference: string): Promise<{ ncm: string; desc: string; ipi: number } | null> {
+  // 1. Tenta o RPC do banco (usa risk_class, implantable, body_region, classification_code)
+  try {
+    const { data } = await supabase.rpc("resolve_ncm_device_by_id", { p_device_id: deviceId });
+    if (data && typeof data === "string" && data.length >= 8) {
+      return { ncm: data.replace(/\./g, ""), desc: "Sugerido pelo banco (classificação)", ipi: 0 };
+    }
+  } catch (_) { /* fallback para client-side */ }
+
+  // 2. Client-side por palavras-chave no nome + referência
+  const texto = `${model} ${reference}`;
+  for (const rule of NCM_RULES) {
+    if (rule.pattern.test(texto)) {
+      return { ncm: rule.ncm, desc: rule.desc, ipi: rule.ipi };
+    }
+  }
+  return null;
 }
 
 function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
@@ -3127,7 +3190,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
     while (keepGoing) {
       const { data, error } = await supabase
         .from("devices")
-        .select("id, model, reference, internal_code, ncm, cfop_padrao, unidade, preco_custo, preco_venda, desconto_max_pct, margem_minima_pct, ativo, observacoes_preco")
+        .select("id, model, reference, internal_code, ncm, cfop_padrao, ipi_pct, unidade, preco_custo, preco_venda, desconto_max_pct, margem_minima_pct, ativo, observacoes_preco")
         .order("model")
         .range(from, from + PAGE - 1);
       if (error) { toast.error(friendlyError(error)); break; }
@@ -3144,7 +3207,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
   function exportExcel() {
     // Gera CSV detalhado e dispara download (funciona sem lib externa)
     const headers = [
-      "Modelo", "Referência", "Cód. Interno", "NCM", "CFOP",
+      "Modelo", "Referência", "Cód. Interno", "NCM", "CFOP", "IPI (%)",
       "Unidade", "Preço Custo (R$)", "Preço Venda (R$)",
       "Margem Real (%)", "Desconto Máx (%)", "Margem Mín (%)",
       "Ativo", "Observações"
@@ -3155,7 +3218,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
         ? ((d.preco_venda - d.preco_custo) / d.preco_venda * 100).toFixed(2)
         : "0.00";
       return [
-        d.model, d.reference, d.internal_code, d.ncm, d.cfop_padrao,
+        d.model, d.reference, d.internal_code, d.ncm, d.cfop_padrao, String(d.ipi_pct ?? 0),
         d.unidade,
         d.preco_custo.toFixed(2).replace(".", ","),
         d.preco_venda.toFixed(2).replace(".", ","),
@@ -3226,7 +3289,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
     setEditData({
       preco_custo: d.preco_custo, preco_venda: d.preco_venda,
       desconto_max_pct: d.desconto_max_pct, margem_minima_pct: d.margem_minima_pct,
-      ncm: d.ncm, cfop_padrao: d.cfop_padrao, unidade: d.unidade,
+      ncm: d.ncm, cfop_padrao: d.cfop_padrao, ipi_pct: d.ipi_pct, unidade: d.unidade,
       ativo: d.ativo, observacoes_preco: d.observacoes_preco ?? "",
     });
   }
@@ -3241,6 +3304,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
       margem_minima_pct: editData.margem_minima_pct  ?? 0,
       ncm:               editData.ncm               ?? "90213990",
       cfop_padrao:       editData.cfop_padrao        ?? "5102",
+      ipi_pct:           editData.ipi_pct            ?? 0,
       unidade:           editData.unidade            ?? "UN",
       ativo:             editData.ativo              ?? true,
       observacoes_preco: editData.observacoes_preco  || null,
@@ -3372,13 +3436,14 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
         <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
           {/* Cabeçalho */}
           <div className="grid gap-2 px-4 py-2.5 bg-muted/30 border-b border-border/40"
-            style={{ gridTemplateColumns: "1fr 100px 100px 80px 70px 70px 90px 50px 100px" }}>
+            style={{ gridTemplateColumns: "1fr 100px 100px 80px 60px 60px 50px 90px 50px 100px" }}>
             <SortBtn col="model"           label="Modelo / Referência" />
             <SortBtn col="preco_custo"     label="Custo (R$)" />
             <SortBtn col="preco_venda"     label="Venda (R$)" />
             <SortBtn col="desconto_max_pct" label="Desc. Máx" />
             <SortBtn col="ncm"             label="NCM" />
             <SortBtn col="cfop_padrao"     label="CFOP" />
+            <SortBtn col="ipi_pct"         label="IPI %" />
             <SortBtn col="margem_minima_pct" label="Margem Mín" />
             <SortBtn col="ativo"           label="Ativo" />
             <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ações</span>
@@ -3468,11 +3533,28 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
 
                   {/* NCM */}
                   {isEdit ? (
-                    <input type="text" inputMode="numeric"
-                      value={editData.ncm ?? ""}
-                      onChange={e => setEditData(prev => ({ ...prev, ncm: e.target.value.replace(/\D/g,"").slice(0,8) }))}
-                      className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
-                    />
+                    <div className="space-y-1">
+                      <input type="text" inputMode="numeric"
+                        value={editData.ncm ?? ""}
+                        onChange={e => setEditData(prev => ({ ...prev, ncm: e.target.value.replace(/\D/g,"").slice(0,8) }))}
+                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const sugestao = await sugerirNcmParaPeca(d.id, d.model, d.reference);
+                          if (sugestao) {
+                            setEditData(prev => ({ ...prev, ncm: sugestao.ncm, ipi_pct: sugestao.ipi }));
+                            toast.success(`NCM ${sugestao.ncm} — ${sugestao.desc}`);
+                          } else {
+                            toast.info("Não foi possível sugerir NCM automaticamente. Preencha manualmente.");
+                          }
+                        }}
+                        className="w-full h-6 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 text-[9px] font-semibold transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Zap size={9} />Sugerir NCM
+                      </button>
+                    </div>
                   ) : (
                     <p className="text-[10px] font-mono text-muted-foreground">{d.ncm || "—"}</p>
                   )}
@@ -3486,6 +3568,25 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                     />
                   ) : (
                     <p className="text-[10px] font-mono text-muted-foreground">{d.cfop_padrao || "—"}</p>
+                  )}
+
+                  {/* IPI % */}
+                  {isEdit ? (
+                    <div className="flex items-center gap-1">
+                      <input type="number" min="0" max="100" step="0.01"
+                        value={editData.ipi_pct ?? 0}
+                        onChange={e => setEditData(prev => ({ ...prev, ipi_pct: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) }))}
+                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
+                      />
+                      <span className="text-[10px] text-muted-foreground shrink-0">%</span>
+                    </div>
+                  ) : (
+                    <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded-lg border",
+                      (d.ipi_pct ?? 0) > 0
+                        ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                        : "bg-muted/30 text-muted-foreground border-border/30")}>
+                      {(d.ipi_pct ?? 0) > 0 ? `${d.ipi_pct}%` : "0%"}
+                    </span>
                   )}
 
                   {/* Margem mínima */}
@@ -3550,7 +3651,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
 
           {/* Rodapé totais */}
           <div className="grid gap-2 px-4 py-2.5 bg-muted/20 border-t border-border/40 font-bold"
-            style={{ gridTemplateColumns: "1fr 100px 100px 80px 70px 70px 90px 50px 100px" }}>
+            style={{ gridTemplateColumns: "1fr 100px 100px 80px 60px 60px 50px 90px 50px 100px" }}>
             <p className="text-[11px] text-muted-foreground">{filtered.length} peças</p>
             <p className="text-[11px] font-mono text-muted-foreground">{fmtCurrency(totalCusto / (filtered.length || 1))}</p>
             <p className="text-[11px] font-mono text-violet-600">{fmtCurrency(totalVenda / (filtered.length || 1))}</p>
@@ -3630,7 +3731,7 @@ export default function Financeiro() {
         clientes(nome, documento, telefone, email, endereco, logradouro, numero, bairro, municipio, uf, cep),
         pedido_itens(
           id, stock_item_id, lote, quantidade,
-          stock_items(devices(id, model, reference, ncm, cfop_padrao, preco_venda, desconto_max_pct))
+          stock_items(devices(id, model, reference, ncm, cfop_padrao, ipi_pct, preco_venda, desconto_max_pct))
         )
       `)
       .or("status.eq.pronto,status.eq.faturado,status.eq.enviado")
@@ -3688,8 +3789,9 @@ export default function Financeiro() {
             stock_item_id: i.stock_item_id as string,
             lote:          (i.lote as string) ?? "",
             quantidade:    i.quantidade    as number,
-            device_model:     ((i.stock_items as { devices?: { model?: string; reference?: string } } | null)?.devices?.model),
-            device_reference: ((i.stock_items as { devices?: { model?: string; reference?: string } } | null)?.devices?.reference),
+            device_model:     ((i.stock_items as { devices?: { model?: string; reference?: string; ipi_pct?: number } } | null)?.devices?.model),
+            device_reference: ((i.stock_items as { devices?: { model?: string; reference?: string; ipi_pct?: number } } | null)?.devices?.reference),
+            ipi_pct:          ((i.stock_items as { devices?: { ipi_pct?: number } } | null)?.devices?.ipi_pct) ?? 0,
           })),
         };
       }));
