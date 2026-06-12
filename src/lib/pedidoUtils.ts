@@ -48,7 +48,7 @@ export async function criarPedidoComReserva(
       vendedora_id: vendedoraId,
       vendedora_nome: vendedoraNome,
       observacoes: observacoes ?? null,
-      desconto_pct: descontoPct ?? 0,
+      desconto_pct: descontoPct ?? 0, // numeric(5,2) após migration 20260035000000_desconto_decimal.sql
       prazo_entrega: prazoEntrega ?? null,
       forma_pagamento: formaPagamento ?? null,
       parcelas: formaPagamento === "cartao_credito" ? (parcelas ?? 1) : 1,
