@@ -1200,7 +1200,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
                       <button
                         type="button"
                         onClick={() => onRemoverItemComercial(pedido, it)}
-                        className="h-6 w-6 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 hover:bg-destructive/15 hover:text-destructive text-muted-foreground/50 transition-all"
+                        className="h-6 w-6 flex items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/25 text-destructive/60 hover:text-destructive transition-colors shrink-0"
                         title="Remover peça"
                       >
                         <X className="h-3 w-3" />
