@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus, ShieldX, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus, ShieldX, ShieldCheck } from "lucide-react";
 import type { AppRole } from "@/types/roles";
 import { APP_ROLES, ROLE_LABELS } from "@/types/roles";
 import { logger } from "@/lib/logger";

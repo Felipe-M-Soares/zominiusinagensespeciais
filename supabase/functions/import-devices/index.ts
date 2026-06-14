@@ -1,6 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
-import { getRequiredEnv } from "../_shared/utils.ts";
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_RECORDS = 10_000;

@@ -1,10 +1,10 @@
 {
-  "name": "concept-usinagens-especiais",
+  "name": "vite_react_shadcn_ts",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "engines": {
-    "node": "22.x",
+  "node": "22.x",
     "npm": ">=10"
   },
   "scripts": {
@@ -96,7 +96,5 @@
     "vite": "^8.0.11",
     "vitest": "^3.2.4",
     "@vitejs/plugin-react-swc": "^4.3.1"
-  },
-  "description": "Sistema interno de gestão Zomini Usinagens Especiais",
-  "license": "UNLICENSED"
+  }
 }

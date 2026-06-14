@@ -82,9 +82,9 @@ export default defineConfig(({ mode }) => ({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      // injectRegister: 'auto' gera um arquivo separado register-sw.js injetado
-      // via <script src="..."> no index.html — compatível com CSP sem 'unsafe-inline'
-      injectRegister: "auto",
+      // injectRegister: 'script' evita o uso de blob: URLs para registrar o SW
+      // o padrão 'auto' gera um inline script com blob: que é bloqueado pelo CSP
+      injectRegister: "script",
       includeAssets: [
         "favicon.ico",
         "favicon.png",

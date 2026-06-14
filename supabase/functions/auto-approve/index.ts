@@ -1,88 +1,125 @@
-/**
- * auto-approve — Auto-aprovação de conta após 60 segundos do registro
- *
- * SEGURANÇA:
- *  - verify_jwt = true: JWT validado pelo Supabase antes de chegar aqui
- *  - Usuário só pode aprovar A SI MESMO
- *  - Bloqueados por admin nunca são auto-aprovados
- *  - UUID validado antes de qualquer query
- *  - Rate limit: 5 tentativas por 5 minutos por IP
- */
-
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
-import {
-  getRequiredEnv,
-  isValidUUID,
-  checkRateLimit,
-  jsonResponse,
-} from "../_shared/utils.ts";
+
+// Rate limiting: max 5 auto-approve attempts per IP per 5 minutes
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function checkRateLimit(ip: string, maxReq = 5, windowMs = 300_000): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxReq) return false;
+  entry.count++;
+  return true;
+}
 
 Deno.serve(async (req) => {
   const corsHeaders = getCorsHeaders(req);
 
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  if (req.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed" }, 405, corsHeaders);
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
   }
 
-  // Rate limit: 5 tentativas por 5 minutos por IP
-  const clientIp =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("cf-connecting-ip") ??
-    "unknown";
-  if (!checkRateLimit(`auto-approve:${clientIp}`, 5, 300_000)) {
-    return jsonResponse(
-      { error: "Muitas tentativas. Aguarde 5 minutos." },
-      429,
-      { ...corsHeaders, "Retry-After": "300" }
-    );
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Rate limit by IP
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? req.headers.get("cf-connecting-ip")
+    ?? "unknown";
+  if (!checkRateLimit(clientIp)) {
+    return new Response(JSON.stringify({ error: "Muitas tentativas. Aguarde 5 minutos." }), {
+      status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "300" },
+    });
   }
 
   try {
-    const supabaseUrl = getRequiredEnv("SUPABASE_URL");
-    const supabaseAnonKey = getRequiredEnv("SUPABASE_ANON_KEY");
-    const serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    // Com verify_jwt = true, JWT já foi validado pelo Supabase.
-    const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
-    if (!token) {
-      return jsonResponse({ error: "Não autenticado" }, 401, corsHeaders);
+    if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
+      return new Response(JSON.stringify({ error: "Erro de configuração do servidor" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
+    // Valida que o request vem de um usuário autenticado (o próprio que está aguardando)
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Não autenticado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // CORREÇÃO JWT: padrão oficial Supabase para Edge Functions.
+    // Passa o Authorization header no global.headers ao criar o cliente.
+    // getUser() SEM argumento lê do header — forma mais confiável.
+    const token = authHeader.replace("Bearer ", "").trim();
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      return jsonResponse({ error: "Sessão expirada ou inválida. Faça login novamente." }, 401, corsHeaders);
+      console.error("JWT validation failed in auto-approve:", userError?.message ?? "no user");
+      return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Lê e valida body (limitado a 4KB — só precisa de um UUID)
+    // Lê o user_id do body
+    // DDoS protection: limit body to 4KB (only user_id UUID needed)
     const MAX_BODY = 4 * 1024;
     const rawBuf = await req.arrayBuffer();
     if (rawBuf.byteLength > MAX_BODY) {
-      return jsonResponse({ error: "Requisição muito grande." }, 413, corsHeaders);
+      return new Response(JSON.stringify({ error: "Requisição muito grande." }), {
+        status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
     let body: Record<string, unknown> = {};
     try { body = JSON.parse(new TextDecoder().decode(rawBuf)); } catch { /* ok */ }
 
     const targetUserId = body.user_id;
     if (!targetUserId || typeof targetUserId !== "string") {
-      return jsonResponse({ error: "user_id é obrigatório" }, 400, corsHeaders);
+      return new Response(JSON.stringify({ error: "user_id é obrigatório" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Valida UUID antes de qualquer checagem de ownership
-    if (!isValidUUID(targetUserId)) {
-      return jsonResponse({ error: "user_id inválido" }, 400, corsHeaders);
+    // SECURITY: valida formato UUID ANTES de qualquer outra checagem.
+    // A verificação de ownership (targetUserId !== user.id) deve vir depois —
+    // caso contrário, um UUID malformado que coincidisse com user.id ignoraria
+    // a validação de formato e chegaria às queries do banco com valor inesperado.
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(targetUserId)) {
+      return new Response(JSON.stringify({ error: "user_id inválido" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Segurança: o usuário só pode aprovar a si mesmo
+    // Segurança: o usuário só pode aprovar A SI MESMO (auto-aprovação)
+    // Admins usam o painel AdminUsers para aprovar outros usuários
     if (targetUserId !== user.id) {
-      return jsonResponse({ error: "Sem permissão" }, 403, corsHeaders);
+      return new Response(JSON.stringify({ error: "Sem permissão" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
+    // Verifica se a conta tem pelo menos 55 segundos (evita aprovação antes do tempo)
+    // Usamos service role para ler created_at sem restrição de RLS
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: profile, error: profileError } = await adminClient
       .from("profiles")
@@ -91,31 +128,44 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (profileError || !profile) {
-      return jsonResponse({ error: "Perfil não encontrado" }, 404, corsHeaders);
+      return new Response(JSON.stringify({ error: "Perfil não encontrado" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
+    // SEGURANÇA: usuário bloqueado por admin não pode ser auto-aprovado
     if (profile.blocked === true) {
-      return jsonResponse({ error: "Conta bloqueada pelo administrador." }, 403, corsHeaders);
+      return new Response(JSON.stringify({ error: "Conta bloqueada pelo administrador." }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
+    // Se já aprovado, retorna sucesso sem fazer nada
     if (profile.approved === true) {
-      return jsonResponse({ success: true, already_approved: true }, 200, corsHeaders);
+      return new Response(JSON.stringify({ success: true, already_approved: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Aguarda mínimo de 55 segundos após criação (margem de 5s para latência)
+    // Verifica que a conta tem pelo menos 55s (margem de 5s para latência de rede)
     const createdAt = new Date(profile.created_at).getTime();
     const ageMs = Date.now() - createdAt;
-    const MIN_AGE_MS = 55_000;
+    const MIN_AGE_MS = 55_000; // 55 segundos
 
     if (ageMs < MIN_AGE_MS) {
       const waitMore = Math.ceil((MIN_AGE_MS - ageMs) / 1000);
-      return jsonResponse(
-        { error: `Aguarde mais ${waitMore} segundo(s) para aprovação automática`, wait_seconds: waitMore },
-        429,
-        corsHeaders
-      );
+      return new Response(JSON.stringify({
+        error: `Aguarde mais ${waitMore} segundo(s) para aprovação automática`,
+        wait_seconds: waitMore,
+      }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
+    // Aprova o usuário
     const { error: updateError } = await adminClient
       .from("profiles")
       .update({ approved: true })
@@ -123,14 +173,23 @@ Deno.serve(async (req) => {
 
     if (updateError) {
       console.error("auto-approve update error:", updateError.message);
-      return jsonResponse({ error: "Erro ao aprovar conta" }, 500, corsHeaders);
+      return new Response(JSON.stringify({ error: "Erro ao aprovar conta" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     console.log(`Auto-approved user ${targetUserId} after ${Math.round(ageMs / 1000)}s`);
-    return jsonResponse({ success: true }, 200, corsHeaders);
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
   } catch (err) {
     console.error("auto-approve error:", err);
-    return jsonResponse({ error: "Erro interno" }, 500, corsHeaders);
+    return new Response(JSON.stringify({ error: "Erro interno" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
