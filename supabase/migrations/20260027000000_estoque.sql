@@ -261,6 +261,8 @@ END;
 $f06$;
 
 -- ── sync_stock_items_from_devices ─────────────────────────────────────────────
+-- DROP necessário: migration anterior definia RETURNS void; aqui muda para RETURNS jsonb
+DROP FUNCTION IF EXISTS public.sync_stock_items_from_devices();
 CREATE OR REPLACE FUNCTION public.sync_stock_items_from_devices()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f07$
 DECLARE inserted_count integer;
