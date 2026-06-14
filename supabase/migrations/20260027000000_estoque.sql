@@ -55,6 +55,13 @@ CREATE TRIGGER trg_stock_items_updated_at
   BEFORE UPDATE ON public.stock_items
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ── FK pedido_itens → stock_items (adicionada aqui pois stock_items é criada nesta migration) ──
+ALTER TABLE public.pedido_itens
+  DROP CONSTRAINT IF EXISTS pedido_itens_stock_item_id_fkey;
+ALTER TABLE public.pedido_itens
+  ADD CONSTRAINT pedido_itens_stock_item_id_fkey
+  FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE CASCADE;
+
 -- ── stock_movements ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.stock_movements (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),

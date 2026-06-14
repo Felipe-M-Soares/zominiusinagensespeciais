@@ -73,7 +73,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_pedidos_chave_acesso ON public.pedidos_com
 CREATE TABLE IF NOT EXISTS public.pedido_itens (
   id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   pedido_id            uuid NOT NULL REFERENCES public.pedidos_comerciais(id) ON DELETE CASCADE,
-  stock_item_id        uuid NOT NULL REFERENCES public.stock_items(id) ON DELETE CASCADE,
+  stock_item_id        uuid NOT NULL, -- FK adicionada depois em _estoque via ALTER TABLE (stock_items criada lá)
   lote                 text,
   quantidade           integer NOT NULL CHECK (quantidade > 0),
   quantidade_reservada integer NOT NULL DEFAULT 0,
