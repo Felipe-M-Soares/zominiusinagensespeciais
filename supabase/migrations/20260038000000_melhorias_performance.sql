@@ -207,3 +207,123 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $
   );
 $$;
 GRANT EXECUTE ON FUNCTION public.health_check() TO anon, authenticated;
+
+-- =============================================================================
+-- ÍNDICES DE PERFORMANCE ADICIONAIS
+-- =============================================================================
+
+CREATE INDEX IF NOT EXISTS idx_financeiro_lanc_data_created
+  ON public.financeiro_lancamentos (data_lancamento DESC, created_by)
+  WHERE data_lancamento IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_financeiro_lanc_tipo
+  ON public.financeiro_lancamentos (tipo, data_lancamento DESC);
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_item_created
+  ON public.stock_movements (stock_item_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_stock_items_device_fase
+  ON public.stock_items (device_id, fase, quantity)
+  WHERE quantity > 0;
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity
+  ON public.audit_log (entity_type, entity_id, created_at DESC)
+  WHERE entity_id IS NOT NULL;
+
+-- =============================================================================
+-- FIX: RLS stock_items — transferência entre fases para usuários não-admin
+-- =============================================================================
+-- transferToExpedicao e transferToRetrabalho fazem INSERT direto em stock_items
+-- para criar o item de destino quando não existe ainda.
+-- A policy "stock_items_write_admin" bloqueava isso para role "estoque".
+
+DROP POLICY IF EXISTS "stock_items_insert_approved" ON public.stock_items;
+CREATE POLICY "stock_items_insert_approved" ON public.stock_items
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    public.is_approved_user()
+    AND fase IN ('expedicao', 'retrabalho')
+    AND quantity = 0
+    AND quantity_reserved = 0
+  );
+
+DROP POLICY IF EXISTS "stock_items_update_approved" ON public.stock_items;
+CREATE POLICY "stock_items_update_approved" ON public.stock_items
+  FOR UPDATE TO authenticated
+  USING (public.is_approved_user())
+  WITH CHECK (
+    public.is_approved_user()
+    AND quantity          = (SELECT quantity          FROM public.stock_items s WHERE s.id = stock_items.id)
+    AND quantity_reserved = (SELECT quantity_reserved FROM public.stock_items s WHERE s.id = stock_items.id)
+  );
+
+-- =============================================================================
+-- FIX: Foreign Keys auth.users sem ON DELETE SET NULL
+-- =============================================================================
+-- Erro "violates foreign key constraint" ao excluir usuário que tem pedidos,
+-- lançamentos ou clientes vinculados. ON DELETE SET NULL preserva o histórico.
+
+ALTER TABLE public.pedidos_comerciais
+  DROP CONSTRAINT IF EXISTS pedidos_comerciais_vendedora_id_fkey,
+  DROP CONSTRAINT IF EXISTS pedidos_comerciais_separado_por_fkey,
+  DROP CONSTRAINT IF EXISTS pedidos_comerciais_faturado_por_fkey,
+  DROP CONSTRAINT IF EXISTS pedidos_comerciais_nf_criada_por_fkey;
+
+ALTER TABLE public.pedidos_comerciais
+  ADD CONSTRAINT pedidos_comerciais_vendedora_id_fkey
+    FOREIGN KEY (vendedora_id)  REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD CONSTRAINT pedidos_comerciais_separado_por_fkey
+    FOREIGN KEY (separado_por)  REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD CONSTRAINT pedidos_comerciais_faturado_por_fkey
+    FOREIGN KEY (faturado_por)  REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD CONSTRAINT pedidos_comerciais_nf_criada_por_fkey
+    FOREIGN KEY (nf_criada_por) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.clientes
+  DROP CONSTRAINT IF EXISTS clientes_created_by_fkey;
+ALTER TABLE public.clientes
+  ADD CONSTRAINT clientes_created_by_fkey
+    FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.financeiro_lancamentos
+  DROP CONSTRAINT IF EXISTS financeiro_lancamentos_created_by_fkey;
+ALTER TABLE public.financeiro_lancamentos
+  ADD CONSTRAINT financeiro_lancamentos_created_by_fkey
+    FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.financeiro_contas_bancarias
+  DROP CONSTRAINT IF EXISTS financeiro_contas_bancarias_created_by_fkey;
+ALTER TABLE public.financeiro_contas_bancarias
+  ADD CONSTRAINT financeiro_contas_bancarias_created_by_fkey
+    FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+-- Corrige automaticamente todas as demais FKs para auth.users sem ON DELETE
+DO $fix_fk$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT tc.table_name, tc.constraint_name, kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+    JOIN information_schema.referential_constraints rc
+      ON tc.constraint_name = rc.constraint_name AND tc.table_schema = rc.constraint_schema
+    JOIN information_schema.table_constraints tc2
+      ON rc.unique_constraint_name = tc2.constraint_name AND rc.unique_constraint_schema = tc2.table_schema
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND tc.table_schema = 'public'
+      AND tc2.table_name = 'users' AND tc2.table_schema = 'auth'
+      AND rc.delete_rule NOT IN ('SET NULL', 'CASCADE')
+      AND tc.table_name NOT IN (
+        'pedidos_comerciais','clientes',
+        'financeiro_lancamentos','financeiro_contas_bancarias'
+      )
+  LOOP
+    BEGIN
+      EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT IF EXISTS %I', r.table_name, r.constraint_name);
+      EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES auth.users(id) ON DELETE SET NULL', r.table_name, r.constraint_name, r.column_name);
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'FK %: %', r.constraint_name, SQLERRM;
+    END;
+  END LOOP;
+END $fix_fk$;
