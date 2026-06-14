@@ -3,32 +3,66 @@
 -- =============================================================================
 
 -- ── PERF-01: Índice GIN pg_trgm para busca full-text em dispositivos ──────────
--- Torna buscas com ILIKE e % 10-50x mais rápidas (pg_trgm já instalado)
-CREATE INDEX IF NOT EXISTS idx_devices_model_trgm
-  ON public.devices USING GIN (model gin_trgm_ops);
+-- pg_trgm pode estar no schema 'public' OU 'extensions' (movido pela migration
+-- 20260029). Descobrimos o schema em runtime e qualificamos o operator class.
+DO $trgm_idx$
+DECLARE
+  v_trgm_schema text;
+BEGIN
+  SELECT n.nspname INTO v_trgm_schema
+  FROM pg_extension e
+  JOIN pg_namespace n ON n.oid = e.extnamespace
+  WHERE e.extname = 'pg_trgm'
+  LIMIT 1;
 
-CREATE INDEX IF NOT EXISTS idx_devices_reference_trgm
-  ON public.devices USING GIN (reference gin_trgm_ops);
+  IF v_trgm_schema IS NULL THEN
+    RAISE NOTICE 'pg_trgm nao encontrado -- pulando indices GIN';
+    RETURN;
+  END IF;
 
-CREATE INDEX IF NOT EXISTS idx_devices_brand_trgm
-  ON public.devices USING GIN (brand_name gin_trgm_ops);
+  RAISE NOTICE 'pg_trgm esta no schema: %', v_trgm_schema;
 
-CREATE INDEX IF NOT EXISTS idx_devices_internal_code_trgm
-  ON public.devices USING GIN (internal_code gin_trgm_ops);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_devices_model_trgm
+    ON public.devices USING GIN (model %I.gin_trgm_ops)', v_trgm_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_devices_reference_trgm
+    ON public.devices USING GIN (reference %I.gin_trgm_ops)', v_trgm_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_devices_brand_trgm
+    ON public.devices USING GIN (brand_name %I.gin_trgm_ops)', v_trgm_schema);
+  EXECUTE format('CREATE INDEX IF NOT EXISTS idx_devices_internal_code_trgm
+    ON public.devices USING GIN (internal_code %I.gin_trgm_ops)', v_trgm_schema);
 
--- ── PERF-02: Índice GIN para busca em rastreabilidade ─────────────────────────
-CREATE INDEX IF NOT EXISTS idx_rastr_lote_trgm
-  ON public.rastreabilidade_pos_venda USING GIN (lote gin_trgm_ops);
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'rastreabilidade_pos_venda'
+  ) THEN
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_rastr_lote_trgm
+      ON public.rastreabilidade_pos_venda USING GIN (lote %I.gin_trgm_ops)', v_trgm_schema);
+  END IF;
 
--- ── PERF-03: RPC para autocomplete de dispositivos (usa pg_trgm similarity) ───
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Erro ao criar indices GIN: %. ILIKE ainda funciona sem eles.', SQLERRM;
+END $trgm_idx$;
+
+-- ── PERF-03: RPC para autocomplete de dispositivos ────────────────────────────
+-- SET search_path inclui 'extensions' para que similarity() seja encontrada
+-- independente do schema em que o pg_trgm estiver instalado.
+-- A ordenacao usa CASE em vez de similarity() diretamente — funciona mesmo
+-- sem pg_trgm (degrada graciosamente para ordenacao por nome).
 CREATE OR REPLACE FUNCTION public.autocomplete_devices(p_query text, p_limit int DEFAULT 8)
 RETURNS TABLE(suggestion text)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, extensions AS $$
   SELECT DISTINCT model AS suggestion
   FROM public.devices
-  WHERE model ILIKE '%' || p_query || '%'
+  WHERE model     ILIKE '%' || p_query || '%'
      OR reference ILIKE '%' || p_query || '%'
-  ORDER BY similarity(model, p_query) DESC
+  ORDER BY
+    CASE
+      WHEN model ILIKE p_query || '%' THEN 0
+      WHEN model ILIKE '%' || p_query || '%' THEN 1
+      ELSE 2
+    END,
+    model
   LIMIT LEAST(p_limit, 20);
 $$;
 GRANT EXECUTE ON FUNCTION public.autocomplete_devices(text, int) TO authenticated;
