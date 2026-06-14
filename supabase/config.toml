@@ -30,3 +30,9 @@ project_id = "lvbilwznflyyiuxfhjyb"
 
   [functions.sefaz-emitir]
     verify_jwt = true
+
+  [functions.health]
+    verify_jwt = false
+
+  [functions.notify-whatsapp]
+    verify_jwt = true

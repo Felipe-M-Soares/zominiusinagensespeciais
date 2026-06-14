@@ -11,6 +11,8 @@ import { ChevronDown, Loader2, Search, SlidersHorizontal, ScanBarcode, X as XIco
 import { CatalogButton } from "@/components/CatalogButton";
 import { ManuaisButton } from "@/components/ManuaisButton";
 import { cn } from "@/lib/utils";
+import { useAutocomplete } from "@/hooks/useAutocomplete";
+import { useSearchFocusListener } from "@/hooks/useKeyboardShortcuts";
 
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const EMPTY_FILTERS: Filters = Object.freeze({ material: "", classification: "", sterile: "", single_use: "", exocad: "" }) as Filters;
@@ -90,8 +92,14 @@ const Index = () => {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [autocompleteItems] = useState<string[]>([]);
-  const [showAutocomplete] = useState(false);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const { suggestions: autocompleteItems, clear: clearAutocomplete } = useAutocomplete(search);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Ctrl+K foca na busca
+  useSearchFocusListener(() => {
+    searchInputRef.current?.focus();
+  });
 
   const activeFilterCount = [filters.material, filters.classification, filters.sterile, filters.single_use, filters.exocad, activeLetter].filter(Boolean).length;
 
@@ -103,17 +111,22 @@ const Index = () => {
   const handleSearchChange = useCallback((v: string) => {
     setSearch(v);
     setQuerySearch(v);
+    setShowAutocomplete(!!v.trim());
   }, []);
 
   const handleClearSearch = useCallback(() => {
     setSearch("");
     setQuerySearch("");
-  }, []);
+    setShowAutocomplete(false);
+    clearAutocomplete();
+  }, [clearAutocomplete]);
 
   const handleSelectSuggestion = useCallback((suggestion: string) => {
     setSearch(suggestion);
     setQuerySearch(suggestion);
-  }, []);
+    setShowAutocomplete(false);
+    clearAutocomplete();
+  }, [clearAutocomplete]);
 
   const handleFilterChange = useCallback((key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
