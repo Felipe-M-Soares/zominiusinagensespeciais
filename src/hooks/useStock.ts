@@ -448,20 +448,15 @@ export async function transferToExpedicao(
       .eq("id", intermediariaItemId)
       .single();
 
-    const { data: created, error: createErr } = await supabase
-      .from("stock_items")
-      .insert({
-        device_id: deviceId,
-        quantity: 0,
-        min_quantity: srcItem?.min_quantity ?? 0,
-        location: srcItem?.location ?? null,
-        notes: srcItem?.notes ?? null,
-        fase: "expedicao",
-      })
-      .select("id")
-      .single();
+    // Usa RPC SECURITY DEFINER para criar o item — bypass correto do RLS
+    const { data: newId, error: createErr } = await supabase.rpc("ensure_expedicao_item", {
+      p_device_id:    deviceId,
+      p_min_quantity: srcItem?.min_quantity ?? 0,
+      p_location:     srcItem?.location ?? null,
+      p_notes:        srcItem?.notes ?? null,
+    });
 
-    if (createErr || !created) {
+    if (createErr || !newId) {
       await registerMovement(
         intermediariaItemId, "entrada", quantity,
         "Rollback — falha ao criar item de expedição",
@@ -469,7 +464,7 @@ export async function transferToExpedicao(
       );
       return { ok: false, error: "Erro ao criar item na expedição." };
     }
-    expedicaoItemId = created.id;
+    expedicaoItemId = newId as string;
   }
 
   // 3. Entrada na expedição
@@ -540,24 +535,19 @@ export async function transferToRetrabalho(
       .eq("id", expedicaoItemId)
       .single();
 
-    const { data: created, error: createErr } = await supabase
-      .from("stock_items")
-      .insert({
-        device_id: deviceId,
-        quantity: 0,
-        min_quantity: 0,
-        location: srcItem?.location ?? null,
-        notes: `lote:${lote.toUpperCase()}${srcItem?.notes ? ` | ${srcItem.notes}` : ""}`,
-        fase: "retrabalho",
-      })
-      .select("id")
-      .single();
+    // Usa RPC SECURITY DEFINER para criar o item — bypass correto do RLS
+    const { data: newId, error: createErr } = await supabase.rpc("ensure_retrabalho_item", {
+      p_device_id: deviceId,
+      p_lote:      lote,
+      p_location:  srcItem?.location ?? null,
+      p_notes:     srcItem?.notes ?? null,
+    });
 
-    if (createErr || !created) {
+    if (createErr || !newId) {
       await registerMovement(expedicaoItemId, "entrada", quantity, "Rollback — falha ao criar item de retrabalho", userId, userDisplayName, lote);
       return { ok: false, error: "Erro ao criar item no retrabalho." };
     }
-    retrabalhoItemId = created.id;
+    retrabalhoItemId = newId as string;
   }
 
   // 3. Entrada no retrabalho
@@ -620,24 +610,19 @@ export async function transferRetrabalhoToExpedicao(
       .eq("id", retrabalhoItemId)
       .single();
 
-    const { data: created, error: createErr } = await supabase
-      .from("stock_items")
-      .insert({
-        device_id: deviceId,
-        quantity: 0,
-        min_quantity: srcItem?.min_quantity ?? 0,
-        location: srcItem?.location ?? null,
-        notes: srcItem?.notes ?? null,
-        fase: "expedicao",
-      })
-      .select("id")
-      .single();
+    // Usa RPC SECURITY DEFINER para criar o item — bypass correto do RLS
+    const { data: newId, error: createErr } = await supabase.rpc("ensure_expedicao_item", {
+      p_device_id:    deviceId,
+      p_min_quantity: srcItem?.min_quantity ?? 0,
+      p_location:     srcItem?.location ?? null,
+      p_notes:        srcItem?.notes ?? null,
+    });
 
-    if (createErr || !created) {
+    if (createErr || !newId) {
       await registerMovement(retrabalhoItemId, "entrada", quantity, "Rollback — falha ao criar item de expedição", userId, userDisplayName, lote);
       return { ok: false, error: "Erro ao criar item na expedição." };
     }
-    expedicaoItemId = created.id;
+    expedicaoItemId = newId as string;
   }
 
   // 3. Entrada na expedição

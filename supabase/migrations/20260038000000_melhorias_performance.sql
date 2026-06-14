@@ -230,32 +230,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_entity
   ON public.audit_log (entity_type, entity_id, created_at DESC)
   WHERE entity_id IS NOT NULL;
 
--- =============================================================================
--- FIX: RLS stock_items — transferência entre fases para usuários não-admin
--- =============================================================================
--- transferToExpedicao e transferToRetrabalho fazem INSERT direto em stock_items
--- para criar o item de destino quando não existe ainda.
--- A policy "stock_items_write_admin" bloqueava isso para role "estoque".
-
-DROP POLICY IF EXISTS "stock_items_insert_approved" ON public.stock_items;
-CREATE POLICY "stock_items_insert_approved" ON public.stock_items
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    public.is_approved_user()
-    AND fase IN ('expedicao', 'retrabalho')
-    AND quantity = 0
-    AND quantity_reserved = 0
-  );
-
-DROP POLICY IF EXISTS "stock_items_update_approved" ON public.stock_items;
-CREATE POLICY "stock_items_update_approved" ON public.stock_items
-  FOR UPDATE TO authenticated
-  USING (public.is_approved_user())
-  WITH CHECK (
-    public.is_approved_user()
-    AND quantity          = (SELECT quantity          FROM public.stock_items s WHERE s.id = stock_items.id)
-    AND quantity_reserved = (SELECT quantity_reserved FROM public.stock_items s WHERE s.id = stock_items.id)
-  );
+-- RLS fix: ver 20260039000000_fix_stock_rls.sql (RPCs SECURITY DEFINER)
 
 -- =============================================================================
 -- FIX: Foreign Keys auth.users sem ON DELETE SET NULL
