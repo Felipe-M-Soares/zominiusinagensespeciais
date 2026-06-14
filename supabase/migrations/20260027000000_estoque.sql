@@ -913,9 +913,9 @@ BEGIN
     'intermediaria',       COALESCE(SUM(quantity) FILTER (WHERE fase = 'intermediaria'), 0)::bigint,
     'expedicao',           COALESCE(SUM(quantity) FILTER (WHERE fase = 'expedicao'), 0)::bigint,
     'retrabalho',          COALESCE(SUM(quantity) FILTER (WHERE fase = 'retrabalho'), 0)::bigint,
-    'count_intermediaria', COALESCE(COUNT(*) FILTER (WHERE fase = 'intermediaria'), 0)::bigint,
-    'count_expedicao',     COALESCE(COUNT(*) FILTER (WHERE fase = 'expedicao'), 0)::bigint,
-    'count_retrabalho',    COALESCE(COUNT(*) FILTER (WHERE fase = 'retrabalho'), 0)::bigint
+    'count_intermediaria', COALESCE(COUNT(*) FILTER (WHERE fase = 'intermediaria' AND quantity > 0), 0)::bigint,
+    'count_expedicao',     COALESCE(COUNT(*) FILTER (WHERE fase = 'expedicao'     AND quantity > 0), 0)::bigint,
+    'count_retrabalho',    COALESCE(COUNT(*) FILTER (WHERE fase = 'retrabalho'    AND quantity > 0), 0)::bigint
   ) INTO v_qty_by_fase FROM public.stock_items;
 
   RETURN jsonb_build_object(
