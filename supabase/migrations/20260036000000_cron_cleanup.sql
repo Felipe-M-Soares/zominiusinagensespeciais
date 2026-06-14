@@ -11,20 +11,43 @@
 --   Command: SELECT public.cleanup_audit_log();
 -- =============================================================================
 
+-- ── DROP explícito antes de recriar (evita erro 42P13) ───────────────────────
+-- O erro "cannot change return type of existing function" ocorre quando a função
+-- já existe com assinatura diferente. DROP IF EXISTS garante idempotência.
+DROP FUNCTION IF EXISTS public.cleanup_rate_limit_log();
+
+-- ── Função de limpeza do rate_limit_log ──────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.cleanup_rate_limit_log()
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  DELETE FROM public.rate_limit_log
+  WHERE created_at < now() - INTERVAL '5 minutes';
+$$;
+
+GRANT EXECUTE ON FUNCTION public.cleanup_rate_limit_log() TO authenticated;
+
+-- ── Índice para cleanup eficiente ────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_rate_limit_created_at
+  ON public.rate_limit_log (created_at ASC);
+
 -- ── Tenta criar jobs via pg_cron se estiver disponível ───────────────────────
 DO $cron01$
 BEGIN
-  -- Verifica se pg_cron está instalado
   IF EXISTS (
     SELECT 1 FROM pg_extension WHERE extname = 'pg_cron'
   ) THEN
 
     -- Remove jobs antigos se existirem (idempotente)
-    PERFORM cron.unschedule('cleanup_audit_log_daily')
-    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'cleanup_audit_log_daily');
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'cleanup_audit_log_daily') THEN
+      PERFORM cron.unschedule('cleanup_audit_log_daily');
+    END IF;
 
-    PERFORM cron.unschedule('cleanup_rate_limit_log_hourly')
-    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'cleanup_rate_limit_log_hourly');
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'cleanup_rate_limit_log_hourly') THEN
+      PERFORM cron.unschedule('cleanup_rate_limit_log_hourly');
+    END IF;
 
     -- Limpeza do audit_log: todo dia às 2h (mantém 90 dias)
     PERFORM cron.schedule(
@@ -33,42 +56,24 @@ BEGIN
       'SELECT public.cleanup_audit_log()'
     );
 
-    -- Limpeza do rate_limit_log: a cada hora (já tem trigger, mas cron garante)
+    -- Limpeza do rate_limit_log: a cada hora
     PERFORM cron.schedule(
       'cleanup_rate_limit_log_hourly',
       '0 * * * *',
-      'DELETE FROM public.rate_limit_log WHERE created_at < now() - interval ''5 minutes'''
+      'SELECT public.cleanup_rate_limit_log()'
     );
 
     RAISE NOTICE 'Jobs pg_cron criados com sucesso';
 
   ELSE
-    RAISE NOTICE '⚠ pg_cron não está instalado. Configure manualmente:';
-    RAISE NOTICE '  Dashboard → Database → Cron Jobs → New Cron Job';
-    RAISE NOTICE '  Schedule: 0 2 * * * | Command: SELECT public.cleanup_audit_log();';
+    RAISE NOTICE 'pg_cron não instalado. Configure manualmente em Dashboard → Database → Cron Jobs';
+    RAISE NOTICE 'Job 1: Schedule "0 2 * * *"  → SELECT public.cleanup_audit_log()';
+    RAISE NOTICE 'Job 2: Schedule "0 * * * *"  → SELECT public.cleanup_rate_limit_log()';
   END IF;
 
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Erro ao criar cron jobs: %. Configure manualmente.', SQLERRM;
 END $cron01$;
-
--- ── Função de limpeza do rate_limit_log mais agressiva (manutenção) ───────────
-CREATE OR REPLACE FUNCTION public.cleanup_rate_limit_log()
-RETURNS void
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $cron02$
-  DELETE FROM public.rate_limit_log
-  WHERE created_at < now() - INTERVAL '5 minutes';
-$cron02$;
-
-GRANT EXECUTE ON FUNCTION public.cleanup_rate_limit_log() TO authenticated;
-
--- ── Índice para cleanup eficiente do audit_log ────────────────────────────────
--- Já existe idx_audit_log_created_at da migration anterior, mas garantimos aqui
-CREATE INDEX IF NOT EXISTS idx_rate_limit_created_at
-  ON public.rate_limit_log (created_at ASC);
 
 COMMENT ON FUNCTION public.cleanup_audit_log() IS
   'Remove registros de audit_log com mais de 90 dias. Executado diariamente às 2h via pg_cron.';
