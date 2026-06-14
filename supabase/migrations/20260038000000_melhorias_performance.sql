@@ -52,17 +52,20 @@ CREATE OR REPLACE FUNCTION public.autocomplete_devices(p_query text, p_limit int
 RETURNS TABLE(suggestion text)
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public, extensions AS $$
-  SELECT DISTINCT model AS suggestion
-  FROM public.devices
-  WHERE model     ILIKE '%' || p_query || '%'
-     OR reference ILIKE '%' || p_query || '%'
-  ORDER BY
-    CASE
-      WHEN model ILIKE p_query || '%' THEN 0
-      WHEN model ILIKE '%' || p_query || '%' THEN 1
-      ELSE 2
-    END,
-    model
+  -- SELECT DISTINCT não aceita ORDER BY com expressões fora do SELECT.
+  -- Solução: subquery calcula a prioridade, outer query aplica DISTINCT + ORDER.
+  SELECT suggestion FROM (
+    SELECT DISTINCT model AS suggestion,
+      CASE
+        WHEN model ILIKE p_query || '%' THEN 0   -- começa com o termo: maior prioridade
+        WHEN model ILIKE '%' || p_query || '%' THEN 1
+        ELSE 2
+      END AS prio
+    FROM public.devices
+    WHERE model     ILIKE '%' || p_query || '%'
+       OR reference ILIKE '%' || p_query || '%'
+  ) sub
+  ORDER BY prio, suggestion
   LIMIT LEAST(p_limit, 20);
 $$;
 GRANT EXECUTE ON FUNCTION public.autocomplete_devices(text, int) TO authenticated;
