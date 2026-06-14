@@ -12,7 +12,6 @@ import { CatalogButton } from "@/components/CatalogButton";
 import { ManuaisButton } from "@/components/ManuaisButton";
 import { cn } from "@/lib/utils";
 
-
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const EMPTY_FILTERS: Filters = Object.freeze({ material: "", classification: "", sterile: "", single_use: "", exocad: "" }) as Filters;
 
@@ -91,8 +90,8 @@ const Index = () => {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeLetter, setActiveLetter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [autocompleteItems] = useState<string[]>([]);
   const [showAutocomplete] = useState(false);
-  const autocompleteItems: string[] = [];
 
   const activeFilterCount = [filters.material, filters.classification, filters.sterile, filters.single_use, filters.exocad, activeLetter].filter(Boolean).length;
 

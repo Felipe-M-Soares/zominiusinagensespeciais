@@ -21,11 +21,6 @@ import {
   Cpu,
   ShieldCheck,
 } from "lucide-react";
-import { OfflineBanner } from "@/components/OfflineBanner";
-import { KeyboardShortcutsHelp } from "@/components/KeyboardShortcutsHelp";
-import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
-import { useRealtimeInvalidation } from "@/hooks/useRealtimeInvalidation";
-import { useThemeSync } from "@/hooks/useThemeSync";
 
 interface NavItem {
   label: string;
@@ -213,16 +208,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     applyTheme(getStoredTheme());
   }, []);
 
-  // Realtime cache invalidation + keyboard shortcuts + theme sync
-  useKeyboardShortcuts();
-  useRealtimeInvalidation();
-  const { saveTheme } = useThemeSync();
-
   const toggleTheme = useCallback(() => {
     const next = !isDark;
     setIsDark(next);
-    saveTheme(next ? "dark" : "light");
-  }, [isDark, saveTheme]);
+    applyTheme(next ? "dark" : "light");
+  }, [isDark]);
 
   const isActive = useCallback(
     (path: string) => {
@@ -457,12 +447,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </header>
 
-        {/* Offline status banner */}
-        <OfflineBanner />
         {/* Page content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden pb-safe">{children}</main>
-      {/* Keyboard shortcuts help dialog */}
-      <KeyboardShortcutsHelp />
       </div>
     </div>
   );
