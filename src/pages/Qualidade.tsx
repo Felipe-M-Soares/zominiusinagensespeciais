@@ -35,6 +35,7 @@ import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 const CertificadosPanel   = lazy(() => import("@/components/qualidade/CertificadosPanel").then(m => ({ default: m.CertificadosPanel })));
 const RastreabilidadePanel = lazy(() => import("@/components/qualidade/RastreabilidadePanel").then(m => ({ default: m.RastreabilidadePanel })));
 const GS1Panel             = lazy(() => import("@/components/qualidade/GS1Panel").then(m => ({ default: m.GS1Panel })));
+const RecallPanel          = lazy(() => import("@/components/qualidade/RecallPanel").then(m => ({ default: m.RecallPanel })));
 import { PageNav } from "@/components/PageNav";
 import type { PageNavTab } from "@/components/PageNav";
 import type { StockFase, AllMovement } from "@/hooks/useStock";
@@ -43,7 +44,7 @@ import { toast } from "sonner";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type QualidadeView = "pipeline" | "rastreamento" | "rastreabilidade_pos" | "historico" | "gs1" | "certificados";
+type QualidadeView = "pipeline" | "rastreamento" | "rastreabilidade_pos" | "recall" | "historico" | "gs1" | "certificados";
 
 type FaseNum = 1 | 2 | 3 | 4 | 5;
 type StatusReg =
@@ -100,6 +101,7 @@ const TABS: PageNavTab<QualidadeView>[] = [
   { id: "historico",    label: "Histórico",    Icon: History,        activeColor: "text-amber-500",   activeBg: "bg-amber-500/10",   activeBorder: "border-amber-500/40"  },
   { id: "rastreabilidade_pos", label: "Rastreab. Pós-venda", Icon: MapPin, activeColor: "text-rose-500", activeBg: "bg-rose-500/10", activeBorder: "border-rose-500/40" },
   { id: "certificados", label: "Certificados", Icon: Shield,         activeColor: "text-teal-500",    activeBg: "bg-teal-500/10",    activeBorder: "border-teal-500/40"   },
+  { id: "recall",       label: "Recall",       Icon: AlertTriangle,  activeColor: "text-red-500",     activeBg: "bg-red-500/10",     activeBorder: "border-red-500/40"    },
   { id: "gs1",          label: "GS1",          Icon: Barcode,        activeColor: "text-cyan-500",    activeBg: "bg-cyan-500/10",    activeBorder: "border-cyan-500/40"   },
 ];
 
@@ -1192,6 +1194,7 @@ export default function Qualidade() {
         {activeView === "rastreabilidade_pos" && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><RastreabilidadePanel/></Suspense>}
         {activeView === "historico"         && <HistoricoPanel />}
         {activeView === "certificados"      && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><CertificadosPanel/></Suspense>}
+        {activeView === "recall"            && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><RecallPanel /></Suspense>}
         {activeView === "gs1"               && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><GS1Panel /></Suspense>}
       </div>
     </div>

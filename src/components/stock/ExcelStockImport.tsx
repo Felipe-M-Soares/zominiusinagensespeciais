@@ -19,6 +19,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import { supabase } from "@/integrations/supabase/client";
 import { registerMovement } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
+import { logger } from "@/lib/logger";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -336,7 +337,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
         return;
       }
       setFileMode("excel"); setParsedRows(rows); setStep("preview");
-    } catch (e) { toast.error("Erro ao ler planilha."); console.error(e); }
+    } catch (e) { toast.error("Erro ao ler planilha."); logger.error("Erro ao ler planilha", e); }
   }, []);
 
   // ── Parse PDF ────────────────────────────────────────────────────────────────
@@ -353,7 +354,7 @@ export function ExcelStockImport({ open, onClose, onSuccess }: Props) {
       setParsedRows(rows); setStep("preview");
     } catch (e) {
       toast.error("Erro ao processar PDF. Verifique se é o relatório de saldo correto.");
-      console.error(e); setStep("idle");
+      logger.error("Erro ao processar PDF", e); setStep("idle");
     }
   }, []);
 

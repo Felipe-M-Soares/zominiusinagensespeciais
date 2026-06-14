@@ -22,6 +22,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 const FornecedoresPanel  = lazy(() => import("@/components/compras/FornecedoresPanel").then(m => ({ default: m.FornecedoresPanel })));
 const PedidosCompraPanel = lazy(() => import("@/components/compras/PedidosCompraPanel").then(m => ({ default: m.PedidosCompraPanel })));
+const FluxoCaixaPanelLazy = lazy(() => import("@/components/financeiro/FluxoCaixaPanel").then(m => ({ default: m.FluxoCaixaPanel })));
 import {
   ArrowLeft, Receipt, CheckCircle2, Package, User, Clock, Printer,
   Truck, ChevronDown, ChevronUp, Send, X, RefreshCw,
@@ -3676,7 +3677,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
 
 // ─── Página Principal ────────────────────────────────────────────────────────
 
-type FinTab = "dashboard" | "nfe" | "contas" | "fornecedores" | "compras" | "compras_producao" | "compras_empresa" | "custos" | "bancos" | "precos";
+type FinTab = "dashboard" | "nfe" | "contas" | "fluxo" | "fornecedores" | "compras" | "compras_producao" | "compras_empresa" | "custos" | "bancos" | "precos";
 
 export default function Financeiro() {
   const navigate = useNavigate();
@@ -3859,6 +3860,7 @@ export default function Financeiro() {
   const TABS: { id: FinTab; label: string; icon: typeof Receipt; badge?: number }[] = [
     { id: "dashboard",        label: "Dashboard",        icon: BarChart2   },
     { id: "nfe",              label: "NF-e / SEFAZ",     icon: FileCheck2, badge: prontos },
+    { id: "fluxo",            label: "Fluxo de Caixa",   icon: TrendingUp  },
     { id: "fornecedores",     label: "Fornecedores",      icon: Building2   },
     { id: "compras",          label: "Pedidos Compra",    icon: ShoppingCart},
     { id: "compras_producao", label: "Compras Produção",  icon: Factory     },
@@ -4122,6 +4124,20 @@ export default function Financeiro() {
               </div>
             </div>
             <PainelTabelaPrecos modoTeste={modoTeste} />
+          </div>
+        )}
+        {activeTab === "fluxo" && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+                <TrendingUp size={20} className="text-emerald-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold">Fluxo de Caixa</h2>
+                <p className="text-[12px] text-muted-foreground">Análise de entradas/saídas, aging de inadimplência e projeção</p>
+              </div>
+            </div>
+            <FluxoCaixaPanelLazy />
           </div>
         )}
       </div>

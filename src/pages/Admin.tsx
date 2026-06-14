@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { AdminDevices } from "@/components/admin/AdminDevices";
 import { AdminUsers } from "@/components/admin/AdminUsers";
+import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
 import { DashboardGeral } from "@/components/qualidade/DashboardGeral";
 import { PageNav } from "@/components/PageNav";
-import { Settings, Cpu, Users, LayoutDashboard } from "lucide-react";
+import { Settings, Cpu, Users, LayoutDashboard, Shield } from "lucide-react";
 
-type AdminTab = "dashboard" | "devices" | "users";
+type AdminTab = "dashboard" | "devices" | "users" | "auditoria";
 
 const ADMIN_TABS = [
   {
@@ -37,6 +38,16 @@ const ADMIN_TABS = [
     activeBorder: "border-violet-500/40",
     badgeBg: "bg-violet-500/15",
     badgeText: "text-violet-600 dark:text-violet-400",
+  },
+  {
+    id: "auditoria" as AdminTab,
+    label: "Auditoria",
+    Icon: Shield,
+    activeColor: "text-amber-600 dark:text-amber-400",
+    activeBg: "bg-amber-500/10",
+    activeBorder: "border-amber-500/40",
+    badgeBg: "bg-amber-500/15",
+    badgeText: "text-amber-600 dark:text-amber-400",
   },
 ];
 
@@ -71,6 +82,7 @@ export default function Admin() {
           {activeTab === "dashboard" && <DashboardGeral />}
           {activeTab === "devices"   && <AdminDevices />}
           {activeTab === "users"     && <AdminUsers />}
+          {activeTab === "auditoria" && <AuditLogPanel />}
         </div>
       </main>
     </div>

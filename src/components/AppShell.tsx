@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { ROLE_LABELS } from "@/types/roles";
 import type { AppRole } from "@/types/roles";
 import logoZomini from "@/assets/logo_zomini.png";
+import { NotificacoesPanel } from "@/components/NotificacoesPanel";
 import {
   Boxes,
   ShoppingBag,
@@ -20,6 +21,7 @@ import {
   Factory,
   Cpu,
   ShieldCheck,
+  ShoppingCart,
 } from "lucide-react";
 
 interface NavItem {
@@ -31,12 +33,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Componentes", icon: Cpu,        path: "/",          roles: ["admin","estoque","qualidade","producao"] },
-  { label: "Estoque",     icon: Boxes,       path: "/estoque",   roles: ["admin","estoque","qualidade"] },
-  { label: "Qualidade",   icon: ShieldCheck, path: "/qualidade", roles: ["admin","qualidade"] },
-  { label: "Comercial",   icon: ShoppingBag, path: "/comercial", roles: ["admin","comercial"] },
-  { label: "Financeiro",  icon: Receipt,     path: "/financeiro",roles: ["admin","financeiro"] },
-  { label: "Produção",    icon: Factory,     path: "/producao",  roles: ["admin","producao"] },
+  { label: "Componentes", icon: Cpu,          path: "/",          roles: ["admin","estoque","qualidade","producao"] },
+  { label: "Estoque",     icon: Boxes,         path: "/estoque",   roles: ["admin","estoque","qualidade"] },
+  { label: "Qualidade",   icon: ShieldCheck,   path: "/qualidade", roles: ["admin","qualidade"] },
+  { label: "Comercial",   icon: ShoppingBag,   path: "/comercial", roles: ["admin","comercial"] },
+  { label: "Financeiro",  icon: Receipt,       path: "/financeiro",roles: ["admin","financeiro"] },
+  { label: "Compras",     icon: ShoppingCart,  path: "/compras",   roles: ["admin","estoque","financeiro"] },
+  { label: "Produção",    icon: Factory,       path: "/producao",  roles: ["admin","producao"] },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
@@ -208,6 +211,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     applyTheme(getStoredTheme());
   }, []);
 
+  // Atalho Cmd+K / Ctrl+K → navega para /estoque (busca global)
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        navigate("/estoque");
+      }
+    }
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [navigate]);
+
   const toggleTheme = useCallback(() => {
     const next = !isDark;
     setIsDark(next);
@@ -327,6 +342,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {!collapsed && <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>}
             </button>
 
+            {/* Notificações — desktop */}
+            <div className={cn("flex", collapsed ? "justify-center px-1" : "px-1")}>
+              <NotificacoesPanel />
+            </div>
+
             {collapsed ? (
               <div className="pt-1 border-t border-sidebar-border/40">
                 <div className="flex flex-col items-center gap-1 py-1">
@@ -438,13 +458,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <button onClick={() => handleNav("/")} className="hover:opacity-80 transition-opacity" title="Componentes">
             <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" decoding="async" />
           </button>
-          <button
-            onClick={() => setMobileOpen(true)}
-            className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"
-            title="Menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <NotificacoesPanel />
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"
+              title="Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          </div>
         </header>
 
         {/* Page content */}

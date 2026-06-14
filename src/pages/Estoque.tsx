@@ -75,6 +75,7 @@ const RecebimentoPanel        = lazy(() => import("@/components/stock/Recebiment
 const BackupPanel             = lazy(() => import("@/components/stock/BackupPanel").then(m => ({ default: m.BackupPanel })));
 const ComercialPanelLazy      = lazy(() => import("@/components/stock/ComercialPanel").then(m => ({ default: m.ComercialPanel })));
 const PedidosEstoquePanel     = lazy(() => import("@/components/stock/PedidosEstoquePanel").then(m => ({ default: m.PedidosEstoquePanel })));
+const RelatoriosEstoquePanelLazy = lazy(() => import("@/components/stock/RelatoriosEstoquePanel").then(m => ({ default: m.RelatoriosEstoquePanel })));
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
@@ -1035,8 +1036,14 @@ export default function Estoque() {
           </Suspense>
         )}
 
+        {activeView === "relatorios" && (
+          <Suspense fallback={<LoadingScreen />}>
+            <RelatoriosEstoquePanelLazy />
+          </Suspense>
+        )}
+
         {/* Busca + Filtros — apenas nas abas de lista */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && (
+        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && activeView !== "relatorios" && (
           <div className="space-y-2">
             <div className="flex gap-2">
               <SearchInputWithBarcode
