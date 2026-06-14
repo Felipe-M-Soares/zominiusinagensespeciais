@@ -130,7 +130,12 @@ BEGIN
 END $role_forn$;
 
 -- ── PERF-08: Rastreabilidade QR Code — view consolidada ──────────────────────
-CREATE OR REPLACE VIEW public.rastreabilidade_qr AS
+-- security_invoker = true: a view respeita o RLS do usuário consultante,
+-- não do criador da view. A cláusula WITH vai ANTES do AS (sintaxe PostgreSQL 15+).
+DROP VIEW IF EXISTS public.rastreabilidade_qr;
+CREATE VIEW public.rastreabilidade_qr
+  WITH (security_invoker = true)
+AS
 SELECT
   r.lote,
   r.device_ref,
@@ -145,13 +150,12 @@ SELECT
   p.chave_acesso_nfe,
   p.protocolo_sefaz,
   p.dh_autorizacao_nfe,
-  si.fase AS estoque_fase,
-  sm.lote AS lote_estoque
+  si.fase  AS estoque_fase,
+  sm.lote  AS lote_estoque
 FROM public.rastreabilidade_pos_venda r
-LEFT JOIN public.pedidos_comerciais p ON r.pedido_id = p.id
-LEFT JOIN public.stock_movements sm ON sm.lote = r.lote
-LEFT JOIN public.stock_items si ON sm.stock_item_id = si.id
-WITH (security_invoker = true);
+LEFT JOIN public.pedidos_comerciais p  ON r.pedido_id       = p.id
+LEFT JOIN public.stock_movements    sm ON sm.lote            = r.lote
+LEFT JOIN public.stock_items        si ON sm.stock_item_id   = si.id;
 
 GRANT SELECT ON public.rastreabilidade_qr TO authenticated;
 
