@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useNotifications } from "@/hooks/useNotifications";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { ROLE_LABELS } from "@/types/roles";
@@ -45,8 +46,6 @@ const NAV_ITEMS: NavItem[] = [
 const ADMIN_ITEMS: NavItem[] = [
   { label: "Admin", icon: Settings, path: "/admin", adminOnly: true },
 ];
-
-// ── Subcomponentes extraídos para evitar recriação a cada render ──────────────
 
 interface SidebarNavProps {
   visibleItems: NavItem[];
@@ -198,6 +197,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ── Notificações: hook chamado UMA VEZ aqui, dados passados via props ────────
+  const notifState = useNotifications();
+
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isDark, setIsDark] = useState(() => {
@@ -206,12 +208,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return theme === "dark";
   });
 
-  // Garante que o tema salvo seja aplicado ao montar o shell
   useEffect(() => {
     applyTheme(getStoredTheme());
   }, []);
 
-  // Atalho Cmd+K / Ctrl+K → navega para /estoque (busca global)
+  // Atalho Cmd+K / Ctrl+K → busca global no estoque
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -303,7 +304,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          {/* Expand button when collapsed */}
           {collapsed && (
             <div className="px-3 pt-2 pb-1">
               <button
@@ -316,7 +316,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
 
-          {/* Nav */}
           <SidebarNav
             visibleItems={visibleItems}
             isAdmin={isAdmin}
@@ -342,9 +341,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {!collapsed && <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>}
             </button>
 
-            {/* Notificações — desktop */}
+            {/* Notificações desktop — única instância, dados via props */}
             <div className={cn("flex", collapsed ? "justify-center px-1" : "px-1")}>
-              <NotificacoesPanel />
+              <NotificacoesPanel {...notifState} />
             </div>
 
             {collapsed ? (
@@ -401,7 +400,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        {/* Mobile header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-sidebar-border/60">
           <img src={logoZomini} alt="Zomini" className="h-9 w-auto object-contain" decoding="async" />
           <button
@@ -421,7 +419,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
         </div>
 
-        {/* Mobile bottom — safe area for home indicator */}
         <div className="border-t border-sidebar-border/60 p-2 space-y-0.5">
           <button
             onClick={toggleTheme}
@@ -459,7 +456,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" decoding="async" />
           </button>
           <div className="flex items-center gap-1">
-            <NotificacoesPanel />
+            {/* Notificações mobile — mesmos dados, só o painel visual é diferente */}
+            <NotificacoesPanel {...notifState} />
             <button
               onClick={() => setMobileOpen(true)}
               className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -470,7 +468,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden pb-safe">{children}</main>
       </div>
     </div>

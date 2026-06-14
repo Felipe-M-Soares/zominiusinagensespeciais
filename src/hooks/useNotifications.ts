@@ -1,8 +1,9 @@
 /**
  * useNotifications — Notificações em tempo real via Supabase Realtime
- * 
- * Usa a tabela `notificacoes` já existente no banco.
- * Atualiza o contador de não lidas em tempo real sem polling.
+ *
+ * IMPORTANTE: deve ser chamado em UMA ÚNICA instância por sessão.
+ * O AppShell chama este hook e passa os dados via props para NotificacoesPanel.
+ * Nunca instanciar diretamente em componentes filhos — causaria canais duplicados.
  */
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,7 +20,16 @@ export interface Notificacao {
   pedido_id: string | null;
 }
 
-export function useNotifications() {
+export interface NotificacoesState {
+  notificacoes: Notificacao[];
+  unreadCount: number;
+  loading: boolean;
+  marcarComoLida: (id: string) => Promise<void>;
+  marcarTodasComoLidas: () => Promise<void>;
+  refetch: () => Promise<void>;
+}
+
+export function useNotifications(): NotificacoesState {
   const { user } = useAuth();
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,16 +55,18 @@ export function useNotifications() {
     }
   }, [user?.id]);
 
-  // Carrega ao montar
   useEffect(() => {
     fetchNotificacoes();
   }, [fetchNotificacoes]);
 
-  // Realtime: escuta novas notificações sem polling
+  // Canal Realtime — criado UMA VEZ com nome único por usuário
   useEffect(() => {
     if (!user?.id) return;
+
+    // Nome único garante que não haja colisão com outros canais
+    const channelName = `notif-user-${user.id}`;
     const channel = supabase
-      .channel(`notificacoes:${user.id}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
@@ -63,27 +75,28 @@ export function useNotifications() {
           table: "notificacoes",
           filter: `user_id=eq.${user.id}`,
         },
-        () => {
-          // Recarrega ao qualquer mudança (insert/update/delete)
-          fetchNotificacoes();
-        }
+        () => { fetchNotificacoes(); }
       )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id, fetchNotificacoes]);
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          logger.error("useNotifications: erro no canal Realtime");
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]); // fetchNotificacoes intencionalmente fora das deps para não recriar canal
 
   const marcarComoLida = useCallback(async (id: string) => {
-    // Otimista: atualiza localmente antes de confirmar no banco
-    setNotificacoes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, lida: true } : n))
-    );
+    setNotificacoes((prev) => prev.map((n) => (n.id === id ? { ...n, lida: true } : n)));
     const { error } = await supabase
       .from("notificacoes")
       .update({ lida: true })
       .eq("id", id);
     if (error) {
       logger.error("Erro ao marcar notificação como lida", error);
-      fetchNotificacoes(); // Reverte se falhou
+      fetchNotificacoes();
     }
   }, [fetchNotificacoes]);
 
@@ -101,12 +114,5 @@ export function useNotifications() {
     }
   }, [user?.id, unreadCount, fetchNotificacoes]);
 
-  return {
-    notificacoes,
-    unreadCount,
-    loading,
-    marcarComoLida,
-    marcarTodasComoLidas,
-    refetch: fetchNotificacoes,
-  };
+  return { notificacoes, unreadCount, loading, marcarComoLida, marcarTodasComoLidas, refetch: fetchNotificacoes };
 }

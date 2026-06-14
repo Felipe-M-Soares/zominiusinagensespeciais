@@ -1,11 +1,11 @@
 /**
- * NotificacoesPanel — Painel de notificações com badge e dropdown
- * Usa tabela `notificacoes` já existente. Realtime via useNotifications.
+ * NotificacoesPanel — recebe dados como props (estado gerenciado no AppShell)
+ * Isso garante UMA ÚNICA instância do canal Realtime por sessão.
  */
 import { useState, useRef, useEffect } from "react";
 import { Bell, BellOff, CheckCheck, ShoppingBag, Package, AlertCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useNotifications, type Notificacao } from "@/hooks/useNotifications";
+import type { NotificacoesState, Notificacao } from "@/hooks/useNotifications";
 import { useNavigate } from "react-router-dom";
 
 function tipoIcon(tipo: string) {
@@ -36,13 +36,11 @@ function fmtDate(iso: string) {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-interface NotificacaoItemProps {
+function NotificacaoItem({ n, onRead, onNav }: {
   n: Notificacao;
   onRead: (id: string) => void;
   onNav: (pedidoId: string | null) => void;
-}
-
-function NotificacaoItem({ n, onRead, onNav }: NotificacaoItemProps) {
+}) {
   const Icon = tipoIcon(n.tipo);
   const color = tipoColor(n.tipo);
   return (
@@ -51,7 +49,7 @@ function NotificacaoItem({ n, onRead, onNav }: NotificacaoItemProps) {
       onClick={() => { onRead(n.id); onNav(n.pedido_id); }}
       className={cn(
         "w-full text-left flex items-start gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors border-b border-border/30 last:border-0",
-        !n.lida && "bg-primary/3"
+        !n.lida && "bg-primary/[0.03]"
       )}
     >
       <div className={cn("mt-0.5 shrink-0 h-7 w-7 rounded-full flex items-center justify-center",
@@ -77,13 +75,16 @@ function NotificacaoItem({ n, onRead, onNav }: NotificacaoItemProps) {
   );
 }
 
-export function NotificacoesPanel() {
+// Props recebidas do AppShell (estado único)
+export interface NotificacoesPanelProps extends NotificacoesState {}
+
+export function NotificacoesPanel({
+  notificacoes, unreadCount, loading, marcarComoLida, marcarTodasComoLidas
+}: NotificacoesPanelProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-  const { notificacoes, unreadCount, loading, marcarComoLida, marcarTodasComoLidas } = useNotifications();
 
-  // Fecha ao clicar fora
   useEffect(() => {
     if (!open) return;
     function handler(e: MouseEvent) {
@@ -100,7 +101,6 @@ export function NotificacoesPanel() {
 
   return (
     <div ref={ref} className="relative">
-      {/* Bell button */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -118,10 +118,8 @@ export function NotificacoesPanel() {
         )}
       </button>
 
-      {/* Dropdown */}
       {open && (
         <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-border/50 bg-card shadow-xl z-50 overflow-hidden">
-          {/* Header */}
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/40">
             <p className="text-[12px] font-semibold flex items-center gap-1.5">
               <Bell className="h-3.5 w-3.5 text-primary" />
@@ -145,7 +143,6 @@ export function NotificacoesPanel() {
             )}
           </div>
 
-          {/* List */}
           <div className="max-h-80 overflow-y-auto">
             {loading && (
               <div className="flex items-center justify-center py-8">
