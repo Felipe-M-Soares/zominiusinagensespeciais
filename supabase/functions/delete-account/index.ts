@@ -1,181 +1,111 @@
+/**
+ * delete-account — Exclui um usuário do sistema (apenas admin)
+ *
+ * SEGURANÇA:
+ *  - verify_jwt = true no config.toml (validação JWT pelo Supabase antes do handler)
+ *  - Role admin verificada via service role key
+ *  - Admin não pode excluir a própria conta
+ *  - UUID validado antes de qualquer query
+ *  - Rate limit: 3 exclusões por dia por IP (ação destrutiva)
+ *  - Limpeza de registros na ordem correta (app antes de auth.users)
+ */
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
-
-// CODE-006: Validate env vars at startup
-function getRequiredEnv(key: string): string {
-  const value = Deno.env.get(key);
-  if (!value) throw new Error(`Missing required environment variable: ${key}`);
-  return value;
-}
+import {
+  getRequiredEnv,
+  isValidUUID,
+  checkRateLimit,
+  jsonResponse,
+} from "../_shared/utils.ts";
 
 Deno.serve(async (req) => {
   const corsHeaders = getCorsHeaders(req);
 
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Method not allowed" }, 405, corsHeaders);
   }
 
-  // Rate limiting: 3 exclusões por dia por IP (ação destrutiva)
+  // Rate limit: 3 exclusões por dia por IP (ação irreversível)
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const rlKey = `del:${ip}`;
-  const rlStore = (globalThis as Record<string, unknown>).__delRlStore as Map<string, { count: number; reset: number }> | undefined
-    ?? new Map<string, { count: number; reset: number }>();
-  (globalThis as Record<string, unknown>).__delRlStore = rlStore;
-  const now = Date.now();
-  const rl = rlStore.get(rlKey) ?? { count: 0, reset: now + 86_400_000 };
-  if (now > rl.reset) { rl.count = 0; rl.reset = now + 86_400_000; }
-  rl.count++;
-  rlStore.set(rlKey, rl);
-  if (rl.count > 3) {
-    return new Response(JSON.stringify({ error: "Limite diário atingido." }), {
-      status: 429,
-      headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "86400" },
-    });
+  if (!checkRateLimit(`delete-account:${ip}`, 3, 86_400_000)) {
+    return jsonResponse(
+      { error: "Limite diário atingido." },
+      429,
+      { ...corsHeaders, "Retry-After": "86400" }
+    );
   }
 
   try {
-    // CODE-006: Validate env vars early with informative error
-    let supabaseUrl: string, supabaseAnonKey: string, serviceRoleKey: string;
-    try {
-      supabaseUrl = getRequiredEnv("SUPABASE_URL");
-      supabaseAnonKey = getRequiredEnv("SUPABASE_ANON_KEY");
-      serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-    } catch (envErr) {
-      console.error(envErr);
-      return new Response(JSON.stringify({ error: "Erro de configuração do servidor" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const supabaseUrl = getRequiredEnv("SUPABASE_URL");
+    const supabaseAnonKey = getRequiredEnv("SUPABASE_ANON_KEY");
+    const serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+    // Com verify_jwt = true, JWT já foi validado pelo Supabase.
+    const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
+    if (!token) {
+      return jsonResponse({ error: "Não autenticado" }, 401, corsHeaders);
     }
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Não autenticado" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // CORREÇÃO JWT: padrão oficial Supabase para Edge Functions.
-    // Passa o Authorization header no global.headers ao criar o cliente.
-    // getUser() SEM argumento lê do header — forma mais confiável.
-    // getUser(token) como argumento às vezes falha com "Invalid JWT" em certos
-    // estados de sessão mesmo com token válido.
-    const token = authHeader.replace("Bearer ", "").trim();
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      console.error("JWT validation failed:", userError?.message ?? "no user returned");
-      return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Sessão expirada ou inválida. Faça login novamente." }, 401, corsHeaders);
     }
 
-    // VULN-002 FIX: Now that user.id is cryptographically verified, role check is trustworthy
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+    // Verifica role admin
     const { data: roleData } = await adminClient
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    // VULN-010 FIX: Do not log sensitive user data in production
-    const DEBUG = Deno.env.get("DEBUG") === "true";
-    if (DEBUG) {
-      console.log("Caller role:", roleData?.role);
-    }
-
+      .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
     if (roleData?.role !== "admin") {
-      // SECURITY: não expor o papel do usuário no corpo do erro —
-      // informação desnecessária para o chamador não-admin.
-      console.error("Access denied in delete-account. user.id:", user.id, "role found:", roleData?.role ?? "none");
-      return new Response(
-        JSON.stringify({ error: "Acesso negado. Apenas administradores podem excluir usuários." }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: "Acesso negado. Apenas administradores podem excluir usuários." }, 403, corsHeaders);
     }
 
+    // Lê body
     let body: Record<string, unknown> = {};
-    try {
-      body = await req.json();
-    } catch { /* empty body is ok */ }
+    try { body = await req.json(); } catch { /* ok */ }
 
     const targetUserId = body.target_user_id;
     if (!targetUserId || typeof targetUserId !== "string") {
-      return new Response(JSON.stringify({ error: "target_user_id é obrigatório" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "target_user_id é obrigatório" }, 400, corsHeaders);
     }
-
-    // SEC: Valida que target_user_id é um UUID válido para prevenir injeção via path
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_REGEX.test(targetUserId)) {
-      return new Response(JSON.stringify({ error: "target_user_id deve ser um UUID válido" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!isValidUUID(targetUserId)) {
+      return jsonResponse({ error: "target_user_id deve ser um UUID válido" }, 400, corsHeaders);
     }
-
     if (targetUserId === user.id) {
-      return new Response(
-        JSON.stringify({ error: "Não é possível excluir sua própria conta" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: "Não é possível excluir sua própria conta" }, 400, corsHeaders);
     }
 
-    // SEC: Verifica que o usuário alvo existe ANTES de tentar deletar registros relacionados.
-    // Sem esta checagem, um UUID de usuário inexistente causaria deleções sem efeito
-    // seguidas de um erro confuso do auth.admin.deleteUser.
+    // Verifica existência do usuário alvo
     const { data: targetUser, error: lookupError } = await adminClient.auth.admin.getUserById(targetUserId);
     if (lookupError || !targetUser?.user) {
-      return new Response(JSON.stringify({ error: "Usuário alvo não encontrado" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Usuário alvo não encontrado" }, 404, corsHeaders);
     }
 
-    // Ordem correta: limpar tabelas da aplicação ANTES de deletar o auth user.
-    // Se deletarmos o auth user primeiro e o cleanup falhar, os registros ficam órfãos
-    // sem user_id válido e sem como associar a quem pertenciam.
+    // Limpa registros da app ANTES de deletar o auth user
     const { error: profileErr } = await adminClient.from("profiles").delete().eq("user_id", targetUserId);
     if (profileErr) console.error("profiles delete error:", profileErr.message);
-    
+
     const { error: roleErr } = await adminClient.from("user_roles").delete().eq("user_id", targetUserId);
     if (roleErr) console.error("user_roles delete error:", roleErr.message);
 
-    // Agora deleta o auth user
+    // Deleta o auth user
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetUserId);
     if (deleteError) {
       console.error("deleteUser error:", deleteError.message);
-      return new Response(
-        // SECURITY: não expor mensagem interna do Supabase ao cliente
-        JSON.stringify({ error: "Não foi possível excluir o usuário." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: "Não foi possível excluir o usuário." }, 500, corsHeaders);
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ success: true }, 200, corsHeaders);
+
   } catch (err) {
-    // SECURITY: loga internamente mas não expõe detalhes ao chamador
     const msg = err instanceof Error ? err.message : String(err);
     console.error("delete-account error:", msg);
-    return new Response(JSON.stringify({ error: "Erro interno." }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Erro interno." }, 500, corsHeaders);
   }
 });
