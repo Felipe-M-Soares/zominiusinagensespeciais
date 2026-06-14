@@ -22,7 +22,6 @@ import {
   Factory,
   Cpu,
   ShieldCheck,
-  ShoppingCart,
 } from "lucide-react";
 
 interface NavItem {
@@ -39,7 +38,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Qualidade",   icon: ShieldCheck,   path: "/qualidade", roles: ["admin","qualidade"] },
   { label: "Comercial",   icon: ShoppingBag,   path: "/comercial", roles: ["admin","comercial"] },
   { label: "Financeiro",  icon: Receipt,       path: "/financeiro",roles: ["admin","financeiro"] },
-  { label: "Compras",     icon: ShoppingCart,  path: "/compras",   roles: ["admin","estoque","financeiro"] },
   { label: "Produção",    icon: Factory,       path: "/producao",  roles: ["admin","producao"] },
 ];
 

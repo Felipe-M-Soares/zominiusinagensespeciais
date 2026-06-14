@@ -23,7 +23,6 @@ const Comercial   = lazy(() => import("./pages/Comercial"));
 const Financeiro  = lazy(() => import("./pages/Financeiro"));
 const Producao    = lazy(() => import("./pages/Producao"));
 const Qualidade   = lazy(() => import("./pages/Qualidade"));
-const Compras     = lazy(() => import("./pages/Compras").then(m => ({ default: m.Compras })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -105,7 +104,6 @@ const App = () => (
               <Route path="/qualidade"  element={<ErrorBoundary><RoleGuard roles={["qualidade","admin"]}><Qualidade /></RoleGuard></ErrorBoundary>} />
               <Route path="/comercial"  element={<ErrorBoundary><RoleGuard roles={["comercial","admin"]}><Comercial /></RoleGuard></ErrorBoundary>} />
               <Route path="/financeiro" element={<ErrorBoundary><RoleGuard roles={["financeiro","admin"]}><Financeiro /></RoleGuard></ErrorBoundary>} />
-              <Route path="/compras"    element={<ErrorBoundary><RoleGuard roles={["estoque","financeiro","admin"]}><Compras /></RoleGuard></ErrorBoundary>} />
               <Route path="/admin"      element={<ErrorBoundary><RoleGuard adminOnly><Admin /></RoleGuard></ErrorBoundary>} />
             </Route>
 
