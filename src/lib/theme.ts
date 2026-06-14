@@ -10,9 +10,13 @@ export const VALID_THEMES = new Set<Theme>(["light", "dark", "system"]);
 
 export function getStoredTheme(): Theme {
   if (typeof window === "undefined") return "light";
-  const stored = localStorage.getItem("theme");
-  if (stored && VALID_THEMES.has(stored as Theme)) {
-    return stored as Theme;
+  try {
+    const stored = localStorage.getItem("theme");
+    if (stored && VALID_THEMES.has(stored as Theme)) {
+      return stored as Theme;
+    }
+  } catch {
+    // localStorage indisponível (modo privado Firefox, WebView restrito, etc.)
   }
   return "light";
 }
@@ -26,5 +30,9 @@ export function applyTheme(theme: Theme) {
   } else {
     root.classList.toggle("dark", theme === "dark");
   }
-  localStorage.setItem("theme", theme);
+  try {
+    localStorage.setItem("theme", theme);
+  } catch {
+    // localStorage indisponível — preferência não salva, não é crítico
+  }
 }

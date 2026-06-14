@@ -1,33 +1,54 @@
-// Service Worker mínimo para PWA instalável
-const CACHE = "zomini-v1";
+/**
+ * sw.js — Service Worker de desenvolvimento
+ *
+ * ATENÇÃO: Este arquivo é servido em DESENVOLVIMENTO (npm run dev).
+ * Em PRODUÇÃO (npm run build), o Workbox gera um sw.js completo automaticamente
+ * via vite-plugin-pwa, sobrescrevendo este arquivo no build.
+ *
+ * Não adicione lógica de cache permanente aqui — use workbox.runtimeCaching no
+ * vite.config.ts para configurar cache de produção.
+ *
+ * A versão de cache usa um timestamp de build para garantir atualização automática.
+ * Em dev, usamos a data atual para evitar cache obsoleto durante o desenvolvimento.
+ */
+
+const CACHE_VERSION = "zomini-dev-" + new Date().toISOString().slice(0, 10);
 const PRECACHE = ["/", "/index.html"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting())
+    caches.open(CACHE_VERSION)
+      .then((c) => c.addAll(PRECACHE))
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((k) => k !== CACHE_VERSION && k.startsWith("zomini-"))
+            .map((k) => caches.delete(k))
+        )
+      )
+      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
-  // Não faz cache de chamadas Supabase/API
+
+  // Nunca cacheia chamadas Supabase/API — dados autenticados nunca devem ir para cache SW
   if (url.hostname.includes("supabase") || url.pathname.startsWith("/api")) return;
+
+  // Em desenvolvimento, prioriza rede (evita cache obsoleto de assets em HMR)
+  // O Workbox em produção tem estratégia mais sofisticada (stale-while-revalidate)
   e.respondWith(
-    caches.match(e.request).then(cached => cached ?? fetch(e.request).then(res => {
-      if (res.ok && url.origin === self.location.origin) {
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-      }
-      return res;
-    }))
+    fetch(e.request).catch(() =>
+      caches.match(e.request)
+    )
   );
 });

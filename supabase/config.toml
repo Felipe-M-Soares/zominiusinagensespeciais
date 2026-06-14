@@ -1,19 +1,32 @@
 project_id = "lvbilwznflyyiuxfhjyb"
 
 [functions]
+  # auth-email-hook: webhook interno do Supabase Auth.
+  # verify_jwt = false é OBRIGATÓRIO aqui (o Supabase chama sem JWT de usuário).
+  # A autenticação é feita via Standard Webhooks HMAC (verifyStandardWebhook no código).
   [functions.auth-email-hook]
     verify_jwt = false
 
+  # Todas as demais funções são chamadas por usuários autenticados.
+  # verify_jwt = true garante que o Supabase rejeita JWTs inválidos/expirados
+  # ANTES de executar qualquer linha de código da função.
   [functions.import-devices]
-    verify_jwt = false
+    verify_jwt = true
 
   [functions.delete-account]
-    verify_jwt = false
+    verify_jwt = true
 
   [functions.admin-reset-password]
-    verify_jwt = false
+    verify_jwt = true
 
   [functions.admin-create-user]
-    verify_jwt = false
+    verify_jwt = true
+
   [functions.auto-approve]
-    verify_jwt = false
+    verify_jwt = true
+
+  [functions.gs1-api]
+    verify_jwt = true
+
+  [functions.sefaz-emitir]
+    verify_jwt = true
