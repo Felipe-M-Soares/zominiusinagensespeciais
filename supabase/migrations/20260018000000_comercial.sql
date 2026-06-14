@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS public.pedido_itens (
   lote                 text,
   quantidade           integer NOT NULL CHECK (quantidade > 0),
   quantidade_reservada integer NOT NULL DEFAULT 0,
+  valor_unitario       numeric(12,4) NOT NULL DEFAULT 0,
   created_at           timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.pedido_itens ENABLE ROW LEVEL SECURITY;
@@ -370,7 +371,7 @@ CREATE INDEX IF NOT EXISTS idx_pedidos_prazo_entrega
 CREATE TABLE IF NOT EXISTS public.pedido_comentarios (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   pedido_id   uuid        NOT NULL REFERENCES public.pedidos_comerciais(id) ON DELETE CASCADE,
-  user_id     uuid        NOT NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  user_id     uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   user_name   text        NOT NULL,
   texto       text        NOT NULL CHECK (char_length(texto) BETWEEN 1 AND 2000),
   created_at  timestamptz NOT NULL DEFAULT now()

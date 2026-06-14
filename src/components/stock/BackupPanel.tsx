@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   DatabaseBackup, Download, RefreshCw, Calendar,
-  CheckCircle2, Clock, User, FileSpreadsheet, Trash2, AlertTriangle,
+  CheckCircle2, Clock, User, FileSpreadsheet, Trash2, AlertTriangle, ShieldCheck,
 } from "lucide-react";
 import {
   getBackupConfig, saveBackupConfig, runBackup, listBackups, downloadBackup,
@@ -21,15 +21,30 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-
-// ─── Apagar todo o histórico ─────────────────────────────────────────────────
-// usa a RPC server-side admin_clear_history que:
-// 1. Verifica role admin no banco (não pode ser bypassado pelo frontend)
-// 2. Executa todas as deleções em uma única transação atômica
-async function clearAllHistory(): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.rpc("admin_clear_history");
+// ─── Funções de apagar histórico por módulo (admin only via RPC segura) ───────
+async function clearStockMovements(): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.rpc("admin_clear_stock_movements");
   if (error) return { ok: false, error: error.message };
-  return { ok: true };
+  const d = data as { ok?: boolean; error?: string } | null;
+  return d?.ok === false ? { ok: false, error: d.error } : { ok: true };
+}
+async function clearComercial(): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.rpc("admin_clear_comercial");
+  if (error) return { ok: false, error: error.message };
+  const d = data as { ok?: boolean; error?: string } | null;
+  return d?.ok === false ? { ok: false, error: d.error } : { ok: true };
+}
+async function clearProducao(): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.rpc("admin_clear_producao");
+  if (error) return { ok: false, error: error.message };
+  const d = data as { ok?: boolean; error?: string } | null;
+  return d?.ok === false ? { ok: false, error: d.error } : { ok: true };
+}
+async function regularizarTodosDevices(): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.rpc("admin_regularizar_todos_devices");
+  if (error) return { ok: false, error: error.message };
+  const d = data as { ok?: boolean; error?: string } | null;
+  return d?.ok === false ? { ok: false, error: d.error } : { ok: true };
 }
 
 interface Props {
@@ -49,10 +64,7 @@ async function exportExcel() {
     `)
     .order("updated_at", { ascending: false });
 
-  if (error || !items) {
-    toast.error("Erro ao buscar dados do estoque.");
-    return;
-  }
+  if (error || !items) { toast.error("Erro ao buscar dados do estoque."); return; }
 
   const bool = (v: unknown) => v === true ? "Sim" : v === false ? "Não" : "";
 
@@ -80,61 +92,42 @@ async function exportExcel() {
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Estoque");
-
   const colWidths = [40, 18, 22, 16, 16, 14, 22, 9, 10, 12, 15, 20, 30, 20];
   const headers = Object.keys(dataRows[0] ?? {});
-
   ws.columns = headers.map((h, i) => ({ header: h, key: h, width: colWidths[i] ?? 16 }));
-
-  // Estilo do cabeçalho
   ws.getRow(1).eachCell((cell) => {
     cell.font      = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 10 };
     cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-    cell.border    = {
-      bottom: { style: "thin", color: { argb: "FFCCCCCC" } },
-      right:  { style: "thin", color: { argb: "FFCCCCCC" } },
-    };
+    cell.border    = { bottom: { style: "thin", color: { argb: "FFCCCCCC" } }, right: { style: "thin", color: { argb: "FFCCCCCC" } } };
   });
   ws.getRow(1).height = 20;
   ws.views = [{ state: "frozen", ySplit: 1 }];
-
-  // Linhas de dados
   dataRows.forEach((row, rowIdx) => {
     const exRow = ws.addRow(row);
     const isEven = rowIdx % 2 === 0;
     const qty = Number(row["Quantidade"]);
     const min = Number(row["Estoque Mínimo"]);
-
     exRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const key = headers[colNumber - 1];
       const isNum = key === "Quantidade" || key === "Estoque Mínimo";
-
       let bgArgb = isEven ? "FFF0F4FA" : "FFFFFFFF";
       let fgArgb = "FF222222";
       let bold   = false;
-
       if (key === "Quantidade") {
-        if (qty === 0)           { bgArgb = "FFFFEAEA"; fgArgb = "FFCC0000"; bold = true; }
-        else if (qty <= min)     { bgArgb = "FFFFF7E0"; fgArgb = "FFB45309"; bold = true; }
+        if (qty === 0)       { bgArgb = "FFFFEAEA"; fgArgb = "FFCC0000"; bold = true; }
+        else if (qty <= min) { bgArgb = "FFFFF7E0"; fgArgb = "FFB45309"; bold = true; }
       }
-
       cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: bgArgb } };
       cell.font      = { name: "Arial", size: 10, color: { argb: fgArgb }, bold };
       cell.alignment = { horizontal: isNum ? "center" : "left", vertical: "middle" };
-      cell.border    = {
-        bottom: { style: "thin", color: { argb: "FFE0E0E0" } },
-        right:  { style: "thin", color: { argb: "FFE0E0E0" } },
-      };
+      cell.border    = { bottom: { style: "thin", color: { argb: "FFE0E0E0" } }, right: { style: "thin", color: { argb: "FFE0E0E0" } } };
     });
   });
-
-  // Aba Resumo
   const total   = dataRows.length;
   const zerados = dataRows.filter((r) => Number(r["Quantidade"]) === 0).length;
   const baixos  = dataRows.filter((r) => { const q = Number(r["Quantidade"]); const m = Number(r["Estoque Mínimo"]); return q > 0 && q <= m; }).length;
   const ok      = total - zerados - baixos;
-
   const ws2 = wb.addWorksheet("Resumo");
   ws2.columns = [{ header: "Indicador", key: "Indicador", width: 35 }, { header: "Valor", key: "Valor", width: 20 }];
   [
@@ -144,8 +137,6 @@ async function exportExcel() {
     { Indicador: "Peças zeradas (sem estoque)", Valor: zerados },
     { Indicador: "Data de exportação",          Valor: new Date().toLocaleString("pt-BR") },
   ].forEach((r) => ws2.addRow(r));
-
-  // Gera buffer e dispara download
   const buf  = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url  = URL.createObjectURL(blob);
@@ -171,17 +162,17 @@ export function BackupPanel({ open, onClose }: Props) {
   const [running, setRunning]   = useState(false);
   const [exporting, setExporting] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
-  const [clearConfirm, setClearConfirm] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const [deleteBackupsConfirm, setDeleteBackupsConfirm] = useState(false);
   const [deletingBackups, setDeletingBackups] = useState(false);
+  const [regularizando, setRegularizando] = useState(false);
+
+  // Estados de confirmação por módulo
+  const [confirmModule, setConfirmModule] = useState<null | "estoque" | "comercial" | "producao">(null);
+  const [clearingModule, setClearingModule] = useState(false);
 
   async function handleDeleteAllBackups() {
     setDeletingBackups(true);
-    const { error } = await supabase
-      .from("stock_backups")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
+    const { error } = await supabase.from("stock_backups").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     setDeletingBackups(false);
     if (error) { toast.error("Erro ao apagar backups."); return; }
     toast.success("Todos os backups foram apagados.");
@@ -248,6 +239,31 @@ export function BackupPanel({ open, onClose }: Props) {
     URL.revokeObjectURL(url);
   }
 
+  async function handleClearModule() {
+    if (!confirmModule) return;
+    setClearingModule(true);
+    let result: { ok: boolean; error?: string };
+    if (confirmModule === "estoque")   result = await clearStockMovements();
+    else if (confirmModule === "comercial") result = await clearComercial();
+    else result = await clearProducao();
+    setClearingModule(false);
+    if (result.ok) {
+      const labels: Record<string, string> = { estoque: "Movimentos de estoque", comercial: "Pedidos comerciais", producao: "Produção" };
+      toast.success(`${labels[confirmModule]} apagado com sucesso.`);
+      setConfirmModule(null);
+    } else {
+      toast.error(result.error ?? "Erro ao apagar.");
+    }
+  }
+
+  async function handleRegularizarTodos() {
+    setRegularizando(true);
+    const result = await regularizarTodosDevices();
+    setRegularizando(false);
+    if (result.ok) toast.success("Todas as peças confirmadas como regularizadas (Fase 5).");
+    else toast.error(result.error ?? "Erro ao regularizar.");
+  }
+
   function fmtDate(iso: string) {
     return new Date(iso).toLocaleString("pt-BR", {
       day: "2-digit", month: "2-digit", year: "2-digit",
@@ -255,11 +271,16 @@ export function BackupPanel({ open, onClose }: Props) {
     });
   }
 
+  const moduleLabels: Record<string, { title: string; desc: string }> = {
+    estoque:   { title: "Apagar movimentos de estoque?", desc: "Apaga todo o histórico de entradas e saídas. As quantidades atuais e as peças cadastradas são mantidas." },
+    comercial: { title: "Apagar histórico comercial?",   desc: "Apaga todos os pedidos e itens comerciais. O estoque e os cadastros de peças são mantidos." },
+    producao:  { title: "Apagar histórico de produção?", desc: "Apaga todos os apontamentos de produção. Máquinas e produtos continuam cadastrados." },
+  };
+
   return (
     <>
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md p-0 rounded-2xl overflow-hidden border-border/30">
-        {/* Header */}
         <div className="relative px-5 pt-5 pb-3">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
           <div className="relative">
@@ -269,7 +290,6 @@ export function BackupPanel({ open, onClose }: Props) {
                   <DatabaseBackup className="h-4 w-4 text-primary" />
                   Backup e Exportação
                 </span>
-
               </DialogTitle>
             </DialogHeader>
             <p className="text-[12px] text-muted-foreground mt-0.5">
@@ -287,7 +307,7 @@ export function BackupPanel({ open, onClose }: Props) {
 
           {!loading && (
             <>
-              {/* ── Exportar Excel ────────────────────────────────────────── */}
+              {/* ── Exportar Excel ─────────────────────────────────────── */}
               <div className="rounded-xl border border-border/40 bg-muted/10 p-3 space-y-2">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -299,25 +319,60 @@ export function BackupPanel({ open, onClose }: Props) {
                       Todas as peças com quantidade atual, localização e dados do dispositivo.
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
+                  <Button size="sm" variant="outline"
                     className="h-8 gap-1.5 text-xs rounded-xl shrink-0 border-success/30 hover:bg-success/10 hover:text-success hover:border-success"
-                    onClick={handleExportExcel}
-                    disabled={exporting}
-                  >
+                    onClick={handleExportExcel} disabled={exporting}>
                     {exporting
                       ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       : <Download className="h-3.5 w-3.5" />}
                     {exporting ? "Exportando..." : "Baixar .xlsx"}
                   </Button>
                 </div>
-                <p className="text-[10px] text-muted-foreground/50">
-                  Planilha Excel formatada com cabeçalho, cores por status e aba de resumo.
-                </p>
               </div>
 
-              {/* ── Agendamento — admin apenas ────────────────────────────── */}
+              {/* ── Ações Admin ───────────────────────────────────────── */}
+              {isAdmin && (
+                <div className="space-y-2.5">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5" /> Ações administrativas
+                  </p>
+
+                  {/* Regularizar todos */}
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[12px] font-semibold text-foreground">Confirmar peças regularizadas</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Marca todas as peças cadastradas como regularizadas (Fase 5) na qualidade.
+                      </p>
+                    </div>
+                    <Button size="sm" variant="outline"
+                      className="h-8 gap-1.5 text-xs rounded-xl shrink-0 border-primary/30 hover:bg-primary/10 hover:text-primary"
+                      onClick={handleRegularizarTodos} disabled={regularizando}>
+                      {regularizando
+                        ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        : <ShieldCheck className="h-3.5 w-3.5" />}
+                      Confirmar
+                    </Button>
+                  </div>
+
+                  {/* Apagar histórico por módulo */}
+                  <p className="text-[11px] text-muted-foreground font-medium mt-1">Apagar histórico por módulo:</p>
+                  <div className="space-y-1.5">
+                    {(["estoque", "comercial", "producao"] as const).map((mod) => (
+                      <div key={mod} className="rounded-xl border border-destructive/15 bg-destructive/5 p-2.5 flex items-center justify-between gap-3">
+                        <p className="text-[12px] font-medium text-foreground capitalize">{mod === "estoque" ? "Movimentos de Estoque" : mod === "comercial" ? "Pedidos Comerciais" : "Produção"}</p>
+                        <button type="button"
+                          onClick={() => setConfirmModule(mod)}
+                          className="h-7 px-2.5 rounded-lg border border-destructive/30 text-[11px] text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-1">
+                          <Trash2 className="h-3 w-3" /> Apagar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Agendamento backup ────────────────────────────────── */}
               {isAdmin && (
                 <div className="space-y-2.5">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -336,14 +391,12 @@ export function BackupPanel({ open, onClose }: Props) {
                       </button>
                     ))}
                   </div>
-
                   {config?.last_backup && (
                     <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <Clock className="h-3 w-3" />
                       Último backup: {fmtDate(config.last_backup)}
                     </p>
                   )}
-
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" className="flex-1 h-9 rounded-xl text-xs"
                       onClick={handleSaveSchedule} disabled={saving}>
@@ -363,7 +416,7 @@ export function BackupPanel({ open, onClose }: Props) {
                 </div>
               )}
 
-              {/* ── Lista de backups ──────────────────────────────────────── */}
+              {/* ── Lista de backups ──────────────────────────────────── */}
               {isAdmin && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -371,24 +424,17 @@ export function BackupPanel({ open, onClose }: Props) {
                       Backups salvos ({backups.length})
                     </p>
                     {backups.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setDeleteBackupsConfirm(true)}
+                      <button type="button" onClick={() => setDeleteBackupsConfirm(true)}
                         title="Apagar todos os backups"
-                        className="h-6 w-6 flex items-center justify-center rounded-lg text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                      >
+                        className="h-6 w-6 flex items-center justify-center rounded-lg text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors">
                         <Trash2 className="h-3 w-3" />
                       </button>
                     )}
                   </div>
-
                   {backups.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      Nenhum backup criado ainda
-                    </p>
+                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum backup criado ainda</p>
                   )}
-
-                  <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
+                  <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
                     {backups.map((b) => (
                       <div key={b.id}
                         className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border/40 bg-card hover:bg-accent/20 transition-colors">
@@ -416,16 +462,14 @@ export function BackupPanel({ open, onClose }: Props) {
                   </div>
                 </div>
               )}
-
             </>
           )}
-
         </div>
       </DialogContent>
     </Dialog>
 
-    {/* Modal de confirmação — apagar histórico */}
-    {clearConfirm && createPortal(
+    {/* Modal confirmação — apagar módulo específico */}
+    {confirmModule && createPortal(
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
         <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
           <div className="flex items-start gap-3">
@@ -433,43 +477,28 @@ export function BackupPanel({ open, onClose }: Props) {
               <AlertTriangle className="h-5 w-5 text-destructive" />
             </div>
             <div>
-              <p className="text-sm font-bold text-destructive">Apagar todo o histórico?</p>
-              <p className="text-[12px] text-muted-foreground mt-1">
-                Isso vai apagar <strong>todos os movimentos</strong>, pedidos comerciais e zerar o estoque de todas as peças. Esta ação <strong>não pode ser desfeita</strong>.
-              </p>
+              <p className="text-sm font-bold text-destructive">{moduleLabels[confirmModule].title}</p>
+              <p className="text-[12px] text-muted-foreground mt-1">{moduleLabels[confirmModule].desc}</p>
             </div>
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setClearConfirm(false)} disabled={clearing}
+            <button type="button" onClick={() => setConfirmModule(null)} disabled={clearingModule}
               className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">
               Cancelar
             </button>
-            <button type="button" disabled={clearing}
-              onClick={async () => {
-                setClearing(true);
-                const result = await clearAllHistory();
-                setClearing(false);
-                if (result.ok) {
-                  toast.success("Histórico apagado com sucesso.");
-                  setClearConfirm(false);
-                  onClose();
-                } else {
-                  toast.error(result.error ?? "Erro ao apagar histórico.");
-                }
-              }}
-              className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
-            >
-              {clearing
+            <button type="button" disabled={clearingModule} onClick={handleClearModule}
+              className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
+              {clearingModule
                 ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <Trash2 className="h-3.5 w-3.5" />}
-              Apagar tudo
+              Apagar
             </button>
           </div>
         </div>
       </div>
     , document.body)}
 
-    {/* Modal de confirmação — apagar backups */}
+    {/* Modal confirmação — apagar backups */}
     {deleteBackupsConfirm && createPortal(
       <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
         <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
@@ -480,7 +509,7 @@ export function BackupPanel({ open, onClose }: Props) {
             <div>
               <p className="text-sm font-bold text-destructive">Apagar todos os backups?</p>
               <p className="text-[12px] text-muted-foreground mt-1">
-                Todos os <strong>{backups.length} backups salvos</strong> serão removidos permanentemente. Esta ação <strong>não pode ser desfeita</strong>.
+                Todos os <strong>{backups.length} backups salvos</strong> serão removidos permanentemente.
               </p>
             </div>
           </div>
@@ -490,8 +519,7 @@ export function BackupPanel({ open, onClose }: Props) {
               Cancelar
             </button>
             <button type="button" disabled={deletingBackups} onClick={handleDeleteAllBackups}
-              className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
-            >
+              className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
               {deletingBackups
                 ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <Trash2 className="h-3.5 w-3.5" />}

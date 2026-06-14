@@ -62,6 +62,18 @@ ALTER TABLE public.pedido_itens
   ADD CONSTRAINT pedido_itens_stock_item_id_fkey
   FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE CASCADE;
 
+-- ── pedido_itens.valor_unitario (coluna usada em dashboard_gerencial e trigger financeiro) ──
+ALTER TABLE public.pedido_itens
+  ADD COLUMN IF NOT EXISTS valor_unitario numeric(12,4) NOT NULL DEFAULT 0;
+
+-- ── pedido_comentarios: corrige FK user_id ON DELETE SET NULL → CASCADE ───────
+-- NOT NULL + SET NULL é impossível; quando usuário é deletado, apaga seus comentários
+ALTER TABLE public.pedido_comentarios
+  DROP CONSTRAINT IF EXISTS pedido_comentarios_user_id_fkey;
+ALTER TABLE public.pedido_comentarios
+  ADD CONSTRAINT pedido_comentarios_user_id_fkey
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
 -- ── stock_movements ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.stock_movements (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -260,12 +272,96 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
     RAISE EXCEPTION 'Acesso negado: apenas administradores podem apagar o histórico';
   END IF;
-  DELETE FROM public.pedido_itens;
-  DELETE FROM public.pedidos_comerciais;
+  -- Zera apenas reservas; quantidades e peças cadastradas são mantidas intactas
+  UPDATE public.stock_items SET quantity_reserved = 0;
+  DELETE FROM public.pedidos_comerciais; -- CASCADE apaga pedido_itens, comentários, rastreabilidade
   DELETE FROM public.stock_movements;
-  UPDATE public.stock_items SET quantity = 0, quantity_reserved = 0;
 END;
 $f06$;
+
+-- ── admin_clear_stock_movements ───────────────────────────────────────────────
+-- Apaga apenas movimentos; quantidades e peças permanecem intactas
+CREATE OR REPLACE FUNCTION public.admin_clear_stock_movements()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_csm$
+DECLARE v_count integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM public.stock_movements;
+  DELETE FROM public.stock_movements;
+  RETURN jsonb_build_object('ok', true, 'deleted', v_count);
+END;
+$f_csm$;
+GRANT EXECUTE ON FUNCTION public.admin_clear_stock_movements() TO authenticated;
+
+-- ── admin_clear_comercial ─────────────────────────────────────────────────────
+-- Apaga pedidos comerciais e itens; restaura reservas; não toca estoque
+CREATE OR REPLACE FUNCTION public.admin_clear_comercial()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cc$
+DECLARE v_count integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
+  END IF;
+  UPDATE public.stock_items SET quantity_reserved = 0;
+  SELECT COUNT(*) INTO v_count FROM public.pedidos_comerciais;
+  DELETE FROM public.pedidos_comerciais; -- CASCADE apaga pedido_itens, comentários, rastreabilidade
+  RETURN jsonb_build_object('ok', true, 'deleted', v_count);
+END;
+$f_cc$;
+GRANT EXECUTE ON FUNCTION public.admin_clear_comercial() TO authenticated;
+
+-- ── admin_clear_producao ──────────────────────────────────────────────────────
+-- Apaga apontamentos de produção; máquinas e produtos permanecem
+CREATE OR REPLACE FUNCTION public.admin_clear_producao()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cp$
+DECLARE v_count integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM public.apontamentos_producao;
+  DELETE FROM public.apontamentos_producao; -- CASCADE apaga paradas e refugos
+  RETURN jsonb_build_object('ok', true, 'deleted', v_count);
+END;
+$f_cp$;
+GRANT EXECUTE ON FUNCTION public.admin_clear_producao() TO authenticated;
+
+-- ── admin_regularizar_todos_devices ──────────────────────────────────────────
+-- Confirma todas as peças cadastradas como regularizadas (Fase 5) sem apagar nada
+CREATE OR REPLACE FUNCTION public.admin_regularizar_todos_devices()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_rd$
+DECLARE v_total integer; v_atualizados integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
+  END IF;
+  SELECT COUNT(*) INTO v_total FROM public.devices;
+  -- Fase 1: empresa ok
+  UPDATE public.devices SET empresa_lf = true, empresa_afe = true, empresa_bpf = true
+  WHERE NOT empresa_lf OR NOT empresa_afe OR NOT empresa_bpf;
+  -- Fase 2: risk_class e classification_code
+  UPDATE public.devices
+  SET risk_class          = COALESCE(NULLIF(trim(risk_class), ''), 'III'),
+      classification_code = COALESCE(NULLIF(trim(classification_code), ''), '10')
+  WHERE risk_class IS NULL OR risk_class = ''
+     OR classification_code IS NULL OR classification_code = '';
+  -- Fase 3: status regularização
+  UPDATE public.devices
+  SET status_regularizacao   = CASE WHEN risk_class IN ('I','II') THEN 'notificado' ELSE 'registrado' END,
+      data_registro_anvisa   = COALESCE(data_registro_anvisa, now()::date),
+      data_vencimento_anvisa = COALESCE(data_vencimento_anvisa, (now() + INTERVAL '10 years')::date)
+  WHERE status_regularizacao IN ('pendente','em_processo') OR status_regularizacao IS NULL;
+  -- Fase 4: gtin e rotulo
+  UPDATE public.devices
+  SET gtin = COALESCE(NULLIF(trim(gtin),''), udi_di), rotulo_udi_ok = true
+  WHERE gtin IS NULL OR gtin = '';
+  GET DIAGNOSTICS v_atualizados = ROW_COUNT;
+  RETURN jsonb_build_object('ok', true, 'total', v_total, 'atualizados', v_atualizados);
+END;
+$f_rd$;
+GRANT EXECUTE ON FUNCTION public.admin_regularizar_todos_devices() TO authenticated;
 
 -- ── sync_stock_items_from_devices ─────────────────────────────────────────────
 -- DROP necessário: migration anterior definia RETURNS void; aqui muda para RETURNS jsonb
