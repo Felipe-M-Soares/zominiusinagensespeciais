@@ -166,9 +166,9 @@ CREATE TRIGGER trg_certificados_updated_at BEFORE UPDATE ON public.certificados
 -- ── Rastreabilidade Pós-Venda (lote → cliente/paciente) ──────────────────────
 CREATE TABLE IF NOT EXISTS public.rastreabilidade_pos_venda (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  pedido_id       uuid NOT NULL REFERENCES public.pedidos_comerciais(id),
-  pedido_item_id  uuid NOT NULL REFERENCES public.pedido_itens(id),
-  stock_item_id   uuid NOT NULL REFERENCES public.stock_items(id),
+  pedido_id       uuid NOT NULL REFERENCES public.pedidos_comerciais(id) ON DELETE CASCADE,
+  pedido_item_id  uuid NOT NULL REFERENCES public.pedido_itens(id) ON DELETE CASCADE,
+  stock_item_id   uuid NOT NULL REFERENCES public.stock_items(id) ON DELETE CASCADE,
   lote            text NOT NULL,
   device_id       uuid REFERENCES public.devices(id),
   device_ref      text NOT NULL,
@@ -192,6 +192,51 @@ ALTER TABLE public.rastreabilidade_pos_venda ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_rastreab_lote   ON public.rastreabilidade_pos_venda (lote);
 CREATE INDEX IF NOT EXISTS idx_rastreab_device ON public.rastreabilidade_pos_venda (device_id);
 CREATE INDEX IF NOT EXISTS idx_rastreab_pedido ON public.rastreabilidade_pos_venda (pedido_id);
+
+-- ── Corrige FKs sem CASCADE (banco já existente) ──────────────────────────────
+-- Se a tabela já existia sem ON DELETE CASCADE, recria as constraints corretamente.
+DO $$
+BEGIN
+  -- pedido_id FK
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'rastreabilidade_pos_venda_pedido_id_fkey'
+      AND table_name = 'rastreabilidade_pos_venda'
+  ) THEN
+    ALTER TABLE public.rastreabilidade_pos_venda
+      DROP CONSTRAINT rastreabilidade_pos_venda_pedido_id_fkey;
+  END IF;
+  ALTER TABLE public.rastreabilidade_pos_venda
+    ADD CONSTRAINT rastreabilidade_pos_venda_pedido_id_fkey
+    FOREIGN KEY (pedido_id) REFERENCES public.pedidos_comerciais(id) ON DELETE CASCADE;
+
+  -- pedido_item_id FK
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'rastreabilidade_pos_venda_pedido_item_id_fkey'
+      AND table_name = 'rastreabilidade_pos_venda'
+  ) THEN
+    ALTER TABLE public.rastreabilidade_pos_venda
+      DROP CONSTRAINT rastreabilidade_pos_venda_pedido_item_id_fkey;
+  END IF;
+  ALTER TABLE public.rastreabilidade_pos_venda
+    ADD CONSTRAINT rastreabilidade_pos_venda_pedido_item_id_fkey
+    FOREIGN KEY (pedido_item_id) REFERENCES public.pedido_itens(id) ON DELETE CASCADE;
+
+  -- stock_item_id FK
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'rastreabilidade_pos_venda_stock_item_id_fkey'
+      AND table_name = 'rastreabilidade_pos_venda'
+  ) THEN
+    ALTER TABLE public.rastreabilidade_pos_venda
+      DROP CONSTRAINT rastreabilidade_pos_venda_stock_item_id_fkey;
+  END IF;
+  ALTER TABLE public.rastreabilidade_pos_venda
+    ADD CONSTRAINT rastreabilidade_pos_venda_stock_item_id_fkey
+    FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE CASCADE;
+END;
+$$;
 
 -- ── Metas de Produção ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.metas_producao (
