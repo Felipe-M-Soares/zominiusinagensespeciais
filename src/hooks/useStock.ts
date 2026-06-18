@@ -58,6 +58,8 @@ export interface LoteSummary {
 export function useStock(search: string) {
   const queryClient = useQueryClient();
   const cacheKey = stockKey(search);
+  // ID único por instância do hook — evita colisão de nomes de canal entre usuários
+  const instanceId = useRef(Math.random().toString(36).slice(2, 8)).current;
 
   // Inicia com dados cacheados (navegação de volta instantânea, sem spinner)
   const cached = queryClient.getQueryData<{
@@ -231,7 +233,7 @@ export function useStock(search: string) {
   // Usa debounce implícito via genRef — se chegar múltiplos eventos seguidos, só roda o último.
   useEffect(() => {
     const channel = supabase
-      .channel("usestock-items-realtime")
+      .channel(`usestock-items-${instanceId}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "stock_items" },
