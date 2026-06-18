@@ -105,13 +105,13 @@ function fmtTime(iso: string) {
 }
 
 function statusColor(status: string) {
-  if (status === "pendente") return "bg-amber-500/10 text-amber-600 border-amber-500/20";
-  if (status === "separando") return "bg-blue-500/10 text-blue-600 border-blue-500/20";
-  if (status === "pronto") return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
-  if (status === "faturado") return "bg-violet-500/10 text-violet-600 border-violet-500/20";
-  if (status === "enviado") return "bg-success/10 text-success border-success/20";
-  if (status === "retorno") return "bg-orange-500/10 text-orange-600 border-orange-500/20";
-  return "bg-muted/30 text-muted-foreground border-border/30";
+  if (status === "pendente") return "bg-amber-400 text-white border-amber-500 shadow-sm shadow-amber-400/30";
+  if (status === "separando") return "bg-blue-500 text-white border-blue-600 shadow-sm shadow-blue-500/30";
+  if (status === "pronto") return "bg-emerald-500 text-white border-emerald-600 shadow-sm shadow-emerald-500/30";
+  if (status === "faturado") return "bg-violet-500 text-white border-violet-600 shadow-sm shadow-violet-500/30";
+  if (status === "enviado") return "bg-sky-500 text-white border-sky-600 shadow-sm shadow-sky-500/30";
+  if (status === "retorno") return "bg-orange-500 text-white border-orange-600 shadow-sm shadow-orange-500/30";
+  return "bg-muted text-muted-foreground border-border";
 }
 
 function statusLabel(status: string) {
@@ -784,20 +784,34 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className={cn(
-      "rounded-2xl border overflow-hidden transition-all",
-      isPendente   ? "border-amber-500/25 bg-amber-500/3" :
-      isSeparando  ? "border-blue-500/25 bg-blue-500/3" :
-      pedido.status === "pronto" ? "border-emerald-500/25 bg-emerald-500/3" :
-      pedido.status === "retorno" ? "border-orange-500/25 bg-orange-500/3" :
-      "border-border/30 bg-card"
+      "rounded-2xl border-2 overflow-hidden transition-all shadow-sm",
+      isPendente   ? "border-amber-400/60 bg-amber-500/5 shadow-amber-400/10" :
+      isSeparando  ? "border-blue-500/60 bg-blue-500/5 shadow-blue-500/10" :
+      pedido.status === "pronto" ? "border-emerald-500/60 bg-emerald-500/5 shadow-emerald-500/10" :
+      pedido.status === "retorno" ? "border-orange-500/60 bg-orange-500/5 shadow-orange-500/10" :
+      "border-border bg-card"
     )}>
       {/* Header */}
+      {/* Barra colorida de status no topo */}
+      <div className={cn("h-1 w-full",
+        isPendente   ? "bg-amber-400" :
+        isSeparando  ? "bg-blue-500" :
+        pedido.status === "pronto"   ? "bg-emerald-500" :
+        pedido.status === "retorno"  ? "bg-orange-500" :
+        "bg-border"
+      )} />
       <button type="button" onClick={() => setExpanded(v => !v)}
         className="w-full text-left px-4 py-3 flex items-start gap-3">
         <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5",
-          isPendente ? "bg-amber-500/10" : isSeparando ? "bg-blue-500/10" : "bg-muted/30")}>
+          isPendente   ? "bg-amber-400 shadow-sm shadow-amber-400/40" :
+          isSeparando  ? "bg-blue-500 shadow-sm shadow-blue-500/40" :
+          pedido.status === "pronto"  ? "bg-emerald-500 shadow-sm shadow-emerald-500/40" :
+          pedido.status === "retorno" ? "bg-orange-500 shadow-sm shadow-orange-500/40" :
+          "bg-muted/50")}>
           <ShoppingBag className={cn("h-4 w-4",
-            isPendente ? "text-amber-500" : isSeparando ? "text-blue-500" : "text-muted-foreground")} />
+            isPendente || isSeparando || pedido.status === "pronto" || pedido.status === "retorno"
+              ? "text-white"
+              : "text-muted-foreground")} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -944,14 +958,14 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                                         key={l.lote}
                                         className={cn(
                                           "flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
-                                          isSel ? "bg-blue-500/8 border-blue-500/30" : "bg-muted/20 border-border/20"
+                                          isSel ? "bg-blue-500/15 border-blue-500/50" : "bg-muted/20 border-border/20"
                                         )}
                                       >
                                         <button
                                           type="button"
                                           onClick={() => toggleLote(item.id, l.lote, l.quantity)}
                                           className={cn("h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
-                                            isSel ? "bg-blue-500 border-blue-500" : "border-muted-foreground/40")}
+                                            isSel ? "bg-blue-500 border-blue-500 shadow-sm shadow-blue-500/40" : "border-muted-foreground/40")}
                                         >
                                           {isSel && <CheckCircle2 className="h-3 w-3 text-white" />}
                                         </button>
@@ -1057,10 +1071,10 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                               return (
                                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                                   {Object.entries(agg).filter(([lote]) => displayLote(lote)).map(([lote, qty]) => (
-                                    <div key={lote} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
-                                      <Tag className="h-2.5 w-2.5 text-emerald-500/70 shrink-0" />
+                                    <div key={lote} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40">
+                                      <Tag className="h-2.5 w-2.5 text-emerald-500 shrink-0" />
                                       <span className="text-[11px] font-mono font-bold text-emerald-600 tracking-wider">{lote}</span>
-                                      <span className="text-[10px] text-emerald-500/70">{qty} un.</span>
+                                      <span className="text-[10px] text-emerald-600/70 font-medium">{qty} un.</span>
                                     </div>
                                   ))}
                                 </div>
@@ -1110,7 +1124,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                 className={cn(
                   "flex-1 h-9 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:pointer-events-none",
                   canConfirmar
-                    ? "bg-blue-500/10 hover:bg-blue-500/20 text-blue-600"
+                    ? "bg-blue-500 hover:bg-blue-600 text-white shadow-sm shadow-blue-500/30"
                     : "bg-destructive/10 text-destructive opacity-80 cursor-not-allowed"
                 )}>
                 <PackageCheck className="h-3.5 w-3.5" />
@@ -1153,7 +1167,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                     className={cn(
                       "w-full h-9 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:pointer-events-none",
                       canMarcarPronto
-                        ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600"
+                        ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm shadow-emerald-500/30"
                         : "bg-destructive/10 text-destructive opacity-80 cursor-not-allowed"
                     )}
                   >
@@ -1173,15 +1187,15 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
             })()}
 
             {pedido.status === "pronto" && (
-              <div className="flex-1 h-9 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-emerald-600 text-[12px] font-medium flex items-center justify-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5" />
+              <div className="flex-1 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-600 text-[12px] font-semibold flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                 Aguardando Nota Fiscal
               </div>
             )}
 
             {pedido.status === "enviado" && (
-              <div className="flex-1 h-9 rounded-xl bg-sky-500/5 border border-sky-500/20 text-sky-600 text-[12px] font-medium flex items-center justify-center gap-1.5">
-                <Truck className="h-3.5 w-3.5" />
+              <div className="flex-1 h-9 rounded-xl bg-sky-500/15 border border-sky-500/40 text-sky-600 text-[12px] font-semibold flex items-center justify-center gap-1.5">
+                <Truck className="h-3.5 w-3.5 text-sky-500" />
                 NF emitida — Pedido enviado
               </div>
             )}
@@ -1189,7 +1203,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
             {/* Botão Retornar — disponível para separando e pronto */}
             {isSeparando && (
               <button type="button" onClick={() => onRetornar(pedido)}
-                className="h-9 w-9 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 flex items-center justify-center transition-colors shrink-0"
+                className="h-9 w-9 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 text-orange-600 border border-orange-500/30 flex items-center justify-center transition-colors shrink-0"
                 title="Retornar pedido ao comercial">
                 <RotateCcw className="h-3.5 w-3.5" />
               </button>
