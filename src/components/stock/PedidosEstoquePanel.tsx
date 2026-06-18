@@ -171,6 +171,8 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   // Per-item confirmation (only relevant during "separando")
   // Keyed por stock_item_id (estável entre reloads) — não por item.id (pode mudar)
   const [confirmedItems, setConfirmedItems] = useState<Set<string>>(new Set());
+  // Ref espelho: sobrevive ao reset do useEffect de carga (race condition com Realtime)
+  const confirmedItemsRef = useRef<Set<string>>(new Set());
   const [savingItem, setSavingItem] = useState<string | null>(null);
 
   const isSeparando = pedido.status === "separando";
@@ -181,10 +183,18 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   // Rastreia o último lotes_separados visto — reseta loadedRef quando muda
   // para re-sincronizar sel/confirmedItems após update do Realtime
   const lastLotesSep = useRef<string>("");
+  const lastStatus = useRef<string>("");
   const curLotesSep = JSON.stringify(pedido.lotes_separados ?? []);
+
+  // Reseta loadedRef quando lotes_separados muda (Realtime atualizou o pedido)
   if (expanded && loadedRef.current && curLotesSep !== lastLotesSep.current) {
     loadedRef.current = false;
   }
+  // Limpa confirmações quando pedido muda de status (ex: separando → pronto)
+  if (pedido.status !== lastStatus.current && lastStatus.current !== "") {
+    confirmedItemsRef.current = new Set();
+  }
+  lastStatus.current = pedido.status;
 
   useEffect(() => {
     if (!expanded || loadedRef.current) return;
@@ -300,6 +310,10 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         }
       }
       setSel(newSel);
+      // Restaura confirmações que sobreviveram ao reload (ref persiste além do state)
+      if (confirmedItemsRef.current.size > 0) {
+        setConfirmedItems(new Set(confirmedItemsRef.current));
+      }
       setLoadingLotes(false);
     }
 
@@ -398,8 +412,9 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         .update({ lotes_separados: snapshot })
         .eq("id", pedido.id);
       if (error) { toast.error("Erro ao confirmar peça."); return; }
-      // Usa stock_item_id como chave (estável entre reloads do Realtime)
-      setConfirmedItems(prev => new Set([...prev, item.stock_item_id]));
+      // Atualiza ref PRIMEIRO (sobrevive ao reset do Realtime) depois o state
+      confirmedItemsRef.current = new Set([...confirmedItemsRef.current, item.stock_item_id]);
+      setConfirmedItems(new Set(confirmedItemsRef.current));
       toast.success(`${item.device_model} confirmada!`);
     } catch (_e) {
       toast.error("Erro ao confirmar peça.");
