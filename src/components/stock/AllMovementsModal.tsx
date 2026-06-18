@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { ArrowDownCircle, ArrowUpCircle, History, User, RefreshCw, Tag, Truck, Package, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement, StockFase } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,21 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
     }
     return () => { cancelled = true; };
   }, [open, fase, filterStockOnly]);
+
+  // Realtime: recarrega histórico geral quando qualquer movimento é inserido
+  useEffect(() => {
+    if (!open) return;
+    const channel = supabase
+      .channel("all-movements-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "stock_movements" },
+        () => { load(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, fase]);
 
   const movimentosFiltrados = movements.filter(m => {
     if (search && !((m.device_model ?? "").toLowerCase().includes(search.toLowerCase()) || (m.lote ?? "").toLowerCase().includes(search.toLowerCase()))) return false;
