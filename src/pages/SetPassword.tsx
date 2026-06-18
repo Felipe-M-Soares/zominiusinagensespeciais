@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Lock, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { validatePassword, passwordStrength } from "@/lib/passwordUtils";
+import { logger } from "@/lib/logger";
 
 export default function SetPassword() {
   const { user } = useAuth();
@@ -84,15 +85,14 @@ export default function SetPassword() {
         return;
       }
 
-      // 2. Marca must_change_password = false no profile
-      const { error: profileErr } = await supabase
-        .from("profiles")
-        .update({ must_change_password: false })
-        .eq("user_id", user!.id);
+      // 2. Marca must_change_password = false via RPC SECURITY DEFINER
+      // (UPDATE direto falha se login=NULL pela policy profiles_own_update)
+      const { error: profileErr } = await supabase.rpc("set_password_done");
 
       if (profileErr) {
-        logger.error("Profile update error:", profileErr.message);
-        // Não bloqueia — a senha já foi atualizada
+        logger.error("set_password_done error:", profileErr.message);
+        // Mesmo que falhe, a senha já foi trocada — navega mesmo assim
+        // O login irá pedir a troca novamente, mas não é bloqueante
       }
 
       toast.success("Senha definida com sucesso! Bem-vindo.");
