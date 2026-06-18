@@ -3242,16 +3242,6 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
     if (error) { toast.error("Erro ao preencher preços: " + error.message); return; }
     toast.success("Todas as peças receberam custo R$45,00 e venda R$120,00 para teste.");
     load();
-  } = await supabase.from("devices").select("id").eq("preco_venda", 0);
-    if (!semPreco || semPreco.length === 0) { toast.info("Todas as peças já têm preço."); return; }
-    for (const d of semPreco) {
-      await supabase.from("devices").update({
-        preco_custo: parseFloat((Math.random() * 150 + 20).toFixed(2)),
-        preco_venda: parseFloat((Math.random() * 500 + 60).toFixed(2)),
-      }).eq("id", d.id);
-    }
-    toast.success(semPreco.length + " peças preenchidas com preços de teste.");
-    load();
   }
 
   function exportExcel() {
