@@ -478,11 +478,11 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
 
           {/* Rodapé totais */}
           <div className="grid gap-2 px-4 py-2.5 bg-muted/20 border-t border-border/40 font-bold"
-            style={{ gridTemplateColumns: "1fr 100px 100px 80px 70px 70px 90px 50px 100px" }}>
+            style={{ gridTemplateColumns: "1fr 100px 100px 70px 70px 50px 100px" }}>
             <p className="text-[11px] text-muted-foreground">{filtered.length} peças</p>
             <p className="text-[11px] font-mono text-muted-foreground">{fmtCurrency(totalCusto / (filtered.length || 1))}</p>
             <p className="text-[11px] font-mono text-violet-600">{fmtCurrency(totalVenda / (filtered.length || 1))}</p>
-            <p className="text-[11px] text-muted-foreground col-span-6">← médias por peça</p>
+            <p className="text-[11px] text-muted-foreground col-span-4">← médias por peça</p>
           </div>
         </div>
       )}
