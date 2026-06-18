@@ -169,6 +169,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   const [loadingLotes, setLoadingLotes] = useState(false);
   const loadedRef = useRef(false);
   // Per-item confirmation (only relevant during "separando")
+  // Keyed por stock_item_id (estável entre reloads) — não por item.id (pode mudar)
   const [confirmedItems, setConfirmedItems] = useState<Set<string>>(new Set());
   const [savingItem, setSavingItem] = useState<string | null>(null);
 
@@ -177,9 +178,18 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   const totalItens  = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
 
   // ── Load lotes on expand ───────────────────────────────────────────────────
+  // Rastreia o último lotes_separados visto — reseta loadedRef quando muda
+  // para re-sincronizar sel/confirmedItems após update do Realtime
+  const lastLotesSep = useRef<string>("");
+  const curLotesSep = JSON.stringify(pedido.lotes_separados ?? []);
+  if (expanded && loadedRef.current && curLotesSep !== lastLotesSep.current) {
+    loadedRef.current = false;
+  }
+
   useEffect(() => {
     if (!expanded || loadedRef.current) return;
     loadedRef.current = true;
+    lastLotesSep.current = JSON.stringify(pedido.lotes_separados ?? []);
     setLoadingLotes(true);
 
     async function load() {
@@ -343,13 +353,13 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
   // All items confirmed (multi-item: each must be individually confirmed)
   const allItemsConfirmed = isSeparando && pedido.itens.length > 1
-    ? pedido.itens.every(item => confirmedItems.has(item.id))
+    ? pedido.itens.every(item => confirmedItems.has(item.stock_item_id))
     : true;
 
   // Marcar como Pronto só libera se TODOS os itens tiverem seleção completa
   const canMarcarPronto = isSeparando && pedido.itens.every(item => {
-    // Multi-item: usa confirmedItems (cada item confirmado individualmente)
-    if (pedido.itens.length > 1) return confirmedItems.has(item.id);
+    // Multi-item: usa confirmedItems keyed por stock_item_id (estável entre reloads)
+    if (pedido.itens.length > 1) return confirmedItems.has(item.stock_item_id);
     // Item único: verifica seleção de lotes
     const sel = totalSel(item.id);
     return sel === item.quantidade && sel > 0;
@@ -358,7 +368,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   // Confirm a single item during separation: save snapshot and mark locally
   async function handleConfirmarItem(item: PedidoItem) {
     if (savingItem) return;
-    setSavingItem(item.id);
+    setSavingItem(item.stock_item_id);
     try {
       // Build a merged snapshot including this item's selection
       const snapshotMap = new Map<string, { pedido_item_id: string; stock_item_id: string; lote: string; quantidade: number; device_model?: string }>();
@@ -388,7 +398,8 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         .update({ lotes_separados: snapshot })
         .eq("id", pedido.id);
       if (error) { toast.error("Erro ao confirmar peça."); return; }
-      setConfirmedItems(prev => new Set([...prev, item.id]));
+      // Usa stock_item_id como chave (estável entre reloads do Realtime)
+      setConfirmedItems(prev => new Set([...prev, item.stock_item_id]));
       toast.success(`${item.device_model} confirmada!`);
     } catch (_e) {
       toast.error("Erro ao confirmar peça.");
@@ -1017,8 +1028,8 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                             {/* Separando: indicador de status da peça + botão confirmar */}
                             {isSeparando && pedido.itens.length > 1 && (() => {
                               const isItemOk = totalSel(item.id) === item.quantidade;
-                              const isConfirmed = confirmedItems.has(item.id);
-                              const isSaving = savingItem === item.id;
+                              const isConfirmed = confirmedItems.has(item.stock_item_id);
+                              const isSaving = savingItem === item.stock_item_id;
                               if (isConfirmed) {
                                 return (
                                   <div className="flex items-center gap-2 mt-1 px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
@@ -1150,7 +1161,7 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
                             key={it.id}
                             className={cn(
                               "h-1.5 w-4 rounded-full transition-colors",
-                              confirmedItems.has(it.id) ? "bg-emerald-500" : "bg-destructive/40"
+                              confirmedItems.has(it.stock_item_id) ? "bg-emerald-500" : "bg-destructive/40"
                             )}
                           />
                         ))}
