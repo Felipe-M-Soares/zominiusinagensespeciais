@@ -2665,6 +2665,7 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
 // ─── PainelBancos ────────────────────────────────────────────────────────────
 
 function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; onToggleModoTeste: () => void }) {
+  const { isAdmin } = useAuth();
   const [contas,    setContas]    = useState<ContaBancaria[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -2769,6 +2770,14 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
       if (res.ok) toast.success(`Webhook OK — HTTP ${res.status}`);
       else toast.error(`Webhook retornou HTTP ${res.status}`);
     } catch { toast.error("Falha ao conectar com o webhook."); }
+  }
+
+  async function excluirConta(id: string) {
+    if (!window.confirm("Excluir esta conta bancária? Esta ação não pode ser desfeita.")) return;
+    const { error } = await supabase.from("financeiro_contas_bancarias").delete().eq("id", id);
+    if (error) { toast.error("Erro ao excluir conta."); return; }
+    toast.success("Conta excluída.");
+    load();
   }
 
   const saldoTotal = contas.reduce((s, c) => s + c.saldo_atual, 0);
@@ -2894,6 +2903,13 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
                     className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-[10px] text-violet-600 transition-colors">
                     <TestTube2 className="h-2.5 w-2.5" />Testar Webhook
                   </button>
+                  {isAdmin && (
+                    <button type="button" onClick={() => excluirConta(c.id)}
+                      className="h-7 w-7 flex items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive transition-colors"
+                      title="Excluir conta (admin)">
+                      <Trash2 className="h-2.5 w-2.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
