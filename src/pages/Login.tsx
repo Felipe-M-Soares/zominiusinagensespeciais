@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eye, EyeOff, ShieldX, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import logoZomini from "@/assets/logo_zomini.png";
 
@@ -29,15 +28,9 @@ export default function Login() {
       const { error } = await signIn(login.trim(), password);
       if (error) { toast.error(error); return; }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("must_change_password")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
-        if (profile?.must_change_password === true) { navigate("/set-password"); return; }
-      }
+      // O ProtectedLayout redireciona automaticamente para /set-password
+      // via mustChangePassword do contexto (populado pelo fetchRoleAndApproval).
+      // Não precisamos verificar aqui — evita race condition com o banco.
       navigate("/");
     } catch (err) {
       logger.error("Login error:", err);
