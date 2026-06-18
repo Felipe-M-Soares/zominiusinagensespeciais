@@ -65,6 +65,7 @@ import {
   Minus,
   Copy,
   MessageSquare,
+  AlertCircle,
   Send,
   Star,
   RotateCcw,
@@ -502,17 +503,26 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   }, [open, precoMap]);
 
   async function loadPrecos() {
-    const { data } = await supabase
-      .from("devices")
-      .select("id, preco_venda")
-      .gt("preco_venda", 0);
-    if (data) {
-      const map: Record<string, number> = {};
-      (data as { id: string; preco_venda: number }[]).forEach(r => {
-        map[r.id] = r.preco_venda;
+    const PAGE = 1000;
+    const map: Record<string, number> = {};
+    let from = 0;
+    let keepGoing = true;
+    while (keepGoing) {
+      const { data, error } = await supabase
+        .from("devices")
+        .select("id, preco_venda")
+        .range(from, from + PAGE - 1);
+      if (error) {
+        toast.error("Não foi possível carregar os preços das peças.");
+        return;
+      }
+      (data as { id: string; preco_venda: number | null }[] ?? []).forEach(r => {
+        map[r.id] = r.preco_venda ?? 0;
       });
-      setPrecoMap(map);
+      keepGoing = (data?.length ?? 0) === PAGE;
+      from += PAGE;
     }
+    setPrecoMap(map);
   }
 
   async function loadClientes() {
@@ -845,9 +855,13 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                                 dispRealCarrinho(i) > 0 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" : "bg-red-50 dark:bg-red-950/40 text-red-600")}>
                                 {dispRealCarrinho(i)} un.
                               </span>
-                              {precoRef > 0 && (
+                              {precoRef > 0 ? (
                                 <span className="text-[11px] font-bold text-violet-600 dark:text-violet-400 block">
                                   R$ {precoRef.toFixed(2).replace(".", ",")}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 block">
+                                  sem preço
                                 </span>
                               )}
                             </div>
@@ -893,8 +907,15 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-medium text-muted-foreground">Preço un.</label>
-                    <div className="h-9 rounded-lg border border-border/40 bg-muted/30 flex items-center justify-center text-[13px] font-bold text-foreground">
-                      R$ {(precoMap[selectedPeca.device_id] ?? 0).toFixed(2).replace(".", ",")}
+                    <div className={cn(
+                      "h-9 rounded-lg border flex items-center justify-center text-[13px] font-bold",
+                      (precoMap[selectedPeca.device_id] ?? 0) > 0
+                        ? "border-border/40 bg-muted/30 text-foreground"
+                        : "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                    )}>
+                      {(precoMap[selectedPeca.device_id] ?? 0) > 0
+                        ? `R$ ${(precoMap[selectedPeca.device_id] ?? 0).toFixed(2).replace(".", ",")}`
+                        : "sem preço"}
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -924,6 +945,13 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                     R$ {((precoMap[selectedPeca.device_id] ?? 0) * qtd * (1 - descontoItemAtual / 100)).toFixed(2).replace(".", ",")}
                   </span>
                 </div>
+
+                {(precoMap[selectedPeca.device_id] ?? 0) === 0 && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5 px-1">
+                    <AlertCircle className="h-3 w-3 shrink-0" />
+                    Esta peça não tem preço de venda cadastrado. Peça ao financeiro para cadastrar na Tabela de Preços.
+                  </p>
+                )}
 
                 <button
                   type="button"
