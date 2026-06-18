@@ -3743,7 +3743,7 @@ export default function Financeiro() {
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes(nome, documento, telefone, email, endereco, logradouro, numero, bairro, municipio, uf, cep),
         pedido_itens(
-          id, stock_item_id, lote, quantidade,
+          id, stock_item_id, lote, quantidade, valor_unitario,
           stock_items(devices(id, model, reference, ncm, cfop_padrao, ipi_pct, preco_venda, desconto_max_pct))
         )
       `)
@@ -3805,6 +3805,10 @@ export default function Financeiro() {
             device_model:     ((i.stock_items as { devices?: { model?: string; reference?: string; ipi_pct?: number } } | null)?.devices?.model),
             device_reference: ((i.stock_items as { devices?: { model?: string; reference?: string; ipi_pct?: number } } | null)?.devices?.reference),
             ipi_pct:          ((i.stock_items as { devices?: { ipi_pct?: number } } | null)?.devices?.ipi_pct) ?? 0,
+            preco_venda:      ((i.stock_items as { devices?: { preco_venda?: number } } | null)?.devices?.preco_venda) ?? 0,
+            valor_unitario:   (i.valor_unitario as number | null) ?? 0,
+            ncm:              ((i.stock_items as { devices?: { ncm?: string } } | null)?.devices?.ncm) ?? "",
+            cfop_padrao:      ((i.stock_items as { devices?: { cfop_padrao?: string } } | null)?.devices?.cfop_padrao) ?? "",
           })),
         };
       }));
