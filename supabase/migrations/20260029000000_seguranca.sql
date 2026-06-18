@@ -1060,3 +1060,47 @@ CREATE POLICY "stock_items_write_roles" ON public.stock_items
         AND role IN ('admin', 'estoque', 'comercial')
     )
   );
+
+-- ── set_own_password ──────────────────────────────────────────────────────────
+-- Troca a senha do próprio usuário autenticado diretamente em auth.users.
+-- Necessário porque supabase.auth.updateUser({ password }) retorna 400 quando
+-- a sessão foi criada via INSERT direto (admin_create_user), pois o Supabase
+-- Auth exige reauthentication para esse fluxo. Esta RPC bypassa essa restrição
+-- fazendo o UPDATE idêntico ao admin_reset_password, mas para o próprio usuário.
+DROP FUNCTION IF EXISTS public.set_own_password(text);
+CREATE OR REPLACE FUNCTION public.set_own_password(p_password text)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $f_sop$
+BEGIN
+  IF (SELECT auth.uid()) IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado');
+  END IF;
+
+  IF length(p_password) < 8 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Senha deve ter no mínimo 8 caracteres');
+  END IF;
+
+  IF length(p_password) > 72 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Senha deve ter no máximo 72 caracteres');
+  END IF;
+
+  -- Atualiza a senha diretamente em auth.users (mesmo mecanismo do admin_reset_password)
+  UPDATE auth.users
+  SET
+    encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf')),
+    updated_at         = now()
+  WHERE id = (SELECT auth.uid());
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Usuário não encontrado');
+  END IF;
+
+  -- Marca must_change_password = false
+  UPDATE public.profiles
+  SET must_change_password = false
+  WHERE user_id = (SELECT auth.uid());
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$f_sop$;
+GRANT EXECUTE ON FUNCTION public.set_own_password(text) TO authenticated;
