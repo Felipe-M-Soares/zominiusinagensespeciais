@@ -12,7 +12,8 @@ import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
 import { escHtml } from "@/lib/escHtml";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { Edit3, Tag, TrendingDown, Percent, AlertTriangle, X, RefreshCw, FileSpreadsheet, Printer, ChevronDown, ChevronUp, Package } from "lucide-react";
+import { Edit3, Tag, TrendingDown, Percent, AlertTriangle, X, RefreshCw, FileSpreadsheet, Printer, ChevronDown, ChevronUp, Package, Trash2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 // ─── PainelTabelaPrecos ───────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ function fmtCurrency(v: number) {
 }
 
 export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean; canEdit?: boolean }) {
+  const { isAdmin } = useAuth();
   const [devices,    setDevices]    = useState<DevicePreco[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState<string | null>(null);
@@ -71,6 +73,28 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  async function limparPrecos() {
+    if (!window.confirm("Zerar TODOS os preços de custo e venda? Esta ação não pode ser desfeita.")) return;
+    const { error } = await supabase.from("devices").update({ preco_custo: 0, preco_venda: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error) { toast.error("Erro ao limpar preços."); return; }
+    toast.success("Todos os preços foram zerados.");
+    load();
+  }
+
+  async function preencherPrecosTeste() {
+    if (!window.confirm("Preencher preços fictícios para teste em todas as peças sem preço de venda?")) return;
+    const { data: semPreco } = await supabase.from("devices").select("id").eq("preco_venda", 0);
+    if (!semPreco || semPreco.length === 0) { toast.info("Todas as peças já têm preço."); return; }
+    for (const d of semPreco) {
+      await supabase.from("devices").update({
+        preco_custo: parseFloat((Math.random() * 150 + 20).toFixed(2)),
+        preco_venda: parseFloat((Math.random() * 500 + 60).toFixed(2)),
+      }).eq("id", d.id);
+    }
+    toast.success(semPreco.length + " peças preenchidas com preços de teste.");
+    load();
+  }
 
   function exportExcel() {
     // Gera CSV detalhado e dispara download (funciona sem lib externa)
@@ -287,6 +311,18 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
           className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-violet-500/40 text-violet-700 dark:text-violet-400 bg-violet-500/8 hover:bg-violet-500/15 transition-colors disabled:opacity-40">
           <Printer size={14} />Imprimir PDF
         </button>
+        {isAdmin && canEdit && (
+          <>
+            <button type="button" onClick={preencherPrecosTeste}
+              className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/8 hover:bg-amber-500/15 transition-colors">
+              <Tag size={14} />Preços Teste
+            </button>
+            <button type="button" onClick={limparPrecos}
+              className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-destructive/40 text-destructive bg-destructive/5 hover:bg-destructive/10 transition-colors">
+              <Trash2 size={14} />Zerar Tudo
+            </button>
+          </>
+        )}
       </div>
 
       {/* Tabela */}
@@ -303,15 +339,13 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
         <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
           {/* Cabeçalho */}
           <div className="grid gap-2 px-4 py-2.5 bg-muted/30 border-b border-border/40"
-            style={{ gridTemplateColumns: "1fr 100px 100px 80px 70px 70px 90px 50px 100px" }}>
-            <SortBtn col="model"           label="Modelo / Referência" />
-            <SortBtn col="preco_custo"     label="Custo (R$)" />
-            <SortBtn col="preco_venda"     label="Venda (R$)" />
-            <SortBtn col="desconto_max_pct" label="Desc. Máx" />
-            <SortBtn col="ncm"             label="NCM" />
-            <SortBtn col="cfop_padrao"     label="CFOP" />
-            <SortBtn col="margem_minima_pct" label="Margem Mín" />
-            <SortBtn col="ativo"           label="Ativo" />
+            style={{ gridTemplateColumns: "1fr 100px 100px 70px 70px 50px 100px" }}>
+            <SortBtn col="model"       label="Modelo / Referência" />
+            <SortBtn col="preco_custo" label="Custo (R$)" />
+            <SortBtn col="preco_venda" label="Venda (R$)" />
+            <SortBtn col="ncm"         label="NCM" />
+            <SortBtn col="cfop_padrao" label="CFOP" />
+            <SortBtn col="ativo"       label="Ativo" />
             <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ações</span>
           </div>
 
@@ -330,7 +364,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                   className={cn("grid gap-2 px-4 py-2 items-center transition-colors",
                     isEdit ? "bg-violet-500/5 border-l-2 border-violet-500" : "hover:bg-muted/20",
                     !d.ativo && "opacity-50")}
-                  style={{ gridTemplateColumns: "1fr 100px 100px 80px 70px 70px 90px 50px 100px" }}>
+                  style={{ gridTemplateColumns: "1fr 100px 100px 70px 70px 50px 100px" }}>
 
                   {/* Modelo */}
                   <div className="min-w-0">
@@ -378,24 +412,6 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                     </p>
                   )}
 
-                  {/* Desconto Máx */}
-                  {isEdit ? (
-                    <div className="flex items-center gap-1">
-                      <input type="number" min="0" max="100" step="1"
-                        value={editData.desconto_max_pct ?? 0}
-                        onChange={e => setEditData(prev => ({ ...prev, desconto_max_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
-                      />
-                      <span className="text-[10px] text-muted-foreground shrink-0">%</span>
-                    </div>
-                  ) : (
-                    <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-lg border",
-                      d.desconto_max_pct > 0
-                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                        : "bg-muted/30 text-muted-foreground border-border/30")}>
-                      {d.desconto_max_pct}%
-                    </span>
-                  )}
 
                   {/* NCM */}
                   {isEdit ? (
@@ -419,25 +435,6 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                     <p className="text-[10px] font-mono text-muted-foreground">{d.cfop_padrao || "—"}</p>
                   )}
 
-                  {/* Margem mínima */}
-                  {isEdit ? (
-                    <div className="flex items-center gap-1">
-                      <input type="number" min="0" max="100" step="1"
-                        value={editData.margem_minima_pct ?? 0}
-                        onChange={e => setEditData(prev => ({ ...prev, margem_minima_pct: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
-                      />
-                      <span className="text-[10px] text-muted-foreground shrink-0">%</span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-0.5">
-                      <span className={cn("text-[10px] font-bold",
-                        d.preco_venda > 0 && (margemOk ? "text-emerald-600" : "text-red-500"))}>
-                        {d.preco_venda > 0 ? `${margem.toFixed(1)}%` : "—"}
-                      </span>
-                      <span className="text-[9px] text-muted-foreground/60">mín {d.margem_minima_pct}%</span>
-                    </div>
-                  )}
 
                   {/* Ativo */}
                   {isEdit ? (
