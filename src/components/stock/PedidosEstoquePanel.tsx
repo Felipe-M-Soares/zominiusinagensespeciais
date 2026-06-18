@@ -2153,6 +2153,20 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
   useEffect(() => { loadPedidos(); }, [loadPedidos]);
 
+  // Realtime: recarrega lista de pedidos quando pedidos_comerciais muda
+  // Garante que novos pedidos do Comercial apareçam sem precisar atualizar a página
+  useEffect(() => {
+    const channel = supabase
+      .channel("pedidos-estoque-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pedidos_comerciais" },
+        () => { loadPedidos(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [loadPedidos]);
+
 
   const filtrados = pedidos.filter(p => {
     const matchStatus = p.status === "separando" || p.status === "pronto";
