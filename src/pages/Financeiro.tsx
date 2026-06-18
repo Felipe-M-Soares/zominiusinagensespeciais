@@ -3231,8 +3231,18 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
   }
 
   async function preencherPrecosTeste() {
-    if (!window.confirm("Preencher preços fictícios para teste em todas as peças sem preço de venda?")) return;
-    const { data: semPreco } = await supabase.from("devices").select("id").eq("preco_venda", 0);
+    if (!window.confirm("Preencher preços fictícios para teste em TODAS as peças (sobrescreve preços existentes)?")) return;
+    // Um único UPDATE com valor fixo para todas as peças — sem loop, sem timeout
+    const custo = 45.00;
+    const venda = 120.00;
+    const { error } = await supabase
+      .from("devices")
+      .update({ preco_custo: custo, preco_venda: venda })
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error) { toast.error("Erro ao preencher preços: " + error.message); return; }
+    toast.success("Todas as peças receberam custo R$45,00 e venda R$120,00 para teste.");
+    load();
+  } = await supabase.from("devices").select("id").eq("preco_venda", 0);
     if (!semPreco || semPreco.length === 0) { toast.info("Todas as peças já têm preço."); return; }
     for (const d of semPreco) {
       await supabase.from("devices").update({
