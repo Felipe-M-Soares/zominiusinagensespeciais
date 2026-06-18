@@ -47,6 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [approved, setApproved]               = useState<boolean | null>(null);
   const [blocked, setBlocked]                 = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  // Flag que impede fetchRoleAndApproval de sobrescrever mustChangePassword=false
+  // imediatamente após a troca de senha (o onAuthStateChange pode disparar antes
+  // do commit em profiles, relendo must_change_password=true do banco)
+  const passwordJustChangedRef = useRef(false);
 
   const signInWindowStartRef = useRef<number>(0);
   const signInAttemptsRef    = useRef<number>(0);
@@ -70,7 +74,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setBlocked(profileData.blocked ?? false);
         setApproved(profileData.approved ?? true);
-        setMustChangePassword((profileData as { must_change_password?: boolean }).must_change_password ?? false);
+        // Só atualiza mustChangePassword se a senha não acabou de ser trocada
+        // (evita loop: onAuthStateChange → fetchRoleAndApproval → lê true → redireciona)
+        if (!passwordJustChangedRef.current) {
+          setMustChangePassword((profileData as { must_change_password?: boolean }).must_change_password ?? false);
+        }
       }
     } catch (err) {
       logger.error("Failed to fetch role/approval:", err);
@@ -99,6 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "TOKEN_REFRESHED") { setSession(session); return; }
+      // USER_UPDATED é disparado quando set_own_password atualiza auth.users.
+      // Ignoramos re-fetch do profile aqui — o Realtime do profile já trata isso
+      // com o valor definitivo pós-commit, evitando race condition com must_change_password.
+      if (event === "USER_UPDATED") { setSession(session); return; }
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -130,6 +142,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const updated = payload.new as { blocked?: boolean; approved?: boolean; must_change_password?: boolean };
           setBlocked(updated.blocked ?? false);
           setApproved(updated.approved ?? true);
+          // Realtime: sempre confia no valor do banco (é o evento pós-commit real)
+          // Reseta a flag de proteção pois agora temos o valor definitivo
+          passwordJustChangedRef.current = false;
           setMustChangePassword(updated.must_change_password ?? false);
         }
       )
@@ -138,7 +153,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   const clearLocalState = useCallback(() => {
-    setUser(null); setSession(null); setRole(null); setApproved(null); setBlocked(false);
+    setUser(null); setSession(null); setRole(null); setApproved(null);
+    setBlocked(false); setMustChangePassword(false);
+    passwordJustChangedRef.current = false;
   }, []);
 
   const signIn = useCallback(
@@ -199,7 +216,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isQualidade:  role === "qualidade",
       isEstoque:    role === "estoque",
       approved, blocked, mustChangePassword,
-      clearMustChangePassword: () => setMustChangePassword(false),
+      clearMustChangePassword: () => {
+        passwordJustChangedRef.current = true;
+        setMustChangePassword(false);
+        // Libera a flag após 5s — tempo suficiente para o commit propagar
+        setTimeout(() => { passwordJustChangedRef.current = false; }, 5000);
+      },
       signIn, signOut, refreshApproval,
     }}>
       {children}
