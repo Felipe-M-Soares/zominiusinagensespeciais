@@ -78,21 +78,22 @@ export default function SetPassword() {
 
     setLoading(true);
     try {
-      // 1. Atualiza a senha no Supabase Auth
-      const { error: pwErr } = await supabase.auth.updateUser({ password });
-      if (pwErr) {
-        toast.error("Erro ao definir senha: " + pwErr.message);
+      // RPC SECURITY DEFINER: atualiza auth.users diretamente + marca must_change_password=false.
+      // supabase.auth.updateUser({ password }) retorna 400 quando a sessão foi criada
+      // via INSERT direto (admin_create_user), pois o Supabase Auth exige reauthentication.
+      const { data: result, error: rpcErr } = await supabase.rpc("set_own_password", {
+        p_password: password,
+      });
+
+      if (rpcErr) {
+        toast.error("Erro ao definir senha: " + rpcErr.message);
         return;
       }
 
-      // 2. Marca must_change_password = false via RPC SECURITY DEFINER
-      // (UPDATE direto falha se login=NULL pela policy profiles_own_update)
-      const { error: profileErr } = await supabase.rpc("set_password_done");
-
-      if (profileErr) {
-        logger.error("set_password_done error:", profileErr.message);
-        // Mesmo que falhe, a senha já foi trocada — navega mesmo assim
-        // O login irá pedir a troca novamente, mas não é bloqueante
+      const res = result as { ok: boolean; error?: string } | null;
+      if (!res?.ok) {
+        toast.error(res?.error ?? "Erro ao definir senha. Tente novamente.");
+        return;
       }
 
       toast.success("Senha definida com sucesso! Bem-vindo.");
