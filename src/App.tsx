@@ -1,7 +1,7 @@
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { AppShell } from "@/components/AppShell";
@@ -42,10 +42,15 @@ function PublicGuard({ children }: { children: React.ReactNode }) {
 
 // ── Layout protegido: AppShell montado UMA vez para todas as rotas internas ───
 function ProtectedLayout() {
-  const { user, loading, approved, blocked } = useAuth();
+  const { user, loading, approved, blocked, mustChangePassword } = useAuth();
+  const location = useLocation();
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/login" replace />;
   if (blocked || approved === false) return <Navigate to="/pending-approval" replace />;
+  // Força troca de senha antes de acessar qualquer outra rota
+  if (mustChangePassword && location.pathname !== "/set-password") {
+    return <Navigate to="/set-password" replace />;
+  }
   return (
     <AppShell>
       <Suspense fallback={<LoadingScreen />}>
