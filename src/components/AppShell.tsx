@@ -341,7 +341,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Notificações desktop — única instância, dados via props */}
             <div className={cn("flex", collapsed ? "justify-center px-1" : "px-1")}>
-              <NotificacoesPanel {...notifState} />
+              <NotificacoesPanel {...notifState} align="left" />
             </div>
 
             {collapsed ? (
@@ -455,7 +455,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
           <div className="flex items-center gap-1">
             {/* Notificações mobile — mesmos dados, só o painel visual é diferente */}
-            <NotificacoesPanel {...notifState} />
+            <NotificacoesPanel {...notifState} align="right" />
             <button
               onClick={() => setMobileOpen(true)}
               className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"
