@@ -43,11 +43,8 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
       fetchLotesSummary(item.id, item.fase).then((data) => {
         if (!cancelled) {
           let lotesComSaldo = data.filter((l) => l.saldo > 0);
-          // Fallback: se não houver lotes definidos mas houver quantity, oferece "Sem lote"
-          if (lotesComSaldo.length === 0 && item.quantity > 0) {
-            const now = new Date().toISOString();
-            lotesComSaldo = [{ lote: "SEM LOTE", total_entrada: item.quantity, total_saida: 0, saldo: item.quantity, last_movement: now }];
-          }
+          // Sem fallback de lote vazio — peças sem lote numerado não podem ser movimentadas.
+          // O usuário deve primeiro registrar uma entrada com lote válido (DDMMYYS-NN).
           setExistingLotes(lotesComSaldo);
           setLotesLoading(false);
         }
@@ -79,6 +76,11 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
     const safeQty = Math.trunc(resolvedQty);
     if (!item || safeQty < 1) return;
     if (!lote) { toast.error("Selecione o lote para retrabalho."); return; }
+    const LOTE_INVALIDO = new Set(["sem lote", "a-definir", "a definir"]);
+    if (LOTE_INVALIDO.has(lote.trim().toLowerCase())) {
+      toast.error("Lote sem numeração não é permitido. Registre uma entrada com lote válido (ex: 0101261-01) antes de enviar ao retrabalho.");
+      return;
+    }
     if (afterExpedicaoQty < 0) { toast.error("Quantidade maior que o saldo disponível."); return; }
 
     setLoading(true);
@@ -192,7 +194,8 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
                     </div>
                   ) : existingLotes.length === 0 ? (
                     <div className="px-3 py-3 text-[12px] text-muted-foreground text-center">
-                      Nenhum lote com saldo disponível na expedição
+                      Sem lote numerado na expedição.
+Registre uma entrada com lote (DDMMYYS-NN) antes de enviar ao retrabalho.
                     </div>
                   ) : (
                     <div className="max-h-[180px] overflow-y-auto">
