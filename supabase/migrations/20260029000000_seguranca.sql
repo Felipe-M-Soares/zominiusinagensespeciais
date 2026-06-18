@@ -784,3 +784,279 @@ COMMENT ON TABLE public.stock_movements IS 'Histórico de movimentações de est
 COMMENT ON TABLE public.pedidos_comerciais IS 'Pedidos comerciais com NF-e SEFAZ';
 COMMENT ON TABLE public.audit_log   IS 'Log de auditoria de ações críticas (retido 90 dias)';
 COMMENT ON TABLE public.rate_limit_log IS 'Rate limiting de operações críticas (sliding window)';
+
+-- =============================================================================
+-- FIX RLS: RPCs SECURITY DEFINER para operações em stock_items por não-admins
+-- =============================================================================
+-- Problema: a policy "stock_items_write_admin" só permite admin fazer INSERT/UPDATE.
+-- Usuários com role estoque/comercial precisam:
+--   1. Criar itens de expedição ao transferir do intermediário
+--   2. Criar itens de retrabalho ao enviar da expedição
+--   3. Criar/upsert itens via importação (Excel/CSV)
+--   4. Atualizar campos de configuração (min_quantity, location, notes) via CSV
+-- Solução: RPCs com SECURITY DEFINER que validam a role antes de agir.
+-- O admin continua funcionando normalmente via RLS (is_admin_user() = true).
+-- =============================================================================
+
+-- ── Helper: can_write_stock ───────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.can_write_stock()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $f_cws$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = (SELECT auth.uid())
+      AND role IN ('admin', 'estoque', 'comercial')
+  )
+$f_cws$;
+GRANT EXECUTE ON FUNCTION public.can_write_stock() TO authenticated;
+
+-- ── ensure_stock_item_fase ────────────────────────────────────────────────────
+-- Localiza ou cria um stock_item para (device_id, fase).
+-- Retorna o UUID do item (existente ou criado).
+DROP FUNCTION IF EXISTS public.ensure_stock_item_fase(uuid, text, uuid, text);
+CREATE OR REPLACE FUNCTION public.ensure_stock_item_fase(
+  p_device_id      uuid,
+  p_fase           text,
+  p_source_item_id uuid,
+  p_notes_override text DEFAULT NULL
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_esf$
+DECLARE
+  v_existing_id uuid;
+  v_new_id      uuid;
+  v_src_min     integer;
+  v_src_loc     text;
+  v_src_notes   text;
+BEGIN
+  IF (SELECT auth.uid()) IS NULL THEN
+    RAISE EXCEPTION 'Não autenticado';
+  END IF;
+
+  IF NOT public.can_write_stock() THEN
+    RAISE EXCEPTION 'Sem permissão para criar itens de estoque (requer: admin, estoque ou comercial)';
+  END IF;
+
+  IF p_fase NOT IN ('expedicao', 'retrabalho') THEN
+    RAISE EXCEPTION 'Fase inválida: %', p_fase;
+  END IF;
+
+  -- Para retrabalho com notes_override: busca pelo notes (lote único por item)
+  IF p_fase = 'retrabalho' AND p_notes_override IS NOT NULL THEN
+    SELECT id INTO v_existing_id
+    FROM public.stock_items
+    WHERE device_id = p_device_id
+      AND fase = 'retrabalho'
+      AND notes ILIKE '%' || p_notes_override || '%'
+    LIMIT 1;
+  ELSE
+    SELECT id INTO v_existing_id
+    FROM public.stock_items
+    WHERE device_id = p_device_id AND fase = p_fase
+    LIMIT 1;
+  END IF;
+
+  IF v_existing_id IS NOT NULL THEN
+    RETURN v_existing_id;
+  END IF;
+
+  -- Copia atributos do item de origem
+  SELECT min_quantity, location, notes
+  INTO v_src_min, v_src_loc, v_src_notes
+  FROM public.stock_items
+  WHERE id = p_source_item_id;
+
+  INSERT INTO public.stock_items (device_id, quantity, min_quantity, location, notes, fase)
+  VALUES (
+    p_device_id,
+    0,
+    CASE WHEN p_fase = 'retrabalho' THEN 0 ELSE COALESCE(v_src_min, 0) END,
+    v_src_loc,
+    COALESCE(p_notes_override, v_src_notes),
+    p_fase
+  )
+  RETURNING id INTO v_new_id;
+
+  RETURN v_new_id;
+END;
+$f_esf$;
+GRANT EXECUTE ON FUNCTION public.ensure_stock_item_fase(uuid, text, uuid, text) TO authenticated;
+
+-- ── upsert_stock_item_for_device ──────────────────────────────────────────────
+-- Cria ou recupera um stock_item para (device_id, fase).
+-- Usado nas importações Excel/CSV.
+DROP FUNCTION IF EXISTS public.upsert_stock_item_for_device(uuid, text);
+CREATE OR REPLACE FUNCTION public.upsert_stock_item_for_device(
+  p_device_id uuid,
+  p_fase      text DEFAULT 'intermediaria'
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_uid$
+DECLARE
+  v_id uuid;
+BEGIN
+  IF (SELECT auth.uid()) IS NULL THEN
+    RAISE EXCEPTION 'Não autenticado';
+  END IF;
+
+  IF NOT public.can_write_stock() THEN
+    RAISE EXCEPTION 'Sem permissão para criar itens de estoque';
+  END IF;
+
+  IF p_fase NOT IN ('intermediaria', 'expedicao', 'retrabalho') THEN
+    RAISE EXCEPTION 'Fase inválida: %', p_fase;
+  END IF;
+
+  INSERT INTO public.stock_items (device_id, quantity, min_quantity, fase)
+  VALUES (p_device_id, 0, 0, p_fase)
+  ON CONFLICT DO NOTHING;
+
+  SELECT id INTO v_id
+  FROM public.stock_items
+  WHERE device_id = p_device_id AND fase = p_fase
+  LIMIT 1;
+
+  RETURN v_id;
+END;
+$f_uid$;
+GRANT EXECUTE ON FUNCTION public.upsert_stock_item_for_device(uuid, text) TO authenticated;
+
+-- ── update_stock_item_settings ────────────────────────────────────────────────
+-- Atualiza campos de configuração (não-quantidade) de um stock_item.
+-- Usado no CSV import. Não toca em quantity/quantity_reserved.
+DROP FUNCTION IF EXISTS public.update_stock_item_settings(uuid, integer, text, text);
+CREATE OR REPLACE FUNCTION public.update_stock_item_settings(
+  p_item_id  uuid,
+  p_min_qty  integer DEFAULT NULL,
+  p_location text    DEFAULT NULL,
+  p_notes    text    DEFAULT NULL
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_uss$
+BEGIN
+  IF (SELECT auth.uid()) IS NULL THEN
+    RAISE EXCEPTION 'Não autenticado';
+  END IF;
+
+  IF NOT public.can_write_stock() THEN
+    RAISE EXCEPTION 'Sem permissão para atualizar itens de estoque';
+  END IF;
+
+  UPDATE public.stock_items
+  SET
+    min_quantity = COALESCE(p_min_qty,   min_quantity),
+    location     = COALESCE(p_location,  location),
+    notes        = COALESCE(p_notes,     notes),
+    updated_at   = now()
+  WHERE id = p_item_id;
+END;
+$f_uss$;
+GRANT EXECUTE ON FUNCTION public.update_stock_item_settings(uuid, integer, text, text) TO authenticated;
+
+-- ── add_device_to_stock_rpc ───────────────────────────────────────────────────
+-- Substitui o upsert direto em addDeviceToStock (useStock.ts).
+DROP FUNCTION IF EXISTS public.add_device_to_stock_rpc(uuid);
+CREATE OR REPLACE FUNCTION public.add_device_to_stock_rpc(p_device_id uuid)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_ads$
+BEGIN
+  IF (SELECT auth.uid()) IS NULL THEN
+    RAISE EXCEPTION 'Não autenticado';
+  END IF;
+
+  IF NOT public.can_write_stock() THEN
+    RAISE EXCEPTION 'Sem permissão para adicionar peças ao estoque';
+  END IF;
+
+  INSERT INTO public.stock_items (device_id, quantity, min_quantity, fase)
+  VALUES (p_device_id, 0, 0, 'intermediaria')
+  ON CONFLICT DO NOTHING;
+END;
+$f_ads$;
+GRANT EXECUTE ON FUNCTION public.add_device_to_stock_rpc(uuid) TO authenticated;
+
+-- ── release_item_reservation ──────────────────────────────────────────────────
+-- Libera quantidade_reservada ao remover item de pedido pendente.
+-- Usado em Comercial.tsx por role=comercial, que não tem acesso direto de UPDATE.
+-- Usa GREATEST(0, ...) para evitar reservas negativas.
+DROP FUNCTION IF EXISTS public.release_item_reservation(uuid, integer);
+CREATE OR REPLACE FUNCTION public.release_item_reservation(
+  p_stock_item_id uuid,
+  p_quantity      integer
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_rir$
+BEGIN
+  IF (SELECT auth.uid()) IS NULL THEN
+    RAISE EXCEPTION 'Não autenticado';
+  END IF;
+
+  -- Roles que podem liberar reservas: admin, comercial, estoque
+  IF NOT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = (SELECT auth.uid())
+      AND role IN ('admin', 'comercial', 'estoque')
+  ) THEN
+    RAISE EXCEPTION 'Sem permissão para liberar reservas de estoque';
+  END IF;
+
+  UPDATE public.stock_items
+  SET
+    quantity_reserved = GREATEST(0, quantity_reserved - p_quantity),
+    updated_at        = now()
+  WHERE id = p_stock_item_id;
+END;
+$f_rir$;
+GRANT EXECUTE ON FUNCTION public.release_item_reservation(uuid, integer) TO authenticated;
+
+-- ── set_password_done ─────────────────────────────────────────────────────────
+-- Marca must_change_password = false para o usuário autenticado.
+-- Necessário porque a policy profiles_own_update usa WITH CHECK que compara
+-- login/email/approved/blocked com os valores atuais — se login for NULL,
+-- "NULL = NULL" retorna false em SQL e o UPDATE falha silenciosamente.
+DROP FUNCTION IF EXISTS public.set_password_done();
+CREATE OR REPLACE FUNCTION public.set_password_done()
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_spd$
+BEGIN
+  IF (SELECT auth.uid()) IS NULL THEN
+    RAISE EXCEPTION 'Não autenticado';
+  END IF;
+
+  UPDATE public.profiles
+  SET must_change_password = false
+  WHERE user_id = (SELECT auth.uid());
+END;
+$f_spd$;
+GRANT EXECUTE ON FUNCTION public.set_password_done() TO authenticated;
+
+-- =============================================================================
+-- FIX RLS stock_items: expandir policy de escrita para roles autorizadas
+-- =============================================================================
+-- A policy "stock_items_write_admin" só permite admin fazer INSERT/UPDATE/DELETE.
+-- Isso causa 2 problemas:
+-- 1. stock_movement_atomic (SECURITY DEFINER) tenta UPDATE em stock_items — se o
+--    owner da função não tiver BYPASSRLS, o UPDATE falha silenciosamente e o lote
+--    é salvo no stock_movements mas a quantity não é atualizada.
+-- 2. Funções ensure_stock_item_fase, upsert_stock_item_for_device etc. dependem de
+--    BYPASSRLS do owner para funcionar corretamente.
+-- Solução: adicionar policy explícita para roles autorizadas, eliminando a
+-- dependência de BYPASSRLS e garantindo comportamento consistente em qualquer
+-- ambiente Supabase (hosted ou self-hosted).
+-- =============================================================================
+
+-- Remove policy restritiva antiga (admin-only)
+DROP POLICY IF EXISTS "stock_items_write_admin" ON public.stock_items;
+
+-- Nova policy: admin, estoque e comercial podem escrever em stock_items
+CREATE POLICY "stock_items_write_roles" ON public.stock_items
+  FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_roles
+      WHERE user_id = (SELECT auth.uid())
+        AND role IN ('admin', 'estoque', 'comercial')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_roles
+      WHERE user_id = (SELECT auth.uid())
+        AND role IN ('admin', 'estoque', 'comercial')
+    )
+  );
