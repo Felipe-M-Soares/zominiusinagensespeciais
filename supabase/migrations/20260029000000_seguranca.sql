@@ -1042,6 +1042,7 @@ GRANT EXECUTE ON FUNCTION public.set_password_done() TO authenticated;
 
 -- Remove policy restritiva antiga (admin-only)
 DROP POLICY IF EXISTS "stock_items_write_admin" ON public.stock_items;
+DROP POLICY IF EXISTS "stock_items_write_roles"  ON public.stock_items;
 
 -- Nova policy: admin, estoque e comercial podem escrever em stock_items
 CREATE POLICY "stock_items_write_roles" ON public.stock_items
