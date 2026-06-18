@@ -145,6 +145,7 @@ interface LoteSelecao {
 
 interface PedidoCardProps {
   pedido: Pedido;
+  onExpandChange?: (pedidoId: string, expanded: boolean) => void;
   onIniciarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao, expIdByItem: Record<string, string>) => void;
   onSalvarSeparacao: (pedido: Pedido, lotesSelecionados: LoteSelecao, expIdByItem: Record<string, string>) => Promise<void>;
   onMarcarPronto: (pedido: Pedido, lotesSelecionados: LoteSelecao, expIdByItem: Record<string, string>) => void;
@@ -156,8 +157,15 @@ interface PedidoCardProps {
   isAdmin: boolean;
 }
 
-function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, onRetornar, onRemoverItem, onEditarEndereco, isAdmin }: PedidoCardProps) {
+function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, onRetornar, onRemoverItem, onEditarEndereco, isAdmin }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
+
+  // Notifica o painel pai quando o card expande/recolhe
+  // O pai usa isso para não recarregar via Realtime enquanto há separação em andamento
+  useEffect(() => {
+    onExpandChange?.(pedido.id, expanded);
+    return () => { onExpandChange?.(pedido.id, false); };
+  }, [expanded, pedido.id, onExpandChange]);
 
   // ── State ──────────────────────────────────────────────────────────────────
   // expId per item: the real expedição stock_item_id (may differ from pedido_item.stock_item_id)
@@ -302,46 +310,6 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
 
     load();
   }, [expanded]); // Só roda na primeira expansão — Realtime tratado pelo useEffect abaixo
-
-  // ── Realtime: re-sincroniza sel quando lotes_separados muda no banco ───────
-  // NÃO reseta confirmedItems — só atualiza a distribuição de lotes no sel.
-  // Roda apenas quando o card está expandido e já carregou (loadedRef.current = true).
-  useEffect(() => {
-    if (!expanded || !loadedRef.current || !isSeparando) return;
-    const lotesSep = pedido.lotes_separados ?? [];
-    if (lotesSep.length === 0) return;
-
-    // Recalcula sel a partir do snapshot atual sem refazer os fetches de rede
-    const newSel: LoteSelecao = {};
-    const snapByExpId = new Map<string, { lote: string; quantidade: number }[]>();
-    for (const ls of lotesSep) {
-      if (!snapByExpId.has(ls.stock_item_id)) snapByExpId.set(ls.stock_item_id, []);
-      const arr = snapByExpId.get(ls.stock_item_id)!;
-      const ex = arr.find(x => x.lote === ls.lote);
-      if (ex) ex.quantidade += ls.quantidade;
-      else arr.push({ lote: ls.lote, quantidade: ls.quantidade });
-    }
-    for (const item of pedido.itens) {
-      const expId = expIdByItem[item.id];
-      if (!expId) continue;
-      const snapEntries = snapByExpId.get(expId) ?? [];
-      const siblings = pedido.itens.filter(i => (expIdByItem[i.id] ?? i.stock_item_id) === expId);
-      const totalSiblingQty = siblings.reduce((s, i) => s + i.quantidade, 0);
-      const ratio = totalSiblingQty > 0 ? item.quantidade / totalSiblingQty : 1;
-      const dist: Record<string, number> = {};
-      for (const s of snapEntries) {
-        const q = Math.round(s.quantidade * ratio);
-        if (q > 0) dist[s.lote] = q;
-      }
-      if (Object.keys(dist).length > 0) newSel[item.id] = dist;
-    }
-    if (Object.keys(newSel).length > 0) setSel(prev => ({ ...prev, ...newSel }));
-
-    // Restaura confirmedItems do ref (sobrevive a re-renders do Realtime)
-    if (confirmedItemsRef.current.size > 0) {
-      setConfirmedItems(new Set(confirmedItemsRef.current));
-    }
-  }, [pedido.lotes_separados, pedido.itens, expanded, isSeparando, expIdByItem]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function totalSel(itemId: string) {
@@ -2216,15 +2184,25 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
   useEffect(() => { loadPedidos(); }, [loadPedidos]);
 
-  // Realtime: recarrega lista de pedidos quando pedidos_comerciais muda
-  // Garante que novos pedidos do Comercial apareçam sem precisar atualizar a página
+  // IDs de pedidos com card expandido — Realtime não recarrega enquanto card aberto
+  const expandedPedidosRef = useRef<Set<string>>(new Set());
+
+  // Realtime: recarrega lista de pedidos quando pedidos_comerciais muda.
+  // Se o pedido afetado está com card expandido (separação em andamento),
+  // adia o reload para não resetar confirmações em progresso.
   useEffect(() => {
     const channel = supabase
       .channel(`pedidos-estoque-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "pedidos_comerciais" },
-        () => { loadPedidos(); }
+        (payload) => {
+          const changedId = (payload.new as { id?: string })?.id ?? (payload.old as { id?: string })?.id;
+          // Se o pedido alterado tem card expandido, não recarrega agora
+          // (o usuário está confirmando lotes — não podemos resetar o estado)
+          if (changedId && expandedPedidosRef.current.has(changedId)) return;
+          loadPedidos();
+        }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -2758,6 +2736,10 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
             <PedidoCard
               key={pedido.id}
               pedido={pedido}
+              onExpandChange={(id, exp) => {
+                if (exp) expandedPedidosRef.current.add(id);
+                else expandedPedidosRef.current.delete(id);
+              }}
               onIniciarSeparacao={handleIniciarSeparacao}
               onSalvarSeparacao={handleSalvarSeparacao}
               onMarcarPronto={handleMarcarPronto}
