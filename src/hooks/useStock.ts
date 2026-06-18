@@ -227,6 +227,20 @@ export function useStock(search: string) {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [search, loadItems]);
 
+  // Realtime: recarrega a lista de itens quando quantity muda (movimentação de outro usuário)
+  // Usa debounce implícito via genRef — se chegar múltiplos eventos seguidos, só roda o último.
+  useEffect(() => {
+    const channel = supabase
+      .channel("usestock-items-realtime")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "stock_items" },
+        () => { loadItems(search); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [search, loadItems]);
+
   return { items, totalCount, loteMap, qtyByFase, loading, error, refetch: () => loadItems(search) };
 }
 
@@ -283,6 +297,20 @@ export function useStockMovements(stockItemId: string | null, fase?: StockFase) 
     return () => { cancelledRef.current = true; };
   }, [stockItemId, loadMovements]);
 
+  // Realtime: recarrega movimentos quando qualquer INSERT chega para este item
+  useEffect(() => {
+    if (!stockItemId) return;
+    const channel = supabase
+      .channel(`stock-movements-item:${stockItemId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "stock_movements", filter: `stock_item_id=eq.${stockItemId}` },
+        () => { loadMovements(stockItemId); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [stockItemId, loadMovements]);
+
   return { movements, loading, refetch: stockItemId ? () => loadMovements(stockItemId) : () => {} };
 }
 
@@ -293,24 +321,30 @@ export async function upsertStockItem(
   patch: { quantity?: number; min_quantity?: number; location?: string; notes?: string },
   fase: StockFase = "intermediaria"
 ): Promise<{ id: string } | null> {
-  // FIX: substitui SELECT + INSERT separados por upsert atômico.
-  // A versão anterior tinha race condition: dois processos simultâneos podiam
-  // passar pelo SELECT sem encontrar registro e ambos tentar INSERT, causando
-  // violação de unique constraint (device_id, fase).
-  const { data, error } = await supabase
-    .from("stock_items")
-    .upsert(
-      { device_id: deviceId, quantity: 0, min_quantity: 0, fase, ...patch },
-      { onConflict: "device_id,fase" }
-    )
-    .select("id")
-    .single();
+  // Usa RPC SECURITY DEFINER — contorna RLS de escrita em stock_items para
+  // roles estoque/comercial. Admin também funciona (is_admin_user() = true na policy).
+  const { data: itemId, error } = await supabase.rpc("upsert_stock_item_for_device", {
+    p_device_id: deviceId,
+    p_fase: fase,
+  });
 
-  if (error) {
-    logger.error("upsertStockItem error:", error.message);
+  if (error || !itemId) {
+    logger.error("upsertStockItem error:", error?.message);
     return null;
   }
-  return data;
+
+  // Aplica patch de configuração se houver campos além de quantity
+  const hasConfigPatch = patch.min_quantity !== undefined || patch.location !== undefined || patch.notes !== undefined;
+  if (hasConfigPatch) {
+    await supabase.rpc("update_stock_item_settings", {
+      p_item_id: itemId as string,
+      p_min_qty: patch.min_quantity ?? null,
+      p_location: patch.location ?? null,
+      p_notes: patch.notes ?? null,
+    });
+  }
+
+  return { id: itemId as string };
 }
 
 export async function registerMovement(
@@ -344,12 +378,8 @@ export async function registerMovement(
 }
 
 export async function addDeviceToStock(deviceId: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase
-    .from("stock_items")
-    .upsert(
-      { device_id: deviceId, quantity: 0, min_quantity: 0, fase: "intermediaria" },
-      { onConflict: "device_id,fase", ignoreDuplicates: true }
-    );
+  // RPC SECURITY DEFINER — contorna RLS para roles estoque/comercial
+  const { error } = await supabase.rpc("add_device_to_stock_rpc", { p_device_id: deviceId });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
@@ -442,26 +472,15 @@ export async function transferToExpedicao(
   if (existing) {
     expedicaoItemId = existing.id;
   } else {
-    const { data: srcItem } = await supabase
-      .from("stock_items")
-      .select("min_quantity, location, notes")
-      .eq("id", intermediariaItemId)
-      .single();
+    // RPC SECURITY DEFINER — cria item de expedição contornando RLS para não-admins
+    const { data: createdId, error: createErr } = await supabase.rpc("ensure_stock_item_fase", {
+      p_device_id: deviceId,
+      p_fase: "expedicao",
+      p_source_item_id: intermediariaItemId,
+      p_notes_override: null,
+    });
 
-    const { data: created, error: createErr } = await supabase
-      .from("stock_items")
-      .insert({
-        device_id: deviceId,
-        quantity: 0,
-        min_quantity: srcItem?.min_quantity ?? 0,
-        location: srcItem?.location ?? null,
-        notes: srcItem?.notes ?? null,
-        fase: "expedicao",
-      })
-      .select("id")
-      .single();
-
-    if (createErr || !created) {
+    if (createErr || !createdId) {
       await registerMovement(
         intermediariaItemId, "entrada", quantity,
         "Rollback — falha ao criar item de expedição",
@@ -469,7 +488,7 @@ export async function transferToExpedicao(
       );
       return { ok: false, error: "Erro ao criar item na expedição." };
     }
-    expedicaoItemId = created.id;
+    expedicaoItemId = createdId as string;
   }
 
   // 3. Entrada na expedição
@@ -534,30 +553,20 @@ export async function transferToRetrabalho(
   let retrabalhoItemId: string | null = existing?.id ?? null;
 
   if (!retrabalhoItemId) {
-    const { data: srcItem } = await supabase
-      .from("stock_items")
-      .select("min_quantity, location, notes")
-      .eq("id", expedicaoItemId)
-      .single();
+    // RPC SECURITY DEFINER — cria item de retrabalho com notes de lote, contornando RLS
+    const notesOverride = `lote:${lote.toUpperCase()}`;
+    const { data: createdId, error: createErr } = await supabase.rpc("ensure_stock_item_fase", {
+      p_device_id: deviceId,
+      p_fase: "retrabalho",
+      p_source_item_id: expedicaoItemId,
+      p_notes_override: notesOverride,
+    });
 
-    const { data: created, error: createErr } = await supabase
-      .from("stock_items")
-      .insert({
-        device_id: deviceId,
-        quantity: 0,
-        min_quantity: 0,
-        location: srcItem?.location ?? null,
-        notes: `lote:${lote.toUpperCase()}${srcItem?.notes ? ` | ${srcItem.notes}` : ""}`,
-        fase: "retrabalho",
-      })
-      .select("id")
-      .single();
-
-    if (createErr || !created) {
+    if (createErr || !createdId) {
       await registerMovement(expedicaoItemId, "entrada", quantity, "Rollback — falha ao criar item de retrabalho", userId, userDisplayName, lote);
       return { ok: false, error: "Erro ao criar item no retrabalho." };
     }
-    retrabalhoItemId = created.id;
+    retrabalhoItemId = createdId as string;
   }
 
   // 3. Entrada no retrabalho
@@ -614,30 +623,19 @@ export async function transferRetrabalhoToExpedicao(
   let expedicaoItemId: string | null = existing?.id ?? null;
 
   if (!expedicaoItemId) {
-    const { data: srcItem } = await supabase
-      .from("stock_items")
-      .select("min_quantity, location, notes")
-      .eq("id", retrabalhoItemId)
-      .single();
+    // RPC SECURITY DEFINER — cria item de expedição contornando RLS para não-admins
+    const { data: createdId, error: createErr } = await supabase.rpc("ensure_stock_item_fase", {
+      p_device_id: deviceId,
+      p_fase: "expedicao",
+      p_source_item_id: retrabalhoItemId,
+      p_notes_override: null,
+    });
 
-    const { data: created, error: createErr } = await supabase
-      .from("stock_items")
-      .insert({
-        device_id: deviceId,
-        quantity: 0,
-        min_quantity: srcItem?.min_quantity ?? 0,
-        location: srcItem?.location ?? null,
-        notes: srcItem?.notes ?? null,
-        fase: "expedicao",
-      })
-      .select("id")
-      .single();
-
-    if (createErr || !created) {
+    if (createErr || !createdId) {
       await registerMovement(retrabalhoItemId, "entrada", quantity, "Rollback — falha ao criar item de expedição", userId, userDisplayName, lote);
       return { ok: false, error: "Erro ao criar item na expedição." };
     }
-    expedicaoItemId = created.id;
+    expedicaoItemId = createdId as string;
   }
 
   // 3. Entrada na expedição
