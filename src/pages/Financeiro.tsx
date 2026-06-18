@@ -1719,49 +1719,61 @@ function SefazModal({
             </div>
           )}
 
-          {/* STEP 4 */}
+          {/* STEP 4 — somente leitura, dados vêm do pedido */}
           {step === 4 && (
             <div className="space-y-4">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pagamento e Transporte</p>
+
+              {/* Forma de pagamento — somente leitura */}
               <div className="space-y-2">
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Forma de Pagamento *</label>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Forma de Pagamento</label>
                 <div className="grid grid-cols-2 gap-2">
                   {TIPOS_PAGAMENTO.map(tp => {
                     const Icon = tp.icon;
+                    const ativo = dados.tipoPagamento === tp.valor;
                     return (
-                      <button key={tp.valor} type="button" onClick={() => upd("tipoPagamento", tp.valor)}
-                        className={cn("flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all",
-                          dados.tipoPagamento === tp.valor
+                      <div key={tp.valor}
+                        className={cn("flex items-center gap-2 px-3 py-2.5 rounded-xl border",
+                          ativo
                             ? "border-violet-500/50 bg-violet-500/10 ring-1 ring-violet-500/20"
-                            : "border-border/40 bg-muted/15 hover:bg-muted/35")}>
-                        <Icon className={cn("h-3.5 w-3.5 shrink-0", dados.tipoPagamento === tp.valor ? "text-violet-500" : "text-muted-foreground")} />
-                        <span className="text-[11px] font-medium">{tp.label}</span>
-                      </button>
+                            : "border-border/20 bg-muted/5 opacity-40")}>
+                        <Icon className={cn("h-3.5 w-3.5 shrink-0", ativo ? "text-violet-500" : "text-muted-foreground")} />
+                        <span className={cn("text-[11px] font-medium", ativo ? "text-foreground" : "text-muted-foreground")}>{tp.label}</span>
+                        {ativo && <CheckCircle2 className="h-3 w-3 text-violet-500 ml-auto shrink-0" />}
+                      </div>
                     );
                   })}
                 </div>
               </div>
+
+              {/* Frete — somente leitura */}
               <div className="space-y-2">
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Modalidade do Frete</label>
-                <div className="space-y-1.5">
-                  {MOD_FRETE.map(mf => (
-                    <button key={mf.valor} type="button" onClick={() => upd("modFrete", mf.valor)}
-                      className={cn("w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all",
-                        dados.modFrete === mf.valor
-                          ? "border-violet-500/50 bg-violet-500/10"
-                          : "border-border/30 bg-muted/10 hover:bg-muted/30")}>
-                      <Truck className={cn("h-3 w-3 shrink-0", dados.modFrete === mf.valor ? "text-violet-500" : "text-muted-foreground")} />
-                      <span className="text-[11px]">{mf.label}</span>
-                    </button>
-                  ))}
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Frete</label>
+                <div className="flex items-center justify-between rounded-xl border border-border/30 bg-muted/10 px-4 py-3">
+                  <span className="text-[12px] text-muted-foreground">Valor do Frete</span>
+                  <span className="text-[14px] font-bold font-mono">
+                    {parseFloat(dados.valorFrete) > 0
+                      ? `R$ ${parseFloat(dados.valorFrete).toFixed(2).replace(".", ",")}`
+                      : <span className="text-muted-foreground font-normal text-[12px]">Sem frete</span>}
+                  </span>
                 </div>
               </div>
+
+              {/* Parcelas — se houver */}
+              {(pedido?.parcelas ?? 1) > 1 && (
+                <div className="flex items-center justify-between rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3">
+                  <span className="text-[12px] text-muted-foreground">Parcelamento</span>
+                  <span className="text-[13px] font-bold text-violet-600">{pedido!.parcelas}x sem juros</span>
+                </div>
+              )}
+
+              {/* Informações adicionais — ainda editável */}
               <div className="space-y-1">
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Informações Adicionais</label>
                 <textarea
                   value={dados.informacoesAdicionais}
                   onChange={e => upd("informacoesAdicionais", e.target.value.slice(0,500))}
-                  placeholder="Pedido nº ..., referência ..., prazo de entrega ..."
+                  placeholder="Observações adicionais para a NF..."
                   rows={3}
                   className="w-full rounded-xl border border-border/50 bg-background text-foreground px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none"
                 />
