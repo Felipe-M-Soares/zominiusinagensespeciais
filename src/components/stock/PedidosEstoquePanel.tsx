@@ -180,26 +180,13 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
   const totalItens  = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
 
   // ── Load lotes on expand ───────────────────────────────────────────────────
-  // Rastreia o último lotes_separados visto — reseta loadedRef quando muda
-  // para re-sincronizar sel/confirmedItems após update do Realtime
-  const lastLotesSep = useRef<string>("");
-  const lastStatus = useRef<string>("");
-  const curLotesSep = JSON.stringify(pedido.lotes_separados ?? []);
-
-  // Reseta loadedRef quando lotes_separados muda (Realtime atualizou o pedido)
-  if (expanded && loadedRef.current && curLotesSep !== lastLotesSep.current) {
-    loadedRef.current = false;
-  }
-  // Limpa confirmações quando pedido muda de status (ex: separando → pronto)
-  if (pedido.status !== lastStatus.current && lastStatus.current !== "") {
-    confirmedItemsRef.current = new Set();
-  }
-  lastStatus.current = pedido.status;
+  // loadedRef: impede recarga enquanto card está expandido e dados já foram buscados
+  // NÃO resetamos loadedRef pelo Realtime — isso causava race condition com confirmedItems.
+  // O Realtime atualiza apenas o sel via useEffect dedicado abaixo (sem resetar confirmações).
 
   useEffect(() => {
     if (!expanded || loadedRef.current) return;
     loadedRef.current = true;
-    lastLotesSep.current = JSON.stringify(pedido.lotes_separados ?? []);
     setLoadingLotes(true);
 
     async function load() {
@@ -310,15 +297,51 @@ function PedidoCard({ pedido, onIniciarSeparacao, onSalvarSeparacao, onMarcarPro
         }
       }
       setSel(newSel);
-      // Restaura confirmações que sobreviveram ao reload (ref persiste além do state)
-      if (confirmedItemsRef.current.size > 0) {
-        setConfirmedItems(new Set(confirmedItemsRef.current));
-      }
       setLoadingLotes(false);
     }
 
     load();
-  }, [expanded, pedido]); // isSeparando derived from pedido.status — pedido covers it
+  }, [expanded]); // Só roda na primeira expansão — Realtime tratado pelo useEffect abaixo
+
+  // ── Realtime: re-sincroniza sel quando lotes_separados muda no banco ───────
+  // NÃO reseta confirmedItems — só atualiza a distribuição de lotes no sel.
+  // Roda apenas quando o card está expandido e já carregou (loadedRef.current = true).
+  useEffect(() => {
+    if (!expanded || !loadedRef.current || !isSeparando) return;
+    const lotesSep = pedido.lotes_separados ?? [];
+    if (lotesSep.length === 0) return;
+
+    // Recalcula sel a partir do snapshot atual sem refazer os fetches de rede
+    const newSel: LoteSelecao = {};
+    const snapByExpId = new Map<string, { lote: string; quantidade: number }[]>();
+    for (const ls of lotesSep) {
+      if (!snapByExpId.has(ls.stock_item_id)) snapByExpId.set(ls.stock_item_id, []);
+      const arr = snapByExpId.get(ls.stock_item_id)!;
+      const ex = arr.find(x => x.lote === ls.lote);
+      if (ex) ex.quantidade += ls.quantidade;
+      else arr.push({ lote: ls.lote, quantidade: ls.quantidade });
+    }
+    for (const item of pedido.itens) {
+      const expId = expIdByItem[item.id];
+      if (!expId) continue;
+      const snapEntries = snapByExpId.get(expId) ?? [];
+      const siblings = pedido.itens.filter(i => (expIdByItem[i.id] ?? i.stock_item_id) === expId);
+      const totalSiblingQty = siblings.reduce((s, i) => s + i.quantidade, 0);
+      const ratio = totalSiblingQty > 0 ? item.quantidade / totalSiblingQty : 1;
+      const dist: Record<string, number> = {};
+      for (const s of snapEntries) {
+        const q = Math.round(s.quantidade * ratio);
+        if (q > 0) dist[s.lote] = q;
+      }
+      if (Object.keys(dist).length > 0) newSel[item.id] = dist;
+    }
+    if (Object.keys(newSel).length > 0) setSel(prev => ({ ...prev, ...newSel }));
+
+    // Restaura confirmedItems do ref (sobrevive a re-renders do Realtime)
+    if (confirmedItemsRef.current.size > 0) {
+      setConfirmedItems(new Set(confirmedItemsRef.current));
+    }
+  }, [pedido.lotes_separados, pedido.itens, expanded, isSeparando, expIdByItem]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function totalSel(itemId: string) {
