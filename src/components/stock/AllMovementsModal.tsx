@@ -69,7 +69,7 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
   useEffect(() => {
     if (!open) return;
     const channel = supabase
-      .channel("all-movements-realtime")
+      .channel(`all-movements-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "stock_movements" },
