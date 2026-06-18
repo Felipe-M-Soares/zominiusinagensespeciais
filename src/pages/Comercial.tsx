@@ -2576,7 +2576,7 @@ export default function Comercial() {
   // (estoque confirma separação, devolve retorno, etc.) — sem precisar deslogar/relogar
   useEffect(() => {
     const channel = supabase
-      .channel("comercial-pedidos-realtime")
+      .channel(`comercial-pedidos-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "pedidos_comerciais" },
