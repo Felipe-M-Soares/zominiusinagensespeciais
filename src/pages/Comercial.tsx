@@ -2572,6 +2572,20 @@ export default function Comercial() {
 
   useEffect(() => { loadPedidos(); loadClientes(); }, [loadPedidos, loadClientes]);
 
+  // Realtime: recarrega pedidos automaticamente quando outro usuário muda um pedido
+  // (estoque confirma separação, devolve retorno, etc.) — sem precisar deslogar/relogar
+  useEffect(() => {
+    const channel = supabase
+      .channel("comercial-pedidos-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pedidos_comerciais" },
+        () => { loadPedidos(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [loadPedidos]);
+
   async function handleCancelar() {
     if (!cancelarPedido) return;
     setCancelando(true);
@@ -2964,10 +2978,11 @@ export default function Comercial() {
                 setRemoverItemPendente(null);
                 // Persiste
                 await supabase.from("pedido_itens").delete().eq("id", item.id);
-                // Libera reserva
-                const { data: si } = await supabase.from("stock_items").select("quantity_reserved").eq("id", item.stock_item_id).maybeSingle();
-                const curr = (si as { quantity_reserved?: number } | null)?.quantity_reserved ?? 0;
-                await supabase.from("stock_items").update({ quantity_reserved: Math.max(0, curr - item.quantidade) }).eq("id", item.stock_item_id);
+                // Libera reserva via RPC SECURITY DEFINER (contorna RLS para role comercial)
+                await supabase.rpc("release_item_reservation", {
+                  p_stock_item_id: item.stock_item_id,
+                  p_quantity: item.quantidade,
+                });
                 toast.success(`${item.device_model} removida do pedido.`);
               }} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors flex items-center justify-center gap-1.5">
                 <X className="h-3.5 w-3.5" /> Remover
