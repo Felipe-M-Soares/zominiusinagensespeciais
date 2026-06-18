@@ -831,13 +831,18 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
               : "text-muted-foreground")} />
         </div>
         <div className="flex-1 min-w-0">
+          {/* Linha 1: cliente + status */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[13px] font-semibold truncate">{pedido.cliente_nome}</span>
             <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", statusColor(pedido.status))}>
               {statusLabel(pedido.status)}
             </span>
           </div>
+          {/* Linha 2: número do pedido + vendedora */}
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+            <span className="flex items-center gap-1 text-[11px] font-mono font-semibold text-muted-foreground/80 bg-muted/30 px-1.5 py-0.5 rounded">
+              #{pedido.id.slice(0, 8).toUpperCase()}
+            </span>
             {pedido.vendedora_nome && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <User className="h-2.5 w-2.5" />{pedido.vendedora_nome}
@@ -850,6 +855,22 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
               <Clock className="h-2.5 w-2.5" />{fmtDate(pedido.created_at)} às {fmtTime(pedido.created_at)}
             </span>
           </div>
+          {/* Linha 3: prazo e observações (quando houver) */}
+          {(pedido.prazo_entrega || pedido.observacoes) && (
+            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+              {pedido.prazo_entrega && (
+                <span className="flex items-center gap-1 text-[11px] text-amber-600 font-medium">
+                  <Clock className="h-2.5 w-2.5" />
+                  Entrega: {new Date(pedido.prazo_entrega).toLocaleDateString("pt-BR")}
+                </span>
+              )}
+              {pedido.observacoes && (
+                <span className="text-[11px] text-muted-foreground/70 italic truncate max-w-[200px]">
+                  "{pedido.observacoes}"
+                </span>
+              )}
+            </div>
+          )}
         </div>
         {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0 mt-2" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-2" />}
       </button>
