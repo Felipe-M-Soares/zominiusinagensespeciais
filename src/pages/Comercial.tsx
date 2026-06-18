@@ -118,10 +118,13 @@ interface Cliente {
 
 interface PedidoItem {
   stock_item_id: string;
+  device_id?: string;
   lote: string | null;
   quantidade: number;
   device_model: string;
   device_reference: string;
+  preco_unitario?: number;
+  desconto_pct?: number; // desconto individual da peça (vendedora define livremente)
 }
 
 interface PedidoCompleto {
@@ -144,6 +147,8 @@ interface PedidoCompleto {
     quantidade_reservada: number;
     device_model?: string;
     device_reference?: string;
+    valor_unitario?: number;
+    device_id?: string;
   }>;
 }
 
@@ -378,7 +383,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
   // Lista do pedido e obs
   const [qtd, setQtd] = useState(1);
-  const [desconto, setDesconto] = useState(0);
+  const [descontoItemAtual, setDescontoItemAtual] = useState(0); // desconto da peça que está sendo adicionada agora
   const [itens, setItens] = useState<PedidoItem[]>([]);
   const [obs, setObs] = useState("");
   const [prazoEntrega, setPrazoEntrega] = useState("");
@@ -390,6 +395,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   const [frete, setFrete] = useState(0);
   const [usarEnderecoCliente, setUsarEnderecoCliente] = useState(true);
   const [precoMap, setPrecoMap] = useState<Record<string, number>>({});
+  const [resumoOpen, setResumoOpen] = useState(false); // popup com o total do pedido
 
   // Carrega favoritas do usuário atual
   useEffect(() => {
@@ -427,14 +433,16 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     if (editarPedido) {
       setClienteId(editarPedido.cliente_id);
       setClienteSearch(editarPedido.cliente_nome);
-      setDesconto(editarPedido.desconto_pct);
       setObs(editarPedido.observacoes?.replace(/^\[RETORNO\]\s*/, "") ?? "");
       setItens(editarPedido.itens.map(i => ({
         stock_item_id: i.stock_item_id,
+        device_id: i.device_id,
         lote: i.lote ?? null,
         quantidade: i.quantidade,
         device_model: i.device_model ?? "",
         device_reference: i.device_reference ?? "",
+        preco_unitario: i.valor_unitario ?? 0, // recalculado em efeito separado quando precoMap carregar
+        desconto_pct: 0,
       })));
       // Carrega forma pagamento e endereço do pedido existente
       supabase.from("pedidos_comerciais")
@@ -454,24 +462,44 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     } else if (duplicarDe) {
       setClienteId(duplicarDe.cliente_id);
       setClienteSearch(duplicarDe.cliente_nome);
-      setDesconto(duplicarDe.desconto_pct);
       setObs(duplicarDe.observacoes ?? "");
       setItens(duplicarDe.itens.map(i => ({
         stock_item_id: i.stock_item_id,
+        device_id: i.device_id,
         lote: i.lote ?? null,
         quantidade: i.quantidade,
         device_model: i.device_model ?? "",
         device_reference: i.device_reference ?? "",
+        preco_unitario: i.valor_unitario ?? 0,
+        desconto_pct: 0,
       })));
     } else {
-      setItens([]); setObs(""); setDesconto(0); setPrazoEntrega("");
+      setItens([]); setObs(""); setPrazoEntrega("");
       setFormaPagamento(""); setParcelas(1); setEnderecoEntrega(""); setUsarEnderecoCliente(true); setFrete(0);
     }
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
-    setSelectedPeca(null); setQtd(1);
+    setSelectedPeca(null); setQtd(1); setDescontoItemAtual(0); setResumoOpen(false);
     loadClientes();
     loadPrecos();
   }, [open, clienteFixo, duplicarDe]);
+
+  // Quando precoMap carrega (após abrir em modo edição/duplicação), recalcula o desconto
+  // individual de cada item comparando o preço líquido salvo com o preço de tabela atual.
+  useEffect(() => {
+    if (!open) return;
+    if (!editarPedido && !duplicarDe) return;
+    if (Object.keys(precoMap).length === 0) return;
+    setItens(prev => prev.map(item => {
+      const precoTabela = item.device_id ? (precoMap[item.device_id] ?? 0) : 0;
+      const precoLiquidoSalvo = item.preco_unitario ?? 0;
+      if (precoTabela <= 0) return { ...item, preco_unitario: precoLiquidoSalvo, desconto_pct: 0 };
+      const descontoCalc = precoLiquidoSalvo > 0 && precoLiquidoSalvo < precoTabela
+        ? Math.round(((precoTabela - precoLiquidoSalvo) / precoTabela) * 1000) / 10
+        : 0;
+      return { ...item, preco_unitario: precoTabela, desconto_pct: descontoCalc };
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, precoMap]);
 
   async function loadPrecos() {
     const { data } = await supabase
@@ -553,6 +581,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     setPecaSearch(item.device?.model ?? "");
     setShowAutocomp(false);
     setQtd(1);
+    setDescontoItemAtual(0);
   }
 
   // Quantidade já no carrinho para essa peça
@@ -570,28 +599,49 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       toast.error(`Disponível na expedição: ${maxDisponivel} un.`);
       return;
     }
-    // se a peça já está no pedido, soma a quantidade em vez de criar linha duplicada.
-    // Duplicatas causavam snapshot dobrado: dois pedido_itens com mesmo stock_item_id
-    // → dois conjuntos de entradas de lote no snapshot → quantidades duplicadas na impressão.
+    const preco = precoMap[selectedPeca.device_id] ?? 0;
+    const descontoArred = Math.round(descontoItemAtual * 10) / 10;
+    // se a peça já está no pedido COM O MESMO DESCONTO, soma a quantidade em vez de criar linha
+    // duplicada. Peças com desconto diferente ficam em linhas separadas, pois cada linha vira
+    // um preço líquido diferente em pedido_itens.valor_unitario.
     setItens(prev => {
-      const idx = prev.findIndex(i => i.stock_item_id === selectedPeca!.id);
+      const idx = prev.findIndex(i =>
+        i.stock_item_id === selectedPeca!.id && (i.desconto_pct ?? 0) === descontoArred
+      );
       if (idx >= 0) {
         const updated = [...prev];
         updated[idx] = { ...updated[idx], quantidade: updated[idx].quantidade + qtd };
         return updated;
       }
-      const preco = precoMap[selectedPeca!.device_id] ?? 0;
       return [...prev, {
         stock_item_id: selectedPeca!.id,
+        device_id: selectedPeca!.device_id,
         lote: "",
         quantidade: qtd,
         device_model: selectedPeca!.device?.model ?? "",
         device_reference: selectedPeca!.device?.reference ?? "",
         preco_unitario: preco,
+        desconto_pct: descontoArred,
       }];
     });
-    setSelectedPeca(null); setPecaSearch(""); setQtd(1);
+    setSelectedPeca(null); setPecaSearch(""); setQtd(1); setDescontoItemAtual(0);
     setTimeout(() => pecaInputRef.current?.focus(), 50);
+  }
+
+  // Preço líquido de um item (preço de tabela com o desconto daquela peça já aplicado)
+  function precoLiquido(item: PedidoItem): number {
+    const base = item.preco_unitario ?? 0;
+    const desc = item.desconto_pct ?? 0;
+    return Math.max(0, base * (1 - desc / 100));
+  }
+
+  // Desconto médio ponderado pelo valor — usado apenas para preencher pedidos_comerciais.desconto_pct
+  // (mantém o card do pedido e relatórios antigos funcionando, mesmo com desconto por peça)
+  function descontoMedioPonderado(): number {
+    const totalBruto = itens.reduce((s, i) => s + (i.preco_unitario ?? 0) * i.quantidade, 0);
+    if (totalBruto <= 0) return 0;
+    const totalDesconto = itens.reduce((s, i) => s + (i.preco_unitario ?? 0) * i.quantidade * ((i.desconto_pct ?? 0) / 100), 0);
+    return Math.round((totalDesconto / totalBruto) * 1000) / 10;
   }
 
   async function handleSave() {
@@ -603,6 +653,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       const endFinal = usarEnderecoCliente
         ? (clienteSelecionado?.endereco ?? null)
         : (enderecoEntrega.trim() || null);
+      const descontoMedio = descontoMedioPonderado();
 
       // ── Modo edição (pedido em retorno) ──────────────────────────────────
       if (editarPedido) {
@@ -612,14 +663,14 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         // 2. Remove itens antigos
         await supabase.from("pedido_itens").delete().eq("pedido_id", editarPedido.id);
 
-        // 3. Insere novos itens
+        // 3. Insere novos itens — valor_unitario já vem líquido (com o desconto da peça aplicado)
         const novosItens = itens.map(i => ({
           pedido_id: editarPedido.id,
           stock_item_id: i.stock_item_id,
           lote: i.lote || null,
           quantidade: i.quantidade,
           quantidade_reservada: i.quantidade,
-          preco_unitario: (i as { preco_unitario?: number }).preco_unitario ?? 0,
+          valor_unitario: precoLiquido(i),
         }));
         const { error: insErr } = await supabase.from("pedido_itens").insert(novosItens);
         if (insErr) throw insErr;
@@ -638,7 +689,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         const { error: updErr } = await supabase.from("pedidos_comerciais").update({
           cliente_id: clienteId,
           status: "pendente",
-          desconto_pct: desconto,
+          desconto_pct: descontoMedio,
           frete: frete > 0 ? frete : 0,
           observacoes: obs || null,
           prazo_entrega: prazoEntrega || null,
@@ -665,12 +716,12 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           lote: i.lote || null,
           quantidade: i.quantidade,
           device_model: i.device_model,
-          preco_unitario: (i as { preco_unitario?: number }).preco_unitario ?? 0,
+          valorUnitarioLiquido: precoLiquido(i),
         })),
         vendedoraId: user?.id,
         vendedoraNome,
         observacoes: obs || null,
-        descontoPct: desconto,
+        descontoPct: descontoMedio,
         frete: frete > 0 ? frete : 0,
         prazoEntrega: prazoEntrega || null,
         formaPagamento: formaPagamento || null,
@@ -698,6 +749,12 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     return !q || c.nome.toLowerCase().includes(q) || (c.documento ?? "").toLowerCase().includes(q);
   });
 
+  // Totais do pedido — usados no botão fixo e no popup de resumo
+  const subtotalBruto = itens.reduce((s, i) => s + (i.preco_unitario ?? 0) * i.quantidade, 0);
+  const subtotalLiquido = itens.reduce((s, i) => s + precoLiquido(i) * i.quantidade, 0);
+  const totalDescontoValor = Math.max(0, subtotalBruto - subtotalLiquido);
+  const totalGeral = subtotalLiquido + (frete > 0 ? frete : 0);
+
   if (!open) return null;
 
   return (
@@ -710,7 +767,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
             </div>
             <div>
               <p className="text-[13px] font-bold">{editarPedido ? "Editar Pedido" : "Novo Pedido"}</p>
-              <p className="text-[10px] text-muted-foreground">{editarPedido ? "Altere peças, desconto, pagamento ou endereço" : "Preencha cliente, peças e desconto"}</p>
+              <p className="text-[10px] text-muted-foreground">{editarPedido ? "Altere peças, desconto, pagamento ou endereço" : "Escolha o cliente e vá adicionando as peças"}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
@@ -752,26 +809,27 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           {/* ── Adicionar Peça ── */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Adicionar Peça</label>
-            <div className="flex gap-2">
-              <div className="relative flex-1" ref={pecaDropRef}>
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                <input
-                  ref={pecaInputRef}
-                  type="text"
-                  value={pecaSearch}
-                  onChange={e => handlePecaInput(e.target.value)}
-                  onFocus={handlePecaFocus}
-                  placeholder="Buscar por nome da peça..."
-                  className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
-                />
-                {showAutocomp && (
-                  <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-52 overflow-y-auto">
-                    {autocomplete.length === 0 ? (
-                      <div className="px-4 py-3 text-center">
-                        <p className="text-[12px] font-semibold text-muted-foreground">Nenhuma peça encontrada</p>
-                        <p className="text-[10px] text-muted-foreground/60 mt-0.5">Verifique o nome ou o estoque disponível</p>
-                      </div>
-                    ) : autocomplete.map(i => (
+            <div className="relative" ref={pecaDropRef}>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                ref={pecaInputRef}
+                type="text"
+                value={pecaSearch}
+                onChange={e => handlePecaInput(e.target.value)}
+                onFocus={handlePecaFocus}
+                placeholder="Buscar por nome da peça..."
+                className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
+              />
+              {showAutocomp && (
+                <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                  {autocomplete.length === 0 ? (
+                    <div className="px-4 py-3 text-center">
+                      <p className="text-[12px] font-semibold text-muted-foreground">Nenhuma peça encontrada</p>
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">Verifique o nome ou o estoque disponível</p>
+                    </div>
+                  ) : autocomplete.map(i => {
+                    const precoRef = precoMap[i.device_id] ?? 0;
+                    return (
                       <div key={i.id} className="flex items-stretch border-b border-border/10 last:border-0 hover:bg-muted/40 transition-colors">
                         <button type="button" onClick={() => handleSelectPeca(i)} className="flex-1 text-left px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
@@ -782,11 +840,16 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                               </div>
                               <p className="text-[10px] text-muted-foreground/70 font-mono">{i.device?.reference}</p>
                             </div>
-                            <div className="shrink-0 text-right">
-                              <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded-lg",
+                            <div className="shrink-0 text-right space-y-0.5">
+                              <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded-lg block",
                                 dispRealCarrinho(i) > 0 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" : "bg-red-50 dark:bg-red-950/40 text-red-600")}>
                                 {dispRealCarrinho(i)} un.
                               </span>
+                              {precoRef > 0 && (
+                                <span className="text-[11px] font-bold text-violet-600 dark:text-violet-400 block">
+                                  R$ {precoRef.toFixed(2).replace(".", ",")}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </button>
@@ -796,37 +859,80 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                           <Star className={cn("h-3.5 w-3.5", favoritas.has(i.device_id) && "fill-amber-400 text-amber-400")} />
                         </button>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <input
-                type="number"
-                min={1}
-                max={maxDisponivel || undefined}
-                value={qtd}
-                onChange={e => {
-                  const v = Math.max(1, parseInt(e.target.value) || 1);
-                  setQtd(maxDisponivel > 0 ? Math.min(v, maxDisponivel) : v);
-                }}
-                className="w-14 h-10 rounded-xl border border-border/50 bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-              />
-              <button
-                type="button"
-                onClick={addItem}
-                disabled={!selectedPeca || maxDisponivel === 0}
-                className="h-10 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-40 transition-colors flex items-center gap-1.5"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+
+            {/* Peça selecionada: preço, quantidade, desconto e preview do valor final */}
             {selectedPeca && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/8 border border-violet-500/20 text-[11px]">
-                <Package className="h-3 w-3 text-violet-500 shrink-0" />
-                <span className="text-violet-600 dark:text-violet-400 font-medium truncate">{selectedPeca.device?.model}</span>
-                <span className={cn("ml-auto shrink-0 font-mono font-semibold", maxDisponivel === 0 ? "text-destructive" : "text-muted-foreground/60")}>
-                  {maxDisponivel === 0 ? "sem estoque" : `máx. ${maxDisponivel} un.`}
-                </span>
+              <div className="rounded-xl border border-violet-500/25 bg-violet-500/[0.04] p-3 space-y-2.5">
+                <div className="flex items-center gap-2 text-[12px]">
+                  <Package className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+                  <span className="font-semibold text-violet-700 dark:text-violet-400 truncate flex-1">{selectedPeca.device?.model}</span>
+                  <span className={cn("shrink-0 font-mono font-semibold text-[11px]", maxDisponivel === 0 ? "text-destructive" : "text-muted-foreground/70")}>
+                    {maxDisponivel === 0 ? "sem estoque" : `máx. ${maxDisponivel} un.`}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground">Qtd.</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={maxDisponivel || undefined}
+                      value={qtd}
+                      onChange={e => {
+                        const v = Math.max(1, parseInt(e.target.value) || 1);
+                        setQtd(maxDisponivel > 0 ? Math.min(v, maxDisponivel) : v);
+                      }}
+                      className="w-full h-9 rounded-lg border border-border/50 bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground">Preço un.</label>
+                    <div className="h-9 rounded-lg border border-border/40 bg-muted/30 flex items-center justify-center text-[13px] font-bold text-foreground">
+                      R$ {(precoMap[selectedPeca.device_id] ?? 0).toFixed(2).replace(".", ",")}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground">Desconto %</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={descontoItemAtual === 0 ? "" : String(descontoItemAtual).replace(".", ",")}
+                      onChange={e => {
+                        const raw = e.target.value.replace(",", ".");
+                        if (raw === "") { setDescontoItemAtual(0); return; }
+                        const v = parseFloat(raw);
+                        if (!isNaN(v)) setDescontoItemAtual(Math.max(0, v));
+                      }}
+                      className="w-full h-9 rounded-lg border border-border/50 bg-background text-sm text-center font-mono font-bold text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                  </div>
+                </div>
+
+                {/* Preview: preço com desconto já calculado para passar ao cliente */}
+                <div className="flex items-center justify-between rounded-lg bg-card border border-border/40 px-3 py-2">
+                  <span className="text-[11px] text-muted-foreground">
+                    {qtd}x com {descontoItemAtual > 0 ? `${String(descontoItemAtual).replace(".", ",")}% off` : "preço de tabela"}
+                  </span>
+                  <span className="text-[14px] font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                    R$ {((precoMap[selectedPeca.device_id] ?? 0) * qtd * (1 - descontoItemAtual / 100)).toFixed(2).replace(".", ",")}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addItem}
+                  disabled={maxDisponivel === 0}
+                  className="w-full h-9 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="h-4 w-4" /> Adicionar ao pedido
+                </button>
               </div>
             )}
           </div>
@@ -834,60 +940,50 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           {/* ── Lista de Itens ── */}
           {itens.length > 0 && (
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                Itens do Pedido ({itens.reduce((s, i) => s + i.quantidade, 0)} un.)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  Itens do Pedido ({itens.reduce((s, i) => s + i.quantidade, 0)} un.)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setResumoOpen(true)}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors"
+                >
+                  <Receipt className="h-3 w-3" /> Ver total do pedido
+                </button>
+              </div>
               <div className="space-y-1">
-                {itens.map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/20 border border-border/30">
-                    <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-medium truncate">{item.device_model}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
+                {itens.map((item, idx) => {
+                  const liquidoUnit = (item.preco_unitario ?? 0) * (1 - (item.desconto_pct ?? 0) / 100);
+                  return (
+                    <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/20 border border-border/30">
+                      <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-medium truncate">{item.device_model}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
+                          {(item.desconto_pct ?? 0) > 0 && (
+                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-500/10 rounded px-1">
+                              -{String(item.desconto_pct).replace(".", ",")}%
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[12px] font-bold block">{item.quantidade} un.</span>
+                        {(item.preco_unitario ?? 0) > 0 ? (
+                          <span className="text-[10px] text-emerald-600 font-semibold">R$ {(liquidoUnit * item.quantidade).toFixed(2).replace(".", ",")}</span>
+                        ) : null}
+                      </div>
+                      <button type="button" onClick={() => setItens(prev => prev.filter((_, i) => i !== idx))} className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors">
+                        <X className="h-3 w-3" />
+                      </button>
                     </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-[12px] font-bold block">{item.quantidade} un.</span>
-                      {(item as {preco_unitario?: number}).preco_unitario ? (
-                        <span className="text-[10px] text-emerald-600">R$ {((item as {preco_unitario?: number}).preco_unitario! * item.quantidade * (1 - desconto/100)).toFixed(2).replace(".",",")}</span>
-                      ) : null}
-                    </div>
-                    <button type="button" onClick={() => setItens(prev => prev.filter((_, i) => i !== idx))} className="h-6 w-6 flex items-center justify-center rounded-lg hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
-
-          {/* ── Desconto do Pedido ── */}
-          <div className="space-y-2">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Desconto por Peça</label>
-            <div className="relative flex items-center">
-              <input
-                type="number"
-                min={0}
-                max={99.9}
-                step={0.1}
-                value={desconto === 0 ? "" : desconto}
-                onChange={e => {
-                  const raw = e.target.value;
-                  if (raw === "" || raw === "0") { setDesconto(0); return; }
-                  const v = parseFloat(raw.replace(",", "."));
-                  if (!isNaN(v)) setDesconto(Math.min(99.9, Math.max(0, v)));
-                }}
-                placeholder="0"
-                className="w-full h-10 rounded-xl border border-border bg-background pl-4 pr-10 text-[15px] font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
-              />
-              <span className="absolute right-3 text-[15px] font-bold text-muted-foreground pointer-events-none">%</span>
-            </div>
-            {desconto > 0 && (
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 px-1">
-                <span className="h-4 w-4 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[9px] font-black shrink-0">✓</span>
-                {desconto}% aplicado individualmente em cada peça
-              </p>
-            )}
-          </div>
 
           {/* ── Forma de Pagamento ── */}
           <div className="space-y-1.5">
@@ -995,13 +1091,96 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         </div>
 
         <div className="flex gap-2 p-5 border-t border-border/30 shrink-0">
-          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
+          <button type="button" onClick={onClose} disabled={saving} className="h-9 px-3 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
+          {itens.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setResumoOpen(true)}
+              className="h-9 px-3 rounded-xl border border-violet-500/40 text-violet-600 dark:text-violet-400 bg-violet-500/8 hover:bg-violet-500/15 text-sm font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+              title="Ver o total do pedido"
+            >
+              <Receipt className="h-3.5 w-3.5" />
+              <span className="tabular-nums">R$ {totalGeral.toFixed(2).replace(".", ",")}</span>
+            </button>
+          )}
           <button type="button" onClick={handleSave} disabled={saving || !clienteId || itens.length === 0} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
             {editarPedido ? "Salvar e Reenviar" : "Criar Pedido"}
           </button>
         </div>
       </div>
+
+      {/* ── Popup: Resumo do Pedido (subtotal, desconto, frete, total) ── */}
+      {resumoOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => setResumoOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/30 bg-gradient-to-r from-violet-500/8 to-transparent">
+              <div className="flex items-center gap-2">
+                <Receipt className="h-4 w-4 text-violet-500" />
+                <p className="text-[13px] font-bold">Resumo do Pedido</p>
+              </div>
+              <button type="button" onClick={() => setResumoOpen(false)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+              {itens.length === 0 ? (
+                <p className="text-[12px] text-muted-foreground text-center py-4">Nenhuma peça adicionada ainda.</p>
+              ) : (
+                <div className="space-y-2">
+                  {itens.map((item, idx) => {
+                    const liquidoUnit = (item.preco_unitario ?? 0) * (1 - (item.desconto_pct ?? 0) / 100);
+                    return (
+                      <div key={idx} className="flex items-center justify-between gap-2 text-[12px]">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium truncate">{item.device_model}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {item.quantidade} un. × R$ {(item.preco_unitario ?? 0).toFixed(2).replace(".", ",")}
+                            {(item.desconto_pct ?? 0) > 0 && ` · -${String(item.desconto_pct).replace(".", ",")}%`}
+                          </p>
+                        </div>
+                        <span className="font-bold shrink-0 tabular-nums">R$ {(liquidoUnit * item.quantidade).toFixed(2).replace(".", ",")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="border-t border-border/30 pt-3 space-y-1.5">
+                <div className="flex items-center justify-between text-[12px] text-muted-foreground">
+                  <span>Subtotal (preço de tabela)</span>
+                  <span className="tabular-nums">R$ {subtotalBruto.toFixed(2).replace(".", ",")}</span>
+                </div>
+                {totalDescontoValor > 0 && (
+                  <div className="flex items-center justify-between text-[12px] text-emerald-600 dark:text-emerald-400">
+                    <span>Descontos aplicados</span>
+                    <span className="tabular-nums">- R$ {totalDescontoValor.toFixed(2).replace(".", ",")}</span>
+                  </div>
+                )}
+                {frete > 0 && (
+                  <div className="flex items-center justify-between text-[12px] text-violet-600 dark:text-violet-400">
+                    <span>Frete</span>
+                    <span className="tabular-nums">+ R$ {frete.toFixed(2).replace(".", ",")}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-2 border-t border-border/30">
+                  <span className="text-[13px] font-bold">Total a cobrar</span>
+                  <span className="text-[20px] font-black text-violet-600 dark:text-violet-400 tabular-nums">
+                    R$ {totalGeral.toFixed(2).replace(".", ",")}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-border/30">
+              <button type="button" onClick={() => setResumoOpen(false)} className="w-full h-9 rounded-xl bg-muted/40 hover:bg-muted/60 text-sm font-semibold transition-colors">
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {novoClienteModal && (
         <ClienteModal open onClose={() => setNovoClienteModal(false)} onSuccess={(c) => { loadClientes(); setClienteId(c.id); setClienteSearch(c.nome); setNovoClienteModal(false); }} />
@@ -1461,12 +1640,24 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
   const [showAutocomp, setShowAutocomp] = useState(false);
   const [selectedPeca, setSelectedPeca] = useState<ReturnType<typeof useStock>["items"][0] | null>(null);
   const [qtd, setQtd] = useState(1);
+  const [descontoItem, setDescontoItem] = useState(0);
+  const [precoMap, setPrecoMap] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (pedido) { setSearch(""); setSelectedPeca(null); setQtd(1); setTimeout(() => inputRef.current?.focus(), 100); }
+    if (pedido) {
+      setSearch(""); setSelectedPeca(null); setQtd(1); setDescontoItem(0);
+      setTimeout(() => inputRef.current?.focus(), 100);
+      supabase.from("devices").select("id, preco_venda").gt("preco_venda", 0)
+        .then(({ data }) => {
+          if (!data) return;
+          const map: Record<string, number> = {};
+          (data as { id: string; preco_venda: number }[]).forEach(r => { map[r.id] = r.preco_venda; });
+          setPrecoMap(map);
+        });
+    }
   }, [pedido]);
 
   // FIX: useClickOutside substitui document.addEventListener duplicado
@@ -1520,12 +1711,15 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
     if (!pedido || !selectedPeca) return;
     if (qtd < 1 || qtd > maxDisponivel) { toast.error(`Disponível: ${maxDisponivel} un.`); return; }
     setSaving(true);
+    const precoBase = precoMap[selectedPeca.device_id] ?? 0;
+    const valorLiquido = Math.max(0, precoBase * (1 - descontoItem / 100));
     const { error } = await supabase.from("pedido_itens").insert({
       pedido_id: pedido.id,
       stock_item_id: selectedPeca.id,
       lote: null,
       quantidade: qtd,
       quantidade_reservada: qtd,
+      valor_unitario: valorLiquido,
     });
     if (error) { setSaving(false); toast.error("Erro ao adicionar peça."); return; }
 
@@ -1700,6 +1894,44 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
                     </div>
                   )}
                 </div>
+
+                {/* Preço e desconto da peça */}
+                {(precoMap[selectedPeca.device_id] ?? 0) > 0 && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-medium text-muted-foreground">Preço un.</label>
+                        <div className="h-9 rounded-lg border border-border/40 bg-muted/30 flex items-center justify-center text-[13px] font-bold text-foreground">
+                          R$ {(precoMap[selectedPeca.device_id] ?? 0).toFixed(2).replace(".", ",")}
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-medium text-muted-foreground">Desconto %</label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0"
+                          value={descontoItem === 0 ? "" : String(descontoItem).replace(".", ",")}
+                          onChange={e => {
+                            const raw = e.target.value.replace(",", ".");
+                            if (raw === "") { setDescontoItem(0); return; }
+                            const v = parseFloat(raw);
+                            if (!isNaN(v)) setDescontoItem(Math.max(0, v));
+                          }}
+                          className="w-full h-9 rounded-lg border border-border/50 bg-background text-sm text-center font-mono font-bold text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg bg-violet-500/8 border border-violet-500/20 px-3 py-2">
+                      <span className="text-[11px] text-muted-foreground">
+                        {qtd}x {descontoItem > 0 ? `com ${String(descontoItem).replace(".", ",")}% off` : "preço de tabela"}
+                      </span>
+                      <span className="text-[14px] font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                        R$ {((precoMap[selectedPeca.device_id] ?? 0) * qtd * (1 - descontoItem / 100)).toFixed(2).replace(".", ",")}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2658,7 +2890,7 @@ export default function Comercial() {
       const pedidoIds = pedidosData.map((p: Record<string, unknown>) => p.id as string);
       const { data: itensData } = await supabase
         .from("pedido_itens")
-        .select("*, stock_items(devices(model, reference))")
+        .select("*, stock_items(device_id, devices(model, reference))")
         .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"])
         .abortSignal(ctrl.signal);
 
@@ -2670,7 +2902,17 @@ export default function Comercial() {
         if (!itensPorPedido.has(pid)) itensPorPedido.set(pid, []);
         const si = it.stock_items as Record<string, unknown> | null;
         const dev = si?.devices as Record<string, unknown> | null;
-        itensPorPedido.get(pid)!.push({ id: it.id as string, stock_item_id: it.stock_item_id as string, lote: it.lote as string, quantidade: it.quantidade as number, quantidade_reservada: it.quantidade_reservada as number, device_model: dev?.model as string | undefined, device_reference: dev?.reference as string | undefined });
+        itensPorPedido.get(pid)!.push({
+          id: it.id as string,
+          stock_item_id: it.stock_item_id as string,
+          lote: it.lote as string,
+          quantidade: it.quantidade as number,
+          quantidade_reservada: it.quantidade_reservada as number,
+          device_model: dev?.model as string | undefined,
+          device_reference: dev?.reference as string | undefined,
+          valor_unitario: (it.valor_unitario as number | null) ?? 0,
+          device_id: si?.device_id as string | undefined,
+        });
       }
 
       setPedidos(pedidosData.map((p: Record<string, unknown>) => {

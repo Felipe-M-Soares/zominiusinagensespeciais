@@ -341,7 +341,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Notificações desktop — única instância, dados via props */}
             <div className={cn("flex", collapsed ? "justify-center px-1" : "px-1")}>
-              <NotificacoesPanel {...notifState} align="left" />
+              <NotificacoesPanel {...notifState} align="left" dropUp />
             </div>
 
             {collapsed ? (

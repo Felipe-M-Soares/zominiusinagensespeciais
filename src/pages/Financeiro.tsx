@@ -258,14 +258,17 @@ function initDados(pedido: Pedido, numero: string): DadosFiscais {
     // Usa endereço de entrega do pedido (pode ter sido editado pelo estoque)
     destEndereco:  pedido.cliente_endereco ?? "",
     itens: pedido.itens.map(item => {
-      // Prioridade: preco_venda da tabela > valor_unitario do pedido_item > 0
-      const precoBase = (item.preco_venda ?? 0) > 0
-        ? item.preco_venda!
-        : (item.valor_unitario ?? 0);
-      // Aplica desconto do pedido automaticamente
-      const precoFinal = desconto > 0
-        ? precoBase * (1 - desconto / 100)
-        : precoBase;
+      // Desconto por peça é aplicado no momento da criação do pedido (vendedora define
+      // o desconto individual de cada item). Por isso valor_unitario salvo no item já
+      // vem líquido (com desconto) e tem prioridade.
+      // Fallback (pedidos antigos sem valor_unitario salvo): preco_venda de tabela × desconto_pct do pedido.
+      const temValorItemSalvo = (item.valor_unitario ?? 0) > 0;
+      const precoFinal = temValorItemSalvo
+        ? item.valor_unitario!
+        : (() => {
+            const precoBase = (item.preco_venda ?? 0) > 0 ? item.preco_venda! : 0;
+            return desconto > 0 ? precoBase * (1 - desconto / 100) : precoBase;
+          })();
       // Detecta se cliente é de outro estado (interestadual = CFOP 6xxx)
       const endCliente = pedido.cliente_endereco ?? "";
       const ufMatch = endCliente.match(/\/([A-Z]{2})/) ?? endCliente.match(/[\s\-]([A-Z]{2})(?:\s|$)/);

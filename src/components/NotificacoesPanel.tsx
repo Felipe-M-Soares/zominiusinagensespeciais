@@ -78,10 +78,11 @@ function NotificacaoItem({ n, onRead, onNav }: {
 // Props recebidas do AppShell (estado único)
 export interface NotificacoesPanelProps extends NotificacoesState {
   align?: "left" | "right"; // left para sidebar desktop, right para mobile topbar
+  dropUp?: boolean; // true quando o botão fica no rodapé (sidebar) e o painel não cabe abaixo
 }
 
 export function NotificacoesPanel({
-  notificacoes, unreadCount, loading, marcarComoLida, marcarTodasComoLidas, align = "right"
+  notificacoes, unreadCount, loading, marcarComoLida, marcarTodasComoLidas, align = "right", dropUp = false
 }: NotificacoesPanelProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -121,7 +122,11 @@ export function NotificacoesPanel({
       </button>
 
       {open && (
-        <div className={cn("absolute top-full mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-border/50 bg-card shadow-xl z-[100] overflow-hidden", align === "left" ? "left-0" : "right-0")}>
+        <div className={cn(
+          "absolute w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-border/50 bg-card shadow-xl z-[100] overflow-hidden",
+          align === "left" ? "left-0" : "right-0",
+          dropUp ? "bottom-full mb-2" : "top-full mt-2"
+        )}>
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/40">
             <p className="text-[12px] font-semibold flex items-center gap-1.5">
               <Bell className="h-3.5 w-3.5 text-primary" />
@@ -145,7 +150,7 @@ export function NotificacoesPanel({
             )}
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-[60vh] sm:max-h-80 overflow-y-auto">
             {loading && (
               <div className="flex items-center justify-center py-8">
                 <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />

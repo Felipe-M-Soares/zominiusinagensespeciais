@@ -9,7 +9,8 @@ export interface PedidoItemInput {
   lote: string | null;
   quantidade: number;
   device_model?: string;
-  preco_unitario?: number;
+  /** Preço unitário já líquido (com o desconto daquela peça aplicado). Vai para pedido_itens.valor_unitario. */
+  valorUnitarioLiquido?: number;
 }
 
 export interface CriarPedidoParams {
@@ -70,8 +71,7 @@ export async function criarPedidoComReserva(
     lote: i.lote ?? null,
     quantidade: i.quantidade,
     quantidade_reservada: i.quantidade,
-    preco_unitario: i.preco_unitario ?? 0,
-    valor_total: (i.preco_unitario ?? 0) * i.quantidade,
+    valor_unitario: i.valorUnitarioLiquido ?? 0,
   }));
 
   const { error: itensErr } = await supabase
