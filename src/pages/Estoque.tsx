@@ -585,15 +585,29 @@ export default function Estoque() {
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
 
-  // Pedidos pendentes (badge na aba)
+  // Pedidos pendentes (badge na aba) — com Realtime para atualizar sem refresh
   const [pedidosPendentes, setPedidosPendentes] = useState(0);
-  useEffect(() => {
-    supabase
+  const loadPedidosPendentes = useCallback(async () => {
+    const { count } = await supabase
       .from("pedidos_comerciais")
       .select("id", { count: "exact", head: true })
-      .eq("status", "separando")
-      .then(({ count }) => setPedidosPendentes(count ?? 0));
+      .eq("status", "separando");
+    setPedidosPendentes(count ?? 0);
   }, []);
+
+  useEffect(() => { loadPedidosPendentes(); }, [loadPedidosPendentes]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("estoque-pedidos-badge-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pedidos_comerciais" },
+        () => { loadPedidosPendentes(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [loadPedidosPendentes]);
 
   // Filtros
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
