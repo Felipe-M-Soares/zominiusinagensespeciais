@@ -76,10 +76,12 @@ function NotificacaoItem({ n, onRead, onNav }: {
 }
 
 // Props recebidas do AppShell (estado único)
-export interface NotificacoesPanelProps extends NotificacoesState {}
+export interface NotificacoesPanelProps extends NotificacoesState {
+  align?: "left" | "right"; // left para sidebar desktop, right para mobile topbar
+}
 
 export function NotificacoesPanel({
-  notificacoes, unreadCount, loading, marcarComoLida, marcarTodasComoLidas
+  notificacoes, unreadCount, loading, marcarComoLida, marcarTodasComoLidas, align = "right"
 }: NotificacoesPanelProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -119,7 +121,7 @@ export function NotificacoesPanel({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-0.5rem)] rounded-xl border border-border/50 bg-card shadow-xl z-[100] overflow-hidden">
+        <div className={cn("absolute top-full mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-border/50 bg-card shadow-xl z-[100] overflow-hidden", align === "left" ? "left-0" : "right-0")}>
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/40">
             <p className="text-[12px] font-semibold flex items-center gap-1.5">
               <Bell className="h-3.5 w-3.5 text-primary" />
