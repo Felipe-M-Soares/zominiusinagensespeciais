@@ -79,6 +79,10 @@ interface Pedido {
   id: string;
   cliente_id: string;
   cliente_nome: string;
+  cliente_municipio?: string | null;
+  cliente_uf?: string | null;
+  cliente_telefone?: string | null;
+  endereco_entrega?: string | null;
   vendedora_nome: string | null;
   vendedora_id: string | null;
   status: string;
@@ -855,22 +859,34 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
               <Clock className="h-2.5 w-2.5" />{fmtDate(pedido.created_at)} às {fmtTime(pedido.created_at)}
             </span>
           </div>
-          {/* Linha 3: prazo e observações (quando houver) */}
-          {(pedido.prazo_entrega || pedido.observacoes) && (
-            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-              {pedido.prazo_entrega && (
-                <span className="flex items-center gap-1 text-[11px] text-amber-600 font-medium">
-                  <Clock className="h-2.5 w-2.5" />
-                  Entrega: {new Date(pedido.prazo_entrega).toLocaleDateString("pt-BR")}
-                </span>
-              )}
-              {pedido.observacoes && (
-                <span className="text-[11px] text-muted-foreground/70 italic truncate max-w-[200px]">
-                  "{pedido.observacoes}"
-                </span>
-              )}
-            </div>
-          )}
+          {/* Linha 3: local de entrega + prazo + observações */}
+          {(() => {
+            const localEntrega = pedido.endereco_entrega
+              || (pedido.cliente_municipio
+                ? `${pedido.cliente_municipio}${pedido.cliente_uf ? "/" + pedido.cliente_uf : ""}`
+                : null);
+            return (localEntrega || pedido.prazo_entrega || pedido.observacoes) ? (
+              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                {localEntrega && (
+                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-medium">
+                    <MapPin className="h-2.5 w-2.5 shrink-0" />
+                    <span className="truncate max-w-[180px]">{localEntrega}</span>
+                  </span>
+                )}
+                {pedido.prazo_entrega && (
+                  <span className="flex items-center gap-1 text-[11px] text-amber-600 font-medium">
+                    <Clock className="h-2.5 w-2.5" />
+                    {new Date(pedido.prazo_entrega).toLocaleDateString("pt-BR")}
+                  </span>
+                )}
+                {pedido.observacoes && (
+                  <span className="text-[11px] text-muted-foreground/70 italic truncate max-w-[180px]">
+                    "{pedido.observacoes}"
+                  </span>
+                )}
+              </div>
+            ) : null;
+          })()}
         </div>
         {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0 mt-2" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-2" />}
       </button>
@@ -905,7 +921,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                           <span className="text-[10px] text-muted-foreground/60 leading-none">pedido</span>
                           <span className="text-[13px] font-bold">{groupTotalPedido} un.</span>
                         </div>
-                        {(isSeparando || pedido.status === "pronto") && pedido.itens.length > 1 && (
+                        {isSeparando && pedido.itens.length > 1 && (
                           <button
                             type="button"
                             onClick={() => onRemoverItem(pedido, firstItem)}
@@ -2135,7 +2151,8 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         .select(`
           id, cliente_id, vendedora_id, vendedora_nome, status, frete, observacoes,
           created_at, lotes_separados, separado_em, desconto_pct, prazo_entrega,
-          clientes!inner(nome),
+          endereco_entrega, usar_endereco_cliente,
+          clientes!inner(nome, municipio, uf, telefone, endereco),
           pedido_itens(
             id, stock_item_id, lote, quantidade,
             stock_items!inner(
@@ -2154,7 +2171,13 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       const mapped: Pedido[] = data.map((p: Record<string, unknown>) => ({
         id: p.id as string,
         cliente_id: p.cliente_id as string,
-        cliente_nome: (p.clientes as { nome: string }).nome,
+        cliente_nome: (p.clientes as { nome: string; municipio?: string; uf?: string; telefone?: string; endereco?: string }).nome,
+        cliente_municipio: (p.clientes as { municipio?: string | null }).municipio ?? null,
+        cliente_uf: (p.clientes as { uf?: string | null }).uf ?? null,
+        cliente_telefone: (p.clientes as { telefone?: string | null }).telefone ?? null,
+        endereco_entrega: (p.usar_endereco_cliente !== false
+          ? null  // usa endereço do cliente (município/UF já mapeados)
+          : (p.endereco_entrega as string | null)) ?? null,
         vendedora_nome: p.vendedora_nome as string | null,
         vendedora_id: p.vendedora_id as string | null,
         status: p.status as string,
