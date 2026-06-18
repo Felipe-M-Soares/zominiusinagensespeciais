@@ -2157,7 +2157,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   // Garante que novos pedidos do Comercial apareçam sem precisar atualizar a página
   useEffect(() => {
     const channel = supabase
-      .channel("pedidos-estoque-realtime")
+      .channel(`pedidos-estoque-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "pedidos_comerciais" },
