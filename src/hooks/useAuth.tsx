@@ -26,6 +26,7 @@ interface AuthContext {
   isEstoque: boolean;
   approved: boolean | null;
   blocked: boolean;
+  mustChangePassword: boolean;
   signIn: (login: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshApproval: () => Promise<void>;
@@ -42,8 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession]   = useState<Session | null>(null);
   const [loading, setLoading]   = useState(true);
   const [role, setRole]         = useState<AppRole | null>(null);
-  const [approved, setApproved] = useState<boolean | null>(null);
-  const [blocked, setBlocked]   = useState(false);
+  const [approved, setApproved]               = useState<boolean | null>(null);
+  const [blocked, setBlocked]                 = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   const signInWindowStartRef = useRef<number>(0);
   const signInAttemptsRef    = useRef<number>(0);
@@ -52,27 +54,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const [{ data: roleData }, { data: profileData, error: profileError }] = await Promise.all([
         supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
-        supabase.from("profiles").select("approved, blocked").eq("user_id", userId).maybeSingle(),
+        supabase.from("profiles").select("approved, blocked, must_change_password").eq("user_id", userId).maybeSingle(),
       ]);
       setRole((roleData?.role as AppRole) ?? "estoque");
       if (profileError) {
         logger.error("fetchRoleAndApproval profiles error:", profileError.message);
         setApproved(true);
         setBlocked(false);
+        setMustChangePassword(false);
       } else if (profileData == null) {
-        // Perfil ainda não criado — trata como aprovado para não bloquear o acesso
-        // O admin pode reprovar depois. Manter null aqui causaria loop infinito no RouteGuard.
         setApproved(true);
         setBlocked(false);
+        setMustChangePassword(false);
       } else {
         setBlocked(profileData.blocked ?? false);
         setApproved(profileData.approved ?? true);
+        setMustChangePassword((profileData as { must_change_password?: boolean }).must_change_password ?? false);
       }
     } catch (err) {
       logger.error("Failed to fetch role/approval:", err);
       setRole("estoque");
       setApproved(true);
       setBlocked(false);
+      setMustChangePassword(false);
     }
   }, []);
 
@@ -122,9 +126,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` },
         (payload) => {
-          const updated = payload.new as { blocked?: boolean; approved?: boolean };
+          const updated = payload.new as { blocked?: boolean; approved?: boolean; must_change_password?: boolean };
           setBlocked(updated.blocked ?? false);
           setApproved(updated.approved ?? true);
+          setMustChangePassword(updated.must_change_password ?? false);
         }
       )
       .subscribe();
@@ -192,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isProducao:   role === "producao",
       isQualidade:  role === "qualidade",
       isEstoque:    role === "estoque",
-      approved, blocked, signIn, signOut, refreshApproval,
+      approved, blocked, mustChangePassword, signIn, signOut, refreshApproval,
     }}>
       {children}
     </AuthContext.Provider>
