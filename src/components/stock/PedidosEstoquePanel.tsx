@@ -171,6 +171,16 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
     return () => { onExpandChange?.(pedido.id, false); };
   }, [expanded, pedido.id, onExpandChange]);
 
+  // Reseta loadedRef quando os itens do pedido mudam (peça removida ou adicionada)
+  // para que o card recarregue os lotes com os dados corretos
+  const itemCountRef = useRef(pedido.itens.length);
+  if (pedido.itens.length !== itemCountRef.current) {
+    itemCountRef.current = pedido.itens.length;
+    loadedRef.current = false;
+    // Limpa sel e confirmedItems pois os itens mudaram
+    confirmedItemsRef.current = new Set();
+  }
+
   // ── State ──────────────────────────────────────────────────────────────────
   // expId per item: the real expedição stock_item_id (may differ from pedido_item.stock_item_id)
   const [expIdByItem, setExpIdByItem] = useState<Record<string, string>>({});
@@ -1884,17 +1894,11 @@ function RemoverItemModal({ pedido, item, onClose, onSuccess }: RemoverItemModal
         .in("id", item.ids);
       if (error) throw error;
 
-      // Libera reserva via decremento direto no stock_item
-      const { data: siData } = await supabase
-        .from("stock_items")
-        .select("quantity_reserved")
-        .eq("id", item.stock_item_id)
-        .maybeSingle();
-      const currReserved = (siData as { quantity_reserved?: number } | null)?.quantity_reserved ?? 0;
-      await supabase
-        .from("stock_items")
-        .update({ quantity_reserved: Math.max(0, currReserved - item.quantidade) })
-        .eq("id", item.stock_item_id);
+      // Libera reserva via RPC SECURITY DEFINER (contorna RLS para role estoque/comercial)
+      await supabase.rpc("release_item_reservation", {
+        p_stock_item_id: item.stock_item_id,
+        p_quantity: item.quantidade,
+      });
 
       // Calcula novo total do pedido para notificação
       const { data: itensRestantes } = await supabase
