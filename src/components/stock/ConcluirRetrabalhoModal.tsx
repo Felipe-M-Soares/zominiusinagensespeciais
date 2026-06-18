@@ -43,10 +43,8 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
       fetchLotesSummary(item.id, item.fase).then((data) => {
         if (!cancelled) {
           let lotesComSaldo = data.filter((l) => l.saldo > 0);
-          if (lotesComSaldo.length === 0 && item.quantity > 0) {
-            const now = new Date().toISOString();
-            lotesComSaldo = [{ lote: "SEM LOTE", total_entrada: item.quantity, total_saida: 0, saldo: item.quantity, last_movement: now }];
-          }
+          // Sem fallback de lote vazio — peças sem lote numerado não podem ser movimentadas.
+          // O usuário deve primeiro registrar uma entrada com lote válido (DDMMYYS-NN).
           setExistingLotes(lotesComSaldo);
           setLotesLoading(false);
         }
@@ -78,6 +76,11 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
     const safeQty = Math.trunc(resolvedQty);
     if (!item || safeQty < 1) return;
     if (!lote) { toast.error("Selecione o lote a concluir."); return; }
+    const LOTE_INVALIDO = new Set(["sem lote", "a-definir", "a definir"]);
+    if (LOTE_INVALIDO.has(lote.trim().toLowerCase())) {
+      toast.error("Lote sem numeração não é permitido. Registre uma entrada com lote válido (ex: 0101261-01) antes de concluir.");
+      return;
+    }
     if (afterRetrabalhoQty < 0) { toast.error("Quantidade maior que o saldo disponível."); return; }
 
     setLoading(true);
@@ -186,7 +189,8 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
                     </div>
                   ) : existingLotes.length === 0 ? (
                     <div className="px-3 py-3 text-[12px] text-muted-foreground text-center">
-                      Nenhum lote com saldo disponível no retrabalho
+                      Sem lote numerado no retrabalho.
+Registre uma entrada com lote (DDMMYYS-NN) antes de concluir.
                     </div>
                   ) : (
                     <div className="max-h-[180px] overflow-y-auto">
