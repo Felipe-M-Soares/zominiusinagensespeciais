@@ -599,7 +599,7 @@ export default function Estoque() {
 
   useEffect(() => {
     const channel = supabase
-      .channel("estoque-pedidos-badge-realtime")
+      .channel(`estoque-badge-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "pedidos_comerciais" },
@@ -727,7 +727,7 @@ export default function Estoque() {
   // Realtime: notifica quando um item da expedição é atualizado para quantidade baixa
   useEffect(() => {
     const channel = supabase
-      .channel("estoque-low-stock-watch")
+      .channel(`estoque-lowstock-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "stock_items" },
