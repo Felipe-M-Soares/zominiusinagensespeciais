@@ -119,7 +119,7 @@ export function NotificacoesPanel({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-border/50 bg-card shadow-xl z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-border/50 bg-card shadow-xl z-50 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/40">
             <p className="text-[12px] font-semibold flex items-center gap-1.5">
               <Bell className="h-3.5 w-3.5 text-primary" />
