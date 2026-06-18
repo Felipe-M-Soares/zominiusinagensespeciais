@@ -1105,3 +1105,54 @@ BEGIN
 END;
 $f_sop$;
 GRANT EXECUTE ON FUNCTION public.set_own_password(text) TO authenticated;
+
+-- =============================================================================
+-- REALTIME: habilitar publicação e replica identity nas tabelas que usam
+-- postgres_changes no frontend. Sem isso os canais se conectam mas não recebem
+-- nenhum evento — o Supabase Realtime exige que a tabela esteja na publication
+-- "supabase_realtime" e com REPLICA IDENTITY FULL para enviar o payload completo.
+-- =============================================================================
+
+-- Replica identity: garante que o Realtime envia old + new row completos
+ALTER TABLE public.stock_items     REPLICA IDENTITY FULL;
+ALTER TABLE public.stock_movements REPLICA IDENTITY FULL;
+ALTER TABLE public.pedidos_comerciais REPLICA IDENTITY FULL;
+ALTER TABLE public.profiles        REPLICA IDENTITY FULL;
+
+-- Adiciona as tabelas à publication do Supabase Realtime
+-- (IF NOT EXISTS não é suportado em ALTER PUBLICATION ADD TABLE, então usamos DO block)
+DO $$
+BEGIN
+  -- stock_items
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'stock_items'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_items;
+  END IF;
+
+  -- stock_movements
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'stock_movements'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_movements;
+  END IF;
+
+  -- pedidos_comerciais
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'pedidos_comerciais'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.pedidos_comerciais;
+  END IF;
+
+  -- profiles (já pode estar — garante sem erro)
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'profiles'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+  END IF;
+END;
+$$;
