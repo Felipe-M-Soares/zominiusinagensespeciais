@@ -2188,8 +2188,9 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   const expandedPedidosRef = useRef<Set<string>>(new Set());
 
   // Realtime: recarrega lista de pedidos quando pedidos_comerciais muda.
-  // Se o pedido afetado está com card expandido (separação em andamento),
-  // adia o reload para não resetar confirmações em progresso.
+  // Bloqueia reload APENAS quando o pedido está expandido E só mudou lotes_separados
+  // (confirmação de lote em andamento). Mudanças de status (pronto, retorno, etc.)
+  // sempre recarregam — em todas as contas, independente do card estar aberto.
   useEffect(() => {
     const channel = supabase
       .channel(`pedidos-estoque-${Math.random().toString(36).slice(2, 8)}`)
@@ -2198,9 +2199,18 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         { event: "*", schema: "public", table: "pedidos_comerciais" },
         (payload) => {
           const changedId = (payload.new as { id?: string })?.id ?? (payload.old as { id?: string })?.id;
-          // Se o pedido alterado tem card expandido, não recarrega agora
-          // (o usuário está confirmando lotes — não podemos resetar o estado)
+          const oldStatus = (payload.old as { status?: string })?.status;
+          const newStatus = (payload.new as { status?: string })?.status;
+          const statusChanged = oldStatus && newStatus && oldStatus !== newStatus;
+
+          // Se mudou o status (pronto, retorno, cancelado…), recarrega SEMPRE
+          // para que todas as contas vejam a mudança imediatamente
+          if (statusChanged) { loadPedidos(); return; }
+
+          // Só bloqueia o reload se o card está expandido E só mudou lotes_separados
+          // (confirmação individual de lote em progresso na mesma conta)
           if (changedId && expandedPedidosRef.current.has(changedId)) return;
+
           loadPedidos();
         }
       )
