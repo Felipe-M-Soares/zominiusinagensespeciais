@@ -27,6 +27,7 @@ interface AuthContext {
   approved: boolean | null;
   blocked: boolean;
   mustChangePassword: boolean;
+  clearMustChangePassword: () => void;
   signIn: (login: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshApproval: () => Promise<void>;
@@ -197,7 +198,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isProducao:   role === "producao",
       isQualidade:  role === "qualidade",
       isEstoque:    role === "estoque",
-      approved, blocked, mustChangePassword, signIn, signOut, refreshApproval,
+      approved, blocked, mustChangePassword,
+      clearMustChangePassword: () => setMustChangePassword(false),
+      signIn, signOut, refreshApproval,
     }}>
       {children}
     </AuthContext.Provider>
