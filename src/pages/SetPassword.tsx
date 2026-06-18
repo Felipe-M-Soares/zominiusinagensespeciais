@@ -11,7 +11,7 @@ import { validatePassword, passwordStrength } from "@/lib/passwordUtils";
 import { logger } from "@/lib/logger";
 
 export default function SetPassword() {
-  const { user } = useAuth();
+  const { user, clearMustChangePassword } = useAuth();
   const navigate = useNavigate();
   const [password, setPassword]     = useState("");
   const [confirm, setConfirm]       = useState("");
@@ -96,8 +96,11 @@ export default function SetPassword() {
         return;
       }
 
+      // Zera o estado local imediatamente — evita que ProtectedLayout
+      // redirecione de volta para /set-password antes do Realtime atualizar
+      clearMustChangePassword();
       toast.success("Senha definida com sucesso! Bem-vindo.");
-      navigate("/");
+      navigate("/", { replace: true });
     } catch (err) {
       logger.error("SetPassword error:", err);
       toast.error("Erro inesperado. Tente novamente.");
