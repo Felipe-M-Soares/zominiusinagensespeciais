@@ -323,3 +323,49 @@ html, body, #root {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
+/* ── Notificações (toast) no mobile: pílula compacta só com ícone colorido ──
+   No celular o toast com texto ficava sobrepondo os botões de confirmação
+   fixos no rodapé dos modais. Em vez de mostrar o texto completo (como no
+   desktop), no mobile mostramos só um ícone pequeno, colorido e redondo, no
+   topo da tela — fora da área dos botões. Tocar no ícone revela o texto por
+   alguns segundos, para quem precisar confirmar a mensagem exata. */
+.toaster-mobile-compact [data-sonner-toast] {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 64px !important;
+  padding: 8px !important;
+  border-radius: 999px !important;
+  gap: 0 !important;
+  justify-content: center !important;
+  align-items: center !important;
+  box-shadow: 0 4px 16px -2px hsl(0 0% 0% / 0.18) !important;
+  cursor: pointer;
+  transition: max-width 0.25s ease, padding 0.25s ease, border-radius 0.25s ease;
+}
+
+.toaster-mobile-compact [data-sonner-toast] [data-content] {
+  display: none !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast] [data-icon] {
+  margin: 0 !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast] [data-close-button] {
+  display: none !important;
+}
+
+/* Estado expandido (após tocar no ícone): volta a virar um cartão com texto */
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap {
+  max-width: 92vw !important;
+  width: calc(100vw - 32px) !important;
+  padding: 12px 14px !important;
+  border-radius: 14px !important;
+  gap: 10px !important;
+  justify-content: flex-start !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap [data-content] {
+  display: block !important;
+}
+
