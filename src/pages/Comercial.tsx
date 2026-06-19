@@ -895,11 +895,18 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                     <label className="text-[10px] font-medium text-muted-foreground">Qtd.</label>
                     <input
                       type="number"
+                      inputMode="numeric"
                       min={1}
                       max={maxDisponivel || undefined}
-                      value={qtd}
+                      value={qtd === 0 ? "" : qtd}
                       onChange={e => {
-                        const v = Math.max(1, parseInt(e.target.value) || 1);
+                        const raw = e.target.value;
+                        if (raw === "") { setQtd(0); return; } // permite apagar no celular sem forçar 1 de volta
+                        const v = parseInt(raw, 10);
+                        if (!isNaN(v)) setQtd(v);
+                      }}
+                      onBlur={() => {
+                        const v = Math.max(1, qtd || 1);
                         setQtd(maxDisponivel > 0 ? Math.min(v, maxDisponivel) : v);
                       }}
                       className="w-full h-9 rounded-lg border border-border/50 bg-background text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
@@ -956,7 +963,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 <button
                   type="button"
                   onClick={addItem}
-                  disabled={maxDisponivel === 0}
+                  disabled={maxDisponivel === 0 || qtd < 1}
                   className="w-full h-9 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5"
                 >
                   <Plus className="h-4 w-4" /> Adicionar ao pedido
@@ -1897,9 +1904,15 @@ function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: Adic
                       <Minus className="h-4 w-4" />
                     </button>
                     <input
-                      type="number" min={1} max={maxDisponivel}
-                      value={qtd}
-                      onChange={e => setQtd(Math.max(1, Math.min(maxDisponivel, parseInt(e.target.value) || 1)))}
+                      type="number" inputMode="numeric" min={1} max={maxDisponivel}
+                      value={qtd === 0 ? "" : qtd}
+                      onChange={e => {
+                        const raw = e.target.value;
+                        if (raw === "") { setQtd(0); return; } // permite apagar no celular sem forçar 1 de volta
+                        const v = parseInt(raw, 10);
+                        if (!isNaN(v)) setQtd(v);
+                      }}
+                      onBlur={() => setQtd(q => Math.max(1, Math.min(maxDisponivel, q || 1)))}
                       className="flex-1 text-center text-[22px] font-black bg-muted/20 border border-border/40 rounded-xl h-11 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
                     />
                     <button type="button"

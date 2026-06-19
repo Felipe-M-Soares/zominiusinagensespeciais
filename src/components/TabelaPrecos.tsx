@@ -384,9 +384,15 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                   {isEdit ? (
                     <div className="relative">
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">R$</span>
-                      <input type="number" min="0" step="0.01"
-                        value={editData.preco_custo ?? ""}
-                        onChange={e => setEditData(prev => ({ ...prev, preco_custo: parseFloat(e.target.value) || 0 }))}
+                      <input type="number" inputMode="decimal" min="0" step="0.01"
+                        value={editData.preco_custo === 0 || editData.preco_custo == null ? "" : editData.preco_custo}
+                        onChange={e => {
+                          const raw = e.target.value;
+                          if (raw === "") { setEditData(prev => ({ ...prev, preco_custo: undefined })); return; }
+                          const v = parseFloat(raw);
+                          if (!isNaN(v)) setEditData(prev => ({ ...prev, preco_custo: v }));
+                        }}
+                        onBlur={() => setEditData(prev => ({ ...prev, preco_custo: prev.preco_custo ?? 0 }))}
                         className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                       />
                     </div>
@@ -398,9 +404,15 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                   {isEdit ? (
                     <div className="relative">
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">R$</span>
-                      <input type="number" min="0" step="0.01"
-                        value={editData.preco_venda ?? ""}
-                        onChange={e => setEditData(prev => ({ ...prev, preco_venda: parseFloat(e.target.value) || 0 }))}
+                      <input type="number" inputMode="decimal" min="0" step="0.01"
+                        value={editData.preco_venda === 0 || editData.preco_venda == null ? "" : editData.preco_venda}
+                        onChange={e => {
+                          const raw = e.target.value;
+                          if (raw === "") { setEditData(prev => ({ ...prev, preco_venda: undefined })); return; }
+                          const v = parseFloat(raw);
+                          if (!isNaN(v)) setEditData(prev => ({ ...prev, preco_venda: v }));
+                        }}
+                        onBlur={() => setEditData(prev => ({ ...prev, preco_venda: prev.preco_venda ?? 0 }))}
                         className={cn("w-full h-8 rounded-lg border bg-background text-foreground pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
                           (editData.preco_venda ?? 0) > 0 ? "border-border/50" : "border-amber-500/60")}
                       />

@@ -501,18 +501,25 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 </label>
                 <Input
                   type="number"
+                  inputMode="numeric"
                   min={1}
                   max={selectedPeca ? Math.max(1, (selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved)) - (jaAdicionadoNoPedido[selectedPeca.id] ?? 0)) : undefined}
-                  value={qtd}
+                  value={qtd === 0 ? "" : qtd}
                   onChange={e => {
-                    const val = Math.max(1, parseInt(e.target.value) || 1);
+                    const raw = e.target.value;
+                    if (raw === "") { setQtd(0); return; } // permite apagar no celular sem forçar 1 de volta
+                    const v = parseInt(raw, 10);
+                    if (!isNaN(v)) setQtd(v);
+                  }}
+                  onBlur={() => {
+                    const base = Math.max(1, qtd || 1);
                     if (selectedPeca) {
                       const dispBruto = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
                       const jaAd = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
                       const dispReal = dispBruto - jaAd;
-                      setQtd(Math.min(val, Math.max(1, dispReal)));
+                      setQtd(Math.min(base, Math.max(1, dispReal)));
                     } else {
-                      setQtd(val);
+                      setQtd(base);
                     }
                   }}
                   className="h-8 text-xs"

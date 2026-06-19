@@ -188,6 +188,12 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
   const [lotesDisp, setLotesDisp] = useState<Record<string, LoteDisponivel[]>>({});
   // user selection: { [item.id]: { [lote]: qty } }
   const [sel, setSel] = useState<LoteSelecao>({});
+  // rascunho de digitação do campo de quantidade por lote — não afeta `sel` até o onBlur,
+  // evita que o campo "feche" (lote desmarcado) a cada tecla apertada ao apagar para editar
+  const [qtyRascunho, setQtyRascunho] = useState<Record<string, string>>({});
+  function setQtyLoteRascunho(itemId: string, lote: string, value: string) {
+    setQtyRascunho(prev => ({ ...prev, [`${itemId}::${lote}`]: value }));
+  }
   const [loadingLotes, setLoadingLotes] = useState(false);
   const loadedRef = useRef(false);
   // Per-item confirmation (only relevant during "separando")
@@ -1048,10 +1054,19 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                                             </button>
                                             <input
                                               type="number"
+                                              inputMode="numeric"
                                               min={1}
                                               max={l.quantity}
-                                              value={qtySel}
-                                              onChange={(e) => setQtyLote(item.id, l.lote, parseInt(e.target.value) || 0, l.quantity)}
+                                              value={qtyRascunho[`${item.id}::${l.lote}`] ?? (qtySel === 0 ? "" : String(qtySel))}
+                                              onChange={(e) => {
+                                                const raw = e.target.value;
+                                                if (raw === "" || /^[0-9]+$/.test(raw)) setQtyLoteRascunho(item.id, l.lote, raw);
+                                              }}
+                                              onBlur={(e) => {
+                                                const v = parseInt(e.target.value, 10);
+                                                setQtyLote(item.id, l.lote, isNaN(v) ? 0 : v, l.quantity);
+                                                setQtyRascunho(prev => { const n = { ...prev }; delete n[`${item.id}::${l.lote}`]; return n; });
+                                              }}
                                               className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                             />
                                             <button
@@ -1310,6 +1325,9 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
 
   const [lotesSelecionados, setLotesSelecionados] = useState<Record<string, Record<string, number>>>({});
   const [lotesDisponiveis, setLotesDisponiveis] = useState<Record<string, LoteDisponivel[]>>({});
+  // rascunho de digitação do campo de quantidade por lote — não afeta a seleção real até o onBlur,
+  // evita que o campo "feche" (lote desmarcado) a cada tecla apertada ao apagar para editar
+  const [qtyRascunho, setQtyRascunho] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1584,10 +1602,21 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
                               </button>
                               <input
                                 type="number"
+                                inputMode="numeric"
                                 min={1}
                                 max={l.quantity}
-                                value={qtySelected}
-                                onChange={e => setQtyLote(item.id, l.lote, parseInt(e.target.value) || 0, l.quantity)}
+                                value={qtyRascunho[`${item.id}::${l.lote}`] ?? (qtySelected === 0 ? "" : String(qtySelected))}
+                                onChange={e => {
+                                  const raw = e.target.value;
+                                  if (raw === "" || /^[0-9]+$/.test(raw)) {
+                                    setQtyRascunho(prev => ({ ...prev, [`${item.id}::${l.lote}`]: raw }));
+                                  }
+                                }}
+                                onBlur={e => {
+                                  const v = parseInt(e.target.value, 10);
+                                  setQtyLote(item.id, l.lote, isNaN(v) ? 0 : v, l.quantity);
+                                  setQtyRascunho(prev => { const n = { ...prev }; delete n[`${item.id}::${l.lote}`]; return n; });
+                                }}
                                 className="w-10 text-center text-[12px] font-bold bg-transparent border border-border/40 rounded h-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                               <button
@@ -1740,9 +1769,16 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
               </button>
               <input
                 type="number"
+                inputMode="numeric"
                 min={1}
-                value={qtd}
-                onChange={e => setQtd(Math.max(1, parseInt(e.target.value) || 1))}
+                value={qtd === 0 ? "" : qtd}
+                onChange={e => {
+                  const raw = e.target.value;
+                  if (raw === "") { setQtd(0); return; } // permite apagar no celular sem forçar 1 de volta
+                  const v = parseInt(raw, 10);
+                  if (!isNaN(v)) setQtd(v);
+                }}
+                onBlur={() => setQtd(q => Math.max(1, q || 1))}
                 className="w-20 text-center text-[22px] font-bold bg-transparent border border-border/40 rounded-xl h-12 focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
               <button
@@ -1768,7 +1804,7 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
             <button
               type="button"
               onClick={handleSalvar}
-              disabled={saving || qtd === item.quantidade}
+              disabled={saving || qtd < 1 || qtd === item.quantidade}
               className="flex-1 h-10 rounded-xl bg-amber-500 hover:bg-amber-500/90 text-white text-[12px] font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
             >
               {saving
