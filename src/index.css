@@ -21,50 +21,50 @@
     --popover: 0 0% 89%;
     --popover-foreground: 0 0% 9%;
 
-    --primary: 197 100% 47%;
+    --primary: 197 100% 50%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 32%;
+    --secondary: 197 25% 26%;
     --secondary-foreground: 0 0% 98%;
 
     --muted: 0 0% 90%;
-    --muted-foreground: 0 0% 40%;
+    --muted-foreground: 0 0% 35%;
 
-    --accent: 197 100% 97%;
-    --accent-foreground: 197 100% 35%;
+    --accent: 197 100% 92%;
+    --accent-foreground: 197 100% 30%;
 
-    --destructive: 0 72% 50%;
+    --destructive: 0 88% 50%;
     --destructive-foreground: 0 85% 97%;
 
-    --border: 0 0% 83%;
-    --input: 0 0% 83%;
-    --ring: 197 100% 47%;
+    --border: 0 0% 80%;
+    --input: 0 0% 80%;
+    --ring: 197 100% 50%;
 
     --radius: 0.625rem;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 0 0% 9%;
-    --sidebar-primary: 197 100% 47%;
+    --sidebar-primary: 197 100% 50%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 32%;
+    --sidebar-accent: 197 25% 26%;
     --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 83%;
-    --sidebar-ring: 197 100% 47%;
+    --sidebar-border: 0 0% 80%;
+    --sidebar-ring: 197 100% 50%;
 
-    --success: 152 60% 40%;
+    --success: 152 80% 36%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --warning: 32 96% 50%;
     --warning-foreground: 0 0% 100%;
-    --brand: 197 100% 47%;
+    --brand: 197 100% 50%;
     --brand-foreground: 0 0% 100%;
 
     --font-display: 'Space Grotesk', sans-serif;
     --font-body: 'Inter', sans-serif;
-    --chart-1: 197 100% 55%;
-    --chart-2: 197 80% 65%;
-    --chart-3: 197 60% 45%;
-    --chart-4: 197 100% 47%;
-    --chart-5: 0 0% 45%;
+    --chart-1: 197 100% 58%;
+    --chart-2: 197 90% 68%;
+    --chart-3: 197 85% 45%;
+    --chart-4: 197 100% 50%;
+    --chart-5: 280 70% 55%;
     --sidebar: 0 0% 98%;
     --font-sans: 'Lato', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
     --font-serif: 'EB Garamond', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
@@ -88,32 +88,32 @@
     --card-foreground: 0 0% 98%;
     --popover: 0 0% 25%;
     --popover-foreground: 0 0% 98%;
-    --primary: 197 100% 55%;
-    --primary-foreground: 197 100% 10%;
-    --secondary: 0 0% 45%;
+    --primary: 197 100% 60%;
+    --primary-foreground: 197 100% 8%;
+    --secondary: 197 22% 44%;
     --secondary-foreground: 0 0% 98%;
     --muted: 0 0% 45%;
     --muted-foreground: 0 0% 98%;
-    --accent: 197 80% 15%;
-    --accent-foreground: 197 100% 65%;
-    --destructive: 0 84% 60%;
+    --accent: 197 95% 20%;
+    --accent-foreground: 197 100% 74%;
+    --destructive: 0 90% 65%;
     --destructive-foreground: 0 85% 97%;
     --border: 0 0% 32%;
     --input: 0 0% 32%;
-    --ring: 197 100% 55%;
+    --ring: 197 100% 60%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 197 100% 55%;
-    --sidebar-primary-foreground: 197 100% 10%;
-    --sidebar-accent: 197 100% 65%;
-    --sidebar-accent-foreground: 197 80% 15%;
+    --sidebar-primary: 197 100% 60%;
+    --sidebar-primary-foreground: 197 100% 8%;
+    --sidebar-accent: 197 100% 70%;
+    --sidebar-accent-foreground: 197 90% 18%;
     --sidebar-border: 0 0% 32%;
-    --sidebar-ring: 197 100% 55%;
-    --chart-1: 197 100% 65%;
-    --chart-2: 197 80% 75%;
-    --chart-3: 197 60% 55%;
-    --chart-4: 197 100% 55%;
-    --chart-5: 0 0% 45%;
+    --sidebar-ring: 197 100% 60%;
+    --chart-1: 197 100% 68%;
+    --chart-2: 197 90% 78%;
+    --chart-3: 197 90% 60%;
+    --chart-4: 197 100% 60%;
+    --chart-5: 280 75% 65%;
     --sidebar: 0 0% 14%;
     --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
     --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
@@ -140,10 +140,10 @@
        background-attachment: fixed cria efeito parallax: o padrão não rola com a página. */
     background-color: hsl(var(--background));
     background-image:
-      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 47% / 0.10) 0%, transparent 70%),
-      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 47% / 0.08) 0%, transparent 65%),
-      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(197 80%  65% / 0.06) 0%, transparent 60%),
-      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(197 60%  45% / 0.05) 0%, transparent 55%);
+      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 50% / 0.16) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 50% / 0.13) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(190 100% 65% / 0.10) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(280  70% 60% / 0.07) 0%, transparent 55%);
     background-attachment: fixed;
     background-size: 100% 100%;
     min-height: 100vh;
@@ -153,10 +153,10 @@
   .dark body {
     background-color: hsl(var(--background));
     background-image:
-      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 55% / 0.13) 0%, transparent 70%),
-      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 55% / 0.10) 0%, transparent 65%),
-      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(197 80%  65% / 0.07) 0%, transparent 60%),
-      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(197 60%  45% / 0.06) 0%, transparent 55%);
+      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 60% / 0.20) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 60% / 0.16) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(190 100% 70% / 0.11) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(280  75% 65% / 0.09) 0%, transparent 55%);
     background-attachment: fixed;
     background-size: 100% 100%;
   }
@@ -321,5 +321,51 @@ html, body, #root {
 /* Safe area no bottom do drawer mobile */
 .mobile-drawer-safe {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* ── Notificações (toast) no mobile: pílula compacta só com ícone colorido ──
+   No celular o toast com texto ficava sobrepondo os botões de confirmação
+   fixos no rodapé dos modais. Em vez de mostrar o texto completo (como no
+   desktop), no mobile mostramos só um ícone pequeno, colorido e redondo, no
+   topo da tela — fora da área dos botões. Tocar no ícone revela o texto por
+   alguns segundos, para quem precisar confirmar a mensagem exata. */
+.toaster-mobile-compact [data-sonner-toast] {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 64px !important;
+  padding: 8px !important;
+  border-radius: 999px !important;
+  gap: 0 !important;
+  justify-content: center !important;
+  align-items: center !important;
+  box-shadow: 0 4px 16px -2px hsl(0 0% 0% / 0.18) !important;
+  cursor: pointer;
+  transition: max-width 0.25s ease, padding 0.25s ease, border-radius 0.25s ease;
+}
+
+.toaster-mobile-compact [data-sonner-toast] [data-content] {
+  display: none !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast] [data-icon] {
+  margin: 0 !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast] [data-close-button] {
+  display: none !important;
+}
+
+/* Estado expandido (após tocar no ícone): volta a virar um cartão com texto */
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap {
+  max-width: 92vw !important;
+  width: calc(100vw - 32px) !important;
+  padding: 12px 14px !important;
+  border-radius: 14px !important;
+  gap: 10px !important;
+  justify-content: flex-start !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap [data-content] {
+  display: block !important;
 }
 

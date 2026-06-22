@@ -760,9 +760,18 @@ function NotaManualModal({
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
                         <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">Quantidade *</label>
-                        <input type="number" min="1" step="1"
-                          value={item.quantidade}
-                          onChange={e => updItem(item.id, "quantidade", parseInt(e.target.value) || 1)}
+                        <input type="number" inputMode="numeric" min="1" step="1"
+                          value={item.quantidade === 0 ? "" : item.quantidade}
+                          onChange={e => {
+                            const raw = e.target.value;
+                            if (raw === "") { updItem(item.id, "quantidade", 0); return; }
+                            const v = parseInt(raw, 10);
+                            if (!isNaN(v)) updItem(item.id, "quantidade", v);
+                          }}
+                          onBlur={e => {
+                            const v = parseInt(e.target.value, 10);
+                            updItem(item.id, "quantidade", Math.max(1, isNaN(v) ? 1 : v));
+                          }}
                           className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                         />
                       </div>

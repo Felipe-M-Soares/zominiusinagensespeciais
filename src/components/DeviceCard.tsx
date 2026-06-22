@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { Device } from "@/types/device";
-import { Badge } from "@/components/ui/badge";
-import { Shield, Package, Globe, Cpu, Activity, Copy, Check } from "lucide-react";
+import { Shield, Package, Activity, Copy, Check, Box } from "lucide-react";
 
 interface Props {
 device: Device;
@@ -67,35 +66,50 @@ export function DeviceCard({ device, onClick }: Props) {
   <div
     role="button"
     tabIndex={0}
-    className="w-full text-left group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer border border-border/60"
-    style={{
-      boxShadow:
-        "0 1px 3px hsl(var(--border) / 0.5), 0 6px 16px -4px hsl(var(--border) / 0.25), inset 0 1px 0 hsl(0 0% 100% / 0.8)",
-    }}
+    className={cn(
+      "w-full text-left group relative rounded-2xl overflow-hidden transition-all duration-300",
+      "hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+      // Vidro translúcido com brilho: claro = sutil, escuro = glow forte (cian/violeta)
+      "bg-card border border-brand/15 dark:border-brand/25",
+      "shadow-[0_1px_3px_hsl(var(--border)/0.4),0_12px_28px_-14px_hsl(var(--brand)/0.20)]",
+      "dark:shadow-[0_0_0_1px_hsl(var(--brand)/0.06),0_24px_48px_-20px_hsl(var(--brand)/0.30)]"
+    )}
     onClick={() => onClick(device)}
     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(device); }}
   >
-    {/* Top accent bar */}
-    <div className="h-0.5 bg-gradient-to-r from-transparent via-brand to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
+    {/* Barra lateral neon — identidade visual do card (cian → violeta) */}
+    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-brand to-violet-500 shadow-[0_0_10px_hsl(var(--brand)/0.5)] dark:shadow-[0_0_14px_hsl(var(--brand)/0.7)] z-10" />
+
+    {/* Glow decorativo no canto (só visível no escuro, sutil no claro) */}
+    <div className="pointer-events-none absolute -top-10 -left-6 w-40 h-40 rounded-full bg-brand/[0.06] dark:bg-brand/[0.14] blur-2xl" />
 
     {/* Imagem do componente */}
     <div className={cn(
-      "w-full overflow-hidden bg-white flex items-center justify-center transition-all",
+      "relative w-full overflow-hidden bg-white flex items-center justify-center transition-all",
       hasImage ? "h-36" : "h-0"
     )}>
       {hasImage && (
-        <img
-          src={device.icon_url!}
-          alt={device.model}
-          loading="lazy"
-          decoding="async"
-          onError={() => setImgError(true)}
-          className="h-full w-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
-        />
+        <>
+          <img
+            src={device.icon_url!}
+            alt={device.model}
+            loading="lazy"
+            decoding="async"
+            onError={() => setImgError(true)}
+            className="h-full w-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+          />
+          {/* Linha neon de transição entre imagem e conteúdo */}
+          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-brand via-violet-500 to-brand shadow-[0_0_8px_hsl(var(--brand)/0.6)]" />
+          {/* Selo "ativo" flutuante sobre a imagem */}
+          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-background/80 dark:bg-black/60 backdrop-blur-sm px-2 py-0.5 text-[9px] font-mono font-medium text-success tracking-wide">
+            <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_5px_hsl(var(--success))]" />
+            ATIVO
+          </span>
+        </>
       )}
     </div>
 
-    <div className="p-4 space-y-3">
+    <div className="relative p-4 pl-[18px] space-y-3 z-[1]">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
@@ -104,12 +118,13 @@ export function DeviceCard({ device, onClick }: Props) {
           </h3>
           <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{device.reference}</p>
         </div>
-        <Badge
-          variant="outline"
-          className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-brand/25 text-brand/80 bg-brand/5 rounded-lg"
-        >
-          {device.classification_code}
-        </Badge>
+        {/* Selo "ativo" inline quando não há imagem (já fica na foto, se houver) */}
+        {!hasImage && (
+          <span className="shrink-0 flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[9px] font-mono font-medium text-success tracking-wide">
+            <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_5px_hsl(var(--success))]" />
+            ATIVO
+          </span>
+        )}
       </div>
 
       {/* Brand */}
@@ -117,22 +132,36 @@ export function DeviceCard({ device, onClick }: Props) {
         <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{device.brand_name}</p>
       )}
 
+      {/* Métricas — Classe + Material, em caixinhas estilo HUD */}
+      <div className="grid grid-cols-2 gap-1.5">
+        <div className="rounded-[9px] bg-muted/40 dark:bg-white/[0.03] border border-border/40 dark:border-white/[0.06] px-2.5 py-1.5">
+          <p className="text-[9px] uppercase tracking-wide text-muted-foreground/70 font-medium">Classe</p>
+          <p className="text-[12px] font-mono font-semibold text-foreground">{device.classification_code || "—"}</p>
+        </div>
+        <div className="rounded-[9px] bg-muted/40 dark:bg-white/[0.03] border border-border/40 dark:border-white/[0.06] px-2.5 py-1.5">
+          <p className="text-[9px] uppercase tracking-wide text-muted-foreground/70 font-medium">Material</p>
+          <p className="text-[12px] font-mono font-semibold text-foreground truncate" title={device.primary_material}>
+            {device.primary_material || "—"}
+          </p>
+        </div>
+      </div>
+
       {/* Status pills */}
       <div className="flex flex-wrap gap-1">
         {device.sterile && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
+          <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success border border-success/20">
             <Shield className="h-2.5 w-2.5" />
             Estéril
           </span>
         )}
         {device.single_use && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium text-orange-500 border border-orange-500/20">
             <Package className="h-2.5 w-2.5" />
             Uso único
           </span>
         )}
         {device.implantable && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-brand/8 px-2 py-0.5 text-[10px] font-medium text-brand">
+          <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-500 border border-violet-500/20">
             <Activity className="h-2.5 w-2.5" />
             Implantável
           </span>
@@ -140,7 +169,7 @@ export function DeviceCard({ device, onClick }: Props) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-2 border-t border-border/20">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-2 border-t border-border/20 dark:border-white/[0.06]">
         {/* UDI-DI clicável para copiar */}
         <button
           type="button"
@@ -164,8 +193,8 @@ export function DeviceCard({ device, onClick }: Props) {
             </span>
           )}
           {device.exocad_compatibility && device.exocad_compatibility !== "N.A" && (
-            <span className="flex items-center gap-0.5 text-brand/60">
-              <Cpu className="h-2.5 w-2.5 text-brand" />
+            <span className="flex items-center gap-0.5 text-brand/70">
+              <Box className="h-2.5 w-2.5 text-brand" />
               Exocad
             </span>
           )}
