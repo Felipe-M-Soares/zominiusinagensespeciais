@@ -109,16 +109,12 @@ export function DeviceCard({ device, onClick }: Props) {
       )}
     </div>
 
-    <div className="relative p-4 pl-[18px] space-y-3 z-[1]">
-      {/* Header */}
+    <div className="relative p-4 pl-[18px] space-y-2.5 z-[1]">
+      {/* Header: nome em destaque + selo ativo */}
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-0.5">
-          <h3 className="text-[13px] font-semibold leading-snug text-foreground group-hover:text-brand transition-colors line-clamp-2">
-            {device.model}
-          </h3>
-          <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{device.reference}</p>
-        </div>
-        {/* Selo "ativo" inline quando não há imagem (já fica na foto, se houver) */}
+        <h3 className="text-[15px] font-bold leading-snug text-foreground group-hover:text-brand transition-colors line-clamp-2 min-w-0">
+          {device.model}
+        </h3>
         {!hasImage && (
           <span className="shrink-0 flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[9px] font-mono font-medium text-success tracking-wide">
             <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_5px_hsl(var(--success))]" />
@@ -127,23 +123,43 @@ export function DeviceCard({ device, onClick }: Props) {
         )}
       </div>
 
-      {/* Brand */}
-      {device.brand_name && (
-        <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{device.brand_name}</p>
-      )}
-
-      {/* Métricas — Classe + Material, em caixinhas estilo HUD */}
-      <div className="grid grid-cols-2 gap-1.5">
-        <div className="rounded-[9px] bg-muted/40 dark:bg-white/[0.03] border border-border/40 dark:border-white/[0.06] px-2.5 py-1.5">
-          <p className="text-[9px] uppercase tracking-wide text-muted-foreground/70 font-medium">Classe</p>
-          <p className="text-[12px] font-mono font-semibold text-foreground">{device.classification_code || "—"}</p>
-        </div>
-        <div className="rounded-[9px] bg-muted/40 dark:bg-white/[0.03] border border-border/40 dark:border-white/[0.06] px-2.5 py-1.5">
-          <p className="text-[9px] uppercase tracking-wide text-muted-foreground/70 font-medium">Material</p>
-          <p className="text-[12px] font-mono font-semibold text-foreground truncate" title={device.primary_material}>
-            {device.primary_material || "—"}
+      {/* GTIN/UDI em destaque — é o dado que mais importa para localizar a peça */}
+      <button
+        type="button"
+        title="Clique para copiar o GTIN/UDI"
+        onClick={handleCopyUDI}
+        className={cn(
+          "w-full flex items-center justify-between gap-2 rounded-[9px] px-2.5 py-2 transition-colors group/copy text-left",
+          "bg-brand/[0.06] dark:bg-brand/[0.08] border border-brand/20 dark:border-brand/25",
+          "hover:bg-brand/[0.1] dark:hover:bg-brand/[0.14]"
+        )}
+      >
+        <div className="min-w-0">
+          <p className="text-[9px] uppercase tracking-wide text-brand/70 font-semibold mb-0.5">GTIN / UDI</p>
+          <p className={cn("text-[14px] font-mono font-bold tracking-tight truncate", copied ? "text-success" : "text-foreground")}>
+            {device.anvisa_registration || device.udi_di || "—"}
           </p>
         </div>
+        {copied
+          ? <Check className="h-4 w-4 text-success shrink-0" />
+          : <Copy className="h-3.5 w-3.5 text-brand/60 group-hover/copy:text-brand shrink-0 transition-colors" />}
+      </button>
+
+      {/* Referência + marca — apoio, discreto */}
+      <p className="text-[11px] text-muted-foreground/80 truncate">
+        {device.reference}
+        {device.brand_name && <span className="text-muted-foreground/50"> · {device.brand_name}</span>}
+      </p>
+
+      {/* Classe + Material — texto inline discreto, não mais bloco em destaque */}
+      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+        <span className="font-medium">Classe <span className="font-mono text-foreground/80">{device.classification_code || "—"}</span></span>
+        {device.primary_material && (
+          <>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="font-mono truncate" title={device.primary_material}>{device.primary_material}</span>
+          </>
+        )}
       </div>
 
       {/* Status pills */}
@@ -168,37 +184,20 @@ export function DeviceCard({ device, onClick }: Props) {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-2 border-t border-border/20 dark:border-white/[0.06]">
-        {/* UDI-DI clicável para copiar */}
-        <button
-          type="button"
-          title="Clique para copiar UDI-DI"
-          onClick={handleCopyUDI}
-          className="font-mono truncate flex items-center gap-1 hover:text-brand transition-colors group/copy"
-        >
-          {copied
-            ? <Check className="h-2.5 w-2.5 text-success shrink-0" />
-            : <Copy className="h-2.5 w-2.5 shrink-0 opacity-0 group-hover/copy:opacity-100 transition-opacity" />}
-          <span className={copied ? "text-success" : ""}>
-            {device.anvisa_registration || device.udi_di}
+      {/* Footer — só país e Exocad (GTIN subiu para o destaque acima) */}
+      <div className="flex items-center justify-end gap-2 text-[10px] text-muted-foreground/60 pt-2 border-t border-border/20 dark:border-white/[0.06]">
+        {device.manufacturer_country && (
+          <span className="flex items-center gap-0.5" title={device.manufacturer_country}>
+            <span>{countryFlag(device.manufacturer_country)}</span>
+            <span>{device.manufacturer_country}</span>
           </span>
-        </button>
-
-        <div className="flex items-center gap-2 shrink-0 ml-2">
-          {device.manufacturer_country && (
-            <span className="flex items-center gap-0.5" title={device.manufacturer_country}>
-              <span>{countryFlag(device.manufacturer_country)}</span>
-              <span className="hidden sm:inline">{device.manufacturer_country}</span>
-            </span>
-          )}
-          {device.exocad_compatibility && device.exocad_compatibility !== "N.A" && (
-            <span className="flex items-center gap-0.5 text-brand/70">
-              <Box className="h-2.5 w-2.5 text-brand" />
-              Exocad
-            </span>
-          )}
-        </div>
+        )}
+        {device.exocad_compatibility && device.exocad_compatibility !== "N.A" && (
+          <span className="flex items-center gap-0.5 text-brand/70">
+            <Box className="h-2.5 w-2.5 text-brand" />
+            Exocad
+          </span>
+        )}
       </div>
     </div>
   </div>
