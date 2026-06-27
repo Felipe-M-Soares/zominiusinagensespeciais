@@ -161,45 +161,10 @@ END; $f02$;
 GRANT EXECUTE ON FUNCTION public.check_rate_limit(text, uuid) TO authenticated;
 
 -- ── Adiciona check_rate_limit nas RPCs críticas ───────────────────────────────
-
--- stock_movement_atomic com rate limit
-DROP FUNCTION IF EXISTS public.stock_movement_atomic(uuid, text, integer, text, text, uuid, text);
-CREATE OR REPLACE FUNCTION public.stock_movement_atomic(
-  p_item_id   uuid,
-  p_type      text,
-  p_qty       integer,
-  p_reason    text,
-  p_lote      text,
-  p_user_id   uuid,
-  p_user_name text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f03$
-DECLARE v_current integer;
-BEGIN
-  IF auth.uid() IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
-  IF NOT public.check_rate_limit('stock_movement_atomic') THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'Muitas requisições. Aguarde alguns segundos.');
-  END IF;
-
-  IF p_type NOT IN ('entrada','saida') THEN RETURN jsonb_build_object('ok', false, 'error', 'Tipo inválido'); END IF;
-  IF p_qty <= 0 THEN RETURN jsonb_build_object('ok', false, 'error', 'Quantidade deve ser > 0'); END IF;
-
-  SELECT quantity INTO v_current FROM public.stock_items WHERE id = p_item_id FOR UPDATE;
-  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Item não encontrado'); END IF;
-  IF p_type = 'saida' AND v_current < p_qty THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'Estoque insuficiente: ' || v_current || ' disponível');
-  END IF;
-
-  UPDATE public.stock_items
-  SET quantity = CASE WHEN p_type = 'entrada' THEN quantity + p_qty ELSE GREATEST(0, quantity - p_qty) END,
-      updated_at = now()
-  WHERE id = p_item_id;
-
-  INSERT INTO public.stock_movements (stock_item_id, type, quantity, reason, lote, user_id, user_display_name)
-  VALUES (p_item_id, p_type, p_qty, p_reason, p_lote, p_user_id, p_user_name);
-
-  RETURN jsonb_build_object('ok', true);
-END; $f03$;
-GRANT EXECUTE ON FUNCTION public.stock_movement_atomic(uuid,text,integer,text,text,uuid,text) TO authenticated;
+-- NOTA: stock_movement_atomic é definida apenas uma vez nesta migration,
+-- mais abaixo (seção "bloquear lotes vazios"), já incluindo rate limit e o
+-- fix de autoria via servidor — evita ter duas definições divergentes da
+-- mesma função no mesmo arquivo.
 
 -- cancel_pedido com rate limit
 DROP FUNCTION IF EXISTS public.cancel_pedido(uuid);
@@ -235,18 +200,33 @@ END; $f04$;
 GRANT EXECUTE ON FUNCTION public.cancel_pedido(uuid) TO authenticated;
 
 -- faturar_pedido_sefaz com rate limit (redefine a versão da migration 015)
+--
+-- SEG-FIX: p_user_id/p_user_name são valores enviados pelo CLIENTE e antes
+-- eram gravados direto em pedidos_comerciais/audit_log sem validação (o
+-- frontend, em Financeiro.tsx, chega a mandar p_user_name fixo como
+-- "Financeiro" em vez do nome real de quem faturou). A assinatura NÃO muda
+-- (mesmos parâmetros, mesma ordem, mesmo retorno — compatível com o frontend
+-- e os tipos gerados); o corpo passa a ignorar os parâmetros recebidos e usar
+-- auth.uid() + o display_name real do profile do usuário autenticado.
 DROP FUNCTION IF EXISTS public.faturar_pedido_sefaz(uuid, text, text, text, timestamptz, uuid, text, text);
 CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(
   p_pedido_id uuid, p_nf text, p_chave_acesso text, p_protocolo text,
-  p_dh_autorizacao timestamptz, p_user_id uuid, p_user_name text,
+  p_dh_autorizacao timestamptz,
+  p_user_id uuid,    -- mantido na assinatura por compatibilidade; ignorado no corpo
+  p_user_name text,  -- mantido na assinatura por compatibilidade; ignorado no corpo
   p_xml_nfe text DEFAULT NULL
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f05$
-DECLARE v_status text; v_nf_existente text; v_role text;
+DECLARE
+  v_status       text;
+  v_nf_existente text;
+  v_role         text;
+  v_real_uid     uuid := auth.uid();
+  v_real_name    text;
 BEGIN
-  IF auth.uid() IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
+  IF v_real_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
 
   -- Somente admin ou financeiro
-  SELECT role INTO v_role FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1;
+  SELECT role INTO v_role FROM public.user_roles WHERE user_id = v_real_uid LIMIT 1;
   IF v_role NOT IN ('admin','financeiro') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão: requer role admin ou financeiro');
   END IF;
@@ -265,14 +245,17 @@ BEGIN
       'Pedido deve estar no status "pronto" para ser faturado. Status atual: ' || v_status);
   END IF;
 
+  -- SEG-FIX: autoria sempre do servidor, nunca do parâmetro recebido do cliente
+  SELECT display_name INTO v_real_name FROM public.profiles WHERE user_id = v_real_uid;
+
   UPDATE public.pedidos_comerciais SET
     status='enviado', nota_fiscal=p_nf, chave_acesso_nfe=p_chave_acesso,
     protocolo_sefaz=p_protocolo, dh_autorizacao_nfe=p_dh_autorizacao,
-    nf_criada_por=p_user_id, nf_criada_em=now(), enviado_em=now(), xml_nfe=p_xml_nfe
+    nf_criada_por=v_real_uid, nf_criada_em=now(), enviado_em=now(), xml_nfe=p_xml_nfe
   WHERE id = p_pedido_id;
 
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, entity_id, details)
-  VALUES (p_user_id, p_user_name, 'faturar_nf', 'pedido_comercial', p_pedido_id,
+  VALUES (v_real_uid, COALESCE(v_real_name, 'Desconhecido'), 'faturar_nf', 'pedido_comercial', p_pedido_id,
     jsonb_build_object('nota_fiscal', p_nf, 'protocolo', p_protocolo));
 
   RETURN jsonb_build_object('ok', true);
@@ -1160,6 +1143,14 @@ $$;
 -- =============================================================================
 -- FIX: bloquear lotes vazios ou sem numeração na RPC stock_movement_atomic
 -- Garante que mesmo que o frontend passe um lote inválido, o banco rejeita.
+--
+-- SEG-FIX: p_user_id/p_user_name são valores enviados pelo CLIENTE e antes
+-- eram gravados direto em stock_movements sem validação — um usuário
+-- autenticado podia forjar esses parâmetros e fazer um movimento aparecer
+-- registrado em nome de outra pessoa. A assinatura NÃO muda (mesmos
+-- parâmetros, mesma ordem, mesmo retorno — compatível com o frontend e os
+-- tipos gerados); o corpo passa a ignorar os parâmetros recebidos e usar
+-- auth.uid() + o display_name real do profile do usuário autenticado.
 -- =============================================================================
 DROP FUNCTION IF EXISTS public.stock_movement_atomic(uuid, text, integer, text, text, uuid, text);
 CREATE OR REPLACE FUNCTION public.stock_movement_atomic(
@@ -1168,12 +1159,15 @@ CREATE OR REPLACE FUNCTION public.stock_movement_atomic(
   p_qty       integer,
   p_reason    text,
   p_lote      text,
-  p_user_id   uuid,
-  p_user_name text
+  p_user_id   uuid,   -- mantido na assinatura por compatibilidade; ignorado no corpo
+  p_user_name text    -- mantido na assinatura por compatibilidade; ignorado no corpo
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_sma$
-DECLARE v_current integer;
+DECLARE
+  v_current   integer;
+  v_real_uid  uuid := auth.uid();
+  v_real_name text;
 BEGIN
-  IF auth.uid() IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
+  IF v_real_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
   IF NOT public.check_rate_limit('stock_movement_atomic') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Muitas requisições. Aguarde alguns segundos.');
   END IF;
@@ -1197,13 +1191,16 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'Estoque insuficiente: ' || v_current || ' disponível');
   END IF;
 
+  -- SEG-FIX: autoria sempre do servidor, nunca do parâmetro recebido do cliente
+  SELECT display_name INTO v_real_name FROM public.profiles WHERE user_id = v_real_uid;
+
   UPDATE public.stock_items
   SET quantity = CASE WHEN p_type = 'entrada' THEN quantity + p_qty ELSE GREATEST(0, quantity - p_qty) END,
       updated_at = now()
   WHERE id = p_item_id;
 
   INSERT INTO public.stock_movements (stock_item_id, type, quantity, reason, lote, user_id, user_display_name)
-  VALUES (p_item_id, p_type, p_qty, p_reason, p_lote, p_user_id, p_user_name);
+  VALUES (p_item_id, p_type, p_qty, p_reason, p_lote, v_real_uid, COALESCE(v_real_name, 'Desconhecido'));
 
   RETURN jsonb_build_object('ok', true);
 END; $f_sma$;

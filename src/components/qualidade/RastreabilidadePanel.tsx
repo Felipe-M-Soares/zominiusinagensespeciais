@@ -3,6 +3,7 @@ import { Search, RefreshCw, AlertTriangle, CheckCircle2, Package, ChevronDown, C
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { sanitizeQuery } from "@/lib/sanitize";
 
 interface RastrItem {
   id:string; lote:string; device_ref:string; device_model:string; udi_di:string|null;
@@ -33,10 +34,11 @@ export function RastreabilidadePanel() {
     if(!search.trim()) return;
     setLoading(true);
     setSearched(true);
+    const q = sanitizeQuery(search);
     const { data, error } = await supabase
       .from("rastreabilidade_pos_venda")
       .select("*")
-      .or(`lote.ilike.%${search}%,device_ref.ilike.%${search}%,device_model.ilike.%${search}%,cliente_nome.ilike.%${search}%,udi_di.ilike.%${search}%`)
+      .or(`lote.ilike.%${q}%,device_ref.ilike.%${q}%,device_model.ilike.%${q}%,cliente_nome.ilike.%${q}%,udi_di.ilike.%${q}%`)
       .order("data_envio", { ascending: false })
       .limit(100);
     if(error){ setResults([]); }

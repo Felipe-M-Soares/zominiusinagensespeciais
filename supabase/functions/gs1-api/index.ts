@@ -23,6 +23,7 @@
  *   ALLOWED_ORIGIN     → domínio do frontend
  */
 
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -109,10 +110,18 @@ async function getAccessToken(host: string): Promise<string> {
 
 // ─── Roteador de endpoints ────────────────────────────────────────────────────
 
+// GTIN válido: 8 a 14 dígitos numéricos (mesma regra já aplicada no frontend,
+// que faz gtin.replace(/\D/g, "") antes de enviar). Bloqueia qualquer valor
+// que tente alterar o path da requisição à API GS1 (path traversal, etc).
+function isValidGtin(gtin: string): boolean {
+  return /^\d{8,14}$/.test(gtin);
+}
+
 function buildUrl(host: string, req: RequestBody): { url: string; method: string } {
   switch (req.endpoint) {
     case "cnp_get":
-      return { url: `${host}/cnp/products/${req.gtin ?? ""}`, method: "GET" };
+      if (!req.gtin || !isValidGtin(req.gtin)) throw new Error("GTIN inválido");
+      return { url: `${host}/cnp/products/${req.gtin}`, method: "GET" };
 
     case "cnp_list": {
       const q = new URLSearchParams(req.params ?? {});
@@ -123,7 +132,8 @@ function buildUrl(host: string, req: RequestBody): { url: string; method: string
       return { url: `${host}/cnp/products`, method: "POST" };
 
     case "cnp_patch":
-      return { url: `${host}/cnp/products/${req.gtin ?? ""}`, method: "PATCH" };
+      if (!req.gtin || !isValidGtin(req.gtin)) throw new Error("GTIN inválido");
+      return { url: `${host}/cnp/products/${req.gtin}`, method: "PATCH" };
 
     case "provider": {
       const q = new URLSearchParams(req.params ?? {});
@@ -151,13 +161,59 @@ Deno.serve(async (httpReq: Request) => {
   }
 
   try {
+    // SEG-FIX: exige usuário autenticado com role admin ou qualidade —
+    // mesma regra já aplicada no frontend para a rota /qualidade (ver
+    // AppShell.tsx e App.tsx, RoleGuard roles=["qualidade","admin"]).
+    // Sem isso, qualquer usuário autenticado podia consumir a cota/credenciais
+    // OAuth da GS1, mesmo sem acesso à tela que usa essa function.
+    //
+    // NOTA: o campo "status" vai dentro do corpo JSON (além do status HTTP da
+    // Response) porque o frontend (GS1Panel.tsx) lê res.status do corpo
+    // retornado por supabase.functions.invoke, não o status HTTP da resposta.
+    const authHeader = httpReq.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ ok: false, status: 401, error: "Não autenticado" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseUrl     = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const serviceRoleKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
+      return new Response(JSON.stringify({ ok: false, status: 500, error: "Erro de configuração do servidor" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const token = authHeader.replace("Bearer ", "").trim();
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    if (userError || !user) {
+      return new Response(JSON.stringify({ ok: false, status: 401, error: "Sessão expirada ou inválida. Faça login novamente." }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const { data: roleData } = await adminClient
+      .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
+    if (roleData?.role !== "admin" && roleData?.role !== "qualidade") {
+      return new Response(JSON.stringify({ ok: false, status: 403, error: "Apenas Qualidade ou administradores podem consultar a GS1" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const env  = Deno.env.get("GS1_ENV") ?? "homologacao";
     const host = getHost(env);
 
     const body: RequestBody = await httpReq.json();
 
-    // Autenticar
-    const token = await getAccessToken(host);
+    // Autentica na GS1 (token OAuth da GS1, diferente do JWT do usuário acima)
+    const gs1Token = await getAccessToken(host);
 
     // Montar requisição
     const { url, method } = buildUrl(host, body);
@@ -165,7 +221,7 @@ Deno.serve(async (httpReq: Request) => {
     const fetchOpts: RequestInit = {
       method,
       headers: {
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `Bearer ${gs1Token}`,
         "Content-Type": "application/json",
         "Accept": "application/json",
       },
@@ -194,7 +250,7 @@ Deno.serve(async (httpReq: Request) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[gs1-api]", message);
     return new Response(
-      JSON.stringify({ ok: false, error: message }),
+      JSON.stringify({ ok: false, status: 500, error: message }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
