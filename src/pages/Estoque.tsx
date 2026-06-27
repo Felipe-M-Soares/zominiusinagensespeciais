@@ -928,7 +928,7 @@ export default function Estoque() {
     <div className="min-h-screen bg-transparent">
       {/* Header simplificado — navegação via AppShell sidebar */}
       <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
+        <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
               <Boxes className="h-4 w-4 text-primary" />
@@ -1015,7 +1015,7 @@ export default function Estoque() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4">
+      <main className="px-2 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4">
 
         {/* Tabs de navegação: mobile-first com ícones animados */}
         <StockNav

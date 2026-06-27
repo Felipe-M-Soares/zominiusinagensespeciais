@@ -262,6 +262,14 @@ export type Database = {
         Args: Record<string, never>
         Returns: { ok: boolean; error?: string; deleted?: number }
       }
+      // reserve_stock(p_item_id, p_qty) — versão correta, que checa estoque
+      // disponível e falha com ok:false se insuficiente (ver
+      // 20260027000000_estoque.sql). Existe um overload mais antigo
+      // reserve_stock(p_pedido_id, p_items) que nunca falha — evitar usá-lo.
+      reserve_stock: {
+        Args: { p_item_id: string; p_qty: number }
+        Returns: { ok: boolean; error?: string }
+      }
     }
     Enums: {
       /** SYNC: Manter sincronizado com src/types/roles.ts e supabase/functions/admin-create-user/index.ts

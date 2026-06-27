@@ -3876,7 +3876,7 @@ export default function Financeiro() {
 
   if (loading && pedidos.length === 0) {
     return (
-      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
+      <div className="p-4 sm:p-6 space-y-4">
         <div className="flex items-center gap-2 h-14">
           <div className="h-4 w-4 rounded bg-muted/60 animate-pulse" />
           <div className="h-4 w-28 rounded bg-muted/60 animate-pulse" />
@@ -3927,7 +3927,7 @@ export default function Financeiro() {
   return (
     <div className="flex flex-col h-full bg-transparent">
       <header className="sticky top-0 z-10 bg-background text-foreground/80 backdrop-blur-md border-b border-border/40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
+        <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <Receipt size={16} className="text-violet-600 dark:text-violet-400" />
             <h1 className="text-sm font-semibold">Financeiro</h1>
@@ -3964,7 +3964,7 @@ export default function Financeiro() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto"><div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 space-y-4">
+      <main className="flex-1 overflow-y-auto"><div className="px-3 sm:px-4 py-4 space-y-4">
         <PageNav
           tabs={PAGE_NAV_TABS}
           activeTab={activeTab}
