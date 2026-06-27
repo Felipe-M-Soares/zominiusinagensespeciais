@@ -289,7 +289,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.stock_movements;
-  DELETE FROM public.stock_movements;
+  DELETE FROM public.stock_movements WHERE true; -- WHERE true: satisfaz proteção contra DELETE/UPDATE sem filtro
   SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
   VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_stock_movements', 'stock_movements',
@@ -311,9 +311,9 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_uid AND role = 'admin') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
-  UPDATE public.stock_items SET quantity_reserved = 0;
+  UPDATE public.stock_items SET quantity_reserved = 0 WHERE true; -- WHERE true: satisfaz proteção contra UPDATE sem filtro
   SELECT COUNT(*) INTO v_count FROM public.pedidos_comerciais;
-  DELETE FROM public.pedidos_comerciais; -- CASCADE apaga pedido_itens e comentários
+  DELETE FROM public.pedidos_comerciais WHERE true; -- CASCADE apaga pedido_itens e comentários
   SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
   VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_comercial', 'pedidos_comerciais',
@@ -333,7 +333,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.apontamentos_producao;
-  DELETE FROM public.apontamentos_producao; -- CASCADE apaga paradas e refugos
+  DELETE FROM public.apontamentos_producao WHERE true; -- CASCADE apaga paradas e refugos
   SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
   VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_producao', 'apontamentos_producao',
@@ -494,7 +494,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.audit_log;
-  DELETE FROM public.audit_log;
+  DELETE FROM public.audit_log WHERE true;
   SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
   VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_audit_log', 'audit_log',

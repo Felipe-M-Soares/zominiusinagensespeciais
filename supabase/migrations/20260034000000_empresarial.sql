@@ -500,7 +500,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.rastreabilidade_pos_venda;
-  DELETE FROM public.rastreabilidade_pos_venda;
+  DELETE FROM public.rastreabilidade_pos_venda WHERE true;
   SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
   VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_rastreabilidade', 'rastreabilidade_pos_venda',
@@ -521,7 +521,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.contas_financeiras;
-  DELETE FROM public.contas_financeiras;
+  DELETE FROM public.contas_financeiras WHERE true;
   SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
   VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_financeiro', 'contas_financeiras',
