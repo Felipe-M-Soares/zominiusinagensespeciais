@@ -79,6 +79,7 @@ import { formatLote, loteValido, displayLote } from "@/lib/lote";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
 import { TabelaPrecos } from "@/components/TabelaPrecos";
 import { escHtml } from "@/lib/escHtml";
+import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 
 
 // ─── Audit log helper ─────────────────────────────────────────────────────────
@@ -2415,9 +2416,10 @@ function NotificacoesBell({ userId }: { userId: string }) {
 interface HistoricoGeralProps {
   open: boolean;
   onClose: () => void;
+  isAdmin: boolean;
 }
 
-function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
+function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralProps) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -2499,6 +2501,16 @@ function HistoricoGeralModal({ open, onClose }: HistoricoGeralProps) {
               </p>
             </div>
             <div className="flex items-center gap-1.5">
+              {isAdmin && (
+                <ClearHistoryButton
+                  rpc="admin_clear_comercial"
+                  label="Apagar"
+                  confirmTitle="Apagar histórico comercial?"
+                  confirmDescription="Apaga todos os pedidos e itens comerciais. O estoque e os cadastros de peças são mantidos."
+                  onCleared={load}
+                  className="h-7 px-2"
+                />
+              )}
               <button
                 type="button"
                 onClick={load}
@@ -3410,7 +3422,7 @@ export default function Comercial() {
       )}
 
       {/* Histórico Geral */}
-      <HistoricoGeralModal open={historicoOpen} onClose={() => setHistoricoOpen(false)} />
+      <HistoricoGeralModal open={historicoOpen} onClose={() => setHistoricoOpen(false)} isAdmin={isAdmin} />
       <HistoricoClienteModal
         clienteId={historicoClienteId}
         clientes={clientes}

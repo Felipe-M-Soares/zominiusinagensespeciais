@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { sanitizeQuery } from "@/lib/sanitize";
+import { useAuth } from "@/hooks/useAuth";
+import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 
 interface RastrItem {
   id:string; lote:string; device_ref:string; device_model:string; udi_di:string|null;
@@ -23,6 +25,7 @@ const RECALL_COLOR: Record<string,string> = {
 };
 
 export function RastreabilidadePanel() {
+  const { isAdmin } = useAuth();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<RastrItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -69,10 +72,22 @@ export function RastreabilidadePanel() {
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       <div>
-        <p className="text-sm font-semibold mb-1">Busca de Rastreabilidade</p>
-        <p className="text-[11px] text-muted-foreground mb-3">
-          Busque por lote, referência, modelo, UDI-DI ou cliente para rastrear destino dos produtos
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold mb-1">Busca de Rastreabilidade</p>
+            <p className="text-[11px] text-muted-foreground mb-3">
+              Busque por lote, referência, modelo, UDI-DI ou cliente para rastrear destino dos produtos
+            </p>
+          </div>
+          {isAdmin && (
+            <ClearHistoryButton
+              rpc="admin_clear_rastreabilidade"
+              confirmTitle="Apagar rastreabilidade pós-venda?"
+              confirmDescription="Apaga todos os registros de lote → cliente/recall. Pedidos, estoque e cadastro de peças são mantidos."
+              onCleared={() => { setResults([]); setSearched(false); }}
+            />
+          )}
+        </div>
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/>

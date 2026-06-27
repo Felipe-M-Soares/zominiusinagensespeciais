@@ -466,6 +466,23 @@ DROP POLICY IF EXISTS "audit_log_insert" ON public.audit_log;
 CREATE POLICY "audit_log_insert" ON public.audit_log
   FOR INSERT WITH CHECK (true);
 
+-- ── admin_clear_audit_log ─────────────────────────────────────────────────────
+-- Apaga o log de auditoria (aba "Auditoria" em Admin.tsx). Não afeta nenhum
+-- outro dado do sistema — mesmo padrão das demais funções admin_clear_*.
+CREATE OR REPLACE FUNCTION public.admin_clear_audit_log()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cal$
+DECLARE v_count integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM public.audit_log;
+  DELETE FROM public.audit_log;
+  RETURN jsonb_build_object('ok', true, 'deleted', v_count);
+END;
+$f_cal$;
+GRANT EXECUTE ON FUNCTION public.admin_clear_audit_log() TO authenticated;
+
 -- ── 5. Guard no faturar_pedido_sefaz: idempotência ────────────────────────────
 CREATE OR REPLACE FUNCTION public.faturar_pedido_sefaz(
   p_pedido_id uuid, p_nf text, p_chave_acesso text, p_protocolo text,

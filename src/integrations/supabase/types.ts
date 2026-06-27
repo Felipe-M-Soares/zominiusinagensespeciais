@@ -233,6 +233,35 @@ export type Database = {
         }
         Returns: boolean
       }
+      // SEG-FIX: funções de limpeza de histórico por módulo (admin only),
+      // todas sem parâmetros, retornam { ok, deleted? }. Já existiam no banco
+      // (ver supabase/migrations/20260027000000_estoque.sql e
+      // 20260034000000_empresarial.sql) mas nunca tinham sido adicionadas
+      // aqui — por isso toda chamada via supabase.rpc(...) dava erro de tipo.
+      admin_clear_stock_movements: {
+        Args: Record<string, never>
+        Returns: { ok: boolean; error?: string; deleted?: number }
+      }
+      admin_clear_comercial: {
+        Args: Record<string, never>
+        Returns: { ok: boolean; error?: string; deleted?: number }
+      }
+      admin_clear_producao: {
+        Args: Record<string, never>
+        Returns: { ok: boolean; error?: string; deleted?: number }
+      }
+      admin_clear_rastreabilidade: {
+        Args: Record<string, never>
+        Returns: { ok: boolean; error?: string; deleted?: number }
+      }
+      admin_clear_financeiro: {
+        Args: Record<string, never>
+        Returns: { ok: boolean; error?: string; deleted?: number }
+      }
+      admin_clear_audit_log: {
+        Args: Record<string, never>
+        Returns: { ok: boolean; error?: string; deleted?: number }
+      }
     }
     Enums: {
       /** SYNC: Manter sincronizado com src/types/roles.ts e supabase/functions/admin-create-user/index.ts

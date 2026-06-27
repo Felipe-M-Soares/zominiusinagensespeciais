@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AdminDevices } from "@/components/admin/AdminDevices";
 import { AdminUsers } from "@/components/admin/AdminUsers";
 import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
+import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 import { DashboardGeral } from "@/components/qualidade/DashboardGeral";
 import { PageNav } from "@/components/PageNav";
 import { Settings, Cpu, Users, LayoutDashboard, Shield } from "lucide-react";
@@ -53,6 +54,7 @@ const ADMIN_TABS = [
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
+  const [auditKey, setAuditKey] = useState(0);
 
   return (
     <div className="flex flex-col h-full bg-transparent">
@@ -63,6 +65,14 @@ export default function Admin() {
             <h1 className="text-sm font-semibold">Admin</h1>
           </div>
           <div className="flex items-center gap-1">
+            {activeTab === "auditoria" && (
+              <ClearHistoryButton
+                rpc="admin_clear_audit_log"
+                confirmTitle="Apagar log de auditoria?"
+                confirmDescription="Apaga todo o histórico de ações administrativas registradas. Não afeta nenhum outro dado do sistema."
+                onCleared={() => setAuditKey(k => k + 1)}
+              />
+            )}
           </div>
         </div>
       </header>
@@ -82,7 +92,7 @@ export default function Admin() {
           {activeTab === "dashboard" && <DashboardGeral />}
           {activeTab === "devices"   && <AdminDevices />}
           {activeTab === "users"     && <AdminUsers />}
-          {activeTab === "auditoria" && <AuditLogPanel />}
+          {activeTab === "auditoria" && <AuditLogPanel key={auditKey} />}
         </div>
       </main>
     </div>

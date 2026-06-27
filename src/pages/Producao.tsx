@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { PageNav } from "@/components/PageNav";
+import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 
 const DashboardPanel    = lazy(() => import("@/components/producao/DashboardPanel").then(m => ({ default: m.DashboardPanel })));
 const ControlePanel     = lazy(() => import("@/components/producao/ControlePanel").then(m => ({ default: m.ControlePanel })));
@@ -159,6 +160,13 @@ export default function Producao() {
             {view === "menu" ? "Produção" : currentModule?.label ?? "Produção"}
           </span>
           <div className="flex-1" />
+          {view === "menu" && isAdmin && (
+            <ClearHistoryButton
+              rpc="admin_clear_producao"
+              confirmTitle="Apagar histórico de produção?"
+              confirmDescription="Apaga todos os apontamentos de produção. Máquinas e produtos continuam cadastrados."
+            />
+          )}
           {!isOnline && (
             <div className="flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
               <WifiOff className="h-3 w-3" />

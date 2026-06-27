@@ -164,11 +164,19 @@ CREATE TRIGGER trg_certificados_updated_at BEFORE UPDATE ON public.certificados
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- ── Rastreabilidade Pós-Venda (lote → cliente/paciente) ──────────────────────
+-- SEG-FIX: pedido_id/pedido_item_id/stock_item_id são apenas referências de
+-- auditoria — a UI (RastreabilidadePanel.tsx, RecallPanel.tsx) exibe somente
+-- os campos "congelados" (lote, device_ref, device_model, cliente_nome etc.),
+-- nunca faz join voltando para pedidos/estoque. Por isso usamos ON DELETE
+-- SET NULL em vez de CASCADE: são dados de recall ANVISA e precisam
+-- permanecer mesmo que o pedido seja excluído ou a peça seja removida do
+-- estoque depois (ex: botão "Remover do estoque" não deve apagar histórico
+-- de rastreabilidade de vendas já concluídas).
 CREATE TABLE IF NOT EXISTS public.rastreabilidade_pos_venda (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  pedido_id       uuid NOT NULL REFERENCES public.pedidos_comerciais(id) ON DELETE CASCADE,
-  pedido_item_id  uuid NOT NULL REFERENCES public.pedido_itens(id) ON DELETE CASCADE,
-  stock_item_id   uuid NOT NULL REFERENCES public.stock_items(id) ON DELETE CASCADE,
+  pedido_id       uuid REFERENCES public.pedidos_comerciais(id) ON DELETE SET NULL,
+  pedido_item_id  uuid REFERENCES public.pedido_itens(id) ON DELETE SET NULL,
+  stock_item_id   uuid REFERENCES public.stock_items(id) ON DELETE SET NULL,
   lote            text NOT NULL,
   device_id       uuid REFERENCES public.devices(id),
   device_ref      text NOT NULL,
@@ -193,11 +201,14 @@ CREATE INDEX IF NOT EXISTS idx_rastreab_lote   ON public.rastreabilidade_pos_ven
 CREATE INDEX IF NOT EXISTS idx_rastreab_device ON public.rastreabilidade_pos_venda (device_id);
 CREATE INDEX IF NOT EXISTS idx_rastreab_pedido ON public.rastreabilidade_pos_venda (pedido_id);
 
--- ── Corrige FKs sem CASCADE (banco já existente) ──────────────────────────────
--- Se a tabela já existia sem ON DELETE CASCADE, recria as constraints corretamente.
+-- ── Corrige FKs para SET NULL (banco já existente) ────────────────────────────
+-- Se a tabela já existia com ON DELETE CASCADE (ou sem cascade nenhum), recria
+-- as constraints como SET NULL e remove o NOT NULL das colunas — necessário
+-- para que SET NULL funcione em bancos que já tinham essas colunas obrigatórias.
 DO $$
 BEGIN
   -- pedido_id FK
+  ALTER TABLE public.rastreabilidade_pos_venda ALTER COLUMN pedido_id DROP NOT NULL;
   IF EXISTS (
     SELECT 1 FROM information_schema.table_constraints
     WHERE constraint_name = 'rastreabilidade_pos_venda_pedido_id_fkey'
@@ -208,9 +219,10 @@ BEGIN
   END IF;
   ALTER TABLE public.rastreabilidade_pos_venda
     ADD CONSTRAINT rastreabilidade_pos_venda_pedido_id_fkey
-    FOREIGN KEY (pedido_id) REFERENCES public.pedidos_comerciais(id) ON DELETE CASCADE;
+    FOREIGN KEY (pedido_id) REFERENCES public.pedidos_comerciais(id) ON DELETE SET NULL;
 
   -- pedido_item_id FK
+  ALTER TABLE public.rastreabilidade_pos_venda ALTER COLUMN pedido_item_id DROP NOT NULL;
   IF EXISTS (
     SELECT 1 FROM information_schema.table_constraints
     WHERE constraint_name = 'rastreabilidade_pos_venda_pedido_item_id_fkey'
@@ -221,9 +233,10 @@ BEGIN
   END IF;
   ALTER TABLE public.rastreabilidade_pos_venda
     ADD CONSTRAINT rastreabilidade_pos_venda_pedido_item_id_fkey
-    FOREIGN KEY (pedido_item_id) REFERENCES public.pedido_itens(id) ON DELETE CASCADE;
+    FOREIGN KEY (pedido_item_id) REFERENCES public.pedido_itens(id) ON DELETE SET NULL;
 
   -- stock_item_id FK
+  ALTER TABLE public.rastreabilidade_pos_venda ALTER COLUMN stock_item_id DROP NOT NULL;
   IF EXISTS (
     SELECT 1 FROM information_schema.table_constraints
     WHERE constraint_name = 'rastreabilidade_pos_venda_stock_item_id_fkey'
@@ -234,7 +247,7 @@ BEGIN
   END IF;
   ALTER TABLE public.rastreabilidade_pos_venda
     ADD CONSTRAINT rastreabilidade_pos_venda_stock_item_id_fkey
-    FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE CASCADE;
+    FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE SET NULL;
 END;
 $$;
 
@@ -473,3 +486,39 @@ RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $f05$
   WHERE status != 'inativo' AND vida_util_pecas > 0;
 $f05$;
 GRANT EXECUTE ON FUNCTION public.atualizar_status_ferramentas() TO authenticated;
+
+-- ── admin_clear_rastreabilidade ───────────────────────────────────────────────
+-- Apaga registros de rastreabilidade pós-venda (lote → cliente/recall) usados
+-- na aba "Rastreab. Pós-venda" / "Recall" de Qualidade.tsx. Não toca em
+-- pedidos, estoque ou cadastro de devices — mesmo padrão das outras funções
+-- admin_clear_* (estoque, comercial, produção) em 20260027000000_estoque.sql.
+CREATE OR REPLACE FUNCTION public.admin_clear_rastreabilidade()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cr$
+DECLARE v_count integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM public.rastreabilidade_pos_venda;
+  DELETE FROM public.rastreabilidade_pos_venda;
+  RETURN jsonb_build_object('ok', true, 'deleted', v_count);
+END;
+$f_cr$;
+GRANT EXECUTE ON FUNCTION public.admin_clear_rastreabilidade() TO authenticated;
+
+-- ── admin_clear_financeiro ────────────────────────────────────────────────────
+-- Apaga contas a pagar/receber (histórico financeiro); fornecedores, bancos e
+-- pedidos comerciais/de compra permanecem intactos.
+CREATE OR REPLACE FUNCTION public.admin_clear_financeiro()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cf$
+DECLARE v_count integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
+  END IF;
+  SELECT COUNT(*) INTO v_count FROM public.contas_financeiras;
+  DELETE FROM public.contas_financeiras;
+  RETURN jsonb_build_object('ok', true, 'deleted', v_count);
+END;
+$f_cf$;
+GRANT EXECUTE ON FUNCTION public.admin_clear_financeiro() TO authenticated;

@@ -143,6 +143,16 @@ export type Database = {
       }
       reserve_stock: { Args: { p_pedido_id: string; p_items: Array<{ stock_item_id: string; quantidade: number }> }; Returns: { ok: boolean; error?: string } }
       stock_movement_atomic: { Args: { p_item_id: string; p_type: string; p_qty: number; p_reason: string | null; p_lote: string | null; p_user_id: string | null; p_user_name: string | null }; Returns: { ok: boolean; error?: string } }
+      delete_stock_item: { Args: { p_stock_item_id: string }; Returns: { ok: boolean; error?: string } }
+      // Limpeza de histórico por módulo (admin only) — todas sem parâmetros,
+      // retornam { ok, deleted } com a contagem de registros apagados.
+      admin_clear_stock_movements: { Args: Record<string, never>; Returns: { ok: boolean; error?: string; deleted?: number } }
+      admin_clear_comercial:       { Args: Record<string, never>; Returns: { ok: boolean; error?: string; deleted?: number } }
+      admin_clear_producao:        { Args: Record<string, never>; Returns: { ok: boolean; error?: string; deleted?: number } }
+      admin_clear_rastreabilidade: { Args: Record<string, never>; Returns: { ok: boolean; error?: string; deleted?: number } }
+      admin_clear_financeiro:      { Args: Record<string, never>; Returns: { ok: boolean; error?: string; deleted?: number } }
+      admin_clear_audit_log:       { Args: Record<string, never>; Returns: { ok: boolean; error?: string; deleted?: number } }
+      admin_regularizar_todos_devices: { Args: Record<string, never>; Returns: { ok: boolean; error?: string } }
     }
   }
 }

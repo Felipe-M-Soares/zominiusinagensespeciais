@@ -41,6 +41,7 @@ import type { PageNavTab } from "@/components/PageNav";
 import type { StockFase, AllMovement } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
 import { toast } from "sonner";
+import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -1061,6 +1062,7 @@ const RastreamentoPanel = memo(function RastreamentoPanel() {
 // ─── Aba: Histórico ───────────────────────────────────────────────────────────
 
 const HistoricoPanel = memo(function HistoricoPanel() {
+  const { isAdmin } = useAuth();
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [faseFilter, setFaseFilter] = useState<"all" | StockFase>("all");
@@ -1117,6 +1119,14 @@ const HistoricoPanel = memo(function HistoricoPanel() {
             <button onClick={load} className="h-8 w-8 rounded-lg border border-border/40 flex items-center justify-center text-muted-foreground hover:bg-muted/40 transition-colors">
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             </button>
+            {isAdmin && (
+              <ClearHistoryButton
+                rpc="admin_clear_stock_movements"
+                confirmTitle="Apagar histórico de movimentações?"
+                confirmDescription="Apaga todo o histórico de entradas e saídas de estoque. As quantidades atuais e as peças cadastradas são mantidas."
+                onCleared={load}
+              />
+            )}
           </div>
         </div>
         {loading ? (

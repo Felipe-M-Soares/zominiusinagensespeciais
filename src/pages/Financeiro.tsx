@@ -19,6 +19,7 @@ import { friendlyError } from "@/lib/errorMessages";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 
 const FornecedoresPanel  = lazy(() => import("@/components/compras/FornecedoresPanel").then(m => ({ default: m.FornecedoresPanel })));
 const PedidosCompraPanel = lazy(() => import("@/components/compras/PedidosCompraPanel").then(m => ({ default: m.PedidosCompraPanel })));
@@ -3939,6 +3940,16 @@ export default function Financeiro() {
           </div>
           <div className="flex items-center gap-1">
 
+            {isAdmin && (
+              <ClearHistoryButton
+                rpc="admin_clear_financeiro"
+                label="Apagar"
+                confirmTitle="Apagar histórico financeiro?"
+                confirmDescription="Apaga todas as contas a pagar e a receber. Fornecedores, bancos e pedidos comerciais são mantidos."
+                onCleared={() => { loadPedidos(); loadLancamentos(); }}
+                className="h-8"
+              />
+            )}
             <button type="button" onClick={() => setHistoricoOpen(true)}
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground"
               title="Histórico de NFs">
