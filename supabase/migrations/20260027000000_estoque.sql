@@ -283,30 +283,41 @@ $f06$;
 -- Apaga apenas movimentos; quantidades e peças permanecem intactas
 CREATE OR REPLACE FUNCTION public.admin_clear_stock_movements()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_csm$
-DECLARE v_count integer;
+DECLARE v_count integer; v_uid uuid := auth.uid(); v_name text;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_uid AND role = 'admin') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.stock_movements;
   DELETE FROM public.stock_movements;
+  SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
+  VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_stock_movements', 'stock_movements',
+    jsonb_build_object('deleted', v_count));
   RETURN jsonb_build_object('ok', true, 'deleted', v_count);
 END;
 $f_csm$;
 GRANT EXECUTE ON FUNCTION public.admin_clear_stock_movements() TO authenticated;
 
 -- ── admin_clear_comercial ─────────────────────────────────────────────────────
--- Apaga pedidos comerciais e itens; restaura reservas; não toca estoque
+-- Apaga pedidos comerciais e itens; restaura reservas; não toca estoque.
+-- Rastreabilidade pós-venda NÃO é apagada (FK stock_item_id/pedido_id/
+-- pedido_item_id é ON DELETE SET NULL, ver 20260034000000_empresarial.sql) —
+-- são dados de recall ANVISA e devem sobreviver à limpeza do histórico comercial.
 CREATE OR REPLACE FUNCTION public.admin_clear_comercial()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cc$
-DECLARE v_count integer;
+DECLARE v_count integer; v_uid uuid := auth.uid(); v_name text;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_uid AND role = 'admin') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   UPDATE public.stock_items SET quantity_reserved = 0;
   SELECT COUNT(*) INTO v_count FROM public.pedidos_comerciais;
-  DELETE FROM public.pedidos_comerciais; -- CASCADE apaga pedido_itens, comentários, rastreabilidade
+  DELETE FROM public.pedidos_comerciais; -- CASCADE apaga pedido_itens e comentários
+  SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
+  VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_comercial', 'pedidos_comerciais',
+    jsonb_build_object('deleted', v_count));
   RETURN jsonb_build_object('ok', true, 'deleted', v_count);
 END;
 $f_cc$;
@@ -316,13 +327,17 @@ GRANT EXECUTE ON FUNCTION public.admin_clear_comercial() TO authenticated;
 -- Apaga apontamentos de produção; máquinas e produtos permanecem
 CREATE OR REPLACE FUNCTION public.admin_clear_producao()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cp$
-DECLARE v_count integer;
+DECLARE v_count integer; v_uid uuid := auth.uid(); v_name text;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_uid AND role = 'admin') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.apontamentos_producao;
   DELETE FROM public.apontamentos_producao; -- CASCADE apaga paradas e refugos
+  SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
+  VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_producao', 'apontamentos_producao',
+    jsonb_build_object('deleted', v_count));
   RETURN jsonb_build_object('ok', true, 'deleted', v_count);
 END;
 $f_cp$;
@@ -469,15 +484,21 @@ CREATE POLICY "audit_log_insert" ON public.audit_log
 -- ── admin_clear_audit_log ─────────────────────────────────────────────────────
 -- Apaga o log de auditoria (aba "Auditoria" em Admin.tsx). Não afeta nenhum
 -- outro dado do sistema — mesmo padrão das demais funções admin_clear_*.
+-- O INSERT do próprio registro de auditoria roda DEPOIS do DELETE — assim o
+-- "apaguei o log" fica registrado como único item restante na tabela.
 CREATE OR REPLACE FUNCTION public.admin_clear_audit_log()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cal$
-DECLARE v_count integer;
+DECLARE v_count integer; v_uid uuid := auth.uid(); v_name text;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_uid AND role = 'admin') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.audit_log;
   DELETE FROM public.audit_log;
+  SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
+  VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_audit_log', 'audit_log',
+    jsonb_build_object('deleted', v_count));
   RETURN jsonb_build_object('ok', true, 'deleted', v_count);
 END;
 $f_cal$;

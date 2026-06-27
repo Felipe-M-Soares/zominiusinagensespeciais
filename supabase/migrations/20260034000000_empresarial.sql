@@ -494,13 +494,17 @@ GRANT EXECUTE ON FUNCTION public.atualizar_status_ferramentas() TO authenticated
 -- admin_clear_* (estoque, comercial, produção) em 20260027000000_estoque.sql.
 CREATE OR REPLACE FUNCTION public.admin_clear_rastreabilidade()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cr$
-DECLARE v_count integer;
+DECLARE v_count integer; v_uid uuid := auth.uid(); v_name text;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_uid AND role = 'admin') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.rastreabilidade_pos_venda;
   DELETE FROM public.rastreabilidade_pos_venda;
+  SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
+  VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_rastreabilidade', 'rastreabilidade_pos_venda',
+    jsonb_build_object('deleted', v_count));
   RETURN jsonb_build_object('ok', true, 'deleted', v_count);
 END;
 $f_cr$;
@@ -511,13 +515,17 @@ GRANT EXECUTE ON FUNCTION public.admin_clear_rastreabilidade() TO authenticated;
 -- pedidos comerciais/de compra permanecem intactos.
 CREATE OR REPLACE FUNCTION public.admin_clear_financeiro()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cf$
-DECLARE v_count integer;
+DECLARE v_count integer; v_uid uuid := auth.uid(); v_name text;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
+  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_uid AND role = 'admin') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.contas_financeiras;
   DELETE FROM public.contas_financeiras;
+  SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
+  VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_financeiro', 'contas_financeiras',
+    jsonb_build_object('deleted', v_count));
   RETURN jsonb_build_object('ok', true, 'deleted', v_count);
 END;
 $f_cf$;

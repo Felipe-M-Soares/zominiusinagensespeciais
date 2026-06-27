@@ -50,8 +50,15 @@ export function ClearHistoryButton({
 }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [typed, setTyped] = useState("");
+
+  function closeModal() {
+    setConfirmOpen(false);
+    setTyped("");
+  }
 
   async function handleClear() {
+    if (typed !== "EXCLUIR") return;
     setClearing(true);
     const { data, error } = await supabase.rpc(rpc);
     setClearing(false);
@@ -69,7 +76,7 @@ export function ClearHistoryButton({
         ? `Histórico apagado (${count} registro${count !== 1 ? "s" : ""}).`
         : "Histórico apagado com sucesso."
     );
-    setConfirmOpen(false);
+    closeModal();
     onCleared?.();
   }
 
@@ -99,12 +106,27 @@ export function ClearHistoryButton({
               <div>
                 <p className="text-sm font-bold text-destructive">{confirmTitle}</p>
                 <p className="text-[12px] text-muted-foreground mt-1">{confirmDescription}</p>
+                <p className="text-[12px] text-muted-foreground mt-1">Esta ação não pode ser desfeita.</p>
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm text-muted-foreground">
+                Digite <strong className="text-destructive font-mono">EXCLUIR</strong> para confirmar:
+              </p>
+              <input
+                type="text"
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                placeholder="EXCLUIR"
+                autoFocus
+                disabled={clearing}
+                className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-destructive/30"
+              />
             </div>
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setConfirmOpen(false)}
+                onClick={closeModal}
                 disabled={clearing}
                 className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
               >
@@ -113,8 +135,8 @@ export function ClearHistoryButton({
               <button
                 type="button"
                 onClick={handleClear}
-                disabled={clearing}
-                className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5"
+                disabled={clearing || typed !== "EXCLUIR"}
+                className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {clearing
                   ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
