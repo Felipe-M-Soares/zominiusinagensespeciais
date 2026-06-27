@@ -67,134 +67,119 @@ export function DeviceCard({ device, onClick }: Props) {
     role="button"
     tabIndex={0}
     className={cn(
-      "w-full text-left group relative rounded-2xl overflow-hidden transition-all duration-300",
-      "hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-      // Vidro translúcido com brilho: claro = sutil, escuro = glow forte (cian/violeta)
-      "bg-card border border-brand/15 dark:border-brand/25",
-      "shadow-[0_1px_3px_hsl(var(--border)/0.4),0_12px_28px_-14px_hsl(var(--brand)/0.20)]",
-      "dark:shadow-[0_0_0_1px_hsl(var(--brand)/0.06),0_24px_48px_-20px_hsl(var(--brand)/0.30)]"
+      "w-full text-left group relative rounded-xl overflow-hidden transition-all duration-300",
+      "hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer",
+      // Superfície neutra, com elevação sutil que cresce no hover — sem glow colorido
+      "bg-card border border-border/60",
+      "shadow-[0_1px_2px_hsl(0_0%_0%/0.04)]",
+      "hover:border-border hover:shadow-[0_8px_24px_-8px_hsl(0_0%_0%/0.12)]",
+      "dark:shadow-[0_1px_0_hsl(0_0%_100%/0.04)_inset]",
+      "dark:hover:shadow-[0_12px_32px_-12px_hsl(0_0%_0%/0.5)]"
     )}
     onClick={() => onClick(device)}
     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(device); }}
   >
-    {/* Barra lateral neon — identidade visual do card (cian → violeta) */}
-    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-brand to-violet-500 shadow-[0_0_10px_hsl(var(--brand)/0.5)] dark:shadow-[0_0_14px_hsl(var(--brand)/0.7)] z-10" />
-
-    {/* Glow decorativo no canto (só visível no escuro, sutil no claro) */}
-    <div className="pointer-events-none absolute -top-10 -left-6 w-40 h-40 rounded-full bg-brand/[0.06] dark:bg-brand/[0.14] blur-2xl" />
-
     {/* Imagem do componente */}
     <div className={cn(
-      "relative w-full overflow-hidden bg-white flex items-center justify-center transition-all",
-      hasImage ? "h-36" : "h-0"
+      "relative w-full overflow-hidden bg-[#fafafa] dark:bg-white/[0.03] flex items-center justify-center transition-all border-b border-border/50",
+      hasImage ? "h-36" : "h-0 border-b-0"
     )}>
       {hasImage && (
-        <>
-          <img
-            src={device.icon_url!}
-            alt={device.model}
-            loading="lazy"
-            decoding="async"
-            onError={() => setImgError(true)}
-            className="h-full w-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
-          />
-          {/* Linha neon de transição entre imagem e conteúdo */}
-          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-brand via-violet-500 to-brand shadow-[0_0_8px_hsl(var(--brand)/0.6)]" />
-          {/* Selo "ativo" flutuante sobre a imagem */}
-          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-background/80 dark:bg-black/60 backdrop-blur-sm px-2 py-0.5 text-[9px] font-mono font-medium text-success tracking-wide">
-            <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_5px_hsl(var(--success))]" />
-            ATIVO
-          </span>
-        </>
+        <img
+          src={device.icon_url!}
+          alt={device.model}
+          loading="lazy"
+          decoding="async"
+          onError={() => setImgError(true)}
+          className="h-full w-full object-contain p-4 group-hover:scale-[1.03] transition-transform duration-300"
+        />
       )}
     </div>
 
-    <div className="relative p-4 pl-[18px] space-y-2.5 z-[1]">
+    <div className="relative p-4 space-y-3">
       {/* Header: nome em destaque + selo ativo */}
       <div className="flex items-start justify-between gap-3">
-        <h3 className="text-[15px] font-bold leading-snug text-foreground group-hover:text-brand transition-colors line-clamp-2 min-w-0">
+        <h3 className="text-[15px] font-semibold leading-snug text-foreground transition-colors line-clamp-2 min-w-0">
           {device.model}
         </h3>
-        {!hasImage && (
-          <span className="shrink-0 flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[9px] font-mono font-medium text-success tracking-wide">
-            <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_5px_hsl(var(--success))]" />
-            ATIVO
-          </span>
-        )}
+        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success tracking-wide mt-0.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-success" />
+          Ativo
+        </span>
       </div>
 
-      {/* GTIN/UDI em destaque — é o dado que mais importa para localizar a peça */}
+      {/* Referência + marca — apoio, discreto */}
+      <p className="text-[12px] text-muted-foreground truncate -mt-1.5">
+        {device.reference}
+        {device.brand_name && <span className="text-muted-foreground/60"> · {device.brand_name}</span>}
+      </p>
+
+      {/* GTIN/UDI — destaque tipográfico sem fundo saturado */}
       <button
         type="button"
         title="Clique para copiar o GTIN/UDI"
         onClick={handleCopyUDI}
         className={cn(
-          "w-full flex items-center justify-between gap-2 rounded-[9px] px-2.5 py-2 transition-colors group/copy text-left",
-          "bg-brand/[0.06] dark:bg-brand/[0.08] border border-brand/20 dark:border-brand/25",
-          "hover:bg-brand/[0.1] dark:hover:bg-brand/[0.14]"
+          "w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 transition-colors group/copy text-left",
+          "bg-muted/40 dark:bg-white/[0.04] border border-border/50",
+          "hover:bg-muted/70 dark:hover:bg-white/[0.07] hover:border-border"
         )}
       >
         <div className="min-w-0">
-          <p className="text-[9px] uppercase tracking-wide text-brand/70 font-semibold mb-0.5">GTIN / UDI</p>
-          <p className={cn("text-[14px] font-mono font-bold tracking-tight truncate", copied ? "text-success" : "text-foreground")}>
+          <p className="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-0.5">GTIN / UDI</p>
+          <p className={cn("text-[14px] font-mono font-semibold tracking-tight truncate", copied ? "text-success" : "text-foreground")}>
             {device.anvisa_registration || device.udi_di || "—"}
           </p>
         </div>
         {copied
           ? <Check className="h-4 w-4 text-success shrink-0" />
-          : <Copy className="h-3.5 w-3.5 text-brand/60 group-hover/copy:text-brand shrink-0 transition-colors" />}
+          : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover/copy:text-foreground shrink-0 transition-colors" />}
       </button>
 
-      {/* Referência + marca — apoio, discreto */}
-      <p className="text-[11px] text-muted-foreground/80 truncate">
-        {device.reference}
-        {device.brand_name && <span className="text-muted-foreground/50"> · {device.brand_name}</span>}
-      </p>
+      {/* Material — apoio, discreto */}
+      {device.primary_material && (
+        <p className="text-[11px] text-muted-foreground truncate" title={device.primary_material}>
+          {device.primary_material}
+        </p>
+      )}
 
-      {/* Classe + Material — texto inline discreto, não mais bloco em destaque */}
-      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
-        <span className="font-medium">Classe <span className="font-mono text-foreground/80">{device.classification_code || "—"}</span></span>
-        {device.primary_material && (
-          <>
-            <span className="text-muted-foreground/40">·</span>
-            <span className="font-mono truncate" title={device.primary_material}>{device.primary_material}</span>
-          </>
-        )}
-      </div>
-
-      {/* Status pills */}
-      <div className="flex flex-wrap gap-1">
+      {/* Status pills — neon, cada categoria com sua cor original */}
+      <div className="flex flex-wrap gap-1.5">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-0.5 text-[10px] font-medium text-brand tracking-wide">
+          <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+          Classe {device.classification_code || "—"}
+        </span>
         {device.sterile && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success border border-success/20">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-0.5 text-[10px] font-medium text-success tracking-wide">
             <Shield className="h-2.5 w-2.5" />
             Estéril
           </span>
         )}
         {device.single_use && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium text-orange-500 border border-orange-500/20">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-500/10 px-2.5 py-0.5 text-[10px] font-medium text-orange-500 tracking-wide">
             <Package className="h-2.5 w-2.5" />
             Uso único
           </span>
         )}
         {device.implantable && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-500 border border-violet-500/20">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2.5 py-0.5 text-[10px] font-medium text-violet-500 tracking-wide">
             <Activity className="h-2.5 w-2.5" />
             Implantável
           </span>
         )}
       </div>
 
-      {/* Footer — só país e Exocad (GTIN subiu para o destaque acima) */}
-      <div className="flex items-center justify-end gap-2 text-[10px] text-muted-foreground/60 pt-2 border-t border-border/20 dark:border-white/[0.06]">
-        {device.manufacturer_country && (
-          <span className="flex items-center gap-0.5" title={device.manufacturer_country}>
+      {/* Footer — país e Exocad */}
+      <div className="flex items-center justify-between gap-2 text-[10.5px] text-muted-foreground/70 pt-2.5 border-t border-border/40">
+        {device.manufacturer_country ? (
+          <span className="flex items-center gap-1" title={device.manufacturer_country}>
             <span>{countryFlag(device.manufacturer_country)}</span>
             <span>{device.manufacturer_country}</span>
           </span>
-        )}
+        ) : <span />}
         {device.exocad_compatibility && device.exocad_compatibility !== "N.A" && (
-          <span className="flex items-center gap-0.5 text-brand/70">
-            <Box className="h-2.5 w-2.5 text-brand" />
+          <span className="flex items-center gap-1 font-medium text-foreground/60">
+            <Box className="h-2.5 w-2.5" />
             Exocad
           </span>
         )}
