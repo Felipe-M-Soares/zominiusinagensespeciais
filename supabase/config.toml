@@ -1,9 +1,6 @@
 project_id = "lvbilwznflyyiuxfhjyb"
 
 [functions]
-  [functions.auth-email-hook]
-    verify_jwt = false
-
   [functions.import-devices]
     verify_jwt = false
 

@@ -1,9 +1,22 @@
 /**
  * Produção — Hub de Controle Industrial
  * Layout harmonizado com o restante do app: header + PageNav (mesmo padrão
- * de Qualidade/Financeiro/Admin), em vez do grid de cards customizado
- * anterior. Entra direto na primeira aba (Dashboard), sem tela de menu
- * intermediária — mesmo comportamento de Financeiro.tsx.
+ * de Qualidade/Financeiro/Admin). Entra direto na primeira aba (Desempenho),
+ * sem tela de menu intermediária — mesmo comportamento de Financeiro.tsx.
+ *
+ * CONSOLIDAÇÃO: 11 → 7 módulos no menu, sem remover nenhuma funcionalidade —
+ * só reorganiza onde cada coisa mora, seguindo o fluxo real de uso:
+ *  - Dashboard + Metas + Relatórios → "Desempenho" (3 sub-abas, mesmo dado
+ *    em variações: mês atual / vs. meta / período customizável+export)
+ *  - Máquinas + Produtos + Ferramentas CNC → "Cadastros" (3 sub-abas, eram
+ *    3 telas de CRUD administrativo puro que só alimentam dropdowns)
+ *  - Importar Excel (PPI-51) migrou de dentro de "Relatórios" para
+ *    "Controle" — é uma forma alternativa de lançar apontamento, não um
+ *    relatório.
+ *  - Controle, Planejamento, Paradas, Refugo e Matéria-Prima ficam como
+ *    estavam: cada um tem fluxo operacional genuinamente distinto (ex:
+ *    Paradas tem cronômetro ao vivo; Refugo tem ficha de medições
+ *    dimensionais que não cabe no apontamento resumido de Controle).
  */
 
 import { useState, useEffect, lazy, Suspense } from "react";
@@ -13,28 +26,24 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
 import {
   LayoutDashboard, ClipboardList, CalendarClock,
-  Settings2, Package, OctagonPause, ShieldAlert, Boxes, FileBarChart2,
-  Factory, WifiOff, RefreshCw, Wrench, Target,
+  Settings2, OctagonPause, ShieldAlert, Boxes,
+  Factory, WifiOff, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { PageNav, type PageNavTab } from "@/components/PageNav";
 import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 
-const DashboardPanel    = lazy(() => import("@/components/producao/DashboardPanel").then(m => ({ default: m.DashboardPanel })));
+const DesempenhoPanel   = lazy(() => import("@/components/producao/DesempenhoPanel").then(m => ({ default: m.DesempenhoPanel })));
 const ControlePanel     = lazy(() => import("@/components/producao/ControlePanel").then(m => ({ default: m.ControlePanel })));
 const PlanejamentoPanel = lazy(() => import("@/components/producao/PlanejamentoPanel").then(m => ({ default: m.PlanejamentoPanel })));
-const MaquinasPanel     = lazy(() => import("@/components/producao/MaquinasPanel").then(m => ({ default: m.MaquinasPanel })));
-const ProdutosPanel     = lazy(() => import("@/components/producao/ProdutosPanel").then(m => ({ default: m.ProdutosPanel })));
+const CadastrosPanel    = lazy(() => import("@/components/producao/CadastrosPanel").then(m => ({ default: m.CadastrosPanel })));
 const ParadasPanel      = lazy(() => import("@/components/producao/ParadasPanel").then(m => ({ default: m.ParadasPanel })));
 const QualidadePanel    = lazy(() => import("@/components/producao/QualidadeProducaoPanel").then(m => ({ default: m.QualidadeProducaoPanel })));
 const MateriaPrimaPanel = lazy(() => import("@/components/producao/MateriaPrimaPanel").then(m => ({ default: m.MateriaPrimaPanel })));
-const RelatoriosPanel   = lazy(() => import("@/components/producao/RelatoriosPanel").then(m => ({ default: m.RelatoriosPanel })));
-const ImportadorPPI51  = lazy(() => import("@/components/producao/ImportadorPPI51").then(m => ({ default: m.ImportadorPPI51 })));
-const FerramentasPanel  = lazy(() => import("@/components/producao/FerramentasPanel").then(m => ({ default: m.FerramentasPanel })));
-const MetasPanel        = lazy(() => import("@/components/producao/MetasPanel").then(m => ({ default: m.MetasPanel })));
+const ImportadorPPI51   = lazy(() => import("@/components/producao/ImportadorPPI51").then(m => ({ default: m.ImportadorPPI51 })));
 
-type ProdView = "dashboard"|"controle"|"planejamento"|"metas"|"maquinas"|"produtos"|"paradas"|"qualidade"|"ferramentas"|"materiaprima"|"relatorios";
+type ProdView = "desempenho"|"controle"|"planejamento"|"cadastros"|"paradas"|"qualidade"|"materiaprima";
 
 interface ProdModule {
   id: ProdView; label: string;
@@ -43,21 +52,14 @@ interface ProdModule {
   adminOnly?: boolean;
 }
 
-// Mesmas cores temáticas de antes, só reorganizadas no formato que PageNav espera
-// (activeColor/activeBg/activeBorder/badgeBg/badgeText) — mesmo padrão usado em
-// Qualidade.tsx e Financeiro.tsx para as próprias abas.
 const MODULES: ProdModule[] = [
-  { id:"dashboard",    label:"Dashboard",    Icon:LayoutDashboard, activeColor:"text-blue-600 dark:text-blue-400",     activeBg:"bg-blue-500/10",     activeBorder:"border-blue-500/40",     badgeBg:"bg-blue-500/15",     badgeText:"text-blue-600 dark:text-blue-400" },
+  { id:"desempenho",   label:"Desempenho",   Icon:LayoutDashboard, activeColor:"text-blue-600 dark:text-blue-400",     activeBg:"bg-blue-500/10",     activeBorder:"border-blue-500/40",     badgeBg:"bg-blue-500/15",     badgeText:"text-blue-600 dark:text-blue-400" },
   { id:"controle",     label:"Controle",     Icon:ClipboardList,   activeColor:"text-green-600 dark:text-green-400",   activeBg:"bg-green-500/10",    activeBorder:"border-green-500/40",    badgeBg:"bg-green-500/15",    badgeText:"text-green-600 dark:text-green-400" },
   { id:"planejamento", label:"Planejamento", Icon:CalendarClock,   activeColor:"text-amber-600 dark:text-amber-400",   activeBg:"bg-amber-500/10",    activeBorder:"border-amber-500/40",    badgeBg:"bg-amber-500/15",    badgeText:"text-amber-600 dark:text-amber-400" },
-  { id:"maquinas",     label:"Máquinas",     Icon:Settings2,       activeColor:"text-purple-600 dark:text-purple-400", activeBg:"bg-purple-500/10",   activeBorder:"border-purple-500/40",   badgeBg:"bg-purple-500/15",   badgeText:"text-purple-600 dark:text-purple-400", adminOnly:true },
-  { id:"produtos",     label:"Produtos",     Icon:Package,         activeColor:"text-cyan-600 dark:text-cyan-400",     activeBg:"bg-cyan-500/10",     activeBorder:"border-cyan-500/40",     badgeBg:"bg-cyan-500/15",     badgeText:"text-cyan-600 dark:text-cyan-400", adminOnly:true },
+  { id:"cadastros",    label:"Cadastros",    Icon:Settings2,       activeColor:"text-purple-600 dark:text-purple-400", activeBg:"bg-purple-500/10",   activeBorder:"border-purple-500/40",   badgeBg:"bg-purple-500/15",   badgeText:"text-purple-600 dark:text-purple-400", adminOnly:true },
   { id:"paradas",      label:"Paradas",      Icon:OctagonPause,    activeColor:"text-red-600 dark:text-red-400",       activeBg:"bg-red-500/10",      activeBorder:"border-red-500/40",      badgeBg:"bg-red-500/15",      badgeText:"text-red-600 dark:text-red-400" },
   { id:"qualidade",    label:"Refugo",       Icon:ShieldAlert,     activeColor:"text-orange-600 dark:text-orange-400", activeBg:"bg-orange-500/10",   activeBorder:"border-orange-500/40",   badgeBg:"bg-orange-500/15",   badgeText:"text-orange-600 dark:text-orange-400" },
   { id:"materiaprima", label:"Mat.-Prima",   Icon:Boxes,           activeColor:"text-teal-600 dark:text-teal-400",     activeBg:"bg-teal-500/10",     activeBorder:"border-teal-500/40",     badgeBg:"bg-teal-500/15",     badgeText:"text-teal-600 dark:text-teal-400" },
-  { id:"metas",        label:"Metas",        Icon:Target,          activeColor:"text-emerald-600 dark:text-emerald-400", activeBg:"bg-emerald-500/10", activeBorder:"border-emerald-500/40", badgeBg:"bg-emerald-500/15", badgeText:"text-emerald-600 dark:text-emerald-400" },
-  { id:"ferramentas",  label:"Ferramentas",  Icon:Wrench,          activeColor:"text-rose-600 dark:text-rose-400",     activeBg:"bg-rose-500/10",     activeBorder:"border-rose-500/40",     badgeBg:"bg-rose-500/15",     badgeText:"text-rose-600 dark:text-rose-400" },
-  { id:"relatorios",   label:"Relatórios",   Icon:FileBarChart2,   activeColor:"text-indigo-600 dark:text-indigo-400", activeBg:"bg-indigo-500/10",    activeBorder:"border-indigo-500/40",   badgeBg:"bg-indigo-500/15",   badgeText:"text-indigo-600 dark:text-indigo-400" },
 ];
 
 function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:boolean; onSync:()=>void }) {
@@ -87,7 +89,7 @@ export default function Producao() {
   const { isOnline, pendingCount, syncing, syncQueue } = useOfflineSync();
   const isMobile = useIsMobile();
   const isAdmin = role === "admin";
-  const [view, setView] = useState<ProdView>("dashboard");
+  const [view, setView] = useState<ProdView>("desempenho");
   const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => { applyTheme(getStoredTheme()); }, []);
@@ -139,17 +141,13 @@ export default function Producao() {
           />
 
           <Suspense fallback={<LoadingScreen />}>
-            {view === "dashboard"    && <DashboardPanel />}
-            {view === "controle"     && <ControlePanel />}
+            {view === "desempenho"   && <DesempenhoPanel />}
+            {view === "controle"     && <ControlePanel onImport={() => setImportOpen(true)} />}
             {view === "planejamento" && <PlanejamentoPanel isAdmin={isAdmin} />}
-            {view === "maquinas"     && <MaquinasPanel isAdmin={isAdmin} />}
-            {view === "produtos"     && <ProdutosPanel isAdmin={isAdmin} />}
+            {view === "cadastros"    && <CadastrosPanel isAdmin={isAdmin} />}
             {view === "paradas"      && <ParadasPanel />}
             {view === "qualidade"    && <QualidadePanel />}
-            {view === "metas"        && <MetasPanel />}
-            {view === "ferramentas"  && <FerramentasPanel />}
             {view === "materiaprima" && <MateriaPrimaPanel />}
-            {view === "relatorios"   && <RelatoriosPanel onImport={() => setImportOpen(true)} />}
           </Suspense>
         </div>
       </main>

@@ -659,34 +659,154 @@ $f07$;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 20260028000000_vault_token_api.sql
 -- ─────────────────────────────────────────────────────────────────────────────
--- O campo token_api está na tabela financeiro_contas_bancarias.
--- Está armazenado em plain text. Para criptografar, use pgsodium (Supabase Vault).
+-- FIX REAL: token_api de financeiro_contas_bancarias estava em plain text.
+-- Implementado com Supabase Vault (extensão habilitada por padrão em todo
+-- projeto Supabase hospedado — diferente de pg_cron/pgsodium, não exige
+-- nenhuma ativação manual no painel). A chave de criptografia raiz é gerida
+-- internamente pelo Supabase e nunca fica acessível via SQL.
 --
--- Como ativar: Supabase Dashboard → Database → Extensions → pgsodium → Enable
--- Após ativar, execute:
---   ALTER TABLE public.financeiro_contas_bancarias
---     ADD COLUMN IF NOT EXISTS token_api_enc bytea;
--- E migre os dados com pgsodium.crypto_secretbox().
---
--- Por enquanto, apenas adiciona comentário documentando o risco.
+-- Esquema: a coluna token_api (texto puro) é substituída por
+-- token_api_secret_id (uuid, aponta para vault.secrets.id). O texto cifrado
+-- vive em vault.secrets; só é lido de volta através de vault.decrypted_secrets,
+-- e só dentro da função get_conta_bancaria_token() abaixo — nunca via
+-- SELECT * direto na tabela.
 
+-- 1. Nova coluna (referência ao secret no Vault, não o valor)
+ALTER TABLE public.financeiro_contas_bancarias
+  ADD COLUMN IF NOT EXISTS token_api_secret_id uuid;
+
+-- 2. Migra tokens já cadastrados em texto puro para o Vault, se a coluna
+--    antiga ainda existir (idempotente — pula linhas já migradas)
 DO $f01$
+DECLARE
+  v_row record;
+  v_secret_id uuid;
 BEGIN
-  -- Adiciona comentário na coluna se a tabela existir
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'financeiro_contas_bancarias'
+    WHERE table_schema = 'public' AND table_name = 'financeiro_contas_bancarias'
       AND column_name = 'token_api'
   ) THEN
-    COMMENT ON COLUMN public.financeiro_contas_bancarias.token_api IS
-      'Token API de integração externa — armazenado em plain text. Migrar para pgsodium quando disponível.';
-    RAISE NOTICE 'Comentário adicionado em financeiro_contas_bancarias.token_api';
+    FOR v_row IN
+      SELECT id, token_api FROM public.financeiro_contas_bancarias
+      WHERE token_api IS NOT NULL AND token_api <> '' AND token_api_secret_id IS NULL
+    LOOP
+      SELECT vault.create_secret(
+        v_row.token_api,
+        'fin_conta_token_' || v_row.id::text,
+        'Token API de integração bancária — migrado de plain text'
+      ) INTO v_secret_id;
+      UPDATE public.financeiro_contas_bancarias
+        SET token_api_secret_id = v_secret_id WHERE id = v_row.id;
+    END LOOP;
+    RAISE NOTICE 'Tokens migrados para o Vault.';
+
+    -- Remove a coluna antiga em texto puro — não há mais motivo para mantê-la
+    ALTER TABLE public.financeiro_contas_bancarias DROP COLUMN IF EXISTS token_api;
+    RAISE NOTICE 'Coluna token_api (plain text) removida.';
   ELSE
-    RAISE NOTICE 'Coluna token_api não encontrada — ignorando migration 028';
+    RAISE NOTICE 'Coluna token_api não encontrada — nada a migrar.';
   END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Falha ao migrar tokens para o Vault: %. Os tokens antigos NÃO foram apagados; investigue antes de tentar de novo.', SQLERRM;
 END;
 $f01$;
+
+-- 3. Grava/atualiza o token de uma conta — cria um novo secret no Vault e
+--    descarta o anterior (vault.update_secret também existiria, mas criar
+--    novo + apagar o velho é mais simples de auditar e evita corromper o
+--    secret em caso de falha no meio do update).
+CREATE OR REPLACE FUNCTION public.set_conta_bancaria_token(p_conta_id uuid, p_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f02$
+DECLARE
+  v_old_secret_id uuid;
+  v_new_secret_id uuid;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = auth.uid() AND role IN ('admin','financeiro')
+  ) THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Acesso não autorizado.');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM public.financeiro_contas_bancarias WHERE id = p_conta_id) THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Conta bancária não encontrada.');
+  END IF;
+
+  SELECT token_api_secret_id INTO v_old_secret_id
+  FROM public.financeiro_contas_bancarias WHERE id = p_conta_id;
+
+  IF p_token IS NULL OR p_token = '' THEN
+    -- Remover o token: limpa a referência e apaga o secret antigo
+    UPDATE public.financeiro_contas_bancarias
+      SET token_api_secret_id = NULL WHERE id = p_conta_id;
+    IF v_old_secret_id IS NOT NULL THEN
+      DELETE FROM vault.secrets WHERE id = v_old_secret_id;
+    END IF;
+    RETURN jsonb_build_object('ok', true);
+  END IF;
+
+  SELECT vault.create_secret(
+    p_token,
+    'fin_conta_token_' || p_conta_id::text || '_' || extract(epoch FROM now())::text,
+    'Token API de integração bancária'
+  ) INTO v_new_secret_id;
+
+  UPDATE public.financeiro_contas_bancarias
+    SET token_api_secret_id = v_new_secret_id WHERE id = p_conta_id;
+
+  IF v_old_secret_id IS NOT NULL THEN
+    DELETE FROM vault.secrets WHERE id = v_old_secret_id;
+  END IF;
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$f02$;
+
+GRANT EXECUTE ON FUNCTION public.set_conta_bancaria_token(uuid, text) TO authenticated;
+
+-- 4. Lê o token de volta em texto puro — só quem tem role admin/financeiro,
+--    e só nesta função (nunca via SELECT * na tabela). Usada exclusivamente
+--    no momento em que o usuário pede para testar o webhook.
+CREATE OR REPLACE FUNCTION public.get_conta_bancaria_token(p_conta_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f03$
+DECLARE
+  v_secret_id uuid;
+  v_token text;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = auth.uid() AND role IN ('admin','financeiro')
+  ) THEN
+    RAISE EXCEPTION 'Acesso não autorizado.';
+  END IF;
+
+  SELECT token_api_secret_id INTO v_secret_id
+  FROM public.financeiro_contas_bancarias WHERE id = p_conta_id;
+
+  IF v_secret_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT decrypted_secret INTO v_token
+  FROM vault.decrypted_secrets WHERE id = v_secret_id;
+
+  RETURN v_token;
+END;
+$f03$;
+
+GRANT EXECUTE ON FUNCTION public.get_conta_bancaria_token(uuid) TO authenticated;
+
+COMMENT ON COLUMN public.financeiro_contas_bancarias.token_api_secret_id IS
+  'Referência ao secret no Supabase Vault (vault.secrets.id). O valor real do token NUNCA é armazenado nesta tabela — use set_conta_bancaria_token()/get_conta_bancaria_token() para escrever/ler.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 20260029000000_final_hardening.sql
@@ -750,12 +870,38 @@ $f01$;
 
 GRANT EXECUTE ON FUNCTION public.cleanup_audit_log() TO authenticated;
 
+-- ── Agendamento automático real via pg_cron ───────────────────────────────────
+-- ATENÇÃO: pg_cron exige habilitação manual no Supabase hospedado (não pode
+-- ser feito por SQL de migration comum, exige superuser). Antes desta seção
+-- funcionar, habilite uma vez em:
+--   Supabase Dashboard → Database → Extensions → pg_cron → Enable
+-- Depois disso, o bloco abaixo agenda a limpeza para todo dia às 2h da manhã
+-- automaticamente — sem precisar configurar nada manualmente no painel de Cron
+-- Jobs. Se pg_cron ainda não estiver habilitada, o bloco abaixo apenas avisa
+-- e não falha a migration.
+DO $f01b$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'cleanup_audit_log_diario') THEN
+      PERFORM cron.unschedule('cleanup_audit_log_diario');
+    END IF;
+    PERFORM cron.schedule(
+      'cleanup_audit_log_diario',
+      '0 2 * * *',
+      $job$SELECT public.cleanup_audit_log();$job$
+    );
+    RAISE NOTICE 'Cron job "cleanup_audit_log_diario" agendado (todo dia às 2h).';
+  ELSE
+    RAISE NOTICE 'pg_cron não está habilitada — limpeza automática de audit_log NÃO foi agendada. Habilite em Database > Extensions > pg_cron e rode esta migration de novo.';
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Não foi possível agendar cleanup_audit_log via pg_cron: %. Agende manualmente em Database > Cron Jobs.', SQLERRM;
+END;
+$f01b$;
+
 -- ── Trigger de limpeza automática do audit_log ────────────────────────────────
--- Nota: limpeza é feita via função RPC chamada periodicamente.
--- Para automatizar, configure um cron job no Supabase:
---   Supabase Dashboard → Database → Cron Jobs → New Job
---   Schedule: 0 2 * * *  (todo dia às 2h)
---   Command: SELECT public.cleanup_audit_log();
+-- Nota: a limpeza roda via pg_cron (ver bloco acima) chamando esta RPC todo
+-- dia às 2h. Sem trigger por linha — seria custoso rodar a cada INSERT.
 DROP TRIGGER IF EXISTS trg_cleanup_audit_log ON public.audit_log;
 
 -- ── Comentários de documentação nas tabelas principais ───────────────────────

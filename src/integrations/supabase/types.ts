@@ -270,6 +270,18 @@ export type Database = {
         Args: { p_item_id: string; p_qty: number }
         Returns: { ok: boolean; error?: string }
       }
+      // set_conta_bancaria_token / get_conta_bancaria_token — gravam/leem o
+      // token de integração bancária via Supabase Vault (ver
+      // 20260029000000_seguranca.sql). O valor real nunca fica em texto
+      // puro na tabela financeiro_contas_bancarias.
+      set_conta_bancaria_token: {
+        Args: { p_conta_id: string; p_token: string | null }
+        Returns: { ok: boolean; error?: string }
+      }
+      get_conta_bancaria_token: {
+        Args: { p_conta_id: string }
+        Returns: string | null
+      }
     }
     Enums: {
       /** SYNC: Manter sincronizado com src/types/roles.ts e supabase/functions/admin-create-user/index.ts

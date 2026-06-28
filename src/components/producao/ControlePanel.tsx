@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus, X, ClipboardList, RefreshCw, WifiOff, ChevronDown,
   ChevronUp, Package, Clock, Trash2, CheckCircle2, Factory,
-  AlertTriangle, BarChart2,
+  AlertTriangle, BarChart2, FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -624,7 +624,7 @@ function ApontamentoCard({ ap }: { ap: Apontamento }) {
 
 // ── Panel principal ────────────────────────────────────────────────────────────
 
-export function ControlePanel() {
+export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
   const [maquinas, setMaquinas]         = useState<Maquina[]>([]);
   const [produtos, setProdutos]         = useState<Produto[]>([]);
@@ -688,6 +688,11 @@ export function ControlePanel() {
           <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
+          {onImport && (
+            <Button size="sm" variant="outline" className="gap-1 h-9 border-green-500/30 text-green-700 dark:text-green-400 hover:bg-green-500/10" onClick={onImport}>
+              <FileSpreadsheet className="h-4 w-4" /> Importar Excel
+            </Button>
+          )}
           <Button size="sm" className="gap-1 h-9" onClick={() => setModalOpen(true)}>
             <Plus className="h-4 w-4" /> Novo Apontamento
           </Button>

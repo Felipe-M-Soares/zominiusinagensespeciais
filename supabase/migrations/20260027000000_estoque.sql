@@ -113,6 +113,131 @@ CREATE TABLE IF NOT EXISTS public.stock_backups (
 );
 ALTER TABLE public.stock_backups ENABLE ROW LEVEL SECURITY;
 
+-- ── Backup automático real (SQL puro, sem depender de Storage/HTTP) ──────────
+-- Gera o mesmo snapshot que o botão "Fazer backup agora" do frontend
+-- (stock_items + devices + últimos 500 stock_movements), mas grava direto em
+-- stock_backups.payload em vez de subir um arquivo no Storage — assim a
+-- função roda inteiramente dentro do banco e pode ser chamada por pg_cron
+-- sem precisar de service role key nem de uma Edge Function HTTP.
+-- O frontend (downloadBackup em useStock.ts) já sabe ler de payload quando
+-- file_path é nulo — nenhuma mudança necessária no app para isto funcionar.
+CREATE OR REPLACE FUNCTION public.run_scheduled_backup()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f01c$
+DECLARE
+  v_cfg          record;
+  v_dow          int;        -- 1=segunda ... 6=sábado (ISO weekday)
+  v_dias         int[];
+  v_items        jsonb;
+  v_movs         jsonb;
+  v_item_count   int;
+  v_backup_id    uuid;
+  v_max_backups  int := 30;  -- retenção: mantém só os 30 mais recentes
+BEGIN
+  SELECT * INTO v_cfg FROM public.backup_configs LIMIT 1;
+  IF v_cfg IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'motivo', 'backup_configs vazia — nenhum schedule definido');
+  END IF;
+
+  -- Já rodou hoje? Evita duplicar se o cron disparar mais de uma vez no dia
+  -- ou se alguém também clicou em "Fazer backup agora" hoje.
+  IF v_cfg.last_backup IS NOT NULL AND v_cfg.last_backup::date = now()::date THEN
+    RETURN jsonb_build_object('ok', true, 'motivo', 'backup já realizado hoje, ignorando');
+  END IF;
+
+  -- Mapeia o schedule textual para os dias ISO (1=seg ... 6=sáb) em que deve rodar
+  v_dias := CASE v_cfg.schedule
+    WHEN 'mon_thu' THEN ARRAY[1,4]
+    WHEN 'tue_fri' THEN ARRAY[2,5]
+    WHEN 'wed_sat' THEN ARRAY[3,6]
+    WHEN 'mon_fri' THEN ARRAY[1,5]
+    ELSE ARRAY[1,4]
+  END;
+
+  v_dow := extract(isodow FROM now())::int;
+  IF NOT (v_dow = ANY(v_dias)) THEN
+    RETURN jsonb_build_object('ok', true, 'motivo', 'hoje não é dia de backup agendado');
+  END IF;
+
+  -- Snapshot de stock_items + device (mesmos campos que o frontend já busca)
+  SELECT jsonb_agg(jsonb_build_object(
+    'id', si.id, 'quantity', si.quantity, 'min_quantity', si.min_quantity,
+    'location', si.location, 'notes', si.notes, 'fase', si.fase,
+    'updated_at', si.updated_at,
+    'device', jsonb_build_object(
+      'model', d.model, 'reference', d.reference,
+      'udi_di', d.udi_di, 'internal_code', d.internal_code
+    )
+  )), count(*)
+  INTO v_items, v_item_count
+  FROM public.stock_items si
+  JOIN public.devices d ON d.id = si.device_id;
+
+  -- Últimos 500 movimentos (mesmo limite usado pelo backup manual)
+  SELECT jsonb_agg(jsonb_build_object(
+    'id', sm.id, 'stock_item_id', sm.stock_item_id, 'type', sm.type,
+    'quantity', sm.quantity, 'reason', sm.reason,
+    'user_display_name', sm.user_display_name, 'created_at', sm.created_at
+  ) ORDER BY sm.created_at DESC)
+  INTO v_movs
+  FROM (
+    SELECT * FROM public.stock_movements ORDER BY created_at DESC LIMIT 500
+  ) sm;
+
+  INSERT INTO public.stock_backups (created_by, created_name, item_count, payload)
+  VALUES (
+    NULL, 'Backup automático (agendado)', coalesce(v_item_count, 0),
+    jsonb_build_object(
+      'generated_at', now(),
+      'items', coalesce(v_items, '[]'::jsonb),
+      'recent_movements', coalesce(v_movs, '[]'::jsonb)
+    )
+  )
+  RETURNING id INTO v_backup_id;
+
+  UPDATE public.backup_configs SET last_backup = now() WHERE id = v_cfg.id;
+
+  -- Retenção: apaga backups além dos v_max_backups mais recentes (mantém o banco saudável)
+  DELETE FROM public.stock_backups
+  WHERE id IN (
+    SELECT id FROM public.stock_backups
+    ORDER BY created_at DESC
+    OFFSET v_max_backups
+  );
+
+  RETURN jsonb_build_object('ok', true, 'backup_id', v_backup_id, 'item_count', v_item_count);
+END;
+$f01c$;
+
+GRANT EXECUTE ON FUNCTION public.run_scheduled_backup() TO authenticated;
+
+-- Agendamento real via pg_cron — mesma ressalva de ativação manual da extensão
+-- explicada junto de cleanup_audit_log (ver 20260029000000_seguranca.sql).
+-- Roda todo dia às 3h; a própria função decide se hoje é dia de backup
+-- (conforme backup_configs.schedule) e se já não rodou hoje.
+DO $f01d$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'run_scheduled_backup_diario') THEN
+      PERFORM cron.unschedule('run_scheduled_backup_diario');
+    END IF;
+    PERFORM cron.schedule(
+      'run_scheduled_backup_diario',
+      '0 3 * * *',
+      $job$SELECT public.run_scheduled_backup();$job$
+    );
+    RAISE NOTICE 'Cron job "run_scheduled_backup_diario" agendado (todo dia às 3h, roda conforme o schedule configurado).';
+  ELSE
+    RAISE NOTICE 'pg_cron não está habilitada — backup automático NÃO foi agendado. Habilite em Database > Extensions > pg_cron e rode esta migration de novo.';
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Não foi possível agendar run_scheduled_backup via pg_cron: %. Agende manualmente em Database > Cron Jobs.', SQLERRM;
+END;
+$f01d$;
+
 -- ── recebimento de materiais ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.recebimento_materiais (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),

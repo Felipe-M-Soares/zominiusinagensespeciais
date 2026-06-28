@@ -204,9 +204,32 @@ function buildXml(c: Cfg, d: DadosFiscais, chave: string, cNF: string): string {
 // SEFAZ exige RSA-SHA1 + xmldsig enveloped + C14N exclusivo.
 // Implementado com Web Crypto API nativa do Deno — zero dependências.
 
+// C14N real para xmldsig exige: ordenação de namespaces/atributos, normalização
+// de espaços DENTRO de atributos, e remoção de espaço insignificante ENTRE
+// elementos. Implementar a especificação completa (RFC 3076) exigiria um
+// parser XML com XPath — overkill e arriscado para reimplementar do zero.
+//
+// Esta função cobre o que de fato pode ocorrer no XML gerado por buildXml()
+// neste arquivo: ele já é montado por template string SEM espaço/quebra de
+// linha entre tags e SEM namespaces redundantes nos elementos filhos (só o
+// elemento raiz <NFe> declara o namespace) — ou seja, by construction, os
+// dois problemas mais comuns de C14N (whitespace insignificante e namespaces
+// duplicados) não ocorrem neste XML específico. A função abaixo ainda assim
+// remove ativamente qualquer espaço/tab/quebra de linha ENTRE tags (">  <" →
+// "><"), como rede de segurança caso o gerador de XML mude no futuro e passe
+// a indentar a saída.
+//
+// LIMITAÇÃO HONESTA: isto NÃO é uma implementação completa de C14N. Se este
+// XML algum dia for combinado com XML de outra origem (ex: assinado por um
+// software terceiro antes de chegar aqui, ou contiver namespaces adicionais
+// nos elementos filhos), esta função não da garantia de conformidade plena
+// com a RFC 3076. Antes de operar em produção, valide um lote de notas reais
+// contra o SEFAZ de homologação e confirme cStat=100 (autorizado).
 function c14nSimple(xml: string): string {
-  // C14N simplificado: normaliza quebras de linha, mantém whitespace significativo
-  return xml.replace(/\r\n|\r/g, "\n");
+  return xml
+    .replace(/\r\n|\r/g, "\n")   // normaliza quebras de linha (CRLF/CR → LF)
+    .replace(/>\s+</g, "><")     // remove espaço/tab/newline insignificante entre tags
+    .trim();
 }
 
 async function sha1B64(data: string): Promise<string> {
@@ -367,12 +390,30 @@ Deno.serve(async (req: Request) => {
         xmlAssinado = await assinarXml(xml, chave, certPem, keyPem);
         console.log("[sefaz] XML assinado com sucesso");
       } catch (sigErr) {
-        // Em homologação continua sem assinatura para testes de schema/conectividade
-        console.warn("[sefaz] Falha na assinatura:", sigErr instanceof Error ? sigErr.message : sigErr);
-        console.warn("[sefaz] Prosseguindo SEM assinatura — válido apenas em homologação para debug");
+        const msg = sigErr instanceof Error ? sigErr.message : String(sigErr);
+        console.error("[sefaz] Falha na assinatura digital:", msg);
+        if (c.tpAmb === 1) {
+          // Em PRODUÇÃO: nunca envia sem assinatura válida. O SEFAZ rejeitaria
+          // de qualquer forma, mas abortar aqui evita gastar a tentativa de
+          // rede e deixa o erro claro para quem está operando o financeiro.
+          return new Response(JSON.stringify({
+            sucesso: false,
+            erro: `Falha ao assinar digitalmente a NF-e: ${msg}. Em ambiente de produção, a nota NÃO é enviada sem assinatura válida. Verifique o certificado configurado em SEFAZ_PFX_BASE64 / SEFAZ_PFX_SENHA.`,
+          }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
+        }
+        // Em HOMOLOGAÇÃO: permite seguir sem assinatura só para testes de
+        // schema/conectividade contra o webservice de teste do SEFAZ — a
+        // nota não será autorizada de verdade, mas ajuda a depurar o XML.
+        console.warn("[sefaz] Ambiente de homologação — prosseguindo SEM assinatura (a nota não será autorizada; útil apenas para depurar o XML/conectividade).");
       }
+    } else if (c.tpAmb === 1) {
+      // Produção sem certificado configurado: aborta, nunca envia sem assinatura.
+      return new Response(JSON.stringify({
+        sucesso: false,
+        erro: "Certificado digital não configurado (SEFAZ_PFX_BASE64). Em ambiente de produção, a NF-e não pode ser emitida sem certificado A1 válido.",
+      }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
     } else {
-      console.warn("[sefaz] SEFAZ_PFX_BASE64 não configurado — XML sem assinatura");
+      console.warn("[sefaz] SEFAZ_PFX_BASE64 não configurado — XML sem assinatura (homologação apenas)");
     }
 
     // ── 4. SOAP + envio ──

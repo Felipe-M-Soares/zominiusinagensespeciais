@@ -160,7 +160,9 @@ interface ContaBancaria {
   saldo_atual: number;
   webhook_url: string | null;
   integracao_ativa: boolean;
-  token_api: string | null;
+  // FIX: token_api (plain text) substituído por referência ao Vault — o
+  // valor real nunca trafega num SELECT * normal, só via RPC dedicada.
+  token_api_secret_id: string | null;
   envio_automatico_nf: boolean;
   created_at: string;
 }
@@ -2720,7 +2722,9 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
     if (c) {
       setEditConta(c); setBanco(c.banco); setAgencia(c.agencia); setContaNum(c.conta);
       setTipoConta(c.tipo); setSaldo(c.saldo_atual.toFixed(2)); setWebhook(c.webhook_url ?? "");
-      setToken(c.token_api ?? ""); setEnvioAuto(c.envio_automatico_nf); setIntegAtiva(c.integracao_ativa);
+      // FIX: o token nunca é trazido em texto puro pela listagem — o campo
+      // fica em branco; se o usuário não digitar nada, mantém o token atual.
+      setToken(""); setEnvioAuto(c.envio_automatico_nf); setIntegAtiva(c.integracao_ativa);
     } else {
       setEditConta(null); setBanco(BANCOS_BR[0]); setAgencia(""); setContaNum("");
       setTipoConta("corrente"); setSaldo(""); setWebhook(""); setToken("");
@@ -2737,20 +2741,41 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
       return;
     }
     setSaving(true);
+    // FIX: token_api removido do payload — nunca mais gravado em texto puro
+    // direto na tabela. Vai pela RPC set_conta_bancaria_token() abaixo.
     const payload = {
       banco, agencia, conta: contaNum, tipo: tipoConta,
       saldo_atual: parseFloat(saldo) || 0,
-      webhook_url: webhook.trim() || null, token_api: token.trim() || null,
+      webhook_url: webhook.trim() || null,
       envio_automatico_nf: envioAuto, integracao_ativa: integAtiva,
     };
     try {
       let err;
+      let contaId = editConta?.id;
       if (editConta) {
         ({ error: err } = await supabase.from("financeiro_contas_bancarias").update(payload).eq("id", editConta.id));
       } else {
-        ({ error: err } = await supabase.from("financeiro_contas_bancarias").insert(payload));
+        const { data: inserted, error: insErr } = await supabase
+          .from("financeiro_contas_bancarias").insert(payload).select("id").single();
+        err = insErr;
+        contaId = (inserted as { id: string } | null)?.id;
       }
       if (err) throw err;
+
+      // Só atualiza o token se o usuário digitou algo no campo — campo vazio
+      // significa "manter o token atual", não "remover".
+      if (token.trim() && contaId) {
+        const { data: tokenResult, error: tokenErr } = await supabase.rpc("set_conta_bancaria_token", {
+          p_conta_id: contaId, p_token: token.trim(),
+        });
+        const tr = tokenResult as { ok?: boolean; error?: string } | null;
+        if (tokenErr || tr?.ok === false) {
+          toast.error(tr?.error ?? "Conta salva, mas falhou ao salvar o token.");
+          setModalOpen(false); load();
+          return;
+        }
+      }
+
       toast.success(editConta ? "Conta atualizada!" : "Conta cadastrada!");
       setModalOpen(false); load();
     } catch { toast.error("Erro ao salvar conta."); }
@@ -2787,9 +2812,18 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
     }
     toast.info("Enviando requisição de teste…");
     try {
+      // FIX: o token não vem mais no objeto da conta (nunca trafega em
+      // texto puro pela listagem) — busca via RPC só neste momento, quando
+      // o próprio usuário pediu para testar.
+      let authHeader: Record<string, string> = {};
+      if (c.token_api_secret_id) {
+        const { data: tok, error: tokErr } = await supabase.rpc("get_conta_bancaria_token", { p_conta_id: c.id });
+        if (tokErr) { toast.error("Não foi possível recuperar o token configurado."); return; }
+        if (tok) authHeader = { Authorization: `Bearer ${tok}` };
+      }
       const res = await fetch(c.webhook_url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(c.token_api ? { Authorization: `Bearer ${c.token_api}` } : {}) },
+        headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({ evento: "teste", banco: c.banco, timestamp: new Date().toISOString() }),
       });
       if (res.ok) toast.success(`Webhook OK — HTTP ${res.status}`);
@@ -3001,8 +3035,11 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Token / Bearer API</label>
                   <input type="password" value={token} onChange={e => setToken(e.target.value.slice(0,300))}
-                    placeholder="Bearer token ou chave API"
+                    placeholder={editConta?.token_api_secret_id ? "•••••••• já configurado — deixe em branco para manter" : "Bearer token ou chave API"}
                     className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+                  {editConta?.token_api_secret_id && (
+                    <p className="text-[10px] text-muted-foreground/70">Armazenado de forma criptografada. Digite um novo valor para substituir.</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
                   {[
@@ -3714,7 +3751,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
 
 // ─── Página Principal ────────────────────────────────────────────────────────
 
-type FinTab = "dashboard" | "nfe" | "contas" | "fluxo" | "fornecedores" | "compras" | "compras_producao" | "compras_empresa" | "custos" | "bancos" | "precos";
+type FinTab = "dashboard" | "nfe" | "contas" | "fluxo" | "fornecedores" | "compras" | "lancamentos" | "bancos" | "precos";
 
 export default function Financeiro() {
   const navigate = useNavigate();
@@ -3729,6 +3766,10 @@ export default function Financeiro() {
   const [historicoOpen, setHistoricoOpen] = useState(false);
   const [notaManualOpen, setNotaManualOpen] = useState(false);
   const [activeTab,     setActiveTab]     = useState<FinTab>("dashboard");
+  // Sub-aba dentro de "Lançamentos" — unifica o que antes eram 3 abas
+  // separadas (Compras Produção, Compras Empresa, Custos), todas usando o
+  // mesmo componente PainelLancamentos só com tipo diferente.
+  const [lancTipo, setLancTipo] = useState<LancamentoFinanceiro["tipo"]>("compra_producao");
   const [lancamentos,   setLancamentos]   = useState<LancamentoFinanceiro[]>([]);
   const [searchNF,      setSearchNF]      = useState("");
 
@@ -3899,16 +3940,14 @@ export default function Financeiro() {
   }
 
   const TABS: { id: FinTab; label: string; icon: typeof Receipt; badge?: number }[] = [
-    { id: "dashboard",        label: "Dashboard",        icon: BarChart2   },
-    { id: "nfe",              label: "NF-e / SEFAZ",     icon: FileCheck2, badge: prontos },
-    { id: "fluxo",            label: "Fluxo de Caixa",   icon: TrendingUp  },
-    { id: "fornecedores",     label: "Fornecedores",      icon: Building2   },
-    { id: "compras",          label: "Pedidos Compra",    icon: ShoppingCart},
-    { id: "compras_producao", label: "Compras Produção",  icon: Factory     },
-    { id: "compras_empresa",  label: "Compras Empresa",   icon: Building2   },
-    { id: "custos",           label: "Custos",            icon: Zap         },
-    { id: "bancos",           label: "Bancos",            icon: Landmark    },
-    { id: "precos",           label: "Tabela de Preços",  icon: Tag         },
+    { id: "dashboard",    label: "Dashboard",        icon: BarChart2   },
+    { id: "nfe",          label: "NF-e / SEFAZ",     icon: FileCheck2, badge: prontos },
+    { id: "fluxo",        label: "Fluxo de Caixa",   icon: TrendingUp  },
+    { id: "fornecedores", label: "Fornecedores",      icon: Building2   },
+    { id: "compras",      label: "Pedidos Compra",    icon: ShoppingCart},
+    { id: "lancamentos",  label: "Lançamentos",       icon: Zap         },
+    { id: "bancos",       label: "Bancos",            icon: Landmark    },
+    { id: "precos",       label: "Tabela de Preços",  icon: Tag         },
   ];
 
   const PAGE_NAV_TABS = TABS.map((tab, i) => {
@@ -4071,15 +4110,15 @@ export default function Financeiro() {
         {activeTab === "compras" && (
           <Suspense fallback={null}><PedidosCompraPanel/></Suspense>
         )}
-        {activeTab === "compras_producao" && (
+        {activeTab === "lancamentos" && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
-                <Factory size={20} className="text-violet-600" />
+                <Zap size={20} className="text-violet-600" />
               </div>
               <div>
-                <h2 className="text-base font-bold">Compras — Produção</h2>
-                <p className="text-[12px] text-muted-foreground">Máquinas, matérias-primas, insumos e manutenção</p>
+                <h2 className="text-base font-bold">Lançamentos</h2>
+                <p className="text-[12px] text-muted-foreground">Compras de produção, compras da empresa e custos operacionais</p>
               </div>
               <button type="button" onClick={() => setNotaManualOpen(true)}
                 className="ml-auto h-8 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold text-white shrink-0 hover:opacity-90 transition-all active:scale-95"
@@ -4087,45 +4126,20 @@ export default function Financeiro() {
                 <FilePlus2 size={13} />Nova Nota Manual
               </button>
             </div>
-            <PainelLancamentos tipo="compra_producao" modoTeste={modoTeste} />
-          </div>
-        )}
-
-        {activeTab === "compras_empresa" && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-sky-500/10 flex items-center justify-center shrink-0">
-                <Building2 size={20} className="text-sky-600" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold">Compras — Empresa</h2>
-                <p className="text-[12px] text-muted-foreground">Computadores, mobiliário, materiais de escritório e ativos</p>
-              </div>
-              <button type="button" onClick={() => setNotaManualOpen(true)}
-                className="ml-auto h-8 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold text-white shrink-0 hover:opacity-90 transition-all active:scale-95"
-                style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
-                <FilePlus2 size={13} />Nova Nota Manual
-              </button>
-            </div>
-            <PainelLancamentos tipo="compra_empresa" modoTeste={modoTeste} />
-          </div>
-        )}
-
-        {activeTab === "custos" && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0">
-                <Zap size={20} className="text-orange-600" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold">Custos Operacionais</h2>
-                <p className="text-[12px] text-muted-foreground">Energia, aluguel, serviços recorrentes e custos fixos e variáveis</p>
-              </div>
-              <button type="button" onClick={() => setNotaManualOpen(true)}
-                className="ml-auto h-8 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold text-white shrink-0 hover:opacity-90 transition-all active:scale-95"
-                style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)" }}>
-                <FilePlus2 size={13} />Nova Nota Manual
-              </button>
+            <div className="flex gap-2">
+              {[
+                { tipo: "compra_producao" as const,   label: "Produção",    Icon: Factory   },
+                { tipo: "compra_empresa" as const,    label: "Empresa",     Icon: Building2 },
+                { tipo: "custo_operacional" as const, label: "Custos",      Icon: Zap       },
+              ].map(({ tipo, label, Icon }) => (
+                <button key={tipo} type="button" onClick={() => setLancTipo(tipo)}
+                  className={cn("flex-1 h-9 rounded-xl text-[12px] font-semibold border transition-all flex items-center justify-center gap-1.5",
+                    lancTipo === tipo
+                      ? "bg-violet-600 text-white border-violet-600"
+                      : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50")}>
+                  <Icon size={14} />{label}
+                </button>
+              ))}
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[
@@ -4143,7 +4157,7 @@ export default function Financeiro() {
                 );
               })}
             </div>
-            <PainelLancamentos tipo="custo_operacional" modoTeste={modoTeste} />
+            <PainelLancamentos tipo={lancTipo} modoTeste={modoTeste} />
           </div>
         )}
 
