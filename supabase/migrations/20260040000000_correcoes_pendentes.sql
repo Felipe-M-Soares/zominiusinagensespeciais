@@ -127,10 +127,10 @@ BEGIN
     END IF;
     PERFORM cron.schedule(
       'run_scheduled_backup_diario',
-      '0 3 * * *',
+      '0 6 * * *', -- 6h UTC = 3h em Brasília (UTC-3); pg_cron sempre usa UTC
       $job$SELECT public.run_scheduled_backup();$job$
     );
-    RAISE NOTICE 'Cron job "run_scheduled_backup_diario" agendado (todo dia às 3h, roda conforme o schedule configurado).';
+    RAISE NOTICE 'Cron job "run_scheduled_backup_diario" agendado (3h Brasília / 6h UTC, roda conforme o schedule configurado).';
   ELSE
     RAISE NOTICE 'pg_cron não está habilitada — backup automático NÃO foi agendado. Habilite em Database > Extensions > pg_cron e rode esta migration de novo.';
   END IF;
@@ -305,10 +305,10 @@ BEGIN
     END IF;
     PERFORM cron.schedule(
       'cleanup_audit_log_diario',
-      '0 2 * * *',
+      '0 5 * * *', -- 5h UTC = 2h em Brasília (UTC-3); pg_cron sempre usa UTC
       $job$SELECT public.cleanup_audit_log();$job$
     );
-    RAISE NOTICE 'Cron job "cleanup_audit_log_diario" agendado (todo dia às 2h).';
+    RAISE NOTICE 'Cron job "cleanup_audit_log_diario" agendado (2h Brasília / 5h UTC).';
   ELSE
     RAISE NOTICE 'pg_cron não está habilitada — limpeza automática de audit_log NÃO foi agendada. Habilite em Database > Extensions > pg_cron e rode esta migration de novo.';
   END IF;
