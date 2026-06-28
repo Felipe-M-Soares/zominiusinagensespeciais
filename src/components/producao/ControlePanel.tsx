@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus, X, ClipboardList, RefreshCw, WifiOff, ChevronDown,
-  ChevronUp, Package, Clock, Trash2, CheckCircle2, Factory,
+  ChevronUp, Package, Clock, Trash2, CheckCircle2, Factory, Pencil,
   AlertTriangle, BarChart2, FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,11 +19,12 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
-interface Maquina   { codigo: string; nome: string; }
-interface Produto   { codigo: string; descricao: string; pecas_por_hora: number; }
+interface Maquina   { id: string; codigo: string; nome: string; }
+interface Produto   { id: string; codigo: string; descricao: string; pecas_por_hora: number; }
 interface TipoParada { id: number; nome: string; categoria: string; }
 interface TipoRefugo { id: number; nome: string; }
 interface MateriaPrima { codigo: string; descricao: string; lote_atual?: string; }
@@ -52,6 +53,9 @@ interface Apontamento {
   consumo_mp_metros?: number;
   operador: string;
   status: string;
+  /** true quando o apontamento foi salvo offline e ainda aguarda
+   * sincronização real com o servidor — seq/lote ainda são provisórios. */
+  __pendingSync?: boolean;
   created_at: string;
 }
 
@@ -74,6 +78,7 @@ function hhmmParaHoras(s: string): number {
 
 function NovoApontamentoModal({
   open, onClose, onSaved, maquinas, produtos, tiposParada, tiposRefugo, materiasPrimas,
+  saveRpcWithFallback, updatePendingApontamento, getEditDataForPending, editandoLocalId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -83,6 +88,12 @@ function NovoApontamentoModal({
   tiposParada: TipoParada[];
   tiposRefugo: TipoRefugo[];
   materiasPrimas: MateriaPrima[];
+  saveRpcWithFallback: ReturnType<typeof useOfflineSync>["saveRpcWithFallback"];
+  updatePendingApontamento: ReturnType<typeof useOfflineSync>["updatePendingApontamento"];
+  getEditDataForPending: ReturnType<typeof useOfflineSync>["getEditDataForPending"];
+  /** Quando definido, o modal abre em modo edição de um apontamento ainda
+   * pendente (não sincronizado), identificado pelo id local (__pendingSync). */
+  editandoLocalId?: string | null;
 }) {
   const { user } = useAuth();
   const [step, setStep] = useState<1|2|3>(1);
@@ -129,6 +140,48 @@ function NovoApontamentoModal({
       setRefugos([]);
     }
   }, [open]);
+
+  // Carrega os dados originais de um apontamento pendente para edição.
+  // Usa os argumentos RPC salvos na fila (não o preview simplificado da
+  // lista), que têm todos os campos — incluindo paradas/refugos.
+  useEffect(() => {
+    if (!open || !editandoLocalId) return;
+    (async () => {
+      const args = await getEditDataForPending(editandoLocalId);
+      if (!args) {
+        toast.error("Não foi possível carregar os dados deste apontamento para edição.");
+        onClose();
+        return;
+      }
+      const a = args as Record<string, unknown>;
+      setForm({
+        data: String(a.p_data ?? new Date().toISOString().split("T")[0]),
+        turno: String(a.p_turno ?? "1º Turno"),
+        maquina: String(a.p_maquina ?? ""),
+        produto: String(a.p_produto ?? ""),
+        qtde_por_hora: a.p_qtde_por_hora != null ? String(a.p_qtde_por_hora) : "",
+        horas_planejadas: a.p_horas_planejadas != null ? String(a.p_horas_planejadas) : "",
+        qtde_plan_disp: a.p_qtde_plan_disp != null ? String(a.p_qtde_plan_disp) : "",
+        qtde_produzida: a.p_qtde_produzida != null ? String(a.p_qtde_produzida) : "",
+        horario_inicio: typeof a.p_horario_inicio === "number" ? horasParaHHMM(a.p_horario_inicio) : "06:00",
+        horario_fim: typeof a.p_horario_fim === "number" ? horasParaHHMM(a.p_horario_fim) : "15:00",
+        operador: String(a.p_operador ?? ""),
+        lote_mp: String(a.p_lote_mp ?? ""),
+        descricao_mp: String(a.p_descricao_mp ?? ""),
+        comprimento_mm: a.p_comprimento_mm != null ? String(a.p_comprimento_mm) : "",
+        consumo_mp_metros: a.p_consumo_mp_metros != null ? String(a.p_consumo_mp_metros) : "",
+        lote: String(a.p_lote ?? ""),
+      });
+      try {
+        setParadas(a.p_paradas ? JSON.parse(String(a.p_paradas)) : []);
+        setRefugos(a.p_refugos ? JSON.parse(String(a.p_refugos)) : []);
+      } catch {
+        setParadas([]);
+        setRefugos([]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editandoLocalId]);
 
   // Preenche campos automaticamente ao selecionar produto
   useEffect(() => {
@@ -208,7 +261,7 @@ function NovoApontamentoModal({
     setSaving(true);
     try {
       const prod = produtos.find(p => p.codigo === form.produto);
-      const { data, error } = await (supabase.rpc as any)("criar_apontamento_ppi51", {
+      const rpcArgs = {
         p_data:               form.data,
         p_turno:              form.turno,
         p_maquina:            form.maquina,
@@ -231,9 +284,61 @@ function NovoApontamentoModal({
         p_operador:           form.operador,
         p_paradas:            JSON.stringify(paradas.filter(p => p.duracao_horas > 0)),
         p_refugos:            JSON.stringify(refugos.filter(r => r.quantidade > 0)),
-      });
-      if (error) throw error;
-      toast.success(`Apontamento Nº${(data as { seq: number }).seq} registrado!`);
+      };
+
+      // Preview local: usado só se salvar offline (seq/lote reais só
+      // existem depois que o servidor confirma via nextval — aqui é só
+      // para o operador ver o que registrou, mesmo antes de sincronizar.
+      const localPreview: Apontamento = {
+        id: "", // preenchido com o id local dentro de saveRpcWithFallback
+        seq_producao: 0,
+        data_apontamento: form.data,
+        turno: form.turno,
+        maquina_codigo: form.maquina,
+        produto: form.produto,
+        descricao_produto: prod?.descricao || "",
+        qtde_por_hora: parseFloat(form.qtde_por_hora) || 0,
+        horas_planejadas: parseFloat(form.horas_planejadas) || 0,
+        qtde_prevista: qtdePrevista,
+        qtde_plan_disp: parseFloat(form.qtde_plan_disp) || qtdePrevista,
+        quantidade: parseInt(form.qtde_produzida) || 0,
+        horario_inicio: hhmmParaHoras(form.horario_inicio),
+        horario_fim: hhmmParaHoras(form.horario_fim),
+        lote: form.lote || "(gerado ao sincronizar)",
+        lote_mp: form.lote_mp,
+        descricao_mp: form.descricao_mp,
+        consumo_mp_metros: parseFloat(form.consumo_mp_metros) || undefined,
+        operador: form.operador,
+        status: "concluido",
+        created_at: new Date().toISOString(),
+      };
+
+      const result = editandoLocalId
+        ? await updatePendingApontamento(
+            editandoLocalId,
+            "apontamentos",
+            rpcArgs,
+            localPreview as unknown as Record<string, unknown>
+          )
+        : await saveRpcWithFallback(
+            "criar_apontamento_ppi51",
+            rpcArgs,
+            "apontamentos",
+            localPreview as unknown as Record<string, unknown>
+          );
+
+      if (!result.ok) {
+        toast.error(result.error ?? "Erro ao salvar apontamento.");
+        return;
+      }
+
+      if (editandoLocalId) {
+        toast.success("Apontamento pendente atualizado.");
+      } else if ("savedOffline" in result && result.savedOffline) {
+        toast.warning("Sem conexão — apontamento salvo localmente e será sincronizado ao reconectar.", { duration: 5000 });
+      } else {
+        toast.success("Apontamento registrado!");
+      }
       onSaved();
       onClose();
     } catch (e: unknown) {
@@ -554,7 +659,7 @@ function NovoApontamentoModal({
 
 // ── Card de apontamento ────────────────────────────────────────────────────────
 
-function ApontamentoCard({ ap }: { ap: Apontamento }) {
+function ApontamentoCard({ ap, onEditar, onCancelar }: { ap: Apontamento; onEditar: () => void; onCancelar: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const eff = ap.qtde_plan_disp > 0
     ? Math.round(ap.quantidade / ap.qtde_plan_disp * 100)
@@ -566,13 +671,25 @@ function ApontamentoCard({ ap }: { ap: Apontamento }) {
         className="w-full text-left px-4 py-3 flex items-start gap-3"
         onClick={() => setExpanded(v => !v)}
       >
-        <div className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0">
-          <Factory className="h-4 w-4 text-green-600" />
+        <div className={cn(
+          "h-8 w-8 rounded-lg flex items-center justify-center shrink-0",
+          ap.__pendingSync ? "bg-amber-500/10" : "bg-green-500/10"
+        )}>
+          {ap.__pendingSync
+            ? <WifiOff className="h-4 w-4 text-amber-600" />
+            : <Factory className="h-4 w-4 text-green-600" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-mono text-muted-foreground">#{ap.seq_producao}</span>
+            <span className="text-[11px] font-mono text-muted-foreground">
+              {ap.__pendingSync ? "#—" : `#${ap.seq_producao}`}
+            </span>
             <span className="text-sm font-semibold truncate">{ap.produto}</span>
+            {ap.__pendingSync && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
+                Pendente de sincronização
+              </span>
+            )}
             {eff !== null && (
               <span className={cn(
                 "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
@@ -616,6 +733,25 @@ function ApontamentoCard({ ap }: { ap: Apontamento }) {
               </div>
             </div>
           )}
+          {/* Editar/cancelar só fazem sentido para apontamentos que ainda
+              não foram confirmados pelo servidor — depois de sincronizado,
+              a correção precisa passar pelo fluxo normal (online). */}
+          {ap.__pendingSync && (
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={onEditar}
+                className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 border border-amber-500/30 transition-colors"
+              >
+                <Pencil className="h-3 w-3" /> Editar
+              </button>
+              <button
+                onClick={onCancelar}
+                className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-red-700 dark:text-red-400 hover:bg-red-500/10 border border-red-500/30 transition-colors"
+              >
+                <Trash2 className="h-3 w-3" /> Cancelar
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -633,29 +769,49 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
   const [materiasPrimas, setMateriasPrimas] = useState<MateriaPrima[]>([]);
   const [loading, setLoading]           = useState(true);
   const [modalOpen, setModalOpen]       = useState(false);
+  const [editandoLocalId, setEditandoLocalId] = useState<string | null>(null);
   const [filtroData, setFiltroData]     = useState(new Date().toISOString().split("T")[0]);
+  const { isOnline, pendingCount, syncing, loadWithFallback, saveRpcWithFallback, updatePendingApontamento, getEditDataForPending, cancelPendingApontamento } = useOfflineSync();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [maqR, prodR, tpR, trR, mpR, apR] = await Promise.all([
-      supabase.from("maquinas_producao").select("codigo,nome").order("codigo"),
-      supabase.from("produtos_producao").select("codigo,descricao,pecas_por_hora").eq("ativo", true).order("codigo"),
+    // FIX: máquinas e produtos usam loadWithFallback — são as opções que o
+    // operador precisa ver no formulário de apontamento mesmo offline (sem
+    // isso, o formulário abriria vazio se a conexão já tivesse caído antes
+    // de carregar a tela). tipos de parada/refugo/matéria-prima continuam
+    // direto: mudam raramente e o impacto de não tê-los offline é menor
+    // (o formulário ainda funciona, só com menos opções de detalhamento).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [maqData, prodData, tpR, trR, mpR] = await Promise.all([
+      loadWithFallback<Maquina>("maquinas_producao", "maquinas", (q: any) => q.select("id,codigo,nome").order("codigo")),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      loadWithFallback<Produto>("produtos_producao", "produtos_producao", (q: any) => q.select("id,codigo,descricao,pecas_por_hora").eq("ativo", true).order("codigo")),
       supabase.from("tipo_parada_producao").select("id,nome,categoria").eq("ativo", true).order("id"),
       supabase.from("tipo_refugo_producao").select("id,nome").eq("ativo", true).order("id"),
       supabase.from("materias_primas_producao").select("codigo,descricao,lote_atual").order("codigo"),
-      supabase.from("apontamentos_producao")
-        .select("id,seq_producao,data_apontamento,turno,maquina_codigo,produto,descricao_produto,qtde_por_hora,horas_planejadas,qtde_prevista,qtde_plan_disp,quantidade,horario_inicio,horario_fim,lote,lote_mp,descricao_mp,consumo_mp_metros,operador,status,created_at")
-        .eq("data_apontamento", filtroData)
-        .order("seq_producao", { ascending: false }),
     ]);
-    if (maqR.data) setMaquinas(maqR.data as Maquina[]);
-    if (prodR.data) setProdutos(prodR.data as Produto[]);
+    setMaquinas(maqData);
+    setProdutos(prodData);
     if (tpR.data) setTiposParada(tpR.data as TipoParada[]);
     if (trR.data) setTiposRefugo(trR.data as TipoRefugo[]);
     if (mpR.data) setMateriasPrimas(mpR.data as MateriaPrima[]);
-    if (apR.data) setApontamentos(apR.data as Apontamento[]);
+
+    // Apontamentos do dia: online busca do servidor (mesmo comportamento de
+    // antes); offline, junta os já confirmados (cache local) com os que
+    // ainda estão na fila de sincronização (__pendingSync), para o operador
+    // ver tudo que já registrou hoje, mesmo sem internet.
+    if (navigator.onLine) {
+      const apR = await supabase.from("apontamentos_producao")
+        .select("id,seq_producao,data_apontamento,turno,maquina_codigo,produto,descricao_produto,qtde_por_hora,horas_planejadas,qtde_prevista,qtde_plan_disp,quantidade,horario_inicio,horario_fim,lote,lote_mp,descricao_mp,consumo_mp_metros,operador,status,created_at")
+        .eq("data_apontamento", filtroData)
+        .order("seq_producao", { ascending: false });
+      if (apR.data) setApontamentos(apR.data as Apontamento[]);
+    } else {
+      const cached = await loadWithFallback<Apontamento>("apontamentos_producao", "apontamentos");
+      setApontamentos(cached.filter(a => a.data_apontamento === filtroData));
+    }
     setLoading(false);
-  }, [filtroData]);
+  }, [filtroData, loadWithFallback]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -684,6 +840,17 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
         <span className="text-[11px] text-muted-foreground">
           {apontamentos.length} apontamento(s)
         </span>
+        {!isOnline && (
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full">
+            <WifiOff className="h-3 w-3" /> Offline — salvando localmente
+          </span>
+        )}
+        {isOnline && pendingCount > 0 && (
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full">
+            <RefreshCw className={cn("h-3 w-3", syncing && "animate-spin")} />
+            {syncing ? "Sincronizando..." : `${pendingCount} pendente(s) de sincronizar`}
+          </span>
+        )}
         <div className="ml-auto flex gap-2">
           <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
@@ -727,19 +894,36 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
         </div>
       ) : (
         <div className="space-y-2">
-          {apontamentos.map(ap => <ApontamentoCard key={ap.id} ap={ap} />)}
+          {apontamentos.map(ap => (
+            <ApontamentoCard
+              key={ap.id}
+              ap={ap}
+              onEditar={() => { setEditandoLocalId(ap.id); setModalOpen(true); }}
+              onCancelar={async () => {
+                if (!window.confirm("Cancelar este apontamento pendente? Os dados digitados serão perdidos.")) return;
+                const r = await cancelPendingApontamento(ap.id, "apontamentos");
+                if (!r.ok) { toast.error(r.error ?? "Erro ao cancelar."); return; }
+                toast.success("Apontamento pendente cancelado.");
+                load();
+              }}
+            />
+          ))}
         </div>
       )}
 
       <NovoApontamentoModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSaved={() => { setModalOpen(false); load(); }}
+        onClose={() => { setModalOpen(false); setEditandoLocalId(null); }}
+        onSaved={() => { setModalOpen(false); setEditandoLocalId(null); load(); }}
         maquinas={maquinas}
         produtos={produtos}
         tiposParada={tiposParada}
         tiposRefugo={tiposRefugo}
         materiasPrimas={materiasPrimas}
+        saveRpcWithFallback={saveRpcWithFallback}
+        updatePendingApontamento={updatePendingApontamento}
+        getEditDataForPending={getEditDataForPending}
+        editandoLocalId={editandoLocalId}
       />
     </div>
   );

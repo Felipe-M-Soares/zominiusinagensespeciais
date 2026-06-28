@@ -12,6 +12,7 @@ import type { User, Session } from "@supabase/supabase-js";
 import type { AppRole } from "@/types/roles";
 import { logger } from "@/lib/logger";
 import { translateError } from "@/lib/authErrors";
+import { readRawSessionFromStorage } from "@/lib/offlineSessionFallback";
 
 interface AuthContext {
   user: User | null;
@@ -51,6 +52,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // imediatamente após a troca de senha (o onAuthStateChange pode disparar antes
   // do commit em profiles, relendo must_change_password=true do banco)
   const passwordJustChangedRef = useRef(false);
+  // Marca quando o próprio usuário pediu para sair (botão "Sair") — distingue
+  // de um SIGNED_OUT espontâneo disparado pelo SDK quando a renovação
+  // automática do token falha por falta de internet (ver onAuthStateChange
+  // abaixo). Sem essa distinção, um operador offline seria deslogado contra
+  // a vontade assim que o access token expirasse, mesmo com refresh token
+  // válido — exatamente o cenário que o suporte a offline da Produção
+  // precisa evitar.
+  const intentionalSignOutRef = useRef(false);
 
   const signInWindowStartRef = useRef<number>(0);
   const signInAttemptsRef    = useRef<number>(0);
@@ -93,14 +102,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let initialLoadDone = false;
     supabase.auth.getSession()
       .then(async ({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) await fetchRoleAndApproval(session.user.id);
+        // FIX: getSession() pode retornar null mesmo com uma sessão válida
+        // salva localmente, se o access_token já expirou e a tentativa de
+        // renovação automática falhou por falta de rede (comportamento
+        // documentado do supabase-js). Sem isso, abrir o app offline depois
+        // do token expirar desloga o operador mesmo com refresh_token
+        // intacto — exatamente o cenário que o apontamento offline da
+        // Produção precisa evitar.
+        let effectiveSession = session;
+        if (!effectiveSession && !navigator.onLine) {
+          const raw = readRawSessionFromStorage();
+          if (raw) {
+            logger.error("getSession() retornou null offline — usando sessão crua do localStorage.");
+            effectiveSession = raw;
+          }
+        }
+        setSession(effectiveSession);
+        setUser(effectiveSession?.user ?? null);
+        if (effectiveSession?.user) await fetchRoleAndApproval(effectiveSession.user.id);
         initialLoadDone = true;
         setLoading(false);
       })
       .catch((err) => {
         logger.error("getSession failed:", err);
+        if (!navigator.onLine) {
+          const raw = readRawSessionFromStorage();
+          if (raw) {
+            logger.error("getSession() rejeitou offline — usando sessão crua do localStorage.");
+            setSession(raw);
+            setUser(raw.user);
+            fetchRoleAndApproval(raw.user.id).finally(() => {
+              initialLoadDone = true;
+              setLoading(false);
+            });
+            return;
+          }
+        }
         initialLoadDone = true;
         setLoading(false);
       });
@@ -111,6 +148,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Ignoramos re-fetch do profile aqui — o Realtime do profile já trata isso
       // com o valor definitivo pós-commit, evitando race condition com must_change_password.
       if (event === "USER_UPDATED") { setSession(session); return; }
+
+      // FIX: quando o token de acesso expira enquanto o dispositivo está
+      // offline, a tentativa automática de renovação falha e o SDK dispara
+      // SIGNED_OUT mesmo com um refresh token ainda válido (comportamento
+      // documentado do supabase-js — não há como renovar sem rede). Sem
+      // este tratamento, um operador de produção seria deslogado contra a
+      // vontade só por ficar sem internet, perdendo acesso ao apontamento
+      // offline que dependemos dele conseguir abrir.
+      // Mantemos a sessão local intacta e tentamos de novo quando a conexão
+      // voltar; só aceitamos o SIGNED_OUT de verdade se foi por ação
+      // intencional (botão Sair, bloqueio de acesso) ou se há rede mas o
+      // servidor mesmo assim invalidou a sessão (token revogado de fato).
+      if (event === "SIGNED_OUT" && !navigator.onLine && !intentionalSignOutRef.current) {
+        logger.error("SIGNED_OUT recebido offline — mantendo sessão local até reconectar.");
+        if (initialLoadDone) setLoading(false);
+        return;
+      }
+      intentionalSignOutRef.current = false;
+
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -126,7 +182,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (initialLoadDone) setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // Quando a conexão volta, força uma tentativa de renovação real — se o
+    // refresh token ainda for válido, dispara TOKEN_REFRESHED e a sessão
+    // volta a ficar 100% confirmada pelo servidor; se não for mais válido
+    // (revogado/expirado de verdade), dispara SIGNED_OUT — e aí sim,
+    // corretamente, deve deslogar.
+    const handleOnlineRetry = () => {
+      supabase.auth.refreshSession().catch(() => { /* tratado via onAuthStateChange */ });
+    };
+    window.addEventListener("online", handleOnlineRetry);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener("online", handleOnlineRetry);
+    };
   }, [fetchRoleAndApproval]);
 
   // FIX: Substituído polling a cada 15s por canal Realtime (WebSocket).
@@ -186,6 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: profileData } = await supabase
           .from("profiles").select("blocked").eq("user_id", data.user.id).maybeSingle();
         if (profileData?.blocked === true) {
+          intentionalSignOutRef.current = true;
           await supabase.auth.signOut();
           return { error: "Seu acesso foi bloqueado pelo administrador. Entre em contato com o suporte." };
         }
@@ -196,6 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    intentionalSignOutRef.current = true;
     clearLocalState();
     await supabase.auth.signOut();
   }, [clearLocalState]);

@@ -15,6 +15,10 @@ import {
   getQueuedOperations,
   removeFromQueue,
   incrementRetry,
+  findQueuedOperationByLocalId,
+  getQueuedRpcArgsByLocalId,
+  updateQueuedRpcArgs,
+  cancelPendingRpc,
   type OfflineTable,
   type SyncQueueItem,
 } from "@/lib/offlineDB";
@@ -66,8 +70,25 @@ export function useOfflineSync() {
           const { error } = await supabase.from(item.table as never).update(rest as never).eq("id", id);
           if (error) throw error;
         } else if (item.operation === "DELETE") {
-          const { error } = await supabase.from(item.table as never).delete().eq("id", item.data.id);
+          const { id } = item.data as { id: string };
+          const { error } = await supabase.from(item.table as never).delete().eq("id", id);
           if (error) throw error;
+        } else if (item.operation === "RPC" && item.rpcName) {
+          // Apontamentos de produção via RPC (criar_apontamento_ppi51) geram
+          // sequencial/lote no servidor (nextval) — não podem ser calculados
+          // localmente sem risco de colisão entre operadores offline, então
+          // a fila guarda os dados brutos do formulário e só chama a função
+          // real quando reconectar.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: rpcResult, error } = await (supabase.rpc as any)(item.rpcName, item.data);
+          if (error) throw error;
+          const result = rpcResult as { ok?: boolean; error?: string } | null;
+          if (result?.ok === false) throw new Error(result.error ?? "Falha ao sincronizar apontamento");
+          // Remove o registro local "pendente" (id temporário) — a próxima
+          // recarga de dados online traz o apontamento real do servidor.
+          if (item.data.__localId) {
+            await dbDelete("apontamentos", item.data.__localId as string);
+          }
         }
         await removeFromQueue(item.id);
         synced++;
@@ -145,8 +166,9 @@ export function useOfflineSync() {
 
       if (result.error) throw result.error;
 
-      // Atualiza cache local
-      if (operation !== "DELETE" && result.data) {
+      // Atualiza cache local (chega aqui só para INSERT/UPDATE — o branch
+      // DELETE/RPC sempre retorna antes, nas linhas acima)
+      if (result.data) {
         await dbPut(offlineTable, result.data as T);
       }
 
@@ -158,6 +180,88 @@ export function useOfflineSync() {
       await refreshPendingCount();
       return { data: itemToStore, error: null, savedOffline: true };
     }
+  }, [refreshPendingCount]);
+
+  // ── Salva via RPC com fallback offline ──────────────────────────────────
+  // Para chamadas que não são um INSERT/UPDATE/DELETE simples de tabela —
+  // ex: criar_apontamento_ppi51, que gera sequencial/lote no servidor e
+  // grava em mais de uma tabela atomicamente. Quando offline, guarda os
+  // dados brutos do formulário num registro local temporário (id próprio,
+  // prefixo "local-") para o operador ver na lista mesmo sem ter sincronizado
+  // ainda; a RPC real só é chamada quando a conexão volta.
+  const saveRpcWithFallback = useCallback(async (
+    rpcName: string,
+    rpcArgs: Record<string, unknown>,
+    offlineTable: OfflineTable,
+    localPreview: Record<string, unknown>
+  ): Promise<{ ok: boolean; error: string | null; savedOffline: boolean; localId?: string }> => {
+    if (!navigator.onLine) {
+      const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      await dbPut(offlineTable, { ...localPreview, id: localId, __pendingSync: true });
+      await queueOperation(offlineTable, "RPC", { ...rpcArgs, __localId: localId }, rpcName);
+      await refreshPendingCount();
+      return { ok: true, error: null, savedOffline: true, localId };
+    }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)(rpcName, rpcArgs);
+      if (error) throw error;
+      const result = data as { ok?: boolean; error?: string } | null;
+      if (result?.ok === false) throw new Error(result.error ?? "Erro ao salvar");
+      return { ok: true, error: null, savedOffline: false };
+    } catch (err) {
+      // Fallback: rede falhou no meio da chamada (ex: conexão instável,
+      // não necessariamente navigator.onLine=false) — mesma lógica do caso
+      // offline acima, para nunca perder o que o operador digitou.
+      const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      await dbPut(offlineTable, { ...localPreview, id: localId, __pendingSync: true });
+      await queueOperation(offlineTable, "RPC", { ...rpcArgs, __localId: localId }, rpcName);
+      await refreshPendingCount();
+      const msg = err instanceof Error ? err.message : "Falha de conexão";
+      return { ok: true, error: msg, savedOffline: true, localId };
+    }
+  }, [refreshPendingCount]);
+
+  // ── Busca os dados originais de um apontamento pendente para edição ─────
+  // Diferente do preview exibido no card (simplificado), retorna os
+  // argumentos RPC completos salvos na fila — inclui paradas/refugos.
+  const getEditDataForPending = useCallback(async (localId: string) => {
+    return getQueuedRpcArgsByLocalId(localId);
+  }, []);
+
+  // ── Edita um apontamento ainda pendente (não sincronizado) ──────────────
+  // Atualiza tanto o preview exibido na tela quanto os argumentos reais que
+  // serão enviados à RPC quando a conexão voltar. Só funciona para itens
+  // ainda na fila local — depois de sincronizado, a edição precisa passar
+  // pelo fluxo normal (online) de correção de apontamento.
+  const updatePendingApontamento = useCallback(async (
+    localId: string,
+    offlineTable: OfflineTable,
+    newRpcArgs: Record<string, unknown>,
+    newLocalPreview: Record<string, unknown>
+  ): Promise<{ ok: boolean; error: string | null }> => {
+    const queueItem = await findQueuedOperationByLocalId(localId);
+    if (!queueItem) {
+      return { ok: false, error: "Este apontamento já foi sincronizado e não pode mais ser editado offline." };
+    }
+    await updateQueuedRpcArgs(queueItem.id, newRpcArgs);
+    await dbPut(offlineTable, { ...newLocalPreview, id: localId, __pendingSync: true });
+    return { ok: true, error: null };
+  }, []);
+
+  // ── Cancela (remove) um apontamento ainda pendente ──────────────────────
+  const cancelPendingApontamento = useCallback(async (
+    localId: string,
+    offlineTable: OfflineTable
+  ): Promise<{ ok: boolean; error: string | null }> => {
+    const queueItem = await findQueuedOperationByLocalId(localId);
+    if (!queueItem) {
+      return { ok: false, error: "Este apontamento já foi sincronizado e não pode mais ser cancelado offline." };
+    }
+    await cancelPendingRpc(queueItem.id, offlineTable);
+    await refreshPendingCount();
+    return { ok: true, error: null };
   }, [refreshPendingCount]);
 
   // ── Carrega dados (online primeiro, fallback offline) ──────────────────────
@@ -192,6 +296,10 @@ export function useOfflineSync() {
     syncing,
     syncQueue,
     saveWithFallback,
+    saveRpcWithFallback,
+    getEditDataForPending,
+    updatePendingApontamento,
+    cancelPendingApontamento,
     loadWithFallback,
     refreshPendingCount,
   };
