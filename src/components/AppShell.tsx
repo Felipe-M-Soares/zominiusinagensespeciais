@@ -22,7 +22,10 @@ import {
   Factory,
   Cpu,
   ShieldCheck,
+  Info,
 } from "lucide-react";
+import { FeedbackButton } from "@/components/FeedbackButton";
+import { APP_VERSION } from "@/lib/appInfo";
 
 interface NavItem {
   label: string;
@@ -344,6 +347,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <NotificacoesPanel {...notifState} align="left" dropUp />
             </div>
 
+            <button
+              onClick={() => navigate("/sobre")}
+              title="Sobre o sistema, manual, guia de uso e reportar problemas"
+              className={cn(
+                "w-full flex items-center rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors",
+                collapsed ? "p-2.5 justify-center" : "px-3 py-2 gap-3"
+              )}
+            >
+              <Info className={cn("shrink-0", collapsed ? "w-5 h-5" : "w-4 h-4")} />
+              {!collapsed && <span>Sobre / Ajuda</span>}
+            </button>
+
             {collapsed ? (
               <div className="pt-1 border-t border-sidebar-border/40">
                 <div className="flex flex-col items-center gap-1 py-1">
@@ -377,6 +392,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <LogOut className="w-3.5 h-3.5" />
                   </button>
                 </div>
+                <p className="text-[9px] text-muted-foreground/50 text-center pt-1">v{APP_VERSION}</p>
               </div>
             )}
           </div>
@@ -425,6 +441,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>
           </button>
+          <button
+            onClick={() => { setMobileOpen(false); navigate("/sobre"); }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+          >
+            <Info className="w-4 h-4" />
+            <span>Sobre / Ajuda</span>
+          </button>
           <div className="pt-1 border-t border-sidebar-border/40 mt-1">
             <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg">
               <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
@@ -442,6 +465,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
+            <p className="text-[9px] text-muted-foreground/50 text-center pt-1">v{APP_VERSION}</p>
           </div>
         </div>
       </aside>

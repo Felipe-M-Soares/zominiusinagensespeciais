@@ -16,8 +16,9 @@ import NotFound from "./pages/NotFound";
 
 const Index       = lazy(() => import("./pages/Index"));
 const Admin       = lazy(() => import("./pages/Admin"));
-const SettingsPage = lazy(() => import("./pages/Settings"));
-const Manuals     = lazy(() => import("./pages/Manuals"));
+const Manual      = lazy(() => import("./pages/Manuals"));
+const Guia        = lazy(() => import("./pages/Guia"));
+const Sobre       = lazy(() => import("./pages/Sobre"));
 const Estoque     = lazy(() => import("./pages/Estoque"));
 const Comercial   = lazy(() => import("./pages/Comercial"));
 const Financeiro  = lazy(() => import("./pages/Financeiro"));
@@ -102,8 +103,9 @@ const App = () => (
             <Route element={<ProtectedLayout />}>
               <Route path="/"           element={<ErrorBoundary><IndexRoute /></ErrorBoundary>} />
               <Route path="/set-password" element={<ErrorBoundary><SetPassword /></ErrorBoundary>} />
-              <Route path="/settings"   element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
-              <Route path="/manuals"    element={<ErrorBoundary><Manuals /></ErrorBoundary>} />
+              <Route path="/manual"     element={<ErrorBoundary><Manual /></ErrorBoundary>} />
+              <Route path="/guia"       element={<ErrorBoundary><Guia /></ErrorBoundary>} />
+              <Route path="/sobre"      element={<ErrorBoundary><Sobre /></ErrorBoundary>} />
               <Route path="/estoque"    element={<ErrorBoundary><RoleGuard roles={["estoque","qualidade","admin"]}><Estoque /></RoleGuard></ErrorBoundary>} />
               <Route path="/producao"   element={<ErrorBoundary><RoleGuard roles={["producao","admin"]}><Producao /></RoleGuard></ErrorBoundary>} />
               <Route path="/qualidade"  element={<ErrorBoundary><RoleGuard roles={["qualidade","admin"]}><Qualidade /></RoleGuard></ErrorBoundary>} />

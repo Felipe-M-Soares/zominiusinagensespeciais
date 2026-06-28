@@ -2,12 +2,13 @@ import { useState } from "react";
 import { AdminDevices } from "@/components/admin/AdminDevices";
 import { AdminUsers } from "@/components/admin/AdminUsers";
 import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
+import { FeedbackPanel } from "@/components/admin/FeedbackPanel";
 import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 import { DashboardGeral } from "@/components/qualidade/DashboardGeral";
 import { PageNav } from "@/components/PageNav";
-import { Settings, Cpu, Users, LayoutDashboard, Shield } from "lucide-react";
+import { Settings, Cpu, Users, LayoutDashboard, Shield, MessageSquare } from "lucide-react";
 
-type AdminTab = "dashboard" | "devices" | "users" | "auditoria";
+type AdminTab = "dashboard" | "devices" | "users" | "auditoria" | "feedback";
 
 const ADMIN_TABS = [
   {
@@ -49,6 +50,16 @@ const ADMIN_TABS = [
     activeBorder: "border-amber-500/40",
     badgeBg: "bg-amber-500/15",
     badgeText: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    id: "feedback" as AdminTab,
+    label: "Feedback",
+    Icon: MessageSquare,
+    activeColor: "text-rose-600 dark:text-rose-400",
+    activeBg: "bg-rose-500/10",
+    activeBorder: "border-rose-500/40",
+    badgeBg: "bg-rose-500/15",
+    badgeText: "text-rose-600 dark:text-rose-400",
   },
 ];
 
@@ -93,6 +104,7 @@ export default function Admin() {
           {activeTab === "devices"   && <AdminDevices />}
           {activeTab === "users"     && <AdminUsers />}
           {activeTab === "auditoria" && <AuditLogPanel key={auditKey} />}
+          {activeTab === "feedback"  && <FeedbackPanel />}
         </div>
       </main>
     </div>

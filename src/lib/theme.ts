@@ -1,7 +1,8 @@
 /**
- * Utilitários de tema — extraídos de pages/Settings.tsx para evitar que
- * imports estáticos de getStoredTheme/applyTheme forcem o carregamento do
- * bundle completo da página Settings (que é lazy) em todas as outras páginas.
+ * Utilitários de tema — extraídos para um módulo próprio para evitar que
+ * imports estáticos de getStoredTheme/applyTheme forcem o carregamento de
+ * código adicional em todas as páginas que só precisam alternar tema
+ * (ex: AppShell.tsx, usado em toda a aplicação).
  */
 
 export type Theme = "light" | "dark" | "system";

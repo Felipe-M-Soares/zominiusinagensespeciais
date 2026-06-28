@@ -750,6 +750,42 @@ export type Database = {
           },
         ]
       }
+      feedback_reports: {
+        Row: {
+          app_version: string | null
+          created_at: string
+          id: string
+          mensagem: string
+          pagina: string | null
+          status: string
+          tipo: string
+          user_id: string | null
+          user_name: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          created_at?: string
+          id?: string
+          mensagem: string
+          pagina?: string | null
+          status?: string
+          tipo: string
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          created_at?: string
+          id?: string
+          mensagem?: string
+          pagina?: string | null
+          status?: string
+          tipo?: string
+          user_id?: string | null
+          user_name?: string | null
+        }
+        Relationships: []
+      }
       financeiro_contas_bancarias: {
         Row: {
           agencia: string
@@ -2326,6 +2362,33 @@ export type Database = {
           p_source_item_id: string
         }
         Returns: string
+      }
+      enviar_feedback: {
+        Args: {
+          p_app_version?: string
+          p_mensagem: string
+          p_pagina?: string
+          p_tipo: string
+        }
+        Returns: Json
+      }
+      atualizar_status_feedback: {
+        Args: { p_id: string; p_status: string }
+        Returns: Json
+      }
+      listar_feedback_reports: {
+        Args: { p_status?: string }
+        Returns: {
+          app_version: string | null
+          created_at: string
+          id: string
+          mensagem: string
+          pagina: string | null
+          status: string
+          tipo: string
+          user_id: string | null
+          user_name: string | null
+        }[]
       }
       faturar_pedido: {
         Args: {

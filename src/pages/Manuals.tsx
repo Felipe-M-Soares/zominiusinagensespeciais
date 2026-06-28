@@ -48,7 +48,7 @@ interface QueuedFile {
   errorMsg?: string;
 }
 
-export default function Manuals() {
+export default function Manual() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [manuals, setManuals] = useState<Manual[]>([]);
@@ -245,9 +245,11 @@ export default function Manuals() {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-sm font-semibold">Manuais</h1>
-          <div className="ml-auto flex items-center gap-1">
-
+          <h1 className="text-sm font-semibold">Manual</h1>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => navigate("/guia")}>
+              <BookOpen className="h-3.5 w-3.5" /> Guia de Uso
+            </Button>
             {isAdmin && (
               <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setDialogOpen(true)}>
                 <Plus className="h-3.5 w-3.5" /> Adicionar
@@ -340,7 +342,7 @@ export default function Manuals() {
       <Dialog open={dialogOpen} onOpenChange={open => { if (!open) handleCloseDialog(); }}>
         <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Adicionar Manuais</DialogTitle>
+            <DialogTitle>Adicionar Manual</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3 overflow-hidden flex flex-col">

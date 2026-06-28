@@ -5,6 +5,12 @@ import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig(({ mode }) => ({
   root: ".",
+  // Injeta a data de build real em tempo de compilação — diferente de
+  // `new Date()` dentro do código do app, que capturaria a data em que o
+  // navegador do usuário executa o bundle, não a data em que foi gerado.
+  define: {
+    __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+  },
   server: {
     host: "::",
     port: 8080,
