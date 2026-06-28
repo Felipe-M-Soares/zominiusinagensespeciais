@@ -2464,6 +2464,10 @@ export type Database = {
         Args: { p_pedido_id: string; p_user_name: string }
         Returns: Json
       }
+      obter_saude_sistema: {
+        Args: never
+        Returns: Json
+      }
       peek_next_nf_number: {
         Args: { p_serie?: string; p_tipo?: string }
         Returns: number

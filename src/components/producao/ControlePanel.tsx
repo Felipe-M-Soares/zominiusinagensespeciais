@@ -79,6 +79,7 @@ function hhmmParaHoras(s: string): number {
 function NovoApontamentoModal({
   open, onClose, onSaved, maquinas, produtos, tiposParada, tiposRefugo, materiasPrimas,
   saveRpcWithFallback, updatePendingApontamento, getEditDataForPending, editandoLocalId,
+  saveDraft, loadDraft, clearDraft,
 }: {
   open: boolean;
   onClose: () => void;
@@ -91,6 +92,9 @@ function NovoApontamentoModal({
   saveRpcWithFallback: ReturnType<typeof useOfflineSync>["saveRpcWithFallback"];
   updatePendingApontamento: ReturnType<typeof useOfflineSync>["updatePendingApontamento"];
   getEditDataForPending: ReturnType<typeof useOfflineSync>["getEditDataForPending"];
+  saveDraft: ReturnType<typeof useOfflineSync>["saveDraft"];
+  loadDraft: ReturnType<typeof useOfflineSync>["loadDraft"];
+  clearDraft: ReturnType<typeof useOfflineSync>["clearDraft"];
   /** Quando definido, o modal abre em modo edição de um apontamento ainda
    * pendente (não sincronizado), identificado pelo id local (__pendingSync). */
   editandoLocalId?: string | null;
@@ -140,6 +144,47 @@ function NovoApontamentoModal({
       setRefugos([]);
     }
   }, [open]);
+
+  // Ao abrir para um NOVO apontamento (não edição de pendente), tenta
+  // restaurar um rascunho salvo automaticamente — protege contra perda de
+  // dados se o navegador fechou (queda de energia, aba fechada por engano,
+  // crash) enquanto o operador ainda estava preenchendo, antes de clicar em
+  // "Salvar Apontamento".
+  useEffect(() => {
+    if (!open || editandoLocalId) return;
+    (async () => {
+      const draft = await loadDraft();
+      if (!draft) return;
+      const d = draft.data as typeof form & { __paradas?: ItemParada[]; __refugos?: ItemRefugo[] };
+      setForm({
+        data: d.data, turno: d.turno, maquina: d.maquina, produto: d.produto,
+        qtde_por_hora: d.qtde_por_hora, horas_planejadas: d.horas_planejadas,
+        qtde_plan_disp: d.qtde_plan_disp, qtde_produzida: d.qtde_produzida,
+        horario_inicio: d.horario_inicio, horario_fim: d.horario_fim,
+        operador: d.operador, lote_mp: d.lote_mp, descricao_mp: d.descricao_mp,
+        comprimento_mm: d.comprimento_mm, consumo_mp_metros: d.consumo_mp_metros, lote: d.lote,
+      });
+      if (d.__paradas) setParadas(d.__paradas);
+      if (d.__refugos) setRefugos(d.__refugos);
+      toast.info("Rascunho recuperado — continuando de onde você parou.", { duration: 4000 });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editandoLocalId]);
+
+  // Salva o rascunho automaticamente enquanto o operador digita (debounced
+  // para não martelar o IndexedDB a cada tecla). Só ativo para novo
+  // apontamento — editar um pendente já existente tem seu próprio fluxo de
+  // persistência (a fila de sincronização), não precisa de rascunho extra.
+  useEffect(() => {
+    if (!open || editandoLocalId) return;
+    // Não salva rascunho vazio (formulário recém-aberto, nada digitado ainda)
+    const algoPreenchido = form.maquina || form.produto || form.operador || form.qtde_produzida;
+    if (!algoPreenchido) return;
+    const timer = setTimeout(() => {
+      saveDraft({ ...form, __paradas: paradas, __refugos: refugos });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [open, editandoLocalId, form, paradas, refugos, saveDraft]);
 
   // Carrega os dados originais de um apontamento pendente para edição.
   // Usa os argumentos RPC salvos na fila (não o preview simplificado da
@@ -339,6 +384,7 @@ function NovoApontamentoModal({
       } else {
         toast.success("Apontamento registrado!");
       }
+      if (!editandoLocalId) await clearDraft();
       onSaved();
       onClose();
     } catch (e: unknown) {
@@ -346,6 +392,15 @@ function NovoApontamentoModal({
     } finally {
       setSaving(false);
     }
+  }
+
+  // Fechamento manual (botão X, "Voltar" no primeiro step) — diferente de
+  // fechar após salvar com sucesso. Limpa o rascunho porque é uma decisão
+  // deliberada do operador de descartar o que estava digitando; não deve
+  // reaparecer na próxima vez que abrir o formulário.
+  async function handleFecharManual() {
+    if (!editandoLocalId) await clearDraft();
+    onClose();
   }
 
   if (!open) return null;
@@ -363,7 +418,7 @@ function NovoApontamentoModal({
             <h3 className="font-semibold text-sm">Novo Apontamento de Produção</h3>
             <p className="text-[11px] text-muted-foreground">Equivalente ao formulário PPI-51</p>
           </div>
-          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40">
+          <button onClick={handleFecharManual} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -634,7 +689,7 @@ function NovoApontamentoModal({
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-border/30 shrink-0">
-          <Button variant="outline" onClick={() => step > 1 ? setStep((step - 1) as 1|2|3) : onClose()} className="gap-1">
+          <Button variant="outline" onClick={() => step > 1 ? setStep((step - 1) as 1|2|3) : handleFecharManual()} className="gap-1">
             {step > 1 ? <ChevronUp className="h-4 w-4" /> : <X className="h-4 w-4" />}
             {step > 1 ? "Voltar" : "Cancelar"}
           </Button>
@@ -771,7 +826,7 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
   const [modalOpen, setModalOpen]       = useState(false);
   const [editandoLocalId, setEditandoLocalId] = useState<string | null>(null);
   const [filtroData, setFiltroData]     = useState(new Date().toISOString().split("T")[0]);
-  const { isOnline, pendingCount, syncing, loadWithFallback, saveRpcWithFallback, updatePendingApontamento, getEditDataForPending, cancelPendingApontamento } = useOfflineSync();
+  const { isOnline, pendingCount, oldestPendingDays, storageWarning, syncing, loadWithFallback, saveRpcWithFallback, updatePendingApontamento, getEditDataForPending, cancelPendingApontamento, saveDraft, loadDraft, clearDraft } = useOfflineSync();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -851,6 +906,19 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
             {syncing ? "Sincronizando..." : `${pendingCount} pendente(s) de sincronizar`}
           </span>
         )}
+        {oldestPendingDays !== null && oldestPendingDays >= 2 && (
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-red-600 dark:text-red-400 bg-red-500/10 px-2.5 py-1 rounded-full">
+            <AlertTriangle className="h-3 w-3" />
+            Há {oldestPendingDays} dia{oldestPendingDays > 1 ? "s" : ""} sem sincronizar — conecte à internet
+          </span>
+        )}
+        {storageWarning?.isCritical && (
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-red-600 dark:text-red-400 bg-red-500/10 px-2.5 py-1 rounded-full"
+            title="Armazenamento local quase cheio — sincronize os apontamentos pendentes em breve.">
+            <AlertTriangle className="h-3 w-3" />
+            Armazenamento do dispositivo quase cheio ({Math.round(storageWarning.usageRatio * 100)}%)
+          </span>
+        )}
         <div className="ml-auto flex gap-2">
           <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
@@ -923,6 +991,9 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
         saveRpcWithFallback={saveRpcWithFallback}
         updatePendingApontamento={updatePendingApontamento}
         getEditDataForPending={getEditDataForPending}
+        saveDraft={saveDraft}
+        loadDraft={loadDraft}
+        clearDraft={clearDraft}
         editandoLocalId={editandoLocalId}
       />
     </div>

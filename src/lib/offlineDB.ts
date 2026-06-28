@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = "concept_producao_offline";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export type OfflineTable =
   | "apontamentos"
@@ -15,7 +15,8 @@ export type OfflineTable =
   | "refugos"
   | "materias_primas"
   | "movimentos_mp"
-  | "sync_queue";
+  | "sync_queue"
+  | "form_drafts";
 
 export interface SyncQueueItem {
   id: string;
@@ -51,6 +52,7 @@ function openDB(): Promise<IDBDatabase> {
         "materias_primas",
         "movimentos_mp",
         "sync_queue",
+        "form_drafts",
       ];
 
       for (const table of tables) {
@@ -230,4 +232,32 @@ export async function cancelPendingRpc(queueItemId: string, offlineTable: Offlin
   await dbDelete("sync_queue", queueItemId);
   const localId = item?.data?.__localId as string | undefined;
   if (localId) await dbDelete(offlineTable, localId);
+}
+
+// ── Rascunho de formulário ───────────────────────────────────────────────────
+// Protege contra perda de dados se o navegador fechar (queda de energia, aba
+// fechada por engano, crash) ENQUANTO o operador ainda está preenchendo o
+// apontamento — antes de clicar em "Salvar". Diferente da fila de
+// sincronização (que guarda apontamentos já confirmados pelo operador como
+// concluídos), isto é só um rascunho de trabalho em andamento.
+// Chave fixa "current": só existe um formulário de apontamento ativo por vez
+// nesta tela, não precisa de múltiplos rascunhos simultâneos.
+const DRAFT_KEY = "current";
+
+export interface FormDraft {
+  id: string; // sempre DRAFT_KEY — exigido pelo keyPath do object store
+  savedAt: string;
+  data: Record<string, unknown>;
+}
+
+export async function saveFormDraft(data: Record<string, unknown>): Promise<void> {
+  await dbPut("form_drafts", { id: DRAFT_KEY, savedAt: new Date().toISOString(), data });
+}
+
+export async function getFormDraft(): Promise<FormDraft | undefined> {
+  return dbGet<FormDraft>("form_drafts", DRAFT_KEY);
+}
+
+export async function clearFormDraft(): Promise<void> {
+  await dbDelete("form_drafts", DRAFT_KEY);
 }

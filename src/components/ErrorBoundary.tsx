@@ -29,8 +29,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Em produção, aqui seria o lugar para enviar o erro a um serviço
-    // como Sentry, LogRocket, etc.
+    // logger.error já envia ao Sentry quando VITE_SENTRY_DSN está
+    // configurado (ver src/lib/logger.ts) — sem essa variável, cai no
+    // console normalmente, sem quebrar nada.
     logger.error("[ErrorBoundary] Uncaught render error:", error, info.componentStack);
   }
 

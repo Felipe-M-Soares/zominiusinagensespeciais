@@ -13,20 +13,38 @@ const isDev = !import.meta.env.PROD;
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
 
 let sentryReady = false;
+let sentryInitPromise: Promise<void> | null = null;
 
 async function initSentry() {
   if (sentryReady || isDev || !SENTRY_DSN) return;
-  try {
-    const Sentry = await import("@sentry/browser");
-    Sentry.init({
-      dsn: SENTRY_DSN,
-      environment: "production",
-      tracesSampleRate: 0.1,
-    });
-    sentryReady = true;
-  } catch {
-    // Sentry indisponível — degrada silenciosamente, não bloqueia o app
-  }
+  if (sentryInitPromise) return sentryInitPromise;
+  sentryInitPromise = (async () => {
+    try {
+      const Sentry = await import("@sentry/browser");
+      Sentry.init({
+        dsn: SENTRY_DSN,
+        environment: "production",
+        tracesSampleRate: 0.1,
+      });
+      sentryReady = true;
+    } catch {
+      // Sentry indisponível — degrada silenciosamente, não bloqueia o app
+    }
+  })();
+  return sentryInitPromise;
+}
+
+/**
+ * Inicializa o Sentry proativamente, no carregamento do app (ver chamada em
+ * main.tsx). Importante: Sentry.init() já registra automaticamente
+ * listeners globais (window.onerror, unhandledrejection) — sem chamar isto
+ * no início, esses listeners só existiriam depois do primeiro
+ * logger.error() acontecer, perdendo exatamente os erros não tratados que
+ * mais importa capturar (promises rejeitadas fora de try/catch, erros
+ * assíncronos fora de componentes React).
+ */
+export function initSentryEarly() {
+  void initSentry();
 }
 
 async function captureError(err: unknown) {

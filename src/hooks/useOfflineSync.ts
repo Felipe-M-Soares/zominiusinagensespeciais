@@ -19,6 +19,9 @@ import {
   getQueuedRpcArgsByLocalId,
   updateQueuedRpcArgs,
   cancelPendingRpc,
+  saveFormDraft,
+  getFormDraft,
+  clearFormDraft,
   type OfflineTable,
   type SyncQueueItem,
 } from "@/lib/offlineDB";
@@ -33,9 +36,40 @@ export function useOfflineSync() {
   const syncingRef = useRef(false);
 
   // ── Atualiza contador de pendentes ─────────────────────────────────────────
+  const [oldestPendingDays, setOldestPendingDays] = useState<number | null>(null);
+  const [storageWarning, setStorageWarning] = useState<{ usageRatio: number; isCritical: boolean } | null>(null);
+
   const refreshPendingCount = useCallback(async () => {
     const queue = await getQueuedOperations();
     setPendingCount(queue.length);
+
+    // Idade do item mais antigo ainda não sincronizado — usado para avisar
+    // o operador/admin se algo ficou pendente por muito tempo (ex: vários
+    // dias sem internet), em vez de só mostrar "X pendentes" sem contexto
+    // de urgência.
+    if (queue.length > 0) {
+      const oldest = queue.reduce((min, item) =>
+        item.created_at < min.created_at ? item : min
+      );
+      const ageMs = Date.now() - new Date(oldest.created_at).getTime();
+      setOldestPendingDays(Math.floor(ageMs / (1000 * 60 * 60 * 24)));
+    } else {
+      setOldestPendingDays(null);
+    }
+
+    // Estimativa de quota de armazenamento do navegador (IndexedDB + Cache
+    // Storage). navigator.storage.estimate() é amplamente suportado em
+    // navegadores modernos via HTTPS; em navegadores sem suporte, degrada
+    // para null sem quebrar nada.
+    try {
+      if (navigator.storage?.estimate) {
+        const { usage = 0, quota = 1 } = await navigator.storage.estimate();
+        const usageRatio = usage / quota;
+        setStorageWarning({ usageRatio, isCritical: usageRatio > 0.9 });
+      }
+    } catch {
+      // API indisponível ou bloqueada — não é crítico, segue sem o aviso.
+    }
   }, []);
 
   // ── Sincroniza fila com Supabase ───────────────────────────────────────────
@@ -230,6 +264,17 @@ export function useOfflineSync() {
     return getQueuedRpcArgsByLocalId(localId);
   }, []);
 
+  // ── Rascunho de formulário (proteção contra fechar o navegador no meio) ──
+  const saveDraft = useCallback(async (data: Record<string, unknown>) => {
+    await saveFormDraft(data);
+  }, []);
+  const loadDraft = useCallback(async () => {
+    return getFormDraft();
+  }, []);
+  const clearDraft = useCallback(async () => {
+    await clearFormDraft();
+  }, []);
+
   // ── Edita um apontamento ainda pendente (não sincronizado) ──────────────
   // Atualiza tanto o preview exibido na tela quanto os argumentos reais que
   // serão enviados à RPC quando a conexão voltar. Só funciona para itens
@@ -293,11 +338,16 @@ export function useOfflineSync() {
   return {
     isOnline,
     pendingCount,
+    oldestPendingDays,
+    storageWarning,
     syncing,
     syncQueue,
     saveWithFallback,
     saveRpcWithFallback,
     getEditDataForPending,
+    saveDraft,
+    loadDraft,
+    clearDraft,
     updatePendingApontamento,
     cancelPendingApontamento,
     loadWithFallback,

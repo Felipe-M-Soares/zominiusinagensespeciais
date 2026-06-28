@@ -3,9 +3,20 @@
  * KPIs de todos os módulos: Estoque, Comercial, Financeiro, Produção, Qualidade
  */
 import { useState, useEffect, useCallback } from "react";
-import { Package, ShoppingBag, TrendingUp, Factory, Shield, AlertTriangle, CheckCircle2, RefreshCw, Clock, Wrench, DollarSign, ArrowUpCircle, ArrowDownCircle, Activity } from "lucide-react";
+import { Package, ShoppingBag, TrendingUp, Factory, Shield, AlertTriangle, CheckCircle2, RefreshCw, Clock, Wrench, DollarSign, ArrowUpCircle, ArrowDownCircle, Activity, HeartPulse, HardDrive, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+
+interface SaudeSistema {
+  ok: boolean;
+  last_backup: string | null;
+  backup_schedule: string | null;
+  last_apontamento: string | null;
+  audit_log_count: number;
+  audit_log_oldest: string | null;
+  cron_jobs: { jobname: string; schedule: string; active: boolean }[];
+  checked_at: string;
+}
 
 interface KPIs {
   estoque_intermediario_qty:number; estoque_expedicao_qty:number; estoque_critico:number;
@@ -45,11 +56,34 @@ function Sec({icon:Icon,label,color}:{icon:React.ElementType;label:string;color:
 
 const BRL=(v:number)=>v.toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0});
 
+/** Formata "há quanto tempo" de forma legível, para a seção de saúde do sistema. */
+function tempoRelativo(iso: string | null): string {
+  if (!iso) return "nunca";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const horas = diffMs / (1000 * 60 * 60);
+  if (horas < 1) return "há poucos minutos";
+  if (horas < 24) return `há ${Math.floor(horas)}h`;
+  const dias = Math.floor(horas / 24);
+  return `há ${dias} dia${dias > 1 ? "s" : ""}`;
+}
+
 export function DashboardGeral() {
   const [kpis,setKpis]=useState<KPIs|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
   const [updated,setUpdated]=useState<Date|null>(null);
+  const [saude, setSaude] = useState<SaudeSistema | null>(null);
+
+  const loadSaude = useCallback(async () => {
+    try {
+      const { data } = await supabase.rpc("obter_saude_sistema");
+      const s = data as SaudeSistema | null;
+      if (s?.ok) setSaude(s);
+    } catch {
+      // Painel de saúde é informativo — uma falha aqui não deve travar o
+      // restante do dashboard, que já tem seu próprio tratamento de erro.
+    }
+  }, []);
 
   const load=useCallback(async()=>{
     setLoading(true);
@@ -81,13 +115,13 @@ export function DashboardGeral() {
     setLoading(false);
   },[]);
 
-  useEffect(()=>{load();},[load]);
+  useEffect(()=>{load(); loadSaude();},[load, loadSaude]);
 
   // Auto-refresh a cada 5 minutos
   useEffect(()=>{
-    const id = setInterval(load, 5 * 60 * 1000);
+    const id = setInterval(() => { load(); loadSaude(); }, 5 * 60 * 1000);
     return () => clearInterval(id);
-  },[load]);
+  },[load, loadSaude]);
 
   if(loading&&!kpis) return(
     <div className="flex items-center justify-center py-20 text-muted-foreground text-sm gap-2">
@@ -176,6 +210,44 @@ export function DashboardGeral() {
           <KpiCard icon={AlertTriangle} label="Recalls Ativos" value={String(kpis.recall_ativos)} color="text-red-600" alert={kpis.recall_ativos>0}/>
         </div>
       </div>
+
+      {saude && (
+        <div>
+          <Sec icon={HeartPulse} label="Saúde do Sistema" color="text-pink-600"/>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <KpiCard
+              icon={HardDrive}
+              label="Último Backup"
+              value={tempoRelativo(saude.last_backup)}
+              color={!saude.last_backup ? "text-red-600" : "text-green-600"}
+              alert={!saude.last_backup || (Date.now() - new Date(saude.last_backup).getTime()) > 4*24*60*60*1000}
+              sub={saude.backup_schedule ?? undefined}
+            />
+            <KpiCard
+              icon={Factory}
+              label="Último Apontamento"
+              value={tempoRelativo(saude.last_apontamento)}
+              color="text-blue-600"
+            />
+            <KpiCard
+              icon={Database}
+              label="Registros de Auditoria"
+              value={saude.audit_log_count.toLocaleString("pt-BR")}
+              color="text-violet-600"
+              sub={saude.audit_log_oldest ? `desde ${tempoRelativo(saude.audit_log_oldest)}` : undefined}
+            />
+            <KpiCard
+              icon={saude.cron_jobs.length >= 2 ? CheckCircle2 : AlertTriangle}
+              label="Rotinas Automáticas"
+              value={`${saude.cron_jobs.filter(j => j.active).length}/2 ativas`}
+              color={saude.cron_jobs.length >= 2 ? "text-green-600" : "text-amber-600"}
+              alert={saude.cron_jobs.length < 2}
+              sub={saude.cron_jobs.length < 2 ? "habilite pg_cron no painel" : "backup + limpeza de logs"}
+            />
+          </div>
+        </div>
+      )}
+
       <p className="text-[10px] text-muted-foreground text-center pb-2">KPIs em tempo real · Mês corrente</p>
     </div>
   );
