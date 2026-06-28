@@ -848,13 +848,16 @@ GRANT EXECUTE ON FUNCTION public.admin_reset_password(uuid,text)        TO authe
 GRANT EXECUTE ON FUNCTION public.admin_delete_user(uuid)                TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sync_stock_items_from_devices()        TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_lotes_intermediario()              TO authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_clear_history()                  TO authenticated;
+
+-- admin_clear_history removida (ver nota em 20260027000000_estoque.sql) —
+-- DROP explícito para apagar de bancos que já tinham essa função aplicada
+-- antes desta correção.
+DROP FUNCTION IF EXISTS public.admin_clear_history();
 
 -- Revogar acesso anon em funções admin (defense in depth)
 REVOKE ALL ON FUNCTION public.admin_create_user(text,text,text,text)    FROM anon;
 REVOKE ALL ON FUNCTION public.admin_reset_password(uuid,text)           FROM anon;
 REVOKE ALL ON FUNCTION public.admin_delete_user(uuid)                   FROM anon;
-REVOKE ALL ON FUNCTION public.admin_clear_history()                     FROM anon;
 
 -- ── Limpeza automática de audit_log antigo ────────────────────────────────────
 -- Remove registros com mais de 90 dias para evitar crescimento ilimitado

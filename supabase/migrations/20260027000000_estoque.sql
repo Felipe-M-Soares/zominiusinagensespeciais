@@ -390,19 +390,12 @@ END;
 $f05$;
 GRANT EXECUTE ON FUNCTION public.delete_stock_item(uuid) TO authenticated;
 
--- ── admin_clear_history ───────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION public.admin_clear_history()
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f06$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') THEN
-    RAISE EXCEPTION 'Acesso negado: apenas administradores podem apagar o histórico';
-  END IF;
-  -- Zera apenas reservas; quantidades e peças cadastradas são mantidas intactas
-  UPDATE public.stock_items SET quantity_reserved = 0;
-  DELETE FROM public.pedidos_comerciais; -- CASCADE apaga pedido_itens, comentários, rastreabilidade
-  DELETE FROM public.stock_movements;
-END;
-$f06$;
+-- admin_clear_history foi removida: era a versão antiga e ampla (apagava
+-- pedidos_comerciais + stock_movements numa única chamada, sem registrar
+-- nada em audit_log) — substituída por funções granulares por área
+-- (admin_clear_stock_movements, admin_clear_comercial, admin_clear_producao,
+-- admin_clear_rastreabilidade, admin_clear_financeiro, admin_clear_audit_log),
+-- todas com auditoria. Sem uso no frontend desde então.
 
 -- ── admin_clear_stock_movements ───────────────────────────────────────────────
 -- Apaga apenas movimentos; quantidades e peças permanecem intactas

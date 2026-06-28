@@ -101,7 +101,7 @@ export function DashboardGeral() {
         <p className="text-sm font-semibold text-foreground">Dashboard indisponível</p>
         <p className="text-[11px] text-muted-foreground max-w-sm">
           A função <code className="bg-muted px-1 rounded font-mono">dashboard_gerencial</code> retornou um erro.
-          Execute os scripts <strong>fix_034_tables.sql</strong> e <strong>fix_dashboard_gerencial.sql</strong> no SQL Editor do Supabase.
+          Confirme se as migrations do banco estão atualizadas (<code className="bg-muted px-1 rounded font-mono">supabase db push</code>) e veja o detalhe do erro abaixo.
         </p>
       </div>
       <div className="w-full max-w-sm rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-left">
