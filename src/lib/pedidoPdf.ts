@@ -91,43 +91,54 @@ export async function gerarPdfPedido(
   let y = 16;
 
   // ── Cabeçalho: logo + dados da empresa ──────────────────────────────────
+  // Logo é horizontal (ícone + texto "Zomini" lado a lado, proporção real
+  // ~2.48:1) — usar largura fixa com altura proporcional, nunca forçar
+  // quadrado, ou o ícone fica esticado horizontalmente.
   const logoBase64 = await carregarLogoBase64();
+  const LOGO_W = 26;
+  const LOGO_RATIO = 308 / 763; // altura/largura reais do arquivo logo_zomini.png
+  const LOGO_H = LOGO_W * LOGO_RATIO; // ≈ 10.5mm
+  let textX = marginX;
   if (logoBase64) {
     try {
-      doc.addImage(logoBase64, "PNG", marginX, y - 4, 22, 22);
+      doc.addImage(logoBase64, "PNG", marginX, y, LOGO_W, LOGO_H);
+      textX = marginX + LOGO_W + 4;
     } catch {
       // Se mesmo o base64 falhar por algum formato inesperado, segue sem o
       // logo — nunca trava a geração do documento por causa de uma imagem
       // decorativa.
     }
   }
+  // Nome/dados da empresa centrados verticalmente ao lado do logo
+  const blocoTopo = y;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text(sanitizeText(COMPANY_NAME, 80), marginX + 26, y + 2);
+  doc.setFontSize(12);
+  doc.text(sanitizeText(COMPANY_NAME, 80), textX, blocoTopo + 4);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(100);
-  let infoY = y + 7;
+  let infoY = blocoTopo + 8.5;
   const infoLines = [COMPANY_DOCUMENT, COMPANY_ADDRESS, [COMPANY_PHONE, COMPANY_EMAIL].filter(Boolean).join(" · ")]
     .filter(Boolean).map(s => sanitizeText(s, 120));
   for (const line of infoLines) {
-    doc.text(line, marginX + 26, infoY);
-    infoY += 4;
+    doc.text(line, textX, infoY);
+    infoY += 3.8;
   }
   doc.setTextColor(0);
 
-  // Título do documento + número do pedido, alinhado à direita
+  // Título do documento + número do pedido, alinhado à direita, no mesmo
+  // bloco vertical do logo/nome (não usa mais o "y" original sem ajuste)
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text(titulo.toUpperCase(), pageW - marginX, y + 2, { align: "right" });
+  doc.text(titulo.toUpperCase(), pageW - marginX, blocoTopo + 4, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(100);
-  doc.text(`Nº ${pedido.id.slice(0, 8).toUpperCase()}`, pageW - marginX, y + 8, { align: "right" });
-  doc.text(`Emitido em ${fmtData(new Date().toISOString(), true)}`, pageW - marginX, y + 13, { align: "right" });
+  doc.text(`Nº ${pedido.id.slice(0, 8).toUpperCase()}`, pageW - marginX, blocoTopo + 10, { align: "right" });
+  doc.text(`Emitido em ${fmtData(new Date().toISOString(), true)}`, pageW - marginX, blocoTopo + 15, { align: "right" });
   doc.setTextColor(0);
 
-  y = Math.max(infoY, y + 16) + 4;
+  y = Math.max(infoY, blocoTopo + LOGO_H, blocoTopo + 17) + 4;
   doc.setDrawColor(220);
   doc.line(marginX, y, pageW - marginX, y);
   y += 7;

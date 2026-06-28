@@ -21,13 +21,15 @@ export const LICENSED_TO: string =
 
 /**
  * Dados da empresa emissora, usados em documentos gerados pelo sistema
- * (ex: PDF de pedido/orçamento). Por padrão usa o mesmo nome da licença
- * (VITE_LICENSED_TO) — configurável separadamente via VITE_COMPANY_NAME
- * apenas se alguém precisar de um nome de exibição diferente do nome do
- * licenciado (ex: revenda).
+ * (ex: PDF de pedido/orçamento). Por padrão usa "Zomini Usinagens
+ * Especiais" — NÃO usa LICENSED_TO como fallback, porque o valor padrão
+ * de LICENSED_TO ("Licença não configurada") é um aviso pensado para a
+ * tela "Sobre o sistema", e nunca deveria aparecer dentro de um documento
+ * gerado para o cliente final. Configurável via VITE_COMPANY_NAME se uma
+ * instância precisar de um nome diferente (ex: revenda).
  */
 export const COMPANY_NAME: string =
-  (import.meta.env.VITE_COMPANY_NAME as string | undefined)?.trim() || LICENSED_TO;
+  (import.meta.env.VITE_COMPANY_NAME as string | undefined)?.trim() || "Zomini Usinagens Especiais";
 export const COMPANY_DOCUMENT: string =
   (import.meta.env.VITE_COMPANY_DOCUMENT as string | undefined)?.trim() || "";
 export const COMPANY_ADDRESS: string =
