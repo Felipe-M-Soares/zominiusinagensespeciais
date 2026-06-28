@@ -59,6 +59,8 @@ import {
   Send,
   RotateCcw,
   Pencil,
+  FileDown,
+  Loader2,
 } from "lucide-react";
 import { PageNav } from "@/components/PageNav";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
@@ -123,6 +125,7 @@ interface PedidoCardProps {
   pedido: PedidoCompleto;
   isAdmin: boolean;
   canConfirm?: boolean;
+  clientes: Cliente[];
   onFaturar: (p: PedidoCompleto) => void;
   onCancelar: (p: PedidoCompleto) => void;
   onAdicionarPeca: (p: PedidoCompleto) => void;
@@ -133,8 +136,9 @@ interface PedidoCardProps {
   onEditarPedido: (p: PedidoCompleto) => void;
 }
 
-function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar, onRemoverItemComercial, onEditarPedido }: PedidoCardProps) {
+function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar, onRemoverItemComercial, onEditarPedido }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   const temDesconto = pedido.desconto_pct > 0;
 
@@ -149,6 +153,32 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
     : null;
   const prazoAtrasado = pedido.prazo_entrega && !(["cancelado","enviado","faturado"] as string[]).includes(pedido.status)
     && new Date(pedido.prazo_entrega) < new Date();
+
+  // FIX: forma_pagamento/parcelas não fazem parte do tipo PedidoCompleto
+  // (usado só na listagem) — busca sob demanda, só quando o usuário pede o PDF.
+  async function handleGerarPdf() {
+    if (gerandoPdf) return;
+    setGerandoPdf(true);
+    try {
+      const { data } = await supabase
+        .from("pedidos_comerciais")
+        .select("forma_pagamento, parcelas")
+        .eq("id", pedido.id)
+        .maybeSingle();
+      const d = data as { forma_pagamento?: string | null; parcelas?: number | null } | null;
+      const cliente = clientes.find(c => c.id === pedido.cliente_id) ?? null;
+      const { baixarPdfPedido } = await import("@/lib/pedidoPdf");
+      await baixarPdfPedido(pedido, cliente, {
+        titulo: pedido.status === "pendente" ? "Orçamento" : "Pedido",
+        formaPagamento: d?.forma_pagamento ?? null,
+        parcelas: d?.parcelas ?? null,
+      });
+    } catch {
+      toast.error("Erro ao gerar PDF.");
+    } finally {
+      setGerandoPdf(false);
+    }
+  }
 
   // ── Paleta de status ──────────────────────────────────────────────────────
   const STATUS: Record<string, {
@@ -424,7 +454,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
               : <><ChevronDown className="h-3 w-3" />Ver {pedido.itens.length} peça{pedido.itens.length !== 1 ? "s" : ""}</>}
           </button>
 
-          {/* ── Ações rápidas: comentar e duplicar ── */}
+          {/* ── Ações rápidas: comentar, gerar PDF e duplicar ── */}
           <div className="flex gap-2">
             {pedido.status === "pendente" && (
               <button type="button" onClick={() => onComentar(pedido)}
@@ -432,6 +462,11 @@ function PedidoCard({ pedido, isAdmin, canConfirm, onFaturar, onCancelar, onAdic
                 <MessageSquare className="h-3 w-3" /> Comentários
               </button>
             )}
+            <button type="button" onClick={handleGerarPdf} disabled={gerandoPdf}
+              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors disabled:opacity-50">
+              {gerandoPdf ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileDown className="h-3 w-3" />}
+              {pedido.status === "pendente" ? "Orçamento" : "PDF"}
+            </button>
             <button type="button" onClick={() => onDuplicar(pedido)}
               className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors">
               <Copy className="h-3 w-3" /> Duplicar
@@ -1272,7 +1307,7 @@ export default function Comercial() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {pedidosFiltrados.map(p => (
-                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} canConfirm={isAdmin || isVendedora} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)}
+                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} canConfirm={isAdmin || isVendedora} clientes={clientes} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)}
                         onReenviar={p => setPedidos(prev => prev.map(x => x.id === p.id ? { ...x, status: "pendente" as const } : x))}
                         onRemoverItemComercial={(pedido, item) => setRemoverItemPendente({ pedido, item })}
                         onEditarPedido={p => setEditarPedidoRetorno(p)} />

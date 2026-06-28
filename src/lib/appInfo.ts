@@ -19,6 +19,24 @@ export const APP_NAME = "Zomini ERP";
 export const LICENSED_TO: string =
   (import.meta.env.VITE_LICENSED_TO as string | undefined)?.trim() || "Licença não configurada";
 
+/**
+ * Dados da empresa emissora, usados em documentos gerados pelo sistema
+ * (ex: PDF de pedido/orçamento). Por padrão usa o mesmo nome da licença
+ * (VITE_LICENSED_TO) — configurável separadamente via VITE_COMPANY_NAME
+ * apenas se alguém precisar de um nome de exibição diferente do nome do
+ * licenciado (ex: revenda).
+ */
+export const COMPANY_NAME: string =
+  (import.meta.env.VITE_COMPANY_NAME as string | undefined)?.trim() || LICENSED_TO;
+export const COMPANY_DOCUMENT: string =
+  (import.meta.env.VITE_COMPANY_DOCUMENT as string | undefined)?.trim() || "";
+export const COMPANY_ADDRESS: string =
+  (import.meta.env.VITE_COMPANY_ADDRESS as string | undefined)?.trim() || "";
+export const COMPANY_PHONE: string =
+  (import.meta.env.VITE_COMPANY_PHONE as string | undefined)?.trim() || "";
+export const COMPANY_EMAIL: string =
+  (import.meta.env.VITE_COMPANY_EMAIL as string | undefined)?.trim() || "";
+
 /** Data de build real, injetada em tempo de compilação por vite.config.ts. */
 export const BUILD_DATE: string =
   typeof __BUILD_DATE__ !== "undefined" ? __BUILD_DATE__ : "—";
