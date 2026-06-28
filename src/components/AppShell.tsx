@@ -199,7 +199,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
 
   // ── Notificações: hook chamado UMA VEZ aqui, dados passados via props ────────
-  const notifState = useNotifications();
+  // Restrito a admin — enabled=false evita query + canal Realtime
+  // desnecessários para quem nunca vai ver o painel (ver NotificacoesBell
+  // em Comercial.tsx para o sino próprio da vendedora, que é independente).
+  const notifState = useNotifications(isAdmin);
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -342,10 +345,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {!collapsed && <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>}
             </button>
 
-            {/* Notificações desktop — única instância, dados via props */}
-            <div className={cn("flex", collapsed ? "justify-center px-1" : "px-1")}>
-              <NotificacoesPanel {...notifState} align="left" dropUp />
-            </div>
+            {/* Notificações desktop — restrito a admin. A vendedora já tem
+                seu próprio sino (NotificacoesBell) dentro da página
+                Comercial, independente deste — manter os dois é
+                intencional, não duplicação. */}
+            {isAdmin && (
+              <div className={cn("flex", collapsed ? "justify-center px-1" : "px-1")}>
+                <NotificacoesPanel {...notifState} align="left" dropUp />
+              </div>
+            )}
 
             <button
               onClick={() => navigate("/sobre")}
@@ -478,8 +486,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" decoding="async" />
           </button>
           <div className="flex items-center gap-1">
-            {/* Notificações mobile — mesmos dados, só o painel visual é diferente */}
-            <NotificacoesPanel {...notifState} align="right" />
+            {/* Notificações mobile — restrito a admin, mesmo critério do desktop */}
+            {isAdmin && <NotificacoesPanel {...notifState} align="right" />}
             <button
               onClick={() => setMobileOpen(true)}
               className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"

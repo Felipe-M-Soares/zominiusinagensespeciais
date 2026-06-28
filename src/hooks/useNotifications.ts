@@ -29,7 +29,13 @@ export interface NotificacoesState {
   refetch: () => Promise<void>;
 }
 
-export function useNotifications(): NotificacoesState {
+/**
+ * @param enabled Quando false, não busca notificações nem abre o canal
+ * Realtime — usado quando o painel de notificações não é exibido para o
+ * usuário atual (ex: restrito a admin no AppShell), para não gastar uma
+ * query e uma subscription que nunca serão exibidas.
+ */
+export function useNotifications(enabled = true): NotificacoesState {
   const { user } = useAuth();
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,7 +43,7 @@ export function useNotifications(): NotificacoesState {
   const unreadCount = notificacoes.filter((n) => !n.lida).length;
 
   const fetchNotificacoes = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !enabled) return;
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -53,7 +59,7 @@ export function useNotifications(): NotificacoesState {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, enabled]);
 
   useEffect(() => {
     fetchNotificacoes();
@@ -61,7 +67,7 @@ export function useNotifications(): NotificacoesState {
 
   // Canal Realtime — criado UMA VEZ com nome único por usuário
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !enabled) return;
 
     // Nome único garante que não haja colisão com outros canais
     const channelName = `notif-user-${user.id}`;
@@ -86,7 +92,7 @@ export function useNotifications(): NotificacoesState {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id]); // fetchNotificacoes intencionalmente fora das deps para não recriar canal
+  }, [user?.id, enabled]); // fetchNotificacoes intencionalmente fora das deps para não recriar canal
 
   const marcarComoLida = useCallback(async (id: string) => {
     setNotificacoes((prev) => prev.map((n) => (n.id === id ? { ...n, lida: true } : n)));

@@ -117,7 +117,8 @@ function ProdutoModal({ open, produto, onClose, onSaved }: {
   );
 }
 
-export function ProdutosPanel({ isAdmin }: { isAdmin: boolean }) {
+export function ProdutosPanel({ isAdmin, canWrite }: { isAdmin: boolean; canWrite?: boolean }) {
+  const canEdit = canWrite ?? isAdmin;
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -157,7 +158,7 @@ export function ProdutosPanel({ isAdmin }: { isAdmin: boolean }) {
         <div className="relative flex-1">
           <SearchInputWithBarcode value={search} onChange={setSearch} onSearch={setSearch} placeholder="Bipe o código ou busque produto..." height="h-9"/>
         </div>
-        {isAdmin && <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Novo</Button>}
+        {canEdit && <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Novo</Button>}
         <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
       </div>
 
@@ -186,12 +187,15 @@ export function ProdutosPanel({ isAdmin }: { isAdmin: boolean }) {
                 <span>Pç/h: <b className="text-foreground">{p.pecas_por_hora}</b></span>
                 <span>Lead: <b className="text-foreground">{p.lead_time_dias}d</b></span>
               </div>
-              {isAdmin && (
+              {canEdit && (
                 <div className="flex items-center gap-2 pt-1 border-t border-border/30">
                   <button onClick={()=>handleToggleAtivo(p)} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">{p.ativo?"Desativar":"Ativar"}</button>
                   <div className="flex-1"/>
                   <button onClick={()=>{setEditTarget(p);setModalOpen(true);}} aria-label="Editar produto" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
-                  <button onClick={()=>handleDelete(p.id)} aria-label="Excluir produto" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                  {/* Excluir continua restrito a admin — política RLS prod_delete só permite admin */}
+                  {isAdmin && (
+                    <button onClick={()=>handleDelete(p.id)} aria-label="Excluir produto" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                  )}
                 </div>
               )}
             </div>

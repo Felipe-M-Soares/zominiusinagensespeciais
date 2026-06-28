@@ -20,14 +20,14 @@ const TABS: PageNavTab<CadastroView>[] = [
   { id: "ferramentas", label: "Ferramentas", Icon: Wrench,    activeColor: "text-rose-600 dark:text-rose-400",     activeBg: "bg-rose-500/10",   activeBorder: "border-rose-500/40",   badgeBg: "bg-rose-500/15",   badgeText: "text-rose-600 dark:text-rose-400" },
 ];
 
-export function CadastrosPanel({ isAdmin }: { isAdmin: boolean }) {
+export function CadastrosPanel({ isAdmin, canWrite }: { isAdmin: boolean; canWrite?: boolean }) {
   const [view, setView] = useState<CadastroView>("maquinas");
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       <PageNav tabs={TABS} activeTab={view} onTabChange={setView} cols={3} />
-      {view === "maquinas" && <MaquinasPanel isAdmin={isAdmin} />}
-      {view === "produtos" && <ProdutosPanel isAdmin={isAdmin} />}
+      {view === "maquinas" && <MaquinasPanel isAdmin={isAdmin} canWrite={canWrite} />}
+      {view === "produtos" && <ProdutosPanel isAdmin={isAdmin} canWrite={canWrite} />}
       {view === "ferramentas" && <FerramentasPanel />}
     </div>
   );

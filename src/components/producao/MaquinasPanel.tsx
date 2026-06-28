@@ -112,7 +112,8 @@ function MaquinaModal({ open, maquina, onClose, onSaved }: {
   );
 }
 
-export function MaquinasPanel({ isAdmin }: { isAdmin: boolean }) {
+export function MaquinasPanel({ isAdmin, canWrite }: { isAdmin: boolean; canWrite?: boolean }) {
+  const canEdit = canWrite ?? isAdmin;
   const [maquinas, setMaquinas] = useState<Maquina[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -177,7 +178,7 @@ export function MaquinasPanel({ isAdmin }: { isAdmin: boolean }) {
           <option value="todos">Todos</option>
           {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
         </select>
-        {isAdmin && <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Nova</Button>}
+        {canEdit && <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Nova</Button>}
         <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
       </div>
 
@@ -208,14 +209,17 @@ export function MaquinasPanel({ isAdmin }: { isAdmin: boolean }) {
                   {m.horimetro !== undefined && <span>Horímetro: <b className="text-foreground">{m.horimetro}h</b></span>}
                   <span>{SETOR_LABEL[m.setor]}</span>
                 </div>
-                {isAdmin && (
+                {canEdit && (
                   <div className="flex items-center gap-2 pt-1 border-t border-border/30">
                     <select value={m.status} onChange={e=>handleStatusChange(m.id,e.target.value as StatusMaquina)}
                       className="flex-1 h-7 rounded-lg border border-input bg-background px-2 text-[11px]">
                       {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
                     </select>
                     <button onClick={()=>{setEditTarget(m);setModalOpen(true);}} aria-label="Editar máquina" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
-                    <button onClick={()=>handleDelete(m.id)} aria-label="Excluir máquina" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                    {/* Excluir continua restrito a admin — política RLS maq_delete só permite admin */}
+                    {isAdmin && (
+                      <button onClick={()=>handleDelete(m.id)} aria-label="Excluir máquina" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                    )}
                   </div>
                 )}
               </div>

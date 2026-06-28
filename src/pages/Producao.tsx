@@ -49,14 +49,18 @@ interface ProdModule {
   id: ProdView; label: string;
   Icon: React.ElementType;
   activeColor: string; activeBg: string; activeBorder: string; badgeBg: string; badgeText: string;
-  adminOnly?: boolean;
+  /** Restringe a aba a quem tem role admin ou producao — usado em
+   * "Cadastros" (máquinas/produtos/ferramentas), que o banco já permite
+   * a role producao escrever (ver políticas RLS maq_insert/prod_insert/
+   * ferr_write), mas a navegação ficava restrita só a admin por engano. */
+  restrictedTo?: ("admin" | "producao")[];
 }
 
 const MODULES: ProdModule[] = [
   { id:"desempenho",   label:"Desempenho",   Icon:LayoutDashboard, activeColor:"text-blue-600 dark:text-blue-400",     activeBg:"bg-blue-500/10",     activeBorder:"border-blue-500/40",     badgeBg:"bg-blue-500/15",     badgeText:"text-blue-600 dark:text-blue-400" },
   { id:"controle",     label:"Controle",     Icon:ClipboardList,   activeColor:"text-green-600 dark:text-green-400",   activeBg:"bg-green-500/10",    activeBorder:"border-green-500/40",    badgeBg:"bg-green-500/15",    badgeText:"text-green-600 dark:text-green-400" },
   { id:"planejamento", label:"Planejamento", Icon:CalendarClock,   activeColor:"text-amber-600 dark:text-amber-400",   activeBg:"bg-amber-500/10",    activeBorder:"border-amber-500/40",    badgeBg:"bg-amber-500/15",    badgeText:"text-amber-600 dark:text-amber-400" },
-  { id:"cadastros",    label:"Cadastros",    Icon:Settings2,       activeColor:"text-purple-600 dark:text-purple-400", activeBg:"bg-purple-500/10",   activeBorder:"border-purple-500/40",   badgeBg:"bg-purple-500/15",   badgeText:"text-purple-600 dark:text-purple-400", adminOnly:true },
+  { id:"cadastros",    label:"Cadastros",    Icon:Settings2,       activeColor:"text-purple-600 dark:text-purple-400", activeBg:"bg-purple-500/10",   activeBorder:"border-purple-500/40",   badgeBg:"bg-purple-500/15",   badgeText:"text-purple-600 dark:text-purple-400", restrictedTo:["admin","producao"] },
   { id:"paradas",      label:"Paradas",      Icon:OctagonPause,    activeColor:"text-red-600 dark:text-red-400",       activeBg:"bg-red-500/10",      activeBorder:"border-red-500/40",      badgeBg:"bg-red-500/15",      badgeText:"text-red-600 dark:text-red-400" },
   { id:"qualidade",    label:"Refugo",       Icon:ShieldAlert,     activeColor:"text-orange-600 dark:text-orange-400", activeBg:"bg-orange-500/10",   activeBorder:"border-orange-500/40",   badgeBg:"bg-orange-500/15",   badgeText:"text-orange-600 dark:text-orange-400" },
   { id:"materiaprima", label:"Mat.-Prima",   Icon:Boxes,           activeColor:"text-teal-600 dark:text-teal-400",     activeBg:"bg-teal-500/10",     activeBorder:"border-teal-500/40",     badgeBg:"bg-teal-500/15",     badgeText:"text-teal-600 dark:text-teal-400" },
@@ -89,13 +93,15 @@ export default function Producao() {
   const { isOnline, pendingCount, syncing, syncQueue } = useOfflineSync();
   const isMobile = useIsMobile();
   const isAdmin = role === "admin";
+  const canWriteCadastros = role === "admin" || role === "producao";
   const [view, setView] = useState<ProdView>("desempenho");
   const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => { applyTheme(getStoredTheme()); }, []);
 
-  // Mesmo padrão de filtro por role que já existia, só reaplicado às tabs do PageNav
-  const visibleModules = MODULES.filter(m => !m.adminOnly || isAdmin);
+  // Mesmo padrão de filtro por role que já existia, agora também libera
+  // "Cadastros" para quem tem role producao (o banco já permite via RLS).
+  const visibleModules = MODULES.filter(m => !m.restrictedTo || m.restrictedTo.includes(role as "admin" | "producao"));
   const PAGE_NAV_TABS: PageNavTab<ProdView>[] = visibleModules.map(m => ({
     id: m.id, label: m.label, Icon: m.Icon,
     activeColor: m.activeColor, activeBg: m.activeBg, activeBorder: m.activeBorder,
@@ -144,7 +150,7 @@ export default function Producao() {
             {view === "desempenho"   && <DesempenhoPanel />}
             {view === "controle"     && <ControlePanel onImport={() => setImportOpen(true)} />}
             {view === "planejamento" && <PlanejamentoPanel isAdmin={isAdmin} />}
-            {view === "cadastros"    && <CadastrosPanel isAdmin={isAdmin} />}
+            {view === "cadastros"    && <CadastrosPanel isAdmin={isAdmin} canWrite={canWriteCadastros} />}
             {view === "paradas"      && <ParadasPanel />}
             {view === "qualidade"    && <QualidadePanel />}
             {view === "materiaprima" && <MateriaPrimaPanel />}
