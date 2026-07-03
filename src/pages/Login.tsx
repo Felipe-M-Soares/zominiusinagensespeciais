@@ -123,7 +123,7 @@ export default function Login() {
           {/* Métricas decorativas */}
           <div className="grid grid-cols-3 gap-4 pt-4">
             {[
-              { label: "Módulos", value: "6" },
+              { label: "Módulos", value: "7" },
               { label: "Integrado", value: "100%" },
               { label: "Tempo Real", value: "∞" },
             ].map((m) => (
