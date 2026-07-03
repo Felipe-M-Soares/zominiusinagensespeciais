@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { PageNav, type PageNavTab } from "@/components/PageNav";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   AlertTriangle,
   Bell,
@@ -51,16 +53,17 @@ function useStoredState<T>(key: string, fallback: T) { const [value, setValue] =
 function NumberInput(props: React.InputHTMLAttributes<HTMLInputElement>) { return <Input type="number" min={0} step={1} {...props} />; }
 const disponivel = (f: Ferramenta) => Math.max(Number(f.total || 0) - Number(f.usadas || 0) - Number(f.danificadas || 0), 0);
 
-const tabItems: { id: Tab; label: string; icon: React.ElementType; color: string }[] = [
-  { id: "ferramentas", label: "Ferramentas", icon: Wrench, color: "from-sky-500/15 to-cyan-500/10 text-sky-700 border-sky-200" },
-  { id: "compras", label: "Compras", icon: ShoppingCart, color: "from-emerald-500/15 to-green-500/10 text-emerald-700 border-emerald-200" },
-  { id: "fornecedores", label: "Fornecedores", icon: Truck, color: "from-violet-500/15 to-purple-500/10 text-violet-700 border-violet-200" },
-  { id: "faltas", label: "Faltas", icon: AlertTriangle, color: "from-amber-500/15 to-orange-500/10 text-amber-700 border-amber-200" },
-  { id: "codigos", label: "Códigos CNC", icon: Code2, color: "from-slate-700/15 to-slate-500/10 text-slate-700 border-slate-200" },
+const tabItems: PageNavTab<Tab>[] = [
+  { id: "ferramentas", label: "Ferramentas", Icon: Wrench, activeColor: "text-blue-600 dark:text-blue-400", activeBg: "bg-blue-500/10", activeBorder: "border-blue-500/40", badgeBg: "bg-blue-500/15", badgeText: "text-blue-600 dark:text-blue-400" },
+  { id: "compras", label: "Compras", Icon: ShoppingCart, activeColor: "text-green-600 dark:text-green-400", activeBg: "bg-green-500/10", activeBorder: "border-green-500/40", badgeBg: "bg-green-500/15", badgeText: "text-green-600 dark:text-green-400" },
+  { id: "fornecedores", label: "Fornecedores", Icon: Truck, activeColor: "text-purple-600 dark:text-purple-400", activeBg: "bg-purple-500/10", activeBorder: "border-purple-500/40", badgeBg: "bg-purple-500/15", badgeText: "text-purple-600 dark:text-purple-400" },
+  { id: "faltas", label: "Faltas", Icon: AlertTriangle, activeColor: "text-amber-600 dark:text-amber-400", activeBg: "bg-amber-500/10", activeBorder: "border-amber-500/40", badgeBg: "bg-amber-500/15", badgeText: "text-amber-600 dark:text-amber-400" },
+  { id: "codigos", label: "Códigos CNC", Icon: Code2, activeColor: "text-teal-600 dark:text-teal-400", activeBg: "bg-teal-500/10", activeBorder: "border-teal-500/40", badgeBg: "bg-teal-500/15", badgeText: "text-teal-600 dark:text-teal-400" },
 ];
 
 export default function Processos() {
   const [tab, setTab] = useState<Tab>("ferramentas");
+  const isMobile = useIsMobile();
   const [ferramentas, setFerramentas] = useStoredState<Ferramenta[]>(STORAGE_KEYS.ferramentas, []);
   const [fornecedores, setFornecedores] = useStoredState<Fornecedor[]>(STORAGE_KEYS.fornecedores, []);
   const [pedidos, setPedidos] = useStoredState<Pedido[]>(STORAGE_KEYS.pedidos, []);
@@ -71,16 +74,21 @@ export default function Processos() {
   const totalDanificadas = ferramentas.reduce((acc, f) => acc + Number(f.danificadas || 0), 0);
   const pedidosAbertos = pedidos.filter((p) => p.status !== "Recebido").length;
 
-  return <div className="flex flex-col h-full bg-gradient-to-br from-background via-background to-muted/40">
-    <header className="sticky top-0 z-10 bg-background/85 backdrop-blur-md border-b border-border/40">
-      <div className="px-3 sm:px-4 h-14 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center"><Factory className="h-5 w-5" /></div><div><h1 className="text-sm font-semibold">Processos</h1><p className="text-xs text-muted-foreground">Ferramentas, compras, fornecedores e códigos de máquina</p></div></div>
-        <div className="flex items-center gap-2"><Badge variant={emFalta.length ? "destructive" : "secondary"} className="gap-1"><Bell className="h-3 w-3" />{emFalta.length ? `${emFalta.length} falta(s)` : "Estoque OK"}</Badge></div>
+  return <div className="flex flex-col h-full bg-transparent">
+    <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
+      <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
+        <div className="flex items-center gap-2">
+          <Factory className="h-4 w-4 text-primary shrink-0" />
+          <h1 className="text-sm font-semibold">Processos</h1>
+        </div>
+        <Badge variant={emFalta.length ? "destructive" : "secondary"} className="gap-1 text-[10px] sm:text-xs">
+          <Bell className="h-3 w-3" />{emFalta.length ? `${emFalta.length} falta(s)` : "Estoque OK"}
+        </Badge>
       </div>
     </header>
     <main className="flex-1 overflow-y-auto"><div className="px-3 sm:px-4 py-4 space-y-4">
-      <div className="grid gap-3 md:grid-cols-4"><Metric title="Ferramentas cadastradas" value={ferramentas.length} icon={Wrench} tone="sky" /><Metric title="Disponíveis" value={totalDisponivel} icon={Boxes} tone="emerald" /><Metric title="Danificadas" value={totalDanificadas} icon={PackageMinus} tone="rose" /><Metric title="Compras em aberto" value={pedidosAbertos} icon={ClipboardList} tone="amber" /></div>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">{tabItems.map((item) => { const Icon = item.icon; const active = tab === item.id; return <button key={item.id} onClick={() => setTab(item.id)} className={cn("flex items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-xs font-semibold transition-all shadow-sm", active ? `bg-gradient-to-br ${item.color} shadow-md scale-[1.01]` : "border-border bg-card hover:bg-muted/60 text-muted-foreground")}><Icon className="h-4 w-4" /><span className="truncate">{item.label}</span></button>; })}</div>
+      <PageNav tabs={tabItems} activeTab={tab} onTabChange={setTab} cols={isMobile ? 2 : undefined} />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric title="Ferramentas cadastradas" value={ferramentas.length} icon={Wrench} tone="sky" /><Metric title="Disponíveis" value={totalDisponivel} icon={Boxes} tone="emerald" /><Metric title="Danificadas" value={totalDanificadas} icon={PackageMinus} tone="rose" /><Metric title="Compras em aberto" value={pedidosAbertos} icon={ClipboardList} tone="amber" /></div>
       {tab === "ferramentas" && <FerramentasPanel ferramentas={ferramentas} setFerramentas={setFerramentas} fornecedores={fornecedores} />}
       {tab === "fornecedores" && <FornecedoresPanel fornecedores={fornecedores} setFornecedores={setFornecedores} />}
       {tab === "compras" && <ComprasPanel pedidos={pedidos} setPedidos={setPedidos} fornecedores={fornecedores} ferramentas={ferramentas} />}
