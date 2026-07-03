@@ -20,6 +20,7 @@ import {
   Menu,
   X,
   Factory,
+  Workflow,
   Cpu,
   ShieldCheck,
   Info,
@@ -42,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Comercial",   icon: ShoppingBag,   path: "/comercial", roles: ["admin","comercial"] },
   { label: "Financeiro",  icon: Receipt,       path: "/financeiro",roles: ["admin","financeiro"] },
   { label: "Produção",    icon: Factory,       path: "/producao",  roles: ["admin","producao"] },
+  { label: "Processos",   icon: Workflow,      path: "/processos", roles: ["admin","processos","producao"] },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [

@@ -16,7 +16,8 @@ export type AppRole =
   | "qualidade"
   | "comercial"
   | "financeiro"
-  | "producao";
+  | "producao"
+  | "processos";
 
 export const APP_ROLES: AppRole[] = [
   "admin",
@@ -25,6 +26,7 @@ export const APP_ROLES: AppRole[] = [
   "comercial",
   "financeiro",
   "producao",
+  "processos",
 ];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
@@ -34,14 +36,16 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   comercial:  "Comercial",
   financeiro: "Financeiro",
   producao:   "Produção",
+  processos:  "Processos",
 };
 
 /** Rotas acessíveis por role (além do admin que acessa tudo) */
 export const ROLE_ROUTES: Record<AppRole, string[]> = {
-  admin:      ["/", "/estoque", "/qualidade", "/comercial", "/financeiro", "/producao", "/admin"],
+  admin:      ["/", "/estoque", "/qualidade", "/comercial", "/financeiro", "/producao", "/processos", "/admin"],
   estoque:    ["/", "/estoque"],
   qualidade:  ["/", "/estoque", "/qualidade"],
   comercial:  ["/comercial"],
   financeiro: ["/financeiro"],
-  producao:   ["/", "/producao"],
+  producao:   ["/", "/producao", "/processos"],
+  processos:  ["/processos"],
 };
