@@ -311,7 +311,128 @@ function ComprasPanel({ pedidos, setPedidos, fornecedores, ferramentas }: { pedi
 
 function FaltasPanel({ ferramentas, fornecedores, pedidos, setPedidos }: { ferramentas: Ferramenta[]; fornecedores: Fornecedor[]; pedidos: Pedido[]; setPedidos: React.Dispatch<React.SetStateAction<Pedido[]>> }) { const fornecedorNome = (id?: string) => fornecedores.find((f) => f.id === id)?.nome ?? "Sem fornecedor padrão"; const gerarPedido = (f: Ferramenta) => { const qtd = Math.max(f.minimo * 2 - disponivel(f), 1); setPedidos([{ id: uid(), ferramenta: f.nome, fornecedorId: f.fornecedorId ?? "", quantidade: qtd, status: "Solicitado", data: today(), observacoes: "Gerado automaticamente pelo controle de faltas." }, ...pedidos]); toast.success("Pedido gerado pela falta de ferramenta."); }; return <Card className="shadow-sm"><CardHeader className="bg-warning/5 rounded-t-lg border-b border-border/40"><CardTitle className="text-sm flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-warning" />Ferramentas abaixo do estoque mínimo</CardTitle></CardHeader><CardContent className="space-y-2 pt-4">{ferramentas.map((f) => { const disp = disponivel(f); return <div key={f.id} className="rounded-2xl border border-warning/35 bg-warning/8 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><div className="font-semibold text-sm">{f.nome}</div><div className="text-xs text-muted-foreground">Disponível: {disp} • Mínimo: {f.minimo} • {fornecedorNome(f.fornecedorId)}</div></div><Button size="sm" className="w-full sm:w-auto" onClick={() => gerarPedido(f)}><ShoppingCart className="h-4 w-4 mr-2" />Gerar compra</Button></div>; })}{!ferramentas.length && <Empty text="Nenhuma ferramenta em falta." />}</CardContent></Card>; }
 
-function CodigosPanel({ programas, setProgramas }: { programas: Programa[]; setProgramas: React.Dispatch<React.SetStateAction<Programa[]>> }) { const [selectedId, setSelectedId] = useState<string>(programas[0]?.id ?? "novo"); const selected = programas.find((p) => p.id === selectedId); const novo = (): Programa => ({ id: "novo", nome: "Novo programa", maquina: "", linguagem: "G-Code", conteudo: "(INICIO)\nG21 G90\nM30\n(FIM)", atualizadoEm: new Date().toISOString() }); const [draft, setDraft] = useState<Programa>(selected ?? novo()); useEffect(() => { const next = programas.find((p) => p.id === selectedId); if (next) setDraft(next); }, [selectedId, programas]); const linhas = draft.conteudo.split("\n").map((_, i) => i + 1).join("\n"); const salvar = () => { if (!draft.nome.trim()) return toast.error("Informe o nome do programa."); const item = { ...draft, id: draft.id === "novo" ? uid() : draft.id, atualizadoEm: new Date().toISOString() }; setProgramas((old) => draft.id === "novo" ? [item, ...old] : old.map((p) => p.id === item.id ? item : p)); setSelectedId(item.id); toast.success("Código salvo."); }; const excluir = () => { if (draft.id === "novo") return toast.error("Esse programa ainda não foi salvo."); setProgramas((old) => old.filter((p) => p.id !== draft.id)); setSelectedId("novo"); setDraft(novo()); toast.success("Programa apagado."); }; const baixar = () => { const ext = draft.linguagem === "Siemens" ? "mpf" : draft.linguagem === "Heidenhain" ? "h" : "nc"; downloadBlob(new Blob([draft.conteudo], { type: "text/plain;charset=utf-8" }), `${draft.nome.replace(/[^a-z0-9_-]+/gi, "_")}.${ext}`); toast.success("Programa baixado."); }; const copiar = async () => { await navigator.clipboard?.writeText(draft.conteudo); toast.success("Código copiado."); }; return <div className="grid gap-3 sm:gap-4 lg:grid-cols-[300px_1fr]"><Card className="shadow-sm"><CardHeader className="bg-primary/5 rounded-t-lg border-b border-border/40"><CardTitle className="text-sm flex items-center gap-2"><FileCode2 className="h-4 w-4" />Programas</CardTitle></CardHeader><CardContent className="space-y-2 pt-4"><Button className="w-full" variant="outline" onClick={() => { setSelectedId("novo"); setDraft(novo()); }}><Plus className="h-4 w-4 mr-2" />Novo código</Button>{programas.map((p) => <button key={p.id} onClick={() => setSelectedId(p.id)} className={cn("w-full text-left rounded-xl border p-3 text-sm transition-all", selectedId === p.id ? "border-primary bg-primary/10 shadow-sm" : "hover:bg-muted/60 bg-card")}><div className="font-semibold truncate">{p.nome}</div><div className="text-xs text-muted-foreground truncate">{p.maquina || "Sem máquina"} • {p.linguagem}</div></button>)}{!programas.length && <Empty text="Nenhum programa salvo." />}</CardContent></Card><Card className="shadow-sm"><CardHeader><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2"><CardTitle className="text-sm flex items-center gap-2"><Database className="h-4 w-4" />Editor estilo Notepad++</CardTitle><div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 w-full sm:w-auto"><Button variant="outline" className="w-full sm:w-auto" onClick={copiar}><Copy className="h-4 w-4 mr-2" />Copiar</Button><Button variant="outline" className="w-full sm:w-auto" onClick={baixar}><Download className="h-4 w-4 mr-2" />Baixar</Button><Button variant="destructive" className="w-full sm:w-auto" onClick={excluir}><Trash2 className="h-4 w-4 mr-2" />Apagar</Button><Button className="w-full sm:w-auto" onClick={salvar}><Save className="h-4 w-4 mr-2" />Salvar</Button></div></div></CardHeader><CardContent className="space-y-3"><div className="grid sm:grid-cols-3 gap-2"><Field label="Nome"><Input value={draft.nome} onChange={(e) => setDraft({ ...draft, nome: e.target.value })} /></Field><Field label="Máquina"><Input value={draft.maquina} onChange={(e) => setDraft({ ...draft, maquina: e.target.value })} /></Field><Field label="Linguagem"><Select value={draft.linguagem} onValueChange={(v: Linguagem) => setDraft({ ...draft, linguagem: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{linguagens.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select></Field></div><div className="rounded-xl border overflow-hidden bg-slate-950 text-slate-100"><div className="h-9 px-3 flex items-center gap-2 border-b border-slate-800 bg-slate-900 text-xs text-slate-400"><CheckCircle2 className="h-3.5 w-3.5 text-success" />{draft.linguagem} • linhas: {draft.conteudo.split("\n").length}</div><div className="flex min-h-[340px] sm:min-h-[500px]"><pre className="select-none px-2 sm:px-3 py-3 text-right text-[10px] sm:text-xs leading-5 bg-slate-900 text-slate-500 font-mono">{linhas}</pre><Textarea value={draft.conteudo} onChange={(e) => setDraft({ ...draft, conteudo: e.target.value })} spellCheck={false} className="min-h-[340px] sm:min-h-[500px] resize-none border-0 rounded-none bg-slate-950 text-slate-100 font-mono text-xs leading-5 focus-visible:ring-0" /></div></div></CardContent></Card></div>; }
+function CodigosPanel({ programas, setProgramas }: { programas: Programa[]; setProgramas: React.Dispatch<React.SetStateAction<Programa[]>> }) {
+  const [selectedId, setSelectedId] = useState<string>(programas[0]?.id ?? "novo");
+  const selected = programas.find((p) => p.id === selectedId);
+  const novo = (): Programa => ({
+    id: "novo",
+    nome: "Novo programa",
+    maquina: "",
+    linguagem: "G-Code",
+    conteudo: "(INICIO)\nG21 G90\nM30\n(FIM)",
+    atualizadoEm: new Date().toISOString(),
+  });
+  const [draft, setDraft] = useState<Programa>(selected ?? novo());
+
+  useEffect(() => {
+    const next = programas.find((p) => p.id === selectedId);
+    if (next) setDraft(next);
+  }, [selectedId, programas]);
+
+  const linhas = draft.conteudo.split("\n").map((_, i) => i + 1).join("\n");
+  const selecionar = (id: string) => {
+    setSelectedId(id);
+    const next = programas.find((p) => p.id === id);
+    if (next) setDraft(next);
+  };
+  const criarNovo = () => {
+    setSelectedId("novo");
+    setDraft(novo());
+  };
+  const salvar = () => {
+    if (!draft.nome.trim()) return toast.error("Informe o nome do programa.");
+    const item = { ...draft, id: draft.id === "novo" ? uid() : draft.id, atualizadoEm: new Date().toISOString() };
+    setProgramas((old) => draft.id === "novo" ? [item, ...old] : old.map((p) => p.id === item.id ? item : p));
+    setSelectedId(item.id);
+    toast.success("Código salvo.");
+  };
+  const excluir = () => {
+    if (draft.id === "novo") return toast.error("Esse programa ainda não foi salvo.");
+    setProgramas((old) => old.filter((p) => p.id !== draft.id));
+    criarNovo();
+    toast.success("Programa apagado.");
+  };
+  const baixar = () => {
+    const ext = draft.linguagem === "Siemens" ? "mpf" : draft.linguagem === "Heidenhain" ? "h" : "nc";
+    downloadBlob(new Blob([draft.conteudo], { type: "text/plain;charset=utf-8" }), `${draft.nome.replace(/[^a-z0-9_-]+/gi, "_")}.${ext}`);
+    toast.success("Programa baixado.");
+  };
+  const copiar = async () => {
+    await navigator.clipboard?.writeText(draft.conteudo);
+    toast.success("Código copiado.");
+  };
+
+  return <div className="grid gap-3 sm:gap-4 lg:grid-cols-[320px_1fr]">
+    <Card className="shadow-sm border-border/70 bg-card overflow-hidden">
+      <CardHeader className="border-b border-border/40 bg-muted/20">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-sm flex items-center gap-2"><FileCode2 className="h-4 w-4 text-primary" />Programas CNC</CardTitle>
+          <Badge variant="secondary" className="text-[10px]">{programas.length}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="p-3 sm:p-4 space-y-3">
+        <Button className="w-full h-10" onClick={criarNovo}><Plus className="h-4 w-4 mr-2" />Novo código</Button>
+        <div className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-2 lg:overflow-visible">
+          {programas.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => selecionar(p.id)}
+              className={cn(
+                "min-w-[210px] lg:min-w-0 lg:w-full text-left rounded-2xl border p-3 text-sm transition-all bg-card",
+                selectedId === p.id ? "border-primary/50 bg-primary/10 shadow-sm" : "border-border/70 hover:bg-muted/40"
+              )}
+            >
+              <div className="font-semibold truncate">{p.nome}</div>
+              <div className="text-xs text-muted-foreground truncate">{p.maquina || "Sem máquina"} • {p.linguagem}</div>
+            </button>
+          ))}
+        </div>
+        {!programas.length && <Empty text="Nenhum programa salvo." />}
+      </CardContent>
+    </Card>
+
+    <Card className="shadow-sm border-border/70 bg-card overflow-hidden">
+      <CardHeader className="border-b border-border/40 bg-muted/20">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <CardTitle className="text-sm flex items-center gap-2"><Database className="h-4 w-4 text-primary" />Editor de código</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">No celular, os comandos ficam grandes e o editor ocupa a largura da tela.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:flex xl:flex-wrap">
+            <Button variant="outline" className="h-10" onClick={copiar}><Copy className="h-4 w-4 mr-2" />Copiar</Button>
+            <Button variant="outline" className="h-10" onClick={baixar}><Download className="h-4 w-4 mr-2" />Baixar</Button>
+            <Button variant="outline" className="h-10 text-destructive hover:text-destructive" onClick={excluir}><Trash2 className="h-4 w-4 mr-2" />Apagar</Button>
+            <Button className="h-10" onClick={salvar}><Save className="h-4 w-4 mr-2" />Salvar</Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-3 sm:p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <Field label="Nome"><Input value={draft.nome} onChange={(e) => setDraft({ ...draft, nome: e.target.value })} /></Field>
+          <Field label="Máquina"><Input value={draft.maquina} onChange={(e) => setDraft({ ...draft, maquina: e.target.value })} /></Field>
+          <Field label="Linguagem"><Select value={draft.linguagem} onValueChange={(v: Linguagem) => setDraft({ ...draft, linguagem: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{linguagens.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select></Field>
+        </div>
+        <div className="rounded-2xl border border-border/70 overflow-hidden bg-card">
+          <div className="h-10 px-3 flex items-center justify-between gap-2 border-b border-border/50 bg-muted/30 text-xs text-muted-foreground">
+            <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-success" />{draft.linguagem}</span>
+            <span>{draft.conteudo.split("\n").length} linhas</span>
+          </div>
+          <div className="flex min-h-[52vh] sm:min-h-[520px] max-h-[70vh] overflow-auto bg-slate-950 text-slate-100">
+            <pre className="select-none sticky left-0 px-2 sm:px-3 py-3 text-right text-[11px] sm:text-xs leading-6 bg-slate-900 text-slate-500 font-mono border-r border-slate-800">{linhas}</pre>
+            <Textarea
+              value={draft.conteudo}
+              onChange={(e) => setDraft({ ...draft, conteudo: e.target.value })}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              className="min-h-[52vh] sm:min-h-[520px] w-full min-w-[680px] resize-none border-0 rounded-none bg-slate-950 text-slate-100 font-mono text-[13px] sm:text-sm leading-6 focus-visible:ring-0 p-3"
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </div>;
+}
 
 function downloadBlob(blob: Blob, filename: string) { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
 function Pill({ label, value, tone }: { label: string; value: number; tone: "success" | "primary" | "destructive" | "warning" }) { const cls = { success: "bg-success/8 text-success border-success/25", primary: "bg-primary/8 text-primary border-primary/25", destructive: "bg-destructive/8 text-destructive border-destructive/25", warning: "bg-warning/8 text-warning border-warning/25" }; return <span className={cn("rounded-full border px-2.5 py-1 font-medium text-center sm:text-left", cls[tone])}>{label}: {value}</span>; }

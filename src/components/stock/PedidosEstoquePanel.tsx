@@ -2304,7 +2304,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
 
   const filtrados = pedidos.filter(p => {
-    const matchStatus = p.status === "separando" || p.status === "pronto";
+    const matchStatus = ["separando", "pronto", "faturado", "enviado", "retorno"].includes(p.status);
     if (!matchStatus) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();

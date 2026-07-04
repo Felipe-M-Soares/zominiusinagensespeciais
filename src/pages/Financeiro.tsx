@@ -1436,6 +1436,7 @@ function SefazModal({
           p_dh_autorizacao: fake.dhAutorizacao ?? new Date().toISOString(),
           p_user_id: user.id, p_user_name: "Financeiro",
         } as Record<string, unknown>);
+        await supabase.from("pedidos_comerciais").update({ status: "enviado" }).eq("id", pedido.id);
         // Notifica vendedora + admins mesmo no modo teste
         await notificarPedidoEnviado(pedido, nfLabel, fake.protocolo ?? "");
         toast.success(`[TESTE] NF-e simulada! Protocolo ${fake.protocolo}`, { duration: 5000 });
@@ -1464,6 +1465,7 @@ function SefazModal({
       if (rpcErr) { toast.error(`NF autorizada, mas erro ao salvar: ${rpcErr.message}`); return; }
       const rpcData = rpc as { error?: string } | null;
       if (rpcData?.error) { toast.error(`Erro: ${rpcData.error}`); return; }
+      await supabase.from("pedidos_comerciais").update({ status: "enviado" }).eq("id", pedido.id);
       // Notifica vendedora + admins
       await notificarPedidoEnviado(pedido, nfLabel, result.protocolo ?? "");
       toast.success(`✅ ${dados.tipoNota.toUpperCase()} autorizada! Protocolo ${result.protocolo}`, { duration: 6000 });
@@ -1941,7 +1943,7 @@ function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirN
   }
 
   const isPronto   = pedido.status === "pronto";
-  const isFaturado = pedido.status === "enviado";
+  const isFaturado = pedido.status === "faturado";
   const isEnviado  = pedido.status === "enviado";
   const accentColor = isPronto ? "#10b981" : isFaturado ? "#7c3aed" : isEnviado ? "#22c55e" : "hsl(var(--muted-foreground))";
   const borderColor = isPronto ? "#34d399" : isFaturado ? "#a78bfa" : isEnviado ? "#4ade80" : "hsl(var(--border))";
