@@ -97,8 +97,8 @@ export function ClearHistoryButton({
       </button>
 
       {confirmOpen && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-[10000] pointer-events-auto flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl pointer-events-auto" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3">
               <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
                 <AlertTriangle className="h-5 w-5 text-destructive" />
