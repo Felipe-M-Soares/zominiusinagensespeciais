@@ -17,7 +17,7 @@ import { registerMovement, fetchLotesSummary } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { formatLote, loteStatus } from "@/lib/lote";
+import { formatLote, loteBase, loteStatus } from "@/lib/lote";
 
 // ─── Tipos de saída ────────────────────────────────────────────────────────────
 const SAIDA_TYPES = [
@@ -129,6 +129,20 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
     if (!item || safeQty < 1) return;
     if (!lote.trim()) { toast.error("Informe o número do lote."); return; }
     if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMYYS-NN ou DDMMYYS-NN/A\nEx: 0101261-01 ou 0101261-01/A"); return; }
+
+    if (type === "entrada" && item.fase === "intermediaria") {
+      const loteDigitado = lote.trim().toUpperCase();
+      const baseDigitada = loteBase(loteDigitado);
+      const loteJaExiste = existingLotes.some((l) => loteBase(l.lote) === baseDigitada);
+
+      if (loteJaExiste) {
+        toast.error("Lote já cadastrado no intermediário.", {
+          description: `O lote-base ${baseDigitada} já existe. Mesmo que ele tenha virado ${baseDigitada}/A, não é permitido cadastrar novamente ${loteDigitado}.`,
+        });
+        return;
+      }
+    }
+
     if (submittingRef.current) return;
     submittingRef.current = true;
 

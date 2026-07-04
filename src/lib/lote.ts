@@ -32,3 +32,17 @@ export function displayLote(lote: string | null | undefined): string | null {
   if (LOTE_INDEFINIDO.has(trimmed.toLowerCase())) return null;
   return trimmed;
 }
+
+/**
+ * Normaliza o lote para comparação de duplicidade.
+ * Ex.: 0101261-01 e 0101261-01/A pertencem ao mesmo lote-base.
+ */
+export function loteBase(lote: string | null | undefined): string {
+  return (lote ?? "").trim().toUpperCase().replace(/\/[A-Z]$/, "");
+}
+
+export function mesmoLoteBase(a: string | null | undefined, b: string | null | undefined): boolean {
+  const baseA = loteBase(a);
+  const baseB = loteBase(b);
+  return Boolean(baseA && baseB && baseA === baseB);
+}
