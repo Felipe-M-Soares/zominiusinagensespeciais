@@ -107,6 +107,12 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
     : item.quantity_available - resolvedQty;
   const loteOk = loteStatus(lote);
   const isSaidaMode = type === "saida";
+  const loteDigitadoBase = loteBase(lote);
+  const loteRepetidoNoIntermediario =
+    type === "entrada" &&
+    item.fase === "intermediaria" &&
+    loteOk === "valid" &&
+    existingLotes.some((l) => loteBase(l.lote) === loteDigitadoBase);
 
   function buildReason(): string {
     if (isSaidaMode) {
@@ -130,17 +136,9 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
     if (!lote.trim()) { toast.error("Informe o número do lote."); return; }
     if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMYYS-NN ou DDMMYYS-NN/A\nEx: 0101261-01 ou 0101261-01/A"); return; }
 
-    if (type === "entrada" && item.fase === "intermediaria") {
-      const loteDigitado = lote.trim().toUpperCase();
-      const baseDigitada = loteBase(loteDigitado);
-      const loteJaExiste = existingLotes.some((l) => loteBase(l.lote) === baseDigitada);
-
-      if (loteJaExiste) {
-        toast.error("Lote já cadastrado no intermediário.", {
-          description: `O lote-base ${baseDigitada} já existe. Mesmo que ele tenha virado ${baseDigitada}/A, não é permitido cadastrar novamente ${loteDigitado}.`,
-        });
-        return;
-      }
+    if (loteRepetidoNoIntermediario) {
+      toast.error("Lote repetido");
+      return;
     }
 
     if (submittingRef.current) return;
@@ -298,13 +296,13 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
                   maxLength={12}
                   className={cn(
                     "pr-8 h-11 rounded-xl font-mono text-sm tracking-widest uppercase transition-colors",
-                    lote && loteOk === "valid"   && "border-success/50 bg-success/5",
-                    lote && loteOk === "invalid" && "border-destructive/50 bg-destructive/5"
+                    lote && loteOk === "valid" && !loteRepetidoNoIntermediario && "border-success/50 bg-success/5",
+                    lote && (loteOk === "invalid" || loteRepetidoNoIntermediario) && "border-destructive/50 bg-destructive/5"
                   )}
                 />
                 {lote && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                    {loteOk === "valid"
+                    {loteOk === "valid" && !loteRepetidoNoIntermediario
                       ? <CheckCircle2 className="h-4 w-4 text-success" />
                       : <XCircle className="h-4 w-4 text-destructive/60" />}
                   </div>
@@ -317,13 +315,14 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
               <>
                 <p className={cn(
                   "text-[10px] leading-relaxed",
+                  loteRepetidoNoIntermediario ? "text-destructive font-medium" :
                   loteOk === "valid"   ? "text-success" :
                   loteOk === "invalid" ? "text-destructive/70" :
                   "text-muted-foreground/60"
                 )}>
-                  {loteHint(lote)}
+                  {loteRepetidoNoIntermediario ? "Lote repetido" : loteHint(lote)}
                 </p>
-                {loteOk === "valid" && existingLotes.some(l => l.lote === lote.toUpperCase()) && (
+                {loteOk === "valid" && !loteRepetidoNoIntermediario && existingLotes.some(l => l.lote === lote.toUpperCase()) && (
                   <p className="text-[10px] text-warning font-medium flex items-center gap-1">
                     ⚠️ Este lote já existe para este item. A entrada será somada ao lote existente.
                   </p>

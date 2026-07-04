@@ -14,7 +14,6 @@ import {
   Wrench,
   Inbox,
   ShoppingBag,
-  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StockItem } from "@/hooks/useStock";
@@ -26,8 +25,7 @@ export type ActiveView =
   | "expedicao"
   | "retrabalho"
   | "recebimento"
-  | "pedidos"
-  | "relatorios"
+  | "pedidos";
 
 interface StockNavProps {
   activeView: ActiveView;
@@ -106,17 +104,6 @@ const TABS = [
     activeBorder: "border-amber-500/40",
     badgeBg: "bg-amber-500/15",
     badgeText: "text-amber-600 dark:text-amber-400",
-    animation: "animate-pop",
-  },
-  {
-    id: "relatorios" as ActiveView,
-    label: "Relatórios",
-    Icon: BarChart3,
-    activeColor: "text-violet-600 dark:text-violet-400",
-    activeBg: "bg-violet-500/10",
-    activeBorder: "border-violet-500/40",
-    badgeBg: "bg-violet-500/15",
-    badgeText: "text-violet-600 dark:text-violet-400",
     animation: "animate-pop",
   },
 ] as const;
