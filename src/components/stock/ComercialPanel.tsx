@@ -1128,10 +1128,12 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
 
   const pedidoIds = pedidosData.map((p: Record<string, unknown>) => p.id as string);
 
-  const { data: itensData } = await supabase
-    .from("pedido_itens")
-    .select("*, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference))")
-    .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"]);
+  const { data: itensData } = pedidoIds.length > 0
+    ? await supabase
+      .from("pedido_itens")
+      .select("*, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference))")
+      .in("pedido_id", pedidoIds)
+    : { data: [] };
 
   const statusLabel: Record<string, string> = {
     pendente: "Pendente",
@@ -1288,10 +1290,12 @@ async function exportExcelComercial() {
 
   const pedidoIds = pedidosData.map((p: Record<string, unknown>) => p.id as string);
 
-  const { data: itensData } = await supabase
-    .from("pedido_itens")
-    .select("*, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference))")
-    .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"]);
+  const { data: itensData } = pedidoIds.length > 0
+    ? await supabase
+      .from("pedido_itens")
+      .select("*, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference))")
+      .in("pedido_id", pedidoIds)
+    : { data: [] };
 
   const statusLabel: Record<string, string> = {
     pendente: "Pendente",
@@ -1489,11 +1493,13 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
       const pedidoIds = pedidosData.map((p: Record<string, unknown>) => p.id as string);
 
-      const { data: itensData } = await supabase
-        .from("pedido_itens")
-        .select("*, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference))")
-        .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"])
-        .abortSignal(ctrl.signal);
+      const { data: itensData } = pedidoIds.length > 0
+        ? await supabase
+          .from("pedido_itens")
+          .select("*, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference))")
+          .in("pedido_id", pedidoIds)
+          .abortSignal(ctrl.signal)
+        : { data: [] };
 
       if (ctrl.signal.aborted) return;
 
