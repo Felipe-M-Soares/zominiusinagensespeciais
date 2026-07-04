@@ -25,6 +25,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { log } from "../_shared/log.ts";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -248,7 +249,7 @@ Deno.serve(async (httpReq: Request) => {
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[gs1-api]", message);
+    log.error("gs1-api", "[gs1-api]", message);
     return new Response(
       JSON.stringify({ ok: false, status: 500, error: message }),
       {

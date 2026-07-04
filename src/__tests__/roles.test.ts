@@ -4,7 +4,7 @@ import type { AppRole } from "@/types/roles";
 
 // BUG-11: Tests for role definitions — SEG-02 regression guard
 describe("APP_ROLES", () => {
-  const EXPECTED: AppRole[] = ["admin", "estoque", "qualidade", "comercial", "financeiro", "producao"];
+  const EXPECTED: AppRole[] = ["admin", "estoque", "qualidade", "comercial", "financeiro", "producao", "processos"];
 
   it("contains all expected roles", () => {
     for (const role of EXPECTED) {
@@ -21,5 +21,10 @@ describe("APP_ROLES", () => {
   it("includes financeiro (SEG-02 regression)", () => {
     expect(APP_ROLES).toContain("financeiro");
     expect(ROLE_LABELS.financeiro).toBe("Financeiro");
+  });
+
+  it("includes processos", () => {
+    expect(APP_ROLES).toContain("processos");
+    expect(ROLE_LABELS.processos).toBe("Processos");
   });
 });

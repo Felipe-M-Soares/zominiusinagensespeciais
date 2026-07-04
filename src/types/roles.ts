@@ -8,6 +8,7 @@
  *  comercial  → Comercial (isolado por conta)
  *  financeiro → Financeiro
  *  producao   → Componentes, Produção
+ *  processos  → Processos
  *  admin      → Tudo
  */
 export type AppRole =

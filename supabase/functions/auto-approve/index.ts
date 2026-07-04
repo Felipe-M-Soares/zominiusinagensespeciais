@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { log } from "../_shared/log.ts";
 
 // Rate limiting: max 5 auto-approve attempts per IP per 5 minutes
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -70,7 +71,7 @@ Deno.serve(async (req) => {
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      console.error("JWT validation failed in auto-approve:", userError?.message ?? "no user");
+      log.error("auto-approve", "JWT validation failed in auto-approve:", userError?.message ?? "no user");
       return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -172,21 +173,21 @@ Deno.serve(async (req) => {
       .eq("user_id", targetUserId);
 
     if (updateError) {
-      console.error("auto-approve update error:", updateError.message);
+      log.error("auto-approve", "auto-approve update error:", updateError.message);
       return new Response(JSON.stringify({ error: "Erro ao aprovar conta" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log(`Auto-approved user ${targetUserId} after ${Math.round(ageMs / 1000)}s`);
+    log.info("auto-approve", `Auto-approved user ${targetUserId} after ${Math.round(ageMs / 1000)}s`);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (err) {
-    console.error("auto-approve error:", err);
+    log.error("auto-approve", "auto-approve error:", err);
     return new Response(JSON.stringify({ error: "Erro interno" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

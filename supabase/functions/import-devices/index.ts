@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { log } from "../_shared/log.ts";
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_RECORDS = 10_000;
@@ -308,7 +309,7 @@ Deno.serve(async (req) => {
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
       // Loga o erro real para debug no Supabase Dashboard → Edge Functions → Logs
-      console.error("JWT validation failed:", userError?.message ?? "no user returned");
+      log.error("import-devices", "JWT validation failed:", userError?.message ?? "no user returned");
       return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -350,7 +351,7 @@ Deno.serve(async (req) => {
         .filter(k => k === k.trim() && k.length > 0 && k === k.replace(/_/g, k).toLowerCase() === false || true)
         .filter((v, i, a) => a.indexOf(v) === i) // dedup
         .slice(0, 20);
-      console.log("CSV columns detected:", detectedCols.join(" | "));
+      log.info("import-devices", "CSV columns detected:", detectedCols.join(" | "));
 
       const allMapped = rows.map(mapCSVRow);
       mapped = allMapped.filter(d => d.udi_di && d.udi_di.length > 0);
@@ -428,7 +429,7 @@ Deno.serve(async (req) => {
         .neq("id", "00000000-0000-0000-0000-000000000000");
 
       if (deleteError) {
-        console.error("replace_all delete error:", deleteError.message);
+        log.error("import-devices", "replace_all delete error:", deleteError.message);
         return new Response(JSON.stringify({
           error: "Erro ao limpar catálogo antes da importação: " + deleteError.message
         }), {
@@ -452,7 +453,7 @@ Deno.serve(async (req) => {
         .upsert(batch, { onConflict: "udi_di", ignoreDuplicates: false });
 
       if (error) {
-        console.error(`Batch ${i / BATCH + 1} error:`, error.message);
+        log.error("import-devices", `Batch ${i / BATCH + 1} error:`, error.message);
         if (wasReplaceAll) {
           // Catálogo já foi deletado e a importação falhou — informa claramente
           return new Response(JSON.stringify({
@@ -473,7 +474,7 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("import-devices error:", msg);
+    log.error("import-devices", "import-devices error:", msg);
     return new Response(JSON.stringify({ error: "Erro interno na importação. Verifique o arquivo e tente novamente." }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

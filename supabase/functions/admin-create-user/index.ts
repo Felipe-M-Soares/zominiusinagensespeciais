@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { log } from "../_shared/log.ts";
 
 function getRequiredEnv(key: string): string {
   const value = Deno.env.get(key);
@@ -180,7 +181,7 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("admin-create-user error:", msg);
+    log.error("admin-create-user", "admin-create-user error:", msg);
     return new Response(JSON.stringify({ error: msg }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

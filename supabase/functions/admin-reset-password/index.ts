@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { log } from "../_shared/log.ts";
 
 // CODE-006: Validate env vars at startup
 function getRequiredEnv(key: string): string {
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
       supabaseAnonKey = getRequiredEnv("SUPABASE_ANON_KEY");
       serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
     } catch (envErr) {
-      console.error(envErr);
+      log.error("admin-reset-password", envErr);
       return new Response(JSON.stringify({ error: "Erro de configuração do servidor" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -71,7 +72,7 @@ Deno.serve(async (req) => {
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      console.error("JWT validation failed in admin-reset-password:", userError?.message ?? "no user");
+      log.error("admin-reset-password", "JWT validation failed in admin-reset-password:", userError?.message ?? "no user");
       return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -89,7 +90,7 @@ Deno.serve(async (req) => {
     // VULN-010 FIX: Do not log sensitive user data in production
     const DEBUG = Deno.env.get("DEBUG") === "true";
     if (DEBUG) {
-      console.log("Caller role:", roleData?.role);
+      log.info("admin-reset-password", "Caller role:", roleData?.role);
     }
 
     if (roleData?.role !== "admin") {
@@ -172,7 +173,7 @@ Deno.serve(async (req) => {
     );
 
     if (updateError) {
-      console.error("updateUserById error:", updateError.message);
+      log.error("admin-reset-password", "updateUserById error:", updateError.message);
       return new Response(
         JSON.stringify({ error: "Não foi possível redefinir a senha." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -183,7 +184,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("admin-reset-password error:", err);
+    log.error("admin-reset-password", "admin-reset-password error:", err);
     return new Response(JSON.stringify({ error: "Erro interno." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -28,6 +28,7 @@
  */
 
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { log } from "../_shared/log.ts";
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────
 
@@ -377,7 +378,7 @@ Deno.serve(async (req: Request) => {
 
     // ── 1. Chave de acesso ──
     const { chave, cNF } = gerarChave(c, d);
-    console.log(`[sefaz] ${d.tipoNota.toUpperCase()} nº ${d.numero} → chave ${chave}`);
+    log.info("sefaz-emitir", `[sefaz] ${d.tipoNota.toUpperCase()} nº ${d.numero} → chave ${chave}`);
 
     // ── 2. XML ──
     const xml = buildXml(c, d, chave, cNF);
@@ -388,10 +389,10 @@ Deno.serve(async (req: Request) => {
       try {
         const { keyPem, certPem } = await pfxParaPem(c.pfxB64, c.pfxSenha);
         xmlAssinado = await assinarXml(xml, chave, certPem, keyPem);
-        console.log("[sefaz] XML assinado com sucesso");
+        log.info("sefaz-emitir", "[sefaz] XML assinado com sucesso");
       } catch (sigErr) {
         const msg = sigErr instanceof Error ? sigErr.message : String(sigErr);
-        console.error("[sefaz] Falha na assinatura digital:", msg);
+        log.error("sefaz-emitir", "[sefaz] Falha na assinatura digital:", msg);
         if (c.tpAmb === 1) {
           // Em PRODUÇÃO: nunca envia sem assinatura válida. O SEFAZ rejeitaria
           // de qualquer forma, mas abortar aqui evita gastar a tentativa de
@@ -404,7 +405,7 @@ Deno.serve(async (req: Request) => {
         // Em HOMOLOGAÇÃO: permite seguir sem assinatura só para testes de
         // schema/conectividade contra o webservice de teste do SEFAZ — a
         // nota não será autorizada de verdade, mas ajuda a depurar o XML.
-        console.warn("[sefaz] Ambiente de homologação — prosseguindo SEM assinatura (a nota não será autorizada; útil apenas para depurar o XML/conectividade).");
+        log.warn("sefaz-emitir", "[sefaz] Ambiente de homologação — prosseguindo SEM assinatura (a nota não será autorizada; útil apenas para depurar o XML/conectividade).");
       }
     } else if (c.tpAmb === 1) {
       // Produção sem certificado configurado: aborta, nunca envia sem assinatura.
@@ -413,13 +414,13 @@ Deno.serve(async (req: Request) => {
         erro: "Certificado digital não configurado (SEFAZ_PFX_BASE64). Em ambiente de produção, a NF-e não pode ser emitida sem certificado A1 válido.",
       }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
     } else {
-      console.warn("[sefaz] SEFAZ_PFX_BASE64 não configurado — XML sem assinatura (homologação apenas)");
+      log.warn("sefaz-emitir", "[sefaz] SEFAZ_PFX_BASE64 não configurado — XML sem assinatura (homologação apenas)");
     }
 
     // ── 4. SOAP + envio ──
     const url  = wsUrl(c.uf, d.tipoNota, c.tpAmb);
     const body = buildSoap(xmlAssinado);
-    console.log(`[sefaz] Enviando para ${url}`);
+    log.info("sefaz-emitir", `[sefaz] Enviando para ${url}`);
 
     const resp = await fetch(url, {
       method: "POST",
@@ -429,11 +430,11 @@ Deno.serve(async (req: Request) => {
     });
 
     const xmlResp = await resp.text();
-    if (c.debug) console.log("[sefaz] Resposta raw:", xmlResp.slice(0, 800));
+    if (c.debug) log.info("sefaz-emitir", "[sefaz] Resposta raw:", xmlResp.slice(0, 800));
 
     const r  = parseResp(xmlResp);
     const ok = r.cStat === "100"; // 100 = Uso Autorizado pelo SEFAZ
-    console.log(`[sefaz] cStat=${r.cStat} xMotivo=${r.xMotivo} nProt=${r.nProt}`);
+    log.info("sefaz-emitir", `[sefaz] cStat=${r.cStat} xMotivo=${r.xMotivo} nProt=${r.nProt}`);
 
     return new Response(JSON.stringify({
       sucesso:       ok,
@@ -449,7 +450,7 @@ Deno.serve(async (req: Request) => {
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[sefaz-emitir] Erro:", msg);
+    log.error("sefaz-emitir", "[sefaz-emitir] Erro:", msg);
     return new Response(JSON.stringify({ sucesso: false, erro: msg }),
       { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
   }

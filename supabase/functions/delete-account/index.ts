@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { log } from "../_shared/log.ts";
 
 // CODE-006: Validate env vars at startup
 function getRequiredEnv(key: string): string {
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
       supabaseAnonKey = getRequiredEnv("SUPABASE_ANON_KEY");
       serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
     } catch (envErr) {
-      console.error(envErr);
+      log.error("delete-account", envErr);
       return new Response(JSON.stringify({ error: "Erro de configuração do servidor" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -75,7 +76,7 @@ Deno.serve(async (req) => {
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      console.error("JWT validation failed:", userError?.message ?? "no user returned");
+      log.error("delete-account", "JWT validation failed:", userError?.message ?? "no user returned");
       return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -93,13 +94,13 @@ Deno.serve(async (req) => {
     // VULN-010 FIX: Do not log sensitive user data in production
     const DEBUG = Deno.env.get("DEBUG") === "true";
     if (DEBUG) {
-      console.log("Caller role:", roleData?.role);
+      log.info("delete-account", "Caller role:", roleData?.role);
     }
 
     if (roleData?.role !== "admin") {
       // SECURITY: não expor o papel do usuário no corpo do erro —
       // informação desnecessária para o chamador não-admin.
-      console.error("Access denied in delete-account. user.id:", user.id, "role found:", roleData?.role ?? "none");
+      log.error("delete-account", "Access denied in delete-account. user.id:", user.id, "role found:", roleData?.role ?? "none");
       return new Response(
         JSON.stringify({ error: "Acesso negado. Apenas administradores podem excluir usuários." }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -150,15 +151,15 @@ Deno.serve(async (req) => {
     // Se deletarmos o auth user primeiro e o cleanup falhar, os registros ficam órfãos
     // sem user_id válido e sem como associar a quem pertenciam.
     const { error: profileErr } = await adminClient.from("profiles").delete().eq("user_id", targetUserId);
-    if (profileErr) console.error("profiles delete error:", profileErr.message);
+    if (profileErr) log.error("delete-account", "profiles delete error:", profileErr.message);
     
     const { error: roleErr } = await adminClient.from("user_roles").delete().eq("user_id", targetUserId);
-    if (roleErr) console.error("user_roles delete error:", roleErr.message);
+    if (roleErr) log.error("delete-account", "user_roles delete error:", roleErr.message);
 
     // Agora deleta o auth user
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetUserId);
     if (deleteError) {
-      console.error("deleteUser error:", deleteError.message);
+      log.error("delete-account", "deleteUser error:", deleteError.message);
       return new Response(
         // SECURITY: não expor mensagem interna do Supabase ao cliente
         JSON.stringify({ error: "Não foi possível excluir o usuário." }),
@@ -172,7 +173,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     // SECURITY: loga internamente mas não expõe detalhes ao chamador
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("delete-account error:", msg);
+    log.error("delete-account", "delete-account error:", msg);
     return new Response(JSON.stringify({ error: "Erro interno." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
