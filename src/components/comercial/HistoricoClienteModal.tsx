@@ -18,7 +18,7 @@ export function HistoricoClienteModal({ clienteId, clientes, onClose }: {
     setLoading(true);
     supabase
       .from("pedidos_comerciais")
-      .select("id, status, created_at, pedido_itens(quantidade, stock_items(devices(model)))")
+      .select("id, status, created_at, pedido_itens(quantidade, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model)))")
       .eq("cliente_id", clienteId)
       .order("created_at", { ascending: false })
       .limit(30)

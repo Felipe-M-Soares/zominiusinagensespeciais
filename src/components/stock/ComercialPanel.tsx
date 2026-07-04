@@ -1130,7 +1130,7 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
 
   const { data: itensData } = await supabase
     .from("pedido_itens")
-    .select("*, stock_items(devices(model, reference))")
+    .select("*, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference))")
     .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"]);
 
   const statusLabel: Record<string, string> = {
@@ -1290,7 +1290,7 @@ async function exportExcelComercial() {
 
   const { data: itensData } = await supabase
     .from("pedido_itens")
-    .select("*, stock_items(devices(model, reference))")
+    .select("*, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference))")
     .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"]);
 
   const statusLabel: Record<string, string> = {
@@ -1491,7 +1491,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
       const { data: itensData } = await supabase
         .from("pedido_itens")
-        .select("*, stock_items(devices(model, reference))")
+        .select("*, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference))")
         .in("pedido_id", pedidoIds.length > 0 ? pedidoIds : ["none"])
         .abortSignal(ctrl.signal);
 

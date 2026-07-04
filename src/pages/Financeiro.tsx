@@ -3093,7 +3093,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
         created_at, separado_em, nf_criada_em, enviado_em,
         clientes(nome, documento),
         pedido_itens(id, stock_item_id, lote, quantidade,
-          stock_items(devices(model, reference)))
+          stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model, reference)))
       `)
       .or("status.eq.faturado,status.eq.enviado")
       .order("nf_criada_em", { ascending: false })
@@ -3812,7 +3812,7 @@ export default function Financeiro() {
         clientes(nome, documento, telefone, email, endereco, logradouro, numero, bairro, municipio, uf, cep),
         pedido_itens(
           id, stock_item_id, lote, quantidade, valor_unitario,
-          stock_items(devices(id, model, reference, ncm, cfop_padrao, ipi_pct, preco_venda, desconto_max_pct))
+          stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(id, model, reference, ncm, cfop_padrao, ipi_pct, preco_venda, desconto_max_pct))
         )
       `)
       .or("status.eq.pronto,status.eq.faturado,status.eq.enviado")

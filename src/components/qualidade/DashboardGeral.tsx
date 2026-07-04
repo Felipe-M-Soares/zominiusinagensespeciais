@@ -75,14 +75,21 @@ export function DashboardGeral() {
   const [saude, setSaude] = useState<SaudeSistema | null>(null);
 
   const loadSaude = useCallback(async () => {
-    try {
-      const { data } = await supabase.rpc("obter_saude_sistema");
-      const s = data as SaudeSistema | null;
-      if (s?.ok) setSaude(s);
-    } catch {
-      // Painel de saúde é informativo — uma falha aqui não deve travar o
-      // restante do dashboard, que já tem seu próprio tratamento de erro.
+    // Evita spam de 404 no console em ambientes onde a migration
+    // obter_saude_sistema ainda não foi aplicada.
+    // Para ativar o card de saúde, defina VITE_ENABLE_SYSTEM_HEALTH=true.
+    if (import.meta.env.VITE_ENABLE_SYSTEM_HEALTH !== "true") {
+      setSaude(null);
+      return;
     }
+
+    const { data, error } = await supabase.rpc("obter_saude_sistema");
+    if (error) {
+      setSaude(null);
+      return;
+    }
+    const s = data as SaudeSistema | null;
+    setSaude(s?.ok ? s : null);
   }, []);
 
   const load=useCallback(async()=>{
