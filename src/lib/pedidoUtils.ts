@@ -53,7 +53,7 @@ export async function criarPedidoComReserva(
       desconto_pct: descontoPct ?? 0, // numeric(5,2) após migration 20260035000000_desconto_decimal.sql
       prazo_entrega: prazoEntrega ?? null,
       forma_pagamento: formaPagamento ?? null,
-      parcelas: formaPagamento === "cartao_credito" ? (parcelas ?? 1) : 1,
+      parcelas: ["cartao_credito", "boleto"].includes(formaPagamento ?? "") ? (parcelas ?? 1) : 1,
       endereco_entrega: enderecoEntrega ?? null,
       usar_endereco_cliente: usarEnderecoCliente ?? true,
       frete: frete ?? 0,

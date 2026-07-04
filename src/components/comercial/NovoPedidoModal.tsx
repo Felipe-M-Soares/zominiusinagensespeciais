@@ -374,7 +374,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
           observacoes: obs || null,
           prazo_entrega: prazoEntrega || null,
           forma_pagamento: formaPagamento || null,
-          parcelas: formaPagamento === "cartao_credito" ? parcelas : 1,
+          parcelas: ["cartao_credito", "boleto"].includes(formaPagamento) ? parcelas : 1,
           endereco_entrega: endFinal,
           usar_endereco_cliente: usarEnderecoCliente,
         }).eq("id", editarPedido.id);
@@ -405,7 +405,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
         frete: frete > 0 ? frete : 0,
         prazoEntrega: prazoEntrega || null,
         formaPagamento: formaPagamento || null,
-        parcelas: formaPagamento === "cartao_credito" ? parcelas : 1,
+        parcelas: ["cartao_credito", "boleto"].includes(formaPagamento) ? parcelas : 1,
         enderecoEntrega: endFinal,
         usarEnderecoCliente,
       });
@@ -705,7 +705,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
               <option value="cartao_debito">Cartão de Débito</option>
               <option value="cartao_credito">Cartão de Crédito</option>
             </select>
-            {formaPagamento === "cartao_credito" && (
+            {["cartao_credito", "boleto"].includes(formaPagamento) && (
               <div className="flex items-center gap-2 mt-2">
                 <label className="text-[11px] text-muted-foreground shrink-0">Parcelas:</label>
                 <select

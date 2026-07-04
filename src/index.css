@@ -369,3 +369,23 @@ html, body, #root {
   display: block !important;
 }
 
+
+/* Mobile: mantém ações do toast clicáveis, mas sem exibir o texto "Ver" dentro da pílula. */
+.toaster-mobile-compact [data-sonner-toast] [data-button],
+.toaster-mobile-compact [data-sonner-toast] button[data-button] {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  color: transparent !important;
+  background: transparent !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap [data-button],
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap button[data-button] {
+  opacity: 0 !important;
+}

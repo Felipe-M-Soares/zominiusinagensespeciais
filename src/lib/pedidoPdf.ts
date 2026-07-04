@@ -236,7 +236,7 @@ export async function gerarPdfPedido(
   // ── Forma de pagamento ───────────────────────────────────────────────────
   if (opts?.formaPagamento) {
     const label = FORMA_PAGAMENTO_LABELS[opts.formaPagamento] ?? sanitizeText(opts.formaPagamento, 40);
-    const parcelasTxt = opts.formaPagamento === "cartao_credito" && (opts.parcelas ?? 1) > 1
+    const parcelasTxt = ["cartao_credito", "boleto"].includes(opts.formaPagamento ?? "") && (opts.parcelas ?? 1) > 1
       ? ` em ${opts.parcelas}x` : "";
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);

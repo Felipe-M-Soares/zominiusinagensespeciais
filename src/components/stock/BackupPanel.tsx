@@ -9,10 +9,10 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   DatabaseBackup, Download, RefreshCw, Calendar,
-  CheckCircle2, Clock, User, FileSpreadsheet, Trash2, AlertTriangle, ShieldCheck,
+  CheckCircle2, Clock, User, FileSpreadsheet, Trash2, AlertTriangle, ShieldCheck, Upload,
 } from "lucide-react";
 import {
-  getBackupConfig, saveBackupConfig, runBackup, listBackups, downloadBackup,
+  getBackupConfig, saveBackupConfig, runBackup, listBackups, downloadBackup, restoreStockBackup,
   SCHEDULE_LABELS,
 } from "@/hooks/useStock";
 import type { BackupConfig, BackupSchedule, StockBackup } from "@/hooks/useStock";
@@ -161,6 +161,7 @@ export function BackupPanel({ open, onClose }: Props) {
   const [saving, setSaving]     = useState(false);
   const [running, setRunning]   = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [deleteBackupsConfirm, setDeleteBackupsConfirm] = useState(false);
   const [deletingBackups, setDeletingBackups] = useState(false);
@@ -237,6 +238,31 @@ export function BackupPanel({ open, onClose }: Props) {
     a.download = `backup-estoque-${new Date(b.created_at).toLocaleDateString("pt-BR").replace(/\//g, "-")}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+
+  async function handleUploadBackup(file: File | null) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".json")) {
+      toast.error("Envie um backup em JSON.");
+      return;
+    }
+    setRestoring(true);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as Record<string, unknown>;
+      const result = await restoreStockBackup(payload);
+      if (result.ok) {
+        toast.success("Backup do estoque restaurado.");
+        load();
+      } else {
+        toast.error(result.error ?? "Erro ao restaurar backup.");
+      }
+    } catch (_e) {
+      toast.error("Arquivo de backup inválido.");
+    } finally {
+      setRestoring(false);
+    }
   }
 
   async function handleClearModule() {
@@ -336,6 +362,27 @@ export function BackupPanel({ open, onClose }: Props) {
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                     <ShieldCheck className="h-3.5 w-3.5" /> Ações administrativas
                   </p>
+
+
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[12px] font-semibold text-foreground">Subir backup do estoque</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Restaura quantidades, fases, mínimos, locais e histórico salvo no arquivo JSON.
+                      </p>
+                    </div>
+                    <label className={cn(
+                      "h-8 px-3 rounded-xl border border-primary/30 text-xs font-medium shrink-0 flex items-center gap-1.5 cursor-pointer hover:bg-primary/10 hover:text-primary transition-colors",
+                      restoring && "opacity-60 pointer-events-none"
+                    )}>
+                      {restoring
+                        ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        : <Upload className="h-3.5 w-3.5" />}
+                      {restoring ? "Restaurando..." : "Subir JSON"}
+                      <input type="file" accept="application/json,.json" className="hidden"
+                        onChange={(e) => { handleUploadBackup(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }} />
+                    </label>
+                  </div>
 
                   {/* Regularizar todos */}
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-start justify-between gap-3">

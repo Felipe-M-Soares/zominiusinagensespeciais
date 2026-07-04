@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { PageNav, type PageNavTab } from "@/components/PageNav";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -112,21 +113,84 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
 function FerramentasPanel({ ferramentas, setFerramentas, fornecedores }: { ferramentas: Ferramenta[]; setFerramentas: React.Dispatch<React.SetStateAction<Ferramenta[]>>; fornecedores: Fornecedor[] }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busca, setBusca] = useState("");
+  const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Omit<Ferramenta, "id">>({ nome: "", codigo: "", categoria: "", total: 0, usadas: 0, danificadas: 0, minimo: 0, local: "", fornecedorId: undefined });
   const filtradas = ferramentas.filter((f) => `${f.nome} ${f.codigo} ${f.categoria} ${f.local}`.toLowerCase().includes(busca.toLowerCase()));
-  const salvar = () => { if (!form.nome.trim()) return toast.error("Informe o nome da ferramenta."); setFerramentas((old) => [{ ...form, id: uid(), total: Number(form.total), usadas: Number(form.usadas), danificadas: Number(form.danificadas), minimo: Number(form.minimo) }, ...old]); setForm({ nome: "", codigo: "", categoria: "", total: 0, usadas: 0, danificadas: 0, minimo: 0, local: "", fornecedorId: undefined }); toast.success("Ferramenta cadastrada com sucesso."); };
+
+  const resetForm = () => setForm({ nome: "", codigo: "", categoria: "", total: 0, usadas: 0, danificadas: 0, minimo: 0, local: "", fornecedorId: undefined });
+  const salvar = () => {
+    if (!form.nome.trim()) return toast.error("Informe o nome da ferramenta.");
+    setFerramentas((old) => [{ ...form, id: uid(), total: Number(form.total), usadas: Number(form.usadas), danificadas: Number(form.danificadas), minimo: Number(form.minimo) }, ...old]);
+    resetForm();
+    setOpen(false);
+    toast.success("Ferramenta cadastrada com sucesso.");
+  };
   const movimentar = (id: string, field: "usadas" | "danificadas", delta: number) => setFerramentas((old) => old.map((f) => f.id === id ? { ...f, [field]: Math.max(0, Number(f[field] || 0) + delta) } : f));
-  const importar = async (file?: File) => { if (!file) return; try { const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer()); const ws = wb.worksheets[0]; const rows: Ferramenta[] = []; ws.eachRow((row, index) => { if (index === 1) return; const vals = row.values as ExcelJS.CellValue[]; const nome = String(vals[1] ?? "").trim(); if (!nome) return; rows.push({ id: uid(), nome, codigo: String(vals[2] ?? "").trim(), categoria: String(vals[3] ?? "").trim(), total: Number(vals[4] ?? 0), usadas: Number(vals[5] ?? 0), danificadas: Number(vals[6] ?? 0), minimo: Number(vals[7] ?? 0), local: String(vals[8] ?? "").trim(), fornecedorId: undefined }); }); setFerramentas((old) => [...rows, ...old]); toast.success(`${rows.length} ferramenta(s) importada(s).`); } catch { toast.error("Não foi possível importar. Use .xlsx com colunas: Nome, Código, Categoria, Total, Usadas, Danificadas, Mínimo e Local."); } finally { if (fileRef.current) fileRef.current.value = ""; } };
-  const baixarModelo = async () => { const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet("Ferramentas"); ws.addRow(["Nome", "Código", "Categoria", "Total", "Usadas", "Danificadas", "Mínimo", "Local"]); ws.addRow(["Pastilha CNMG", "CNMG120408", "Pastilha", 50, 8, 2, 10, "Armário A1"]); const buffer = await wb.xlsx.writeBuffer(); downloadBlob(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "modelo_ferramentas_processos.xlsx"); toast.success("Modelo de planilha baixado."); };
-  return <div className="grid gap-3 sm:gap-4 lg:grid-cols-[380px_1fr]">
-    <Card className="shadow-sm"><CardHeader className="bg-primary/5 rounded-t-lg border-b border-border/40"><CardTitle className="text-sm flex items-center gap-2"><Wrench className="h-4 w-4 text-primary" />Cadastrar ferramenta</CardTitle></CardHeader><CardContent className="space-y-3 pt-4">
-      <Field label="Nome"><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Pastilha, broca, macho..." /></Field><div className="grid grid-cols-2 gap-2"><Field label="Código"><Input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} /></Field><Field label="Categoria"><Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} /></Field></div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2"><Field label="Total"><NumberInput value={form.total} onChange={(e) => setForm({ ...form, total: Number(e.target.value) })} /></Field><Field label="Usadas"><NumberInput value={form.usadas} onChange={(e) => setForm({ ...form, usadas: Number(e.target.value) })} /></Field><Field label="Danific."><NumberInput value={form.danificadas} onChange={(e) => setForm({ ...form, danificadas: Number(e.target.value) })} /></Field><Field label="Mín."><NumberInput value={form.minimo} onChange={(e) => setForm({ ...form, minimo: Number(e.target.value) })} /></Field></div>
-      <Field label="Local"><Input value={form.local} onChange={(e) => setForm({ ...form, local: e.target.value })} placeholder="Armário / gaveta" /></Field><Field label="Fornecedor padrão"><Select value={form.fornecedorId ?? "nenhum"} onValueChange={(v) => setForm({ ...form, fornecedorId: v === "nenhum" ? undefined : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhum">Nenhum</SelectItem>{fornecedores.map((f) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}</SelectContent></Select></Field>
-      <Button className="w-full" onClick={salvar}><Plus className="h-4 w-4 mr-2" />Adicionar</Button><div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><Button variant="outline" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-2" />Importar</Button><Button variant="outline" onClick={baixarModelo}><FileSpreadsheet className="h-4 w-4 mr-2" />Modelo</Button></div><input ref={fileRef} type="file" className="hidden" accept=".xlsx" onChange={(e) => importar(e.target.files?.[0])} />
-    </CardContent></Card>
-    <Card className="shadow-sm"><CardHeader><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2"><CardTitle className="text-sm">Estoque de ferramentas</CardTitle><div className="relative w-full sm:w-auto"><Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9 h-9 w-full sm:w-[260px]" placeholder="Buscar ferramenta..." value={busca} onChange={(e) => setBusca(e.target.value)} /></div></div></CardHeader><CardContent className="space-y-2">{filtradas.map((f) => { const disp = disponivel(f); const critical = disp <= f.minimo; return <div key={f.id} className={cn("rounded-2xl border p-3 bg-card shadow-sm", critical ? "border-warning/40 bg-warning/8" : "border-border") }><div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3"><div><div className="font-semibold text-sm flex items-center gap-2">{f.nome}{critical && <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">falta</Badge>}</div><div className="text-xs text-muted-foreground">{f.codigo || "Sem código"} • {f.categoria || "Sem categoria"} • {f.local || "Sem local"}</div></div><div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 text-xs"><Pill label="Disponível" value={disp} tone="success" /><Pill label="Usadas" value={f.usadas} tone="primary" /><Pill label="Danificadas" value={f.danificadas} tone="destructive" /><Pill label="Mínimo" value={f.minimo} tone="warning" /></div></div><div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-3"><Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => movimentar(f.id, "usadas", 1)}>+ usada</Button><Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => movimentar(f.id, "usadas", -1)}>- usada</Button><Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => movimentar(f.id, "danificadas", 1)}>+ danificada</Button><Button size="sm" variant="ghost" className="w-full sm:w-auto" onClick={() => setFerramentas((old) => old.filter((x) => x.id !== f.id))}><Trash2 className="h-4 w-4" /></Button></div></div>; })}{!filtradas.length && <Empty text="Nenhuma ferramenta encontrada." />}</CardContent></Card>
-  </div>;
+  const importar = async (file?: File) => {
+    if (!file) return;
+    try {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+      const ws = wb.worksheets[0];
+      const rows: Ferramenta[] = [];
+      ws.eachRow((row, index) => {
+        if (index === 1) return;
+        const vals = row.values as ExcelJS.CellValue[];
+        const nome = String(vals[1] ?? "").trim();
+        if (!nome) return;
+        rows.push({ id: uid(), nome, codigo: String(vals[2] ?? "").trim(), categoria: String(vals[3] ?? "").trim(), total: Number(vals[4] ?? 0), usadas: Number(vals[5] ?? 0), danificadas: Number(vals[6] ?? 0), minimo: Number(vals[7] ?? 0), local: String(vals[8] ?? "").trim(), fornecedorId: undefined });
+      });
+      setFerramentas((old) => [...rows, ...old]);
+      toast.success(`${rows.length} ferramenta(s) importada(s).`);
+    } catch {
+      toast.error("Não foi possível importar a planilha.");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+  const baixarModelo = async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Ferramentas");
+    ws.addRow(["Nome", "Código", "Categoria", "Total", "Usadas", "Danificadas", "Mínimo", "Local"]);
+    ws.addRow(["Pastilha CNMG", "CNMG120408", "Pastilha", 50, 8, 2, 10, "Armário A1"]);
+    const buffer = await wb.xlsx.writeBuffer();
+    downloadBlob(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "modelo_ferramentas_processos.xlsx");
+    toast.success("Modelo de planilha baixado.");
+  };
+
+  return <Card className="shadow-sm">
+    <CardHeader>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <CardTitle className="text-sm flex items-center gap-2"><Wrench className="h-4 w-4 text-primary" />Estoque de ferramentas</CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">Cadastre, importe e controle o uso das ferramentas do processo.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-2" />Importar</Button>
+          <Button variant="outline" className="w-full sm:w-auto" onClick={baixarModelo}><FileSpreadsheet className="h-4 w-4 mr-2" />Modelo</Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild><Button className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" />Cadastrar</Button></DialogTrigger>
+            <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
+              <DialogHeader><DialogTitle className="flex items-center gap-2"><Wrench className="h-4 w-4 text-primary" />Cadastrar ferramenta</DialogTitle></DialogHeader>
+              <div className="space-y-3 pt-2">
+                <Field label="Nome"><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Pastilha, broca, macho..." /></Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><Field label="Código"><Input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} /></Field><Field label="Categoria"><Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} /></Field></div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2"><Field label="Total"><NumberInput value={form.total} onChange={(e) => setForm({ ...form, total: Number(e.target.value) })} /></Field><Field label="Usadas"><NumberInput value={form.usadas} onChange={(e) => setForm({ ...form, usadas: Number(e.target.value) })} /></Field><Field label="Danific."><NumberInput value={form.danificadas} onChange={(e) => setForm({ ...form, danificadas: Number(e.target.value) })} /></Field><Field label="Mín."><NumberInput value={form.minimo} onChange={(e) => setForm({ ...form, minimo: Number(e.target.value) })} /></Field></div>
+                <Field label="Local"><Input value={form.local} onChange={(e) => setForm({ ...form, local: e.target.value })} placeholder="Armário / gaveta" /></Field>
+                <Field label="Fornecedor padrão"><Select value={form.fornecedorId ?? "nenhum"} onValueChange={(v) => setForm({ ...form, fornecedorId: v === "nenhum" ? undefined : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhum">Nenhum</SelectItem>{fornecedores.map((f) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}</SelectContent></Select></Field>
+                <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2"><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={salvar}><Plus className="h-4 w-4 mr-2" />Adicionar</Button></div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+        <input ref={fileRef} type="file" className="hidden" accept=".xlsx" onChange={(e) => importar(e.target.files?.[0])} />
+      </div>
+    </CardHeader>
+    <CardContent className="space-y-3">
+      <div className="relative w-full sm:max-w-xs sm:ml-auto"><Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9 h-9" placeholder="Buscar ferramenta..." value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
+      <div className="space-y-2">{filtradas.map((f) => { const disp = disponivel(f); const critical = disp <= f.minimo; return <div key={f.id} className={cn("rounded-2xl border p-3 bg-card shadow-sm", critical ? "border-warning/40 bg-warning/8" : "border-border") }><div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3"><div><div className="font-semibold text-sm flex items-center gap-2">{f.nome}{critical && <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">falta</Badge>}</div><div className="text-xs text-muted-foreground">{f.codigo || "Sem código"} • {f.categoria || "Sem categoria"} • {f.local || "Sem local"}</div></div><div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 text-xs"><Pill label="Disponível" value={disp} tone="success" /><Pill label="Usadas" value={f.usadas} tone="primary" /><Pill label="Danificadas" value={f.danificadas} tone="destructive" /><Pill label="Mínimo" value={f.minimo} tone="warning" /></div></div><div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-3"><Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => movimentar(f.id, "usadas", 1)}>+ usada</Button><Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => movimentar(f.id, "usadas", -1)}>- usada</Button><Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => movimentar(f.id, "danificadas", 1)}>+ danificada</Button><Button size="sm" variant="ghost" className="w-full sm:w-auto" onClick={() => setFerramentas((old) => old.filter((x) => x.id !== f.id))}><Trash2 className="h-4 w-4" /></Button></div></div>; })}{!filtradas.length && <Empty text="Nenhuma ferramenta encontrada." />}</div>
+    </CardContent>
+  </Card>;
 }
 
 function whatsappUrl(telefone: string): string | null {

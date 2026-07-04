@@ -550,8 +550,8 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
       ? fmtPagamento[ex.forma_pagamento] ?? ex.forma_pagamento
       : "A VISTA";
     // Parcelas em linha separada, sem traço
-    const parcelasLabel = ex?.forma_pagamento === "cartao_credito" && (ex?.parcelas ?? 1) > 1
-      ? `<br><span style="font-weight:400;font-size:10px">${ex.parcelas}x sem juros</span>` : "";
+    const parcelasLabel = ["cartao_credito", "boleto"].includes(ex?.forma_pagamento ?? "") && (ex?.parcelas ?? 1) > 1
+      ? `<br><span style="font-weight:400;font-size:10px">${ex.parcelas}x</span>` : "";
     const desconto = ex?.desconto_pct ?? pedido.desconto_pct ?? 0;
     const frete = ex?.frete ?? 0;
 
@@ -2201,7 +2201,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
             )
           )
         `)
-        .in("status", ["pendente", "separando", "pronto", "retorno"])
+        .in("status", ["pendente", "separando", "pronto", "retorno", "enviado", "faturado"])
         .order("created_at", { ascending: false })
         .abortSignal(ctrl.signal);
 
@@ -2537,7 +2537,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
       // Pagamento
       const pgtoLabel = ex?.forma_pagamento ? fmtPgto[ex.forma_pagamento] ?? ex.forma_pagamento : "—";
-      const parcelasLabel = ex?.forma_pagamento === "cartao_credito" && (ex?.parcelas ?? 1) > 1
+      const parcelasLabel = ["cartao_credito", "boleto"].includes(ex?.forma_pagamento ?? "") && (ex?.parcelas ?? 1) > 1
         ? ` ${ex.parcelas}x` : "";
 
       const printRows: { model?: string; reference?: string; lote: string; quantidade: number; precoUnit: number }[] = [];

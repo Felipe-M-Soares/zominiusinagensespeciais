@@ -1118,54 +1118,128 @@ export async function saveBackupConfig(
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+
+async function fetchAllRows(table: string, select = "*"): Promise<Record<string, unknown>[]> {
+  const PAGE_SIZE = 1000;
+  const rows: Record<string, unknown>[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from(table as never)
+      .select(select)
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return rows;
+}
+
+function onlyExistingFields(row: Record<string, unknown>, allowed: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(row, key)) out[key] = row[key];
+  }
+  return out;
+}
+
 export async function runBackup(
   userId: string | null,
   userName: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  const [itemsRes, movRes] = await Promise.all([
-    supabase
-      .from("stock_items")
-      .select("id, quantity, min_quantity, location, notes, fase, updated_at, device:devices(model,reference,udi_di,internal_code)"),
-    supabase
-      .from("stock_movements")
-      .select("id, stock_item_id, type, quantity, reason, user_display_name, created_at")
-      .order("created_at", { ascending: false })
-      .limit(500),
-  ]);
+  try {
+    const [items, movements, devices, pedidos, pedidoItens] = await Promise.all([
+      fetchAllRows("stock_items", "*"),
+      fetchAllRows("stock_movements", "*"),
+      fetchAllRows("devices", "*"),
+      fetchAllRows("pedidos_comerciais", "id,status,created_at,updated_at,lotes_separados,separado_em,cliente_id,vendedora_id,vendedora_nome,frete,observacoes,desconto_pct,prazo_entrega,forma_pagamento,parcelas,endereco_entrega,usar_endereco_cliente,nota_fiscal,nf_criada_em,rastreio_envio,transportadora"),
+      fetchAllRows("pedido_itens", "*"),
+    ]);
 
-  const payload = {
-    generated_at: new Date().toISOString(),
-    items: itemsRes.data ?? [],
-    recent_movements: movRes.data ?? [],
-  };
+    const payload = {
+      version: 2,
+      generated_at: new Date().toISOString(),
+      summary: {
+        stock_items: items.length,
+        stock_movements: movements.length,
+        devices: devices.length,
+        pedidos_comerciais: pedidos.length,
+        pedido_itens: pedidoItens.length,
+      },
+      stock_items: items,
+      stock_movements: movements,
+      devices,
+      pedidos_comerciais: pedidos,
+      pedido_itens: pedidoItens,
+    };
 
-  // Store backup JSON in Storage instead of JSONB column to avoid row bloat
-  const fileName = `backup_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-  const filePath = `backups/${fileName}`;
-  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+    const fileName = `backup_completo_estoque_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    const filePath = `backups/${fileName}`;
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
 
-  const { error: uploadErr } = await supabase.storage
-    .from("stock-backups")
-    .upload(filePath, blob, { contentType: "application/json", upsert: false });
+    const { error: uploadErr } = await supabase.storage
+      .from("stock-backups")
+      .upload(filePath, blob, { contentType: "application/json", upsert: false });
 
-  if (uploadErr) return { ok: false, error: uploadErr.message };
+    if (uploadErr) return { ok: false, error: uploadErr.message };
 
-  const { error } = await supabase.from("stock_backups").insert({
-    created_by:  userId,
-    created_name: userName,
-    item_count:  (itemsRes.data ?? []).length,
-    file_path:   filePath,
-    // payload column kept null — data lives in Storage
-  });
+    const { error } = await supabase.from("stock_backups").insert({
+      created_by:  userId,
+      created_name: userName,
+      item_count:  items.length,
+      file_path:   filePath,
+    });
 
-  if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: error.message };
 
-  const { data: cfg } = await supabase.from("backup_configs").select("id").maybeSingle();
-  if (cfg) {
-    await supabase.from("backup_configs").update({ last_backup: new Date().toISOString() }).eq("id", cfg.id);
+    const { data: cfg } = await supabase.from("backup_configs").select("id").maybeSingle();
+    if (cfg) {
+      await supabase.from("backup_configs").update({ last_backup: new Date().toISOString() }).eq("id", cfg.id);
+    }
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as { message?: string })?.message ?? "Erro ao criar backup completo." };
   }
+}
 
-  return { ok: true };
+export async function restoreStockBackup(
+  payload: Record<string, unknown>
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const items = (payload.stock_items ?? payload.items ?? []) as Record<string, unknown>[];
+    const movements = (payload.stock_movements ?? payload.recent_movements ?? []) as Record<string, unknown>[];
+    if (!Array.isArray(items) || items.length === 0) {
+      return { ok: false, error: "Backup sem itens de estoque." };
+    }
+
+    const stockItemFields = ["id", "device_id", "quantity", "quantity_reserved", "min_quantity", "location", "notes", "fase", "created_at", "updated_at"];
+    const movementFields = ["id", "stock_item_id", "type", "quantity", "reason", "lote", "user_id", "user_display_name", "created_at"];
+
+    const cleanItems = items.map((r) => onlyExistingFields(r, stockItemFields));
+    for (let i = 0; i < cleanItems.length; i += 500) {
+      const { error } = await supabase
+        .from("stock_items")
+        .upsert(cleanItems.slice(i, i + 500), { onConflict: "id" });
+      if (error) throw error;
+    }
+
+    const cleanMovements = Array.isArray(movements)
+      ? movements.map((r) => onlyExistingFields(r, movementFields)).filter((r) => r.id && r.stock_item_id)
+      : [];
+    for (let i = 0; i < cleanMovements.length; i += 500) {
+      const { error } = await supabase
+        .from("stock_movements")
+        .upsert(cleanMovements.slice(i, i + 500), { onConflict: "id" });
+      if (error) throw error;
+    }
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as { message?: string })?.message ?? "Erro ao restaurar backup." };
+  }
 }
 
 export async function listBackups(limit = 20): Promise<StockBackup[]> {
