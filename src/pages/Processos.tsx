@@ -201,62 +201,113 @@ function whatsappUrl(telefone: string): string | null {
 }
 
 function FornecedoresPanel({ fornecedores, setFornecedores }: { fornecedores: Fornecedor[]; setFornecedores: React.Dispatch<React.SetStateAction<Fornecedor[]>> }) {
+  const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Omit<Fornecedor, "id">>({ nome: "", contato: "", telefone: "", email: "", observacoes: "" });
+  const resetForm = () => setForm({ nome: "", contato: "", telefone: "", email: "", observacoes: "" });
   const salvar = () => {
     if (!form.nome.trim()) return toast.error("Informe o nome do fornecedor.");
     setFornecedores((old) => [{ ...form, id: uid() }, ...old]);
-    setForm({ nome: "", contato: "", telefone: "", email: "", observacoes: "" });
+    resetForm();
+    setOpen(false);
     toast.success("Fornecedor cadastrado.");
   };
 
-  return <div className="grid gap-3 sm:gap-4 lg:grid-cols-[380px_1fr]">
-    <Card className="shadow-sm bg-card">
-      <CardHeader className="bg-primary/5 rounded-t-lg border-b border-border/40">
-        <CardTitle className="text-sm flex items-center gap-2"><Truck className="h-4 w-4 text-primary" />Cadastrar fornecedor</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 pt-4">
-        <Field label="Empresa"><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></Field>
-        <Field label="Contato"><Input value={form.contato} onChange={(e) => setForm({ ...form, contato: e.target.value })} /></Field>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <Field label="Telefone / WhatsApp"><Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} placeholder="(11) 99999-9999" /></Field>
-          <Field label="E-mail"><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-        </div>
-        <Field label="Observações"><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></Field>
-        <Button className="w-full" onClick={salvar}><Plus className="h-4 w-4 mr-2" />Adicionar</Button>
-      </CardContent>
-    </Card>
-
-    <Card className="shadow-sm bg-card">
-      <CardHeader><CardTitle className="text-sm">Lista de fornecedores</CardTitle></CardHeader>
-      <CardContent className="grid gap-2">
-        {fornecedores.map((f) => {
-          const whats = whatsappUrl(f.telefone);
-          return <div key={f.id} className="rounded-2xl border border-border/70 p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3 bg-card">
-            <div className="min-w-0">
-              <div className="font-semibold text-sm truncate">{f.nome}</div>
-              <div className="text-xs text-muted-foreground">{f.contato || "Sem contato"} • {f.email || "Sem e-mail"}</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {whats ? (
-                  <a href={whats} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/8 px-2.5 py-1 text-xs font-medium text-success hover:bg-success/12 transition-colors">
-                    <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
-                  </a>
-                ) : (
-                  <span className="inline-flex items-center rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-muted-foreground">Sem WhatsApp</span>
-                )}
-                {f.telefone && <span className="inline-flex items-center rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-muted-foreground">{f.telefone}</span>}
+  return <Card className="shadow-sm bg-card">
+    <CardHeader className="border-b border-border/40">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <CardTitle className="text-sm flex items-center gap-2"><Truck className="h-4 w-4 text-primary" />Lista de fornecedores</CardTitle>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild><Button className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" />Cadastrar</Button></DialogTrigger>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader><DialogTitle>Cadastrar fornecedor</DialogTitle></DialogHeader>
+            <div className="space-y-3 pt-2">
+              <Field label="Empresa"><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></Field>
+              <Field label="Contato"><Input value={form.contato} onChange={(e) => setForm({ ...form, contato: e.target.value })} /></Field>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Field label="Telefone / WhatsApp"><Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} placeholder="(11) 99999-9999" /></Field>
+                <Field label="E-mail"><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
               </div>
-              {f.observacoes && <p className="text-xs mt-2 text-muted-foreground">{f.observacoes}</p>}
+              <Field label="Observações"><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></Field>
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => { resetForm(); setOpen(false); }}>Cancelar</Button>
+                <Button onClick={salvar}><Plus className="h-4 w-4 mr-2" />Adicionar</Button>
+              </div>
             </div>
-            <Button size="icon" variant="ghost" className="self-end sm:self-start" onClick={() => { setFornecedores((old) => old.filter((x) => x.id !== f.id)); toast.success("Fornecedor removido."); }}><Trash2 className="h-4 w-4" /></Button>
-          </div>;
-        })}
-        {!fornecedores.length && <Empty text="Nenhum fornecedor cadastrado." />}
-      </CardContent>
-    </Card>
-  </div>;
+          </DialogContent>
+        </Dialog>
+      </div>
+    </CardHeader>
+    <CardContent className="grid gap-2 pt-4">
+      {fornecedores.map((f) => {
+        const whats = whatsappUrl(f.telefone);
+        return <div key={f.id} className="rounded-2xl border border-border/70 p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3 bg-card shadow-sm">
+          <div className="min-w-0">
+            <div className="font-semibold text-sm truncate">{f.nome}</div>
+            <div className="text-xs text-muted-foreground">{f.contato || "Sem contato"} • {f.email || "Sem e-mail"}</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {whats ? (
+                <a href={whats} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/8 px-2.5 py-1 text-xs font-medium text-success hover:bg-success/12 transition-colors">
+                  <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                </a>
+              ) : (
+                <span className="inline-flex items-center rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-muted-foreground">Sem WhatsApp</span>
+              )}
+              {f.telefone && <span className="inline-flex items-center rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-muted-foreground">{f.telefone}</span>}
+            </div>
+            {f.observacoes && <p className="text-xs mt-2 text-muted-foreground">{f.observacoes}</p>}
+          </div>
+          <Button size="icon" variant="ghost" className="self-end sm:self-start" onClick={() => { setFornecedores((old) => old.filter((x) => x.id !== f.id)); toast.success("Fornecedor removido."); }}><Trash2 className="h-4 w-4" /></Button>
+        </div>;
+      })}
+      {!fornecedores.length && <Empty text="Nenhum fornecedor cadastrado." />}
+    </CardContent>
+  </Card>;
 }
 
-function ComprasPanel({ pedidos, setPedidos, fornecedores, ferramentas }: { pedidos: Pedido[]; setPedidos: React.Dispatch<React.SetStateAction<Pedido[]>>; fornecedores: Fornecedor[]; ferramentas: Ferramenta[] }) { const [form, setForm] = useState<Omit<Pedido, "id">>({ ferramenta: "", fornecedorId: "", quantidade: 1, status: "Solicitado", data: today(), observacoes: "" }); const salvar = () => { if (!form.ferramenta.trim()) return toast.error("Informe a ferramenta para compra."); setPedidos((old) => [{ ...form, id: uid(), quantidade: Number(form.quantidade) }, ...old]); setForm({ ferramenta: "", fornecedorId: "", quantidade: 1, status: "Solicitado", data: today(), observacoes: "" }); toast.success("Pedido de compra criado."); }; const fornecedorNome = (id: string) => fornecedores.find((f) => f.id === id)?.nome ?? "Sem fornecedor"; return <div className="grid gap-3 sm:gap-4 lg:grid-cols-[380px_1fr]"><Card className="shadow-sm"><CardHeader className="bg-success/5 rounded-t-lg border-b border-border/40"><CardTitle className="text-sm flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-success" />Novo pedido de compra</CardTitle></CardHeader><CardContent className="space-y-3 pt-4"><Field label="Ferramenta"><Input list="ferramentas" value={form.ferramenta} onChange={(e) => setForm({ ...form, ferramenta: e.target.value })} /><datalist id="ferramentas">{ferramentas.map((f) => <option key={f.id} value={f.nome} />)}</datalist></Field><div className="grid grid-cols-2 gap-2"><Field label="Quantidade"><NumberInput value={form.quantidade} onChange={(e) => setForm({ ...form, quantidade: Number(e.target.value) })} /></Field><Field label="Data"><Input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} /></Field></div><Field label="Fornecedor"><Select value={form.fornecedorId || "nenhum"} onValueChange={(v) => setForm({ ...form, fornecedorId: v === "nenhum" ? "" : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhum">Sem fornecedor</SelectItem>{fornecedores.map((f) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}</SelectContent></Select></Field><Field label="Observações"><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></Field><Button className="w-full" onClick={salvar}><ShoppingCart className="h-4 w-4 mr-2" />Criar pedido</Button></CardContent></Card><Card className="shadow-sm"><CardHeader><CardTitle className="text-sm">Pedidos de compra</CardTitle></CardHeader><CardContent className="space-y-2">{pedidos.map((p) => <div key={p.id} className="rounded-2xl border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-card"><div><div className="font-semibold text-sm">{p.quantidade}x {p.ferramenta}</div><div className="text-xs text-muted-foreground">{fornecedorNome(p.fornecedorId)} • {p.data}</div><p className="text-xs mt-1">{p.observacoes}</p></div><div className="flex gap-2"><Select value={p.status} onValueChange={(v: Pedido["status"]) => { setPedidos((old) => old.map((x) => x.id === p.id ? { ...x, status: v } : x)); toast.info(`Status alterado para ${v}.`); }}><SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger><SelectContent>{["Solicitado", "Aprovado", "Comprado", "Recebido"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select><Button size="icon" variant="ghost" onClick={() => setPedidos((old) => old.filter((x) => x.id !== p.id))}><Trash2 className="h-4 w-4" /></Button></div></div>)}{!pedidos.length && <Empty text="Nenhum pedido de compra." />}</CardContent></Card></div>; }
+function ComprasPanel({ pedidos, setPedidos, fornecedores, ferramentas }: { pedidos: Pedido[]; setPedidos: React.Dispatch<React.SetStateAction<Pedido[]>>; fornecedores: Fornecedor[]; ferramentas: Ferramenta[] }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<Omit<Pedido, "id">>({ ferramenta: "", fornecedorId: "", quantidade: 1, status: "Solicitado", data: today(), observacoes: "" });
+  const resetForm = () => setForm({ ferramenta: "", fornecedorId: "", quantidade: 1, status: "Solicitado", data: today(), observacoes: "" });
+  const salvar = () => {
+    if (!form.ferramenta.trim()) return toast.error("Informe a ferramenta para compra.");
+    setPedidos((old) => [{ ...form, id: uid(), quantidade: Number(form.quantidade) }, ...old]);
+    resetForm();
+    setOpen(false);
+    toast.success("Pedido de compra criado.");
+  };
+  const fornecedorNome = (id: string) => fornecedores.find((f) => f.id === id)?.nome ?? "Sem fornecedor";
+
+  return <Card className="shadow-sm bg-card">
+    <CardHeader className="border-b border-border/40">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <CardTitle className="text-sm flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-primary" />Pedidos de compra</CardTitle>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild><Button className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" />Novo pedido</Button></DialogTrigger>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader><DialogTitle>Novo pedido de compra</DialogTitle></DialogHeader>
+            <div className="space-y-3 pt-2">
+              <Field label="Ferramenta"><Input list="ferramentas" value={form.ferramenta} onChange={(e) => setForm({ ...form, ferramenta: e.target.value })} /><datalist id="ferramentas">{ferramentas.map((f) => <option key={f.id} value={f.nome} />)}</datalist></Field>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><Field label="Quantidade"><NumberInput value={form.quantidade} onChange={(e) => setForm({ ...form, quantidade: Number(e.target.value) })} /></Field><Field label="Data"><Input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} /></Field></div>
+              <Field label="Fornecedor"><Select value={form.fornecedorId || "nenhum"} onValueChange={(v) => setForm({ ...form, fornecedorId: v === "nenhum" ? "" : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhum">Sem fornecedor</SelectItem>{fornecedores.map((f) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}</SelectContent></Select></Field>
+              <Field label="Observações"><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></Field>
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => { resetForm(); setOpen(false); }}>Cancelar</Button>
+                <Button onClick={salvar}><ShoppingCart className="h-4 w-4 mr-2" />Criar pedido</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </CardHeader>
+    <CardContent className="space-y-2 pt-4">
+      {pedidos.map((p) => <div key={p.id} className="rounded-2xl border border-border/70 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-card shadow-sm">
+        <div><div className="font-semibold text-sm">{p.quantidade}x {p.ferramenta}</div><div className="text-xs text-muted-foreground">{fornecedorNome(p.fornecedorId)} • {p.data}</div><p className="text-xs mt-1">{p.observacoes}</p></div>
+        <div className="flex gap-2"><Select value={p.status} onValueChange={(v: Pedido["status"]) => { setPedidos((old) => old.map((x) => x.id === p.id ? { ...x, status: v } : x)); toast.info(`Status alterado para ${v}.`); }}><SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger><SelectContent>{["Solicitado", "Aprovado", "Comprado", "Recebido"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select><Button size="icon" variant="ghost" onClick={() => setPedidos((old) => old.filter((x) => x.id !== p.id))}><Trash2 className="h-4 w-4" /></Button></div>
+      </div>)}
+      {!pedidos.length && <Empty text="Nenhum pedido de compra." />}
+    </CardContent>
+  </Card>;
+}
 
 function FaltasPanel({ ferramentas, fornecedores, pedidos, setPedidos }: { ferramentas: Ferramenta[]; fornecedores: Fornecedor[]; pedidos: Pedido[]; setPedidos: React.Dispatch<React.SetStateAction<Pedido[]>> }) { const fornecedorNome = (id?: string) => fornecedores.find((f) => f.id === id)?.nome ?? "Sem fornecedor padrão"; const gerarPedido = (f: Ferramenta) => { const qtd = Math.max(f.minimo * 2 - disponivel(f), 1); setPedidos([{ id: uid(), ferramenta: f.nome, fornecedorId: f.fornecedorId ?? "", quantidade: qtd, status: "Solicitado", data: today(), observacoes: "Gerado automaticamente pelo controle de faltas." }, ...pedidos]); toast.success("Pedido gerado pela falta de ferramenta."); }; return <Card className="shadow-sm"><CardHeader className="bg-warning/5 rounded-t-lg border-b border-border/40"><CardTitle className="text-sm flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-warning" />Ferramentas abaixo do estoque mínimo</CardTitle></CardHeader><CardContent className="space-y-2 pt-4">{ferramentas.map((f) => { const disp = disponivel(f); return <div key={f.id} className="rounded-2xl border border-warning/35 bg-warning/8 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><div className="font-semibold text-sm">{f.nome}</div><div className="text-xs text-muted-foreground">Disponível: {disp} • Mínimo: {f.minimo} • {fornecedorNome(f.fornecedorId)}</div></div><Button size="sm" className="w-full sm:w-auto" onClick={() => gerarPedido(f)}><ShoppingCart className="h-4 w-4 mr-2" />Gerar compra</Button></div>; })}{!ferramentas.length && <Empty text="Nenhuma ferramenta em falta." />}</CardContent></Card>; }
 
