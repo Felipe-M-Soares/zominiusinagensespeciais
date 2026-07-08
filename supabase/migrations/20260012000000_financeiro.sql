@@ -159,11 +159,16 @@ CREATE TABLE IF NOT EXISTS public.notas_devolucao_troca (
   cliente_telefone   text,
   cliente_email      text,
 
-  -- Referência à nota fiscal original (obrigatória para NF-e de devolução/troca
-  -- de verdade — o SEFAZ exige o campo NFref/refNFe apontando pra chave de 44
-  -- dígitos da nota de venda que está sendo devolvida/trocada)
+  -- Referência à nota fiscal original (usada no campo NFref/refNFe do XML —
+  -- o SEFAZ exige 44 dígitos para uma chave real). Aqui só validamos que é
+  -- uma sequência numérica, sem travar em exatamente 44: chaves "fake" de
+  -- modo teste geradas em outro lugar do sistema (SefazModal) têm 47
+  -- dígitos, e uma constraint estrita de 44 fazia a gravação falhar sempre
+  -- que a devolução era vinculada a um pedido faturado em modo teste. A
+  -- checagem real de 44 dígitos (exigida pela SEFAZ de verdade) acontece na
+  -- edge function sefaz-emitir-devolucao antes de montar o XML.
   nf_original_numero text,
-  nf_original_chave  text CHECK (nf_original_chave IS NULL OR nf_original_chave ~ '^[0-9]{44}$'),
+  nf_original_chave  text CHECK (nf_original_chave IS NULL OR nf_original_chave ~ '^[0-9]+$'),
 
   motivo             text NOT NULL,
   itens              jsonb NOT NULL DEFAULT '[]'::jsonb,

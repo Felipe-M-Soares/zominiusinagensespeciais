@@ -608,7 +608,7 @@ function NovaDevolucaoTrocaModal({
         await new Promise(r => setTimeout(r, 1500));
         const fake = {
           sucesso: true,
-          chaveAcesso: "35" + Date.now() + "00000000000000000000000000000000",
+          chaveAcesso: ("35" + Date.now() + "0".repeat(40)).slice(0, 44),
           protocolo: "141" + Date.now(),
           dhAutorizacao: new Date().toISOString(),
           xMotivo: "Autorizado o uso da NF-e",

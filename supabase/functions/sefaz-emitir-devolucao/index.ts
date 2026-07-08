@@ -338,8 +338,7 @@ Deno.serve(async (req: Request) => {
     }
     const refDigits = (d.refNFe ?? "").replace(/\D/g, "");
     if (refDigits && refDigits.length !== 44) {
-      return new Response(JSON.stringify({ sucesso: false, erro: "Chave de acesso da NF-e original inválida (deve ter 44 dígitos)." }),
-        { status: 400, headers: { ...cors, "Content-Type": "application/json" } });
+      log.warn("sefaz-emitir-devolucao", `[sefaz] refNFe com ${refDigits.length} dígitos (esperado 44) — emitindo sem o vínculo NFref à nota original.`);
     }
 
     const { chave, cNF } = gerarChave(c, d);

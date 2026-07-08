@@ -818,7 +818,7 @@ function SefazModal({
         await new Promise(r => setTimeout(r, 1800));
         const fake: SefazResult = {
           sucesso: true,
-          chaveAcesso: "35" + Date.now() + "00000000000000000000000000000000",
+          chaveAcesso: ("35" + Date.now() + "0".repeat(40)).slice(0, 44),
           protocolo: "141" + Date.now(),
           dhAutorizacao: new Date().toISOString(),
           cStat: "100", xMotivo: "Autorizado o uso da NF-e",
