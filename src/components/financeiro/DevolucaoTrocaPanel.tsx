@@ -447,57 +447,75 @@ function NovaDevolucaoTrocaModal({
       });
   }, [tipo]);
 
-  // Busca de pedidos faturados (debounce simples)
+  // Carrega pedidos faturados/enviados uma única vez (não a cada tecla) e
+  // filtra em memória — evita depender do .or() do PostgREST em coluna de
+  // tabela relacionada (clientes.nome), que não filtra de forma confiável
+  // sem forçar inner join, e fazia o cliente nunca aparecer na busca.
+  const [todosPedidos, setTodosPedidos] = useState<PedidoBusca[]>([]);
+  const [pedidosCarregados, setPedidosCarregados] = useState(false);
+
   useEffect(() => {
-    if (vinculo !== "pedido" || buscaPedido.trim().length < 2) { setResultadosBusca([]); return; }
-    const t = setTimeout(async () => {
-      setBuscando(true);
-      const q = buscaPedido.trim();
-      const { data, error } = await supabase
-        .from("pedidos_comerciais")
-        .select(`
-          id, cliente_id, frete, nota_fiscal, chave_acesso_nfe,
-          clientes(nome, documento, ie, telefone, email, endereco, logradouro, numero, bairro, municipio, uf, cep),
-          pedido_itens(stock_item_id, quantidade, valor_unitario,
-            stock_items(devices(model, ncm, cfop_padrao)))
-        `)
-        .in("status", ["faturado", "enviado"])
-        .or(`nota_fiscal.ilike.%${q}%,clientes.nome.ilike.%${q}%`)
-        .order("created_at", { ascending: false })
-        .limit(15);
-      if (error) { logger.error("busca pedido devolução:", error); setResultadosBusca([]); setBuscando(false); return; }
-      const mapped: PedidoBusca[] = ((data ?? []) as Record<string, unknown>[]).map(p => {
-        const cli = (p.clientes as Record<string, unknown> | null) ?? {};
-        const end = cli.logradouro
-          ? `${cli.logradouro}${cli.numero ? ", "+cli.numero : ""}${cli.bairro ? " — "+cli.bairro : ""}${cli.municipio ? " — "+cli.municipio : ""}${cli.uf ? "/"+cli.uf : ""}`
-          : (cli.endereco as string ?? "");
-        return {
-          id: p.id as string,
-          cliente_id: p.cliente_id as string,
-          cliente_nome: (cli.nome as string) ?? "(sem nome)",
-          cliente_documento: (cli.documento as string) ?? null,
-          cliente_ie: (cli.ie as string) ?? null,
-          cliente_endereco: end,
-          cliente_telefone: (cli.telefone as string) ?? null,
-          cliente_email: (cli.email as string) ?? null,
-          nota_fiscal: p.nota_fiscal as string | null,
-          chave_acesso_nfe: p.chave_acesso_nfe as string | null,
-          frete: (p.frete as number) ?? 0,
-          itens: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map(i => ({
-            stock_item_id: i.stock_item_id as string,
-            quantidade: i.quantidade as number,
-            valor_unitario: (i.valor_unitario as number) ?? 0,
-            device_model: ((i.stock_items as Record<string, unknown> | null)?.devices as Record<string, unknown> | null)?.model as string | undefined,
-            ncm: ((i.stock_items as Record<string, unknown> | null)?.devices as Record<string, unknown> | null)?.ncm as string | undefined,
-            cfop_padrao: ((i.stock_items as Record<string, unknown> | null)?.devices as Record<string, unknown> | null)?.cfop_padrao as string | undefined,
-          })),
-        };
+    if (vinculo !== "pedido" || pedidosCarregados) return;
+    setBuscando(true);
+    supabase
+      .from("pedidos_comerciais")
+      .select(`
+        id, cliente_id, frete, nota_fiscal, chave_acesso_nfe,
+        clientes(nome, documento, ie, telefone, email, endereco, logradouro, numero, bairro, municipio, uf, cep),
+        pedido_itens(stock_item_id, quantidade, valor_unitario,
+          stock_items(devices(model, ncm, cfop_padrao)))
+      `)
+      .in("status", ["faturado", "enviado"])
+      .order("created_at", { ascending: false })
+      .limit(500)
+      .then(({ data, error }) => {
+        if (error) { logger.error("busca pedido devolução:", error); setBuscando(false); return; }
+        const mapped: PedidoBusca[] = ((data ?? []) as Record<string, unknown>[]).map(p => {
+          const cli = (p.clientes as Record<string, unknown> | null) ?? {};
+          const end = cli.logradouro
+            ? `${cli.logradouro}${cli.numero ? ", "+cli.numero : ""}${cli.bairro ? " — "+cli.bairro : ""}${cli.municipio ? " — "+cli.municipio : ""}${cli.uf ? "/"+cli.uf : ""}`
+            : (cli.endereco as string ?? "");
+          return {
+            id: p.id as string,
+            cliente_id: p.cliente_id as string,
+            cliente_nome: (cli.nome as string) ?? "(sem nome)",
+            cliente_documento: (cli.documento as string) ?? null,
+            cliente_ie: (cli.ie as string) ?? null,
+            cliente_endereco: end,
+            cliente_telefone: (cli.telefone as string) ?? null,
+            cliente_email: (cli.email as string) ?? null,
+            nota_fiscal: p.nota_fiscal as string | null,
+            chave_acesso_nfe: p.chave_acesso_nfe as string | null,
+            frete: (p.frete as number) ?? 0,
+            itens: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map(i => ({
+              stock_item_id: i.stock_item_id as string,
+              quantidade: i.quantidade as number,
+              valor_unitario: (i.valor_unitario as number) ?? 0,
+              device_model: ((i.stock_items as Record<string, unknown> | null)?.devices as Record<string, unknown> | null)?.model as string | undefined,
+              ncm: ((i.stock_items as Record<string, unknown> | null)?.devices as Record<string, unknown> | null)?.ncm as string | undefined,
+              cfop_padrao: ((i.stock_items as Record<string, unknown> | null)?.devices as Record<string, unknown> | null)?.cfop_padrao as string | undefined,
+            })),
+          };
+        });
+        setTodosPedidos(mapped);
+        setPedidosCarregados(true);
+        setBuscando(false);
       });
-      setResultadosBusca(mapped);
-      setBuscando(false);
-    }, 350);
-    return () => clearTimeout(t);
-  }, [buscaPedido, vinculo]);
+  }, [vinculo, pedidosCarregados]);
+
+  // Filtragem em memória: por nome do cliente, número da NF ou número do pedido
+  // (forma curta de 8 caracteres exibida em outras telas, ou o UUID completo).
+  useEffect(() => {
+    const q = buscaPedido.trim().toLowerCase();
+    if (q.length < 2) { setResultadosBusca([]); return; }
+    const filtrados = todosPedidos.filter(p =>
+      p.cliente_nome.toLowerCase().includes(q) ||
+      (p.nota_fiscal ?? "").toLowerCase().includes(q) ||
+      p.id.toLowerCase().includes(q) ||
+      p.id.slice(0, 8).toLowerCase().includes(q)
+    ).slice(0, 15);
+    setResultadosBusca(filtrados);
+  }, [buscaPedido, todosPedidos]);
 
   function selecionarPedido(p: PedidoBusca) {
     setPedidoSel(p);
@@ -722,10 +740,10 @@ function NovaDevolucaoTrocaModal({
                   <div className="relative">
                     <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
                     <input value={buscaPedido} onChange={e => { setBuscaPedido(e.target.value); setPedidoSel(null); }}
-                      placeholder="Buscar por número da NF ou nome do cliente..."
+                      placeholder="Buscar por número da NF, do pedido ou nome do cliente..."
                       className="w-full h-9 pl-8 pr-3 rounded-xl border border-border bg-muted/20 text-[12px] outline-none focus:border-violet-400" />
                   </div>
-                  {buscando && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin"/> Buscando...</p>}
+                  {buscando && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin"/> Carregando pedidos faturados...</p>}
                   {resultadosBusca.length > 0 && (
                     <div className="space-y-1 max-h-48 overflow-y-auto rounded-xl border border-border/30 p-1.5">
                       {resultadosBusca.map(p => (
@@ -733,7 +751,9 @@ function NovaDevolucaoTrocaModal({
                           className="w-full text-left rounded-lg px-2.5 py-2 hover:bg-muted/30 flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="text-[12px] font-semibold truncate">{p.cliente_nome}</p>
-                            <p className="text-[10px] text-muted-foreground">{p.nota_fiscal ?? "sem NF"}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              Pedido {p.id.slice(0, 8).toUpperCase()} · {p.nota_fiscal ?? "sem NF"}
+                            </p>
                           </div>
                           <ChevronRight size={14} className="text-muted-foreground shrink-0" />
                         </button>
