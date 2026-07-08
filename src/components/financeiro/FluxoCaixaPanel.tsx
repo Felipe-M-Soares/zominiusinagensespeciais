@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
+import { formatBRL } from "@/lib/format";
 import {
   TrendingUp, TrendingDown, AlertTriangle, RefreshCw,
   BarChart3, Clock, DollarSign, Download, User, CheckCircle2,
@@ -37,8 +38,7 @@ interface Conta {
   cliente_id?: string;
 }
 
-const BRL = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const BRL = formatBRL;
 
 const MESES_LABEL = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 

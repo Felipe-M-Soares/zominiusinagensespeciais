@@ -12,6 +12,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import logoZomini from "@/assets/logo_zomini.png";
 import { COMPANY_NAME, COMPANY_DOCUMENT, COMPANY_ADDRESS, COMPANY_PHONE, COMPANY_EMAIL } from "@/lib/appInfo";
+import { formatBRL } from "@/lib/format";
 import type { Cliente, PedidoCompleto } from "@/types/comercial";
 
 const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
@@ -42,7 +43,7 @@ function sanitizeText(s: string | null | undefined, maxLen = 200): string {
 }
 
 function fmtMoeda(v: number): string {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return formatBRL(v);
 }
 
 function fmtData(iso: string | null, comHora = false): string {

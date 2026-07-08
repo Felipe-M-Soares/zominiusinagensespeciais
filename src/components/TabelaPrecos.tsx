@@ -11,8 +11,9 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
 import { escHtml } from "@/lib/escHtml";
+import { formatBRL } from "@/lib/format";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { Edit3, Tag, TrendingDown, Percent, AlertTriangle, X, RefreshCw, FileSpreadsheet, Printer, ChevronDown, ChevronUp, Package, Trash2 } from "lucide-react";
+import { Edit3, Tag, TrendingDown, Percent, AlertTriangle, X, RefreshCw, FileSpreadsheet, Printer, ChevronDown, ChevronUp, Package, Trash2, Loader2, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 // ─── PainelTabelaPrecos ───────────────────────────────────────────────────────
@@ -35,7 +36,7 @@ interface DevicePreco {
 }
 
 function fmtCurrency(v: number) {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return formatBRL(v);
 }
 
 export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean; canEdit?: boolean }) {

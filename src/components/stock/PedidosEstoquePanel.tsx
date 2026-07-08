@@ -46,6 +46,7 @@ import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { PrintButton } from "@/components/PrintButton";
 import { escHtml } from "@/lib/escHtml";
+import { detectarUF, adaptarCFOP as adaptarCFOPShared } from "@/lib/cfop";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -438,33 +439,33 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
   async function handleImprimir() {
     const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
     const LOTE_PH = new Set(["a-definir","a definir","sem lote",""]);
-    const printRows: { model?: string; reference?: string; lote: string; quantidade: number }[] = [];
+    const printRows: { model?: string; reference?: string; lote: string; quantidade: number; stock_item_id?: string }[] = [];
 
     const hasSel = Object.keys(sel).length > 0;
     const hasSep = (pedido.lotes_separados ?? []).length > 0;
 
     if (hasSep) {
       // lotes_separados é sempre a fonte mais confiável — tem um entry por (stock_item, lote)
-      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
+      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number; stock_item_id?: string }>();
       for (const ls of pedido.lotes_separados!) {
         const item = pedido.itens.find(i => (expIdByItem[i.id] ?? i.stock_item_id) === ls.stock_item_id)
           ?? pedido.itens.find(i => i.device_model === ls.device_model);
         const key = `${ls.device_model}||${ls.lote}`;
         const ex = rowMap.get(key);
         if (ex) ex.quantidade += ls.quantidade;
-        else rowMap.set(key, { model: ls.device_model ?? item?.device_model, reference: item?.device_reference, lote: ls.lote, quantidade: ls.quantidade });
+        else rowMap.set(key, { model: ls.device_model ?? item?.device_model, reference: item?.device_reference, lote: ls.lote, quantidade: ls.quantidade, stock_item_id: item?.stock_item_id ?? ls.stock_item_id });
       }
       for (const row of rowMap.values()) printRows.push(row);
     } else if (hasSel) {
       // Seleção ativa na tela (pedido pendente ainda não iniciado)
-      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number }>();
+      const rowMap = new Map<string, { model?: string; reference?: string; lote: string; quantidade: number; stock_item_id?: string }>();
       for (const item of pedido.itens) {
         for (const [lote, qty] of Object.entries(sel[item.id] ?? {})) {
           if (qty <= 0) continue;
           const key = `${item.device_model}||${lote}`;
           const ex = rowMap.get(key);
           if (ex) ex.quantidade += qty;
-          else rowMap.set(key, { model: item.device_model, reference: item.device_reference, lote, quantidade: qty });
+          else rowMap.set(key, { model: item.device_model, reference: item.device_reference, lote, quantidade: qty, stock_item_id: item.stock_item_id });
         }
       }
       for (const row of rowMap.values()) printRows.push(row);
@@ -490,16 +491,17 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
         const lotesComSaldo = lm ? [...lm.entries()].filter(([,s]) => s > 0).map(([l]) => l) : [];
         if (lotesComSaldo.length > 0) {
           for (const lote of lotesComSaldo) {
-            printRows.push({ model: item.device_model, reference: item.device_reference, lote, quantidade: item.quantidade });
+            printRows.push({ model: item.device_model, reference: item.device_reference, lote, quantidade: item.quantidade, stock_item_id: item.stock_item_id });
           }
         } else {
-          printRows.push({ model: item.device_model, reference: item.device_reference, lote: "", quantidade: item.quantidade });
+          printRows.push({ model: item.device_model, reference: item.device_reference, lote: "", quantidade: item.quantidade, stock_item_id: item.stock_item_id });
         }
       }
     }
 
     // ── Busca dados completos do pedido e cliente (antes de montar tableBody) ──
-    const [{ data: pedidoExtra }, { data: clienteData }, { data: itensPreco }, { data: devicesData }] = await Promise.all([
+    const stockItemIdsParaDevice = [...new Set(pedido.itens.map(i => i.stock_item_id).filter(Boolean))];
+    const [{ data: pedidoExtra }, { data: clienteData }, { data: itensPreco }, { data: stockItemsData }] = await Promise.all([
       supabase.from("pedidos_comerciais")
         .select("forma_pagamento, parcelas, endereco_entrega, usar_endereco_cliente, desconto_pct, frete")
         .eq("id", pedido.id).maybeSingle(),
@@ -509,9 +511,9 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
       supabase.from("pedido_itens")
         .select("stock_item_id, quantidade, preco_unitario, valor_total")
         .eq("pedido_id", pedido.id),
-      supabase.from("devices")
-        .select("id, ncm, cfop_padrao, ipi_pct, preco_venda, margem_minima_pct")
-        .in("id", pedido.itens.map(i => i.device_id).filter(Boolean)),
+      supabase.from("stock_items")
+        .select("id, devices(ncm, cfop_padrao, ipi_pct, preco_venda, margem_minima_pct)")
+        .in("id", stockItemIdsParaDevice),
     ]);
 
     type ClienteExtra = {
@@ -523,13 +525,15 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
       forma_pagamento?: string; parcelas?: number; endereco_entrega?: string;
       usar_endereco_cliente?: boolean; desconto_pct?: number; frete?: number;
     };
-    type DeviceExtra = { id: string; ncm?: string; cfop_padrao?: string; ipi_pct?: number; preco_venda?: number };
+    type DeviceExtra = { ncm?: string; cfop_padrao?: string; ipi_pct?: number; preco_venda?: number };
+    type StockItemRow = { id: string; devices?: DeviceExtra | null };
     type ItemPreco = { stock_item_id: string; quantidade: number; preco_unitario?: number; valor_total?: number };
 
     const cl = clienteData as ClienteExtra | null;
     const ex = pedidoExtra as PedidoExtra | null;
-    const devMap = new Map<string, DeviceExtra>(
-      ((devicesData ?? []) as DeviceExtra[]).map(d => [d.id, d])
+    // Mapa direto stock_item_id → dados do device (via join stock_items → devices)
+    const devByStockItem = new Map<string, DeviceExtra>(
+      ((stockItemsData ?? []) as StockItemRow[]).map(si => [si.id, si.devices ?? {}])
     );
     const itemPrecoMap = new Map<string, ItemPreco>(
       ((itensPreco ?? []) as ItemPreco[]).map(i => [i.stock_item_id, i])
@@ -558,15 +562,6 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
     // ── CFOP por localidade: 5xxx (intraestadual) ou 6xxx (interestadual) ────────
     // UF da empresa emitente: SP. UF do cliente extraída do endereço.
     const UF_EMPRESA = "SP";
-    function detectarUF(endereco: string): string | null {
-      // Formatos: "... São Paulo/SP ...", "... — SP ...", "/SP", "SP — CEP", "-SP"
-      const m = endereco.match(/[\s\/\-,]([A-Z]{2})(?:\s|$|—|\s*CEP)/);
-      if (m) return m[1];
-      // Tenta sigla ao final: "... Indaiatuba/SP"
-      const m2 = endereco.match(/\/([A-Z]{2})/);
-      if (m2) return m2[1];
-      return null;
-    }
     const endCliente = cl?.logradouro
       ? `${cl?.municipio ?? ""} ${cl?.uf ?? ""}`.trim()
       : (cl?.endereco ?? enderecoEntrega ?? "");
@@ -575,14 +570,9 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
 
     // Mapeia CFOP base: 5102 → 6102 se interestadual; 5405 → 6404; etc.
     function adaptarCFOP(cfopOriginal: string | null | undefined): string {
-      const c = (cfopOriginal ?? "5102").toString().trim();
-      if (!c || c === "—") return isInterestadual ? "6102" : "5102";
-      // Se já começa com 6 ou 7, mantém (operações com exterior)
-      if (c.startsWith("6") || c.startsWith("7")) return c;
-      // Converte 5xxx → 6xxx se interestadual
-      if (isInterestadual && c.startsWith("5")) return "6" + c.slice(1);
-      return c;
+      return adaptarCFOPShared(cfopOriginal, ufCliente, UF_EMPRESA);
     }
+
 
     // ── Agrupa por tipo de peça (model + reference) para separadores na página ──
     const grouped = new Map<string, typeof printRows>();
@@ -591,11 +581,6 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)!.push(row);
     }
-
-    // Monta mapa de device_id por stock_item_id para lookup de NCM/CFOP/preço
-    const stockToDevice = new Map<string, string>(
-      pedido.itens.map(i => [i.stock_item_id, i.device_id ?? ""])
-    );
 
     let rowIdx = 0;
     let tableBody = "";
@@ -607,11 +592,10 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
 
       // Preço unitário — busca nos pedido_itens ou nos devices como fallback
       const itemPreco = itemPrecoMap.get(first.stock_item_id ?? "");
-      const deviceId = stockToDevice.get(first.stock_item_id ?? "") ?? "";
-      const dev = devMap.get(deviceId);
+      const dev = devByStockItem.get(first.stock_item_id ?? "");
       // Se preco_unitario do pedido_item for 0 ou nulo, usa preco_venda do device
       const precoFromItem = itemPreco?.preco_unitario ?? 0;
-      let precoUnit = precoFromItem > 0 ? precoFromItem : (dev?.preco_venda ?? 0);
+      const precoUnit = precoFromItem > 0 ? precoFromItem : (dev?.preco_venda ?? 0);
       const precoComDesconto = desconto > 0 ? precoUnit * (1 - desconto / 100) : precoUnit;
       const valorTotal = precoComDesconto * tipoTotal;
       subtotalGeral += valorTotal;
