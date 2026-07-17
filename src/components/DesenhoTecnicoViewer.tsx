@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import * as pdfjsLib from "pdfjs-dist";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { X, Printer, Loader2, AlertTriangle } from "lucide-react";
+
+// Worker do pdfjs — mesmo setup usado em ExcelStockImport.tsx
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 interface Props {
   path: string | null;
@@ -12,26 +19,30 @@ interface Props {
 }
 
 /**
- * Abre o PDF como blob local (não a URL assinada do Supabase diretamente) —
- * assim o iframe fica "same-origin" (blob:) e conseguimos chamar
- * iframe.contentWindow.print() sem bloqueio de cross-origin do navegador.
- * O parâmetro #toolbar=0 esconde a barra nativa do visualizador de PDF do
- * navegador (que traz seus próprios ícones de baixar/imprimir).
+ * Renderiza o PDF como imagens (uma por página) em vez de exibir num
+ * <iframe>. Isso evita dois problemas reais de navegador:
+ *  - iOS Safari (e vários webviews embutidos) não renderiza PDF dentro de
+ *    iframe de forma confiável — mostra em branco e às vezes dispara download.
+ *  - CSP restritiva (frame-src) bloqueia iframes de qualquer origem, inclusive
+ *    blob:, dependendo da configuração do site.
+ * Como imagem <img> renderiza em qualquer navegador sem exceção, e a
+ * impressão abre uma janela nova só com essas imagens — mesmo padrão já
+ * usado em outras telas do app (PedidosEstoquePanel, Financeiro, etc.).
  */
 export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     if (!path) return;
-    let revoke: string | null = null;
-    let cancelled = false;
+    cancelledRef.current = false;
 
     (async () => {
       setLoading(true);
       setError(null);
+      setPages([]);
       try {
         const { data: signed, error: signErr } = await supabase.storage
           .from("desenhos-tecnicos")
@@ -40,36 +51,61 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
 
         const resp = await fetch(signed.signedUrl);
         if (!resp.ok) throw new Error("Erro ao carregar o arquivo do desenho.");
-        const blob = await resp.blob();
-        if (cancelled) return;
+        const buf = await resp.arrayBuffer();
+        if (cancelledRef.current) return;
 
-        const url = URL.createObjectURL(blob);
-        revoke = url;
-        setBlobUrl(url);
+        const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        const images: string[] = [];
+        for (let p = 1; p <= pdf.numPages; p++) {
+          if (cancelledRef.current) return;
+          const page = await pdf.getPage(p);
+          const viewport = page.getViewport({ scale: 2 });
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) continue;
+          await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+          images.push(canvas.toDataURL("image/png"));
+        }
+        if (cancelledRef.current) return;
+        setPages(images);
       } catch (e) {
-        if (cancelled) return;
+        if (cancelledRef.current) return;
         logger.error("DesenhoTecnicoViewer load error:", e);
         setError(e instanceof Error ? e.message : "Erro ao carregar o desenho técnico.");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelledRef.current) setLoading(false);
       }
     })();
 
-    return () => {
-      cancelled = true;
-      if (revoke) URL.revokeObjectURL(revoke);
-    };
+    return () => { cancelledRef.current = true; };
   }, [path]);
 
   function handlePrint() {
-    const win = iframeRef.current?.contentWindow;
+    if (pages.length === 0) return;
+    const win = window.open("", "_blank");
     if (!win) return;
-    try {
-      win.focus();
-      win.print();
-    } catch (e) {
-      logger.error("print() error:", e);
-    }
+    const imgsHtml = pages
+      .map(src => `<img src="${src}" />`)
+      .join("");
+    win.document.write(`
+      <html>
+        <head>
+          <title>Desenho técnico — ${title}</title>
+          <style>
+            body { margin: 0; background: #525659; }
+            img { display: block; width: 100%; height: auto; page-break-after: always; }
+            @media print { body { background: white; } img { page-break-after: always; } }
+          </style>
+        </head>
+        <body>
+          ${imgsHtml}
+          <script>window.onload = function() { window.print(); }</script>
+        </body>
+      </html>
+    `);
+    win.document.close();
   }
 
   if (!path) return null;
@@ -80,7 +116,7 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
         <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-border/30 shrink-0">
           <h3 className="font-semibold text-sm truncate pr-2">Desenho técnico — {title}</h3>
           <div className="flex items-center gap-2 shrink-0">
-            <Button size="sm" className="gap-1.5 h-8" onClick={handlePrint} disabled={!blobUrl}>
+            <Button size="sm" className="gap-1.5 h-8" onClick={handlePrint} disabled={pages.length === 0}>
               <Printer className="h-3.5 w-3.5" /> Imprimir
             </Button>
             <button onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40">
@@ -89,7 +125,7 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 bg-muted/20 relative">
+        <div className="flex-1 min-h-0 bg-muted/30 relative overflow-y-auto">
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Carregando desenho...
@@ -101,13 +137,17 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
               {error}
             </div>
           )}
-          {!loading && !error && blobUrl && (
-            <iframe
-              ref={iframeRef}
-              src={`${blobUrl}#toolbar=0&navpanes=0`}
-              title={`Desenho técnico — ${title}`}
-              className="w-full h-full border-0"
-            />
+          {!loading && !error && pages.length > 0 && (
+            <div className="flex flex-col items-center gap-3 p-3 sm:p-4">
+              {pages.map((src, i) => (
+                <img
+                  key={i}
+                  src={src}
+                  alt={`Página ${i + 1} do desenho técnico — ${title}`}
+                  className="max-w-full rounded-lg shadow-md border border-border/30 bg-white"
+                />
+              ))}
+            </div>
           )}
         </div>
       </div>
