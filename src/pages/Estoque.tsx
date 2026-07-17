@@ -115,52 +115,52 @@ const IntermediaryCard = memo(function IntermediaryCard({
         isEmpty ? "via-destructive opacity-80" : isLow ? "via-warning opacity-70" : "via-primary opacity-50"
       )} />
 
-      <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
-            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
+      <div className="p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <h3 className="text-[17px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
+            <p className="text-[14px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
           </div>
-          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-primary/25 text-primary/80 bg-primary/5 rounded-lg">
+          <Badge variant="outline" className="shrink-0 text-[13px] font-mono px-2 py-1 border-primary/25 text-primary/80 bg-primary/5 rounded-lg">
             {d.classification_code}
           </Badge>
         </div>
 
-        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
+        {d.brand_name && <p className="text-[14px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
 
         <div className="flex flex-wrap gap-1 -mt-1">
           {d.sterile && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
-              <Shield className="h-2.5 w-2.5" /> Estéril
+            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2.5 py-1 text-[13px] font-medium text-success">
+              <Shield className="h-[13px] w-[13px]" /> Estéril
             </span>
           )}
           {d.single_use && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
-              <Package className="h-2.5 w-2.5" /> Uso único
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2.5 py-1 text-[13px] font-medium text-orange-500">
+              <Package className="h-[13px] w-[13px]" /> Uso único
             </span>
           )}
           {d.implantable && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-medium text-primary">
-              <Activity className="h-2.5 w-2.5" /> Implantável
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-[13px] font-medium text-primary">
+              <Activity className="h-[13px] w-[13px]" /> Implantável
             </span>
           )}
         </div>
 
         <div className={cn(
-          "flex items-center justify-between rounded-xl px-3 py-2 border",
+          "flex items-center justify-between rounded-xl px-4 py-2.5 border",
           isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-primary/8 border-primary/25"
         )}>
-          <div className="flex items-center gap-1.5">
-            <PackageCheck className={cn("h-3.5 w-3.5", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")} />
-            <span className="text-[11px] font-medium text-muted-foreground">Intermediário</span>
+          <div className="flex items-center gap-2">
+            <PackageCheck className={cn("h-[18px] w-[18px]", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")} />
+            <span className="text-[14px] font-medium text-muted-foreground">Intermediário</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            {isEmpty && <AlertTriangle className="h-3 w-3 text-destructive" />}
-            {isLow && !isEmpty && <TrendingDown className="h-3 w-3 text-warning" />}
-            <span className={cn("text-[15px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")}>
+          <div className="flex items-center gap-2">
+            {isEmpty && <AlertTriangle className="h-4 w-4 text-destructive" />}
+            {isLow && !isEmpty && <TrendingDown className="h-4 w-4 text-warning" />}
+            <span className={cn("text-[20px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")}>
               {qty}
             </span>
-            <span className="text-[10px] text-muted-foreground">un.</span>
+            <span className="text-[13px] text-muted-foreground">un.</span>
           </div>
         </div>
 
@@ -168,66 +168,66 @@ const IntermediaryCard = memo(function IntermediaryCard({
           <button
             type="button"
             onClick={() => onLotes(item)}
-            className="flex items-center gap-1.5 text-[11px] text-primary/70 hover:text-primary transition-colors -mt-1"
+            className="flex items-center gap-2 text-[14px] text-primary/70 hover:text-primary transition-colors -mt-1"
           >
-            <Tag className="h-3 w-3" />
+            <Tag className="h-4 w-4" />
             <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""}</span>
             <span className="text-muted-foreground/40">→</span>
           </button>
         )}
 
-        <div className="space-y-1.5 pt-1 border-t border-border/20">
+        <div className="space-y-2 pt-1 border-t border-border/20">
           <button
             type="button"
             onClick={() => onEntrada(item)}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-primary/8 hover:bg-primary/15 text-primary text-[11px] font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-primary/8 hover:bg-primary/15 text-primary text-[14px] font-medium transition-colors"
           >
-            <ArrowDownCircle className="h-3.5 w-3.5" />
+            <ArrowDownCircle className="h-[18px] w-[18px]" />
             Registrar Entrada
           </button>
           <button
             type="button"
             onClick={() => onTransfer(item)}
             disabled={qty === 0}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 text-[14px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
-            <Truck className="h-3.5 w-3.5" />
+            <Truck className="h-[18px] w-[18px]" />
             Mover para Expedição
           </button>
-          <div className="flex gap-1.5">
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => onHistory(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
               title="Histórico"
             >
-              <Clock className="h-3 w-3" /> Histórico
+              <Clock className="h-4 w-4" /> Histórico
             </button>
             <button
               type="button"
               onClick={() => onLotes(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-primary/10 hover:text-primary text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-primary/10 hover:text-primary text-muted-foreground text-[13px] transition-colors"
               title="Lotes"
             >
-              <Tag className="h-3 w-3" /> Lotes
+              <Tag className="h-4 w-4" /> Lotes
             </button>
             {isAdmin && (
               <>
                 <button
                   type="button"
                   onClick={() => onReset(item)}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
+                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
                   title="Zerar estoque e histórico"
                 >
-                  <PackageCheck className="h-3 w-3" />
+                  <PackageCheck className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => onDelete(item)}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
                   title="Remover"
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </>
             )}
@@ -258,29 +258,29 @@ const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistor
     >
       <div className="h-0.5 bg-gradient-to-r from-transparent via-orange-500 to-transparent opacity-70 group-hover:opacity-100 transition-opacity" />
 
-      <div className="p-4 space-y-3">
+      <div className="p-5 space-y-4">
         {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0 space-y-0.5">
-            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight truncate">{d.reference}</p>
+          <div className="flex-1 min-w-0 space-y-1">
+            <h3 className="text-[17px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
+            <p className="text-[14px] text-muted-foreground font-mono tracking-tight truncate">{d.reference}</p>
           </div>
-          <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/25 px-2 py-0.5 text-[10px] font-medium text-orange-500 whitespace-nowrap">
-            <Wrench className="h-2.5 w-2.5" /> Retrabalho
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/25 px-2.5 py-1 text-[13px] font-medium text-orange-500 whitespace-nowrap">
+            <Wrench className="h-[13px] w-[13px]" /> Retrabalho
           </span>
         </div>
 
-        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate">{d.brand_name}</p>}
+        {d.brand_name && <p className="text-[14px] text-muted-foreground/70 truncate">{d.brand_name}</p>}
 
         {/* Quantidade em retrabalho */}
-        <div className="flex items-center justify-between rounded-xl px-3 py-2 border bg-orange-500/8 border-orange-500/25">
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            <Wrench className="h-3.5 w-3.5 text-orange-500 shrink-0" />
-            <span className="text-[11px] font-medium text-muted-foreground truncate">Em retrabalho</span>
+        <div className="flex items-center justify-between rounded-xl px-4 py-2.5 border bg-orange-500/8 border-orange-500/25">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <Wrench className="h-[18px] w-[18px] text-orange-500 shrink-0" />
+            <span className="text-[14px] font-medium text-muted-foreground truncate">Em retrabalho</span>
           </div>
           <div className="flex items-center gap-1 shrink-0 ml-2">
-            <span className="text-[15px] font-bold tabular-nums text-orange-500">{item.quantity}</span>
-            <span className="text-[10px] text-muted-foreground">un.</span>
+            <span className="text-[20px] font-bold tabular-nums text-orange-500">{item.quantity}</span>
+            <span className="text-[13px] text-muted-foreground">un.</span>
           </div>
         </div>
 
@@ -289,48 +289,48 @@ const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistor
           <button
             type="button"
             onClick={() => onLotes(item)}
-            className="flex items-center gap-1.5 text-[11px] text-orange-500/70 hover:text-orange-500 transition-colors -mt-1"
+            className="flex items-center gap-2 text-[14px] text-orange-500/70 hover:text-orange-500 transition-colors -mt-1"
           >
-            <Tag className="h-3 w-3" />
+            <Tag className="h-4 w-4" />
             <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""}</span>
             <span className="text-muted-foreground/40">→</span>
           </button>
         )}
 
         {/* Info */}
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
+        <div className="flex items-center justify-between text-[13px] text-muted-foreground/60">
           <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
           {d.manufacturer_country && (
-            <span className="flex items-center gap-0.5 shrink-0 ml-2">
+            <span className="flex items-center gap-1 shrink-0 ml-2">
               <span>{countryFlag(d.manufacturer_country)}</span>
             </span>
           )}
         </div>
 
         {/* Botões */}
-        <div className="space-y-1.5 pt-1 border-t border-border/20">
+        <div className="space-y-2 pt-1 border-t border-border/20">
           <button
             type="button"
             onClick={() => onConcluir(item)}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[11px] font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[14px] font-medium transition-colors"
           >
-            <PackageCheck className="h-3.5 w-3.5" />
+            <PackageCheck className="h-[18px] w-[18px]" />
             Concluir Retrabalho → Expedição
           </button>
-          <div className="flex gap-1.5">
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => onHistory(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
             >
-              <Clock className="h-3 w-3" /> Histórico
+              <Clock className="h-4 w-4" /> Histórico
             </button>
             <button
               type="button"
               onClick={() => onLotes(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-orange-500/10 hover:text-orange-500 text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-orange-500/10 hover:text-orange-500 text-muted-foreground text-[13px] transition-colors"
             >
-              <Tag className="h-3 w-3" /> Lotes
+              <Tag className="h-4 w-4" /> Lotes
             </button>
           </div>
         </div>
@@ -374,66 +374,66 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
         isEmpty ? "via-destructive opacity-80" : isLow ? "via-warning opacity-70" : "via-success opacity-50"
       )} />
 
-      <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
-            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
+      <div className="p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <h3 className="text-[17px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
+            <p className="text-[14px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
           </div>
-          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-success/25 text-success/80 bg-success/5 rounded-lg">
+          <Badge variant="outline" className="shrink-0 text-[13px] font-mono px-2 py-1 border-success/25 text-success/80 bg-success/5 rounded-lg">
             {d.classification_code}
           </Badge>
         </div>
 
-        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
+        {d.brand_name && <p className="text-[14px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
 
         <div className="flex flex-wrap gap-1 -mt-1">
           {d.sterile && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
-              <Shield className="h-2.5 w-2.5" /> Estéril
+            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2.5 py-1 text-[13px] font-medium text-success">
+              <Shield className="h-[13px] w-[13px]" /> Estéril
             </span>
           )}
           {d.single_use && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
-              <Package className="h-2.5 w-2.5" /> Uso único
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2.5 py-1 text-[13px] font-medium text-orange-500">
+              <Package className="h-[13px] w-[13px]" /> Uso único
             </span>
           )}
           {d.implantable && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-medium text-primary">
-              <Activity className="h-2.5 w-2.5" /> Implantável
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-[13px] font-medium text-primary">
+              <Activity className="h-[13px] w-[13px]" /> Implantável
             </span>
           )}
         </div>
 
         <div className={cn(
-          "flex items-center justify-between rounded-xl px-3 py-2 border",
+          "flex items-center justify-between rounded-xl px-4 py-2.5 border",
           isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-success/8 border-success/25"
         )}>
-          <div className="flex items-center gap-1.5">
-            <PackageCheck className={cn("h-3.5 w-3.5", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")} />
-            <span className="text-[11px] font-medium text-muted-foreground">Expedição</span>
+          <div className="flex items-center gap-2">
+            <PackageCheck className={cn("h-[18px] w-[18px]", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")} />
+            <span className="text-[14px] font-medium text-muted-foreground">Expedição</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            {isEmpty && <AlertTriangle className="h-3 w-3 text-destructive" />}
-            {isLow && !isEmpty && <TrendingDown className="h-3 w-3 text-warning" />}
-            <span className={cn("text-[15px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")}>
+          <div className="flex items-center gap-2">
+            {isEmpty && <AlertTriangle className="h-4 w-4 text-destructive" />}
+            {isLow && !isEmpty && <TrendingDown className="h-4 w-4 text-warning" />}
+            <span className={cn("text-[20px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")}>
               {available}
             </span>
-            <span className="text-[10px] text-muted-foreground">un.</span>
+            <span className="text-[13px] text-muted-foreground">un.</span>
           </div>
         </div>
 
         {item.quantity_reserved > 0 && (
-          <div className="flex items-center justify-between rounded-xl px-3 py-2 border bg-amber-500/8 border-amber-500/25 -mt-1">
-            <div className="flex items-center gap-1.5">
-              <Archive className={cn("h-3.5 w-3.5 text-amber-500")} />
-              <span className="text-[11px] font-medium text-muted-foreground">Reservado</span>
+          <div className="flex items-center justify-between rounded-xl px-4 py-2.5 border bg-amber-500/8 border-amber-500/25 -mt-1">
+            <div className="flex items-center gap-2">
+              <Archive className={cn("h-[18px] w-[18px] text-amber-500")} />
+              <span className="text-[14px] font-medium text-muted-foreground">Reservado</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[15px] font-bold tabular-nums text-amber-500">
+            <div className="flex items-center gap-2">
+              <span className="text-[20px] font-bold tabular-nums text-amber-500">
                 {item.quantity_reserved}
               </span>
-              <span className="text-[10px] text-muted-foreground">un.</span>
+              <span className="text-[13px] text-muted-foreground">un.</span>
             </div>
           </div>
         )}
@@ -442,79 +442,79 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
           <button
             type="button"
             onClick={() => onLotes(item)}
-            className="flex items-center gap-1.5 text-[11px] text-success/70 hover:text-success transition-colors -mt-1"
+            className="flex items-center gap-2 text-[14px] text-success/70 hover:text-success transition-colors -mt-1"
           >
-            <Tag className="h-3 w-3" />
+            <Tag className="h-4 w-4" />
             <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""} prontos</span>
             <span className="text-muted-foreground/40">→</span>
           </button>
         )}
 
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
+        <div className="flex items-center justify-between text-[13px] text-muted-foreground/60">
           <span>Mín: {item.min_quantity} un.</span>
           {item.location && <span className="truncate ml-2">📍 {item.location}</span>}
         </div>
 
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
+        <div className="flex items-center justify-between text-[13px] text-muted-foreground/60 pt-1 border-t border-border/20">
           <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
           {d.manufacturer_country && (
-            <span className="flex items-center gap-0.5 shrink-0 ml-2" title={d.manufacturer_country}>
+            <span className="flex items-center gap-1 shrink-0 ml-2" title={d.manufacturer_country}>
               <span>{countryFlag(d.manufacturer_country)}</span>
             </span>
           )}
         </div>
 
-        <div className="space-y-1.5 pt-1 border-t border-border/20">
+        <div className="space-y-2 pt-1 border-t border-border/20">
           <button
             type="button"
             onClick={() => onSaida(item)}
             disabled={item.quantity === 0}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[14px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
-            <ArrowUpCircle className="h-3.5 w-3.5" />
+            <ArrowUpCircle className="h-[18px] w-[18px]" />
             Retirada
           </button>
           <button
             type="button"
             onClick={() => onRetrabalho(item)}
             disabled={item.quantity === 0}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[14px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
-            <Wrench className="h-3.5 w-3.5" />
+            <Wrench className="h-[18px] w-[18px]" />
             Retrabalho
           </button>
-          <div className="flex gap-1.5">
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => onHistory(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
             >
-              <Clock className="h-3 w-3" /> Histórico
+              <Clock className="h-4 w-4" /> Histórico
             </button>
             <button
               type="button"
               onClick={() => onLotes(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-success/10 hover:text-success text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-success/10 hover:text-success text-muted-foreground text-[13px] transition-colors"
             >
-              <Tag className="h-3 w-3" /> Lotes
+              <Tag className="h-4 w-4" /> Lotes
             </button>
             {isAdmin && (
               <>
                 <button
                   type="button"
                   onClick={() => onReset(item)}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
+                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
                   title="Zerar estoque e histórico"
                 >
-                  <PackageCheck className="h-3 w-3" />
+                  <PackageCheck className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => onDelete(item)}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
                   title="Remover"
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </>
             )}
