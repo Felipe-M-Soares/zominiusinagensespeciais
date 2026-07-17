@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 
-const MAX_ZIP_SIZE_MB = 300;
+const MAX_ZIP_SIZE_MB = 1024;
 
 interface Device {
   id: string;
@@ -97,7 +97,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
       return;
     }
     if (zipFile.size > MAX_ZIP_SIZE_MB * 1024 * 1024) {
-      toast.error(`Arquivo muito grande. Máximo: ${MAX_ZIP_SIZE_MB}MB`);
+      toast.error(`Arquivo muito grande. Máximo: ${(MAX_ZIP_SIZE_MB / 1024).toFixed(0)}GB`);
       return;
     }
 
@@ -274,7 +274,8 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-semibold">{extracting ? "Lendo arquivo .zip..." : "Selecionar arquivo .zip"}</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">Pastas e subpastas são varridas automaticamente</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Pastas e subpastas são varridas automaticamente · até 1GB</p>
+                  <p className="text-[10px] text-muted-foreground/70">Arquivos grandes podem levar alguns minutos para carregar — não feche esta tela</p>
                 </div>
               </button>
               <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="hidden"
