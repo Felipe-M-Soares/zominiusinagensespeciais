@@ -77,7 +77,8 @@ function stemName(filename: string) {
 function sanitizePath(name: string): string {
   return name
     .replace(/\.\.+/g, ".")
-    .replace(/[\/\\<>:"|?*\x00]/g, "_")
+    // eslint-disable-next-line no-control-regex -- \x00 é intencional: remove byte nulo de nomes de arquivo antes de usar como path de storage.
+    .replace(/[/\\<>:"|?*\x00]/g, "_")
     .trim();
 }
 
@@ -216,7 +217,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
       }
     }
 
-    if (items.length > 0 && items[0].webkitGetAsEntry) {
+    if (items.length > 0 && typeof items[0].webkitGetAsEntry === "function") {
       const entries = items
         .map(i => i.webkitGetAsEntry())
         .filter((e): e is FileSystemEntry => !!e);
@@ -283,21 +284,23 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
     }
 
     // Monta lista de updates: cada device recebe a URL da sua imagem de família
-    const toUpdate: { id: string; icon_url: string }[] = [];
+    const idsByUrl = new Map<string, string[]>();
     for (const item of toUpload) {
       const url = urlMap.get(item.refName);
       if (!url) continue;
-      for (const id of item.deviceIds) {
-        toUpdate.push({ id, icon_url: url });
-      }
+      const ids = idsByUrl.get(url) ?? [];
+      ids.push(...item.deviceIds);
+      idsByUrl.set(url, ids);
     }
 
     const DB_BATCH = 500;
-    for (let i = 0; i < toUpdate.length; i += DB_BATCH) {
-      await supabase.from("devices").upsert(
-        toUpdate.slice(i, i + DB_BATCH),
-        { onConflict: "id" }
-      );
+    for (const [url, ids] of idsByUrl) {
+      for (let i = 0; i < ids.length; i += DB_BATCH) {
+        await supabase
+          .from("devices")
+          .update({ icon_url: url })
+          .in("id", ids.slice(i, i + DB_BATCH));
+      }
     }
 
     setResults(prev => prev.map(r => {
@@ -386,7 +389,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
               </div>
 
               <input ref={folderInputRef} type="file"
-                // @ts-ignore
+                // @ts-expect-error -- webkitdirectory não está nos tipos padrão de HTMLInputElement
                 webkitdirectory="" multiple accept="image/*" className="hidden"
                 onChange={e => { if (e.target.files) processFiles(e.target.files); }} />
               <input ref={filesInputRef} type="file"

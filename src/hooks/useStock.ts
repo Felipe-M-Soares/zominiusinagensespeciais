@@ -66,7 +66,7 @@ export function useStock(search: string) {
     items: StockItem[];
     totalCount: number;
     loteMap: Map<string, number>;
-    qtyByFase: { intermediaria: number; expedicao: number; retrabalho: number };
+    qtyByFase: { intermediaria: number; expedicao: number; retrabalho: number; count_intermediaria: number; count_expedicao: number; count_retrabalho: number };
   }>(cacheKey);
 
   const [items, setItems] = useState<StockItem[]>(cached?.items ?? []);
@@ -175,7 +175,7 @@ export function useStock(search: string) {
             quantity_available: Math.max(0, qty - reserved),
             fase:               (row.fase as StockFase) ?? "intermediaria",
             device:             row.device as Record<string, unknown> | null,
-          } as StockItem;
+          } as unknown as StockItem;
         })
         .filter((item) => item.device != null); // descarta órfãos sem device
 
@@ -1137,43 +1137,78 @@ async function fetchAllRows(table: string, select = "*"): Promise<Record<string,
   return rows;
 }
 
-function onlyExistingFields(row: Record<string, unknown>, allowed: string[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const key of allowed) {
-    if (Object.prototype.hasOwnProperty.call(row, key)) out[key] = row[key];
-  }
-  return out;
-}
+// ─── Backup completo — manifesto de tabelas ──────────────────────────────────
+// PT: lista todas as tabelas de dados de negócio do sistema, na ordem segura
+// para restauração (tabelas referenciadas por FK vêm antes de quem referencia
+// elas). Sempre que uma tabela nova for criada (nova migration), adicione aqui
+// — é a ÚNICA lista que o backup/restore usa, então não tem como esquecer uma
+// coluna nova depois (usamos select("*") em vez de lista de colunas manual,
+// que foi exatamente o motivo de pedidos_comerciais.xml_nfe/chave_acesso_nfe/
+// protocolo_sefaz terem ficado de fora do backup por muito tempo).
+const BACKUP_TABLES: { table: string; conflict: string }[] = [
+  // Cadastros-base (sem dependências)
+  { table: "clientes", conflict: "id" },
+  { table: "fornecedores", conflict: "id" },
+  { table: "devices", conflict: "id" },
+  { table: "maquinas_producao", conflict: "id" },
+  { table: "materias_primas_producao", conflict: "id" },
+  { table: "produtos_producao", conflict: "id" },
+  { table: "tipo_parada_producao", conflict: "id" },
+  { table: "tipo_refugo_producao", conflict: "id" },
+  { table: "certificados", conflict: "id" },
+  { table: "financeiro_contas_bancarias", conflict: "id" },
+  // Estoque (depende de devices)
+  { table: "stock_items", conflict: "id" },
+  { table: "stock_movements", conflict: "id" },
+  // Comercial — pedidos, NFs, rastreabilidade (depende de clientes/estoque)
+  { table: "pedidos_comerciais", conflict: "id" },
+  { table: "pedido_itens", conflict: "id" },
+  { table: "pedido_comentarios", conflict: "id" },
+  { table: "peca_favoritas", conflict: "user_id,device_id" },
+  { table: "rastreabilidade_pos_venda", conflict: "id" },
+  { table: "notas_devolucao_troca", conflict: "id" },
+  // Compras (depende de fornecedores)
+  { table: "pedidos_compra", conflict: "id" },
+  { table: "pedido_compra_itens", conflict: "id" },
+  // Processos — ferramentas CNC e biblioteca de código (depende de fornecedores/máquinas)
+  { table: "ferramentas_cnc", conflict: "id" },
+  { table: "programas_cnc", conflict: "id" },
+  // Financeiro (depende de pedidos/fornecedores)
+  { table: "financeiro_lancamentos", conflict: "id" },
+  { table: "contas_financeiras", conflict: "id" },
+  // Produção
+  { table: "apontamentos_producao", conflict: "id" },
+  { table: "apontamento_paradas", conflict: "id" },
+  { table: "apontamento_refugos", conflict: "id" },
+  { table: "paradas_producao", conflict: "id" },
+  { table: "refugos_producao", conflict: "id" },
+  { table: "metas_producao", conflict: "id" },
+  { table: "ordens_planejamento", conflict: "id" },
+  // Qualidade / suporte
+  { table: "feedback_reports", conflict: "id" },
+  { table: "audit_log", conflict: "id" },
+];
 
 export async function runBackup(
   userId: string | null,
   userName: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const [items, movements, devices, pedidos, pedidoItens] = await Promise.all([
-      fetchAllRows("stock_items", "*"),
-      fetchAllRows("stock_movements", "*"),
-      fetchAllRows("devices", "*"),
-      fetchAllRows("pedidos_comerciais", "id,status,created_at,updated_at,lotes_separados,separado_em,cliente_id,vendedora_id,vendedora_nome,frete,observacoes,desconto_pct,prazo_entrega,forma_pagamento,parcelas,endereco_entrega,usar_endereco_cliente,nota_fiscal,nf_criada_em,rastreio_envio,transportadora"),
-      fetchAllRows("pedido_itens", "*"),
-    ]);
+    const results = await Promise.all(
+      BACKUP_TABLES.map(({ table }) => fetchAllRows(table, "*").catch((e) => {
+        logger.error("runBackup fetch error:", table, e);
+        return [] as Record<string, unknown>[];
+      }))
+    );
 
-    const payload = {
-      version: 2,
+    const payload: Record<string, unknown> = {
+      version: 3,
       generated_at: new Date().toISOString(),
-      summary: {
-        stock_items: items.length,
-        stock_movements: movements.length,
-        devices: devices.length,
-        pedidos_comerciais: pedidos.length,
-        pedido_itens: pedidoItens.length,
-      },
-      stock_items: items,
-      stock_movements: movements,
-      devices,
-      pedidos_comerciais: pedidos,
-      pedido_itens: pedidoItens,
+      summary: Object.fromEntries(BACKUP_TABLES.map(({ table }, i) => [table, results[i].length])),
     };
+    BACKUP_TABLES.forEach(({ table }, i) => { payload[table] = results[i]; });
+
+    const totalItems = results.reduce((s, r) => s + r.length, 0);
 
     const fileName = `backup_completo_estoque_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
     const filePath = `backups/${fileName}`;
@@ -1188,7 +1223,7 @@ export async function runBackup(
     const { error } = await supabase.from("stock_backups").insert({
       created_by:  userId,
       created_name: userName,
-      item_count:  items.length,
+      item_count:  totalItems,
       file_path:   filePath,
     });
 
@@ -1209,33 +1244,34 @@ export async function restoreStockBackup(
   payload: Record<string, unknown>
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const items = (payload.stock_items ?? payload.items ?? []) as Record<string, unknown>[];
-    const movements = (payload.stock_movements ?? payload.recent_movements ?? []) as Record<string, unknown>[];
+    // Compatibilidade com backups antigos (version 1/2): aceita os nomes
+    // alternativos que essas versões usavam para itens/movimentos.
+    const legacyItems = (payload.items ?? payload.stock_items) as Record<string, unknown>[] | undefined;
+    const legacyMovements = payload.recent_movements as Record<string, unknown>[] | undefined;
+    if (legacyItems && !payload.stock_items) payload.stock_items = legacyItems;
+    if (legacyMovements && !payload.stock_movements) payload.stock_movements = legacyMovements;
+
+    const items = (payload.stock_items ?? []) as Record<string, unknown>[];
     if (!Array.isArray(items) || items.length === 0) {
       return { ok: false, error: "Backup sem itens de estoque." };
     }
 
-    const stockItemFields = ["id", "device_id", "quantity", "quantity_reserved", "min_quantity", "location", "notes", "fase", "created_at", "updated_at"];
-    const movementFields = ["id", "stock_item_id", "type", "quantity", "reason", "lote", "user_id", "user_display_name", "created_at"];
-
-    const cleanItems = items.map((r) => onlyExistingFields(r, stockItemFields));
-    for (let i = 0; i < cleanItems.length; i += 500) {
-      const { error } = await supabase
-        .from("stock_items")
-        .upsert(cleanItems.slice(i, i + 500), { onConflict: "id" });
-      if (error) throw error;
+    let restoredTables = 0;
+    for (const { table, conflict } of BACKUP_TABLES) {
+      const rows = payload[table];
+      if (!Array.isArray(rows) || rows.length === 0) continue;
+      for (let i = 0; i < rows.length; i += 500) {
+        const { error } = await supabase
+          .from(table as never)
+          .upsert(rows.slice(i, i + 500) as never, { onConflict: conflict });
+        if (error) {
+          return { ok: false, error: `Erro ao restaurar "${table}": ${error.message}` };
+        }
+      }
+      restoredTables++;
     }
 
-    const cleanMovements = Array.isArray(movements)
-      ? movements.map((r) => onlyExistingFields(r, movementFields)).filter((r) => r.id && r.stock_item_id)
-      : [];
-    for (let i = 0; i < cleanMovements.length; i += 500) {
-      const { error } = await supabase
-        .from("stock_movements")
-        .upsert(cleanMovements.slice(i, i + 500), { onConflict: "id" });
-      if (error) throw error;
-    }
-
+    if (restoredTables === 0) return { ok: false, error: "Nenhuma tabela reconhecida encontrada no arquivo de backup." };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: (e as { message?: string })?.message ?? "Erro ao restaurar backup." };

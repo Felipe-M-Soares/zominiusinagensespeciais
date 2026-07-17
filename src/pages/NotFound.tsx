@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Home } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 // FIX: Página estava em inglês; corrigida para português.
 // FIX: Link com <a href="/"> causava reload full-page; trocado para <Link> do React Router.

@@ -348,7 +348,7 @@ Deno.serve(async (req) => {
 
       // Log das colunas detectadas para debug
       const detectedCols = Object.keys(rows[0])
-        .filter(k => k === k.trim() && k.length > 0 && k === k.replace(/_/g, k).toLowerCase() === false || true)
+        .filter(k => k === k.trim() && k.length > 0)
         .filter((v, i, a) => a.indexOf(v) === i) // dedup
         .slice(0, 20);
       log.info("import-devices", "CSV columns detected:", detectedCols.join(" | "));

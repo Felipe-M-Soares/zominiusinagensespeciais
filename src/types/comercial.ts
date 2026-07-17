@@ -11,6 +11,7 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export interface Cliente {
   id: string;
@@ -89,7 +90,7 @@ export async function logAudit(
       action,
       entity_type: entityType,
       entity_id: entityId,
-      details: details ?? null,
+      details: details ? (details as Json) : undefined,
     });
   } catch {
     // Falha silenciosa — não bloqueia ações críticas

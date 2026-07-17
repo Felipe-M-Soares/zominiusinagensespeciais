@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { AdminDevices } from "@/components/admin/AdminDevices";
 import { AdminUsers } from "@/components/admin/AdminUsers";
 import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
@@ -6,7 +6,10 @@ import { FeedbackPanel } from "@/components/admin/FeedbackPanel";
 import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 import { DashboardGeral } from "@/components/qualidade/DashboardGeral";
 import { PageNav } from "@/components/PageNav";
-import { Settings, Cpu, Users, LayoutDashboard, Shield, MessageSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Settings, Cpu, Users, LayoutDashboard, Shield, MessageSquare, DatabaseBackup } from "lucide-react";
+
+const BackupPanel = lazy(() => import("@/components/stock/BackupPanel").then(m => ({ default: m.BackupPanel })));
 
 type AdminTab = "dashboard" | "devices" | "users" | "auditoria" | "feedback";
 
@@ -66,6 +69,7 @@ const ADMIN_TABS = [
 export default function Admin() {
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
   const [auditKey, setAuditKey] = useState(0);
+  const [backupOpen, setBackupOpen] = useState(false);
 
   return (
     <div className="flex flex-col h-full bg-transparent">
@@ -76,6 +80,9 @@ export default function Admin() {
             <h1 className="text-sm font-semibold">Admin</h1>
           </div>
           <div className="flex items-center gap-1">
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
+              <DatabaseBackup className="h-3.5 w-3.5" /> Backup
+            </Button>
             {activeTab === "auditoria" && (
               <ClearHistoryButton
                 rpc="admin_clear_audit_log"
@@ -87,6 +94,10 @@ export default function Admin() {
           </div>
         </div>
       </header>
+
+      <Suspense fallback={null}>
+        <BackupPanel open={backupOpen} onClose={() => setBackupOpen(false)} />
+      </Suspense>
 
       <main className="flex-1 overflow-y-auto">
         <div className="px-3 sm:px-4 py-4 space-y-4 h-full flex flex-col">

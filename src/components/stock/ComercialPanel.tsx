@@ -346,12 +346,13 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   async function handleSave() {
     if (!clienteId) { toast.error("Selecione um cliente"); return; }
     if (itens.length === 0) { toast.error("Adicione ao menos uma peça"); return; }
+    if (!user?.id) { toast.error("Sessão expirada. Faça login novamente."); return; }
     setSaving(true);
     try {
       // FIX: Usa criarPedidoComReserva de pedidoUtils — elimina duplicação e
       // garante a mesma lógica atômica de reserva de estoque usada em Comercial.tsx.
-      const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
-      const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
+      const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle();
+      const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user.email ?? "Vendedora";
 
       const result = await criarPedidoComReserva({
         clienteId,
@@ -361,7 +362,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
           quantidade: i.quantidade,
           device_model: i.device_model,
         })),
-        vendedoraId: user?.id,
+        vendedoraId: user.id,
         vendedoraNome,
         observacoes: obs || null,
       });

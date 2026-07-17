@@ -279,7 +279,7 @@ function buildSoap(xmlAssinado: string): string {
 }
 
 function parseResp(xml: string) {
-  const tag = (t: string) => xml.match(new RegExp(`<${t}[^>]*>([^<]*)<\/${t}>`))?.[1]?.trim() ?? "";
+  const tag = (t: string) => xml.match(new RegExp(`<${t}[^>]*>([^<]*)</${t}>`))?.[1]?.trim() ?? "";
   return { cStat: tag("cStat"), xMotivo: tag("xMotivo"), nProt: tag("nProt"), dhRecbto: tag("dhRecbto") };
 }
 

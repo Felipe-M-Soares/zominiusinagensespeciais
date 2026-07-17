@@ -8,6 +8,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import { sanitizeQuery } from "@/lib/sanitize";
+import type { Database } from "@/integrations/supabase/types";
+
+type TableName = keyof Database["public"]["Tables"] | keyof Database["public"]["Views"];
 
 /**
  * Busca todos os registros de uma tabela paginando de 1000 em 1000.
@@ -18,7 +21,7 @@ import { sanitizeQuery } from "@/lib/sanitize";
  * Para datasets muito grandes (100k+), prefira uma RPC SQL com aggregate.
  */
 export async function fetchAllPages<T>(
-  table: string,
+  table: TableName,
   orderBy = "model",
   batchSize = 1000
 ): Promise<T[]> {
@@ -29,7 +32,7 @@ export async function fetchAllPages<T>(
 
   while (page < MAX_PAGES) {
     const { data, error } = await supabase
-      .from(table)
+      .from(table as keyof Database["public"]["Tables"])
       .select("*")
       .order(orderBy)
       .range(from, from + batchSize - 1);
@@ -97,7 +100,7 @@ export async function fetchDevicesPage<T>(
  * Esta função é o fallback quando não há RPC disponível.
  */
 export async function sumColumnPaginated(
-  table: string,
+  table: TableName,
   column: string,
   filter?: { column: string; operator: "gt" | "gte" | "lt" | "lte"; value: number }
 ): Promise<number> {
@@ -108,13 +111,13 @@ export async function sumColumnPaginated(
   let page = 0;
 
   while (page < MAX_PAGES) {
-    let query = supabase.from(table).select(column).range(from, from + PAGE_SIZE - 1);
+    let query = supabase.from(table as keyof Database["public"]["Tables"]).select(column).range(from, from + PAGE_SIZE - 1);
     if (filter) {
       query = query[filter.operator](filter.column, filter.value) as typeof query;
     }
     const { data, error } = await query;
     if (error) { logger.error("sumColumnPaginated error:", error); break; }
-    const rows = (data ?? []) as Record<string, number>[];
+    const rows = (data ?? []) as unknown as Record<string, number>[];
     soma += rows.reduce((s, r) => s + (r[column] ?? 0), 0);
     if (rows.length < PAGE_SIZE) break;
     from += PAGE_SIZE;

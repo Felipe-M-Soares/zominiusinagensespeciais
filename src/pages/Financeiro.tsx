@@ -489,7 +489,7 @@ function NFViewerModal({ pedido, onClose }: NFViewerModalProps) {
   if (!pedido) return null;
 
   function downloadXml() {
-    if (!xmlNfe) return;
+    if (!xmlNfe || !pedido) return;
     const blob = new Blob([xmlNfe!], { type: "application/xml" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -799,6 +799,7 @@ function SefazModal({
   }
 
   function canAdvance(): boolean {
+    if (!dados) return false;
     if (step === 1) return dados.numero.trim().length > 0 && dados.naturezaOperacao.trim().length > 0;
     if (step === 2) return dados.destNome.trim().length > 0;
     if (step === 3) return dados.itens.every(it =>
@@ -830,7 +831,7 @@ function SefazModal({
           p_chave_acesso: fake.chaveAcesso ?? "", p_protocolo: fake.protocolo ?? "",
           p_dh_autorizacao: fake.dhAutorizacao ?? new Date().toISOString(),
           p_user_id: user.id, p_user_name: "Financeiro",
-        } as Record<string, unknown>);
+        });
         await supabase.from("pedidos_comerciais").update({ status: "enviado" }).eq("id", pedido.id);
         // Notifica vendedora + admins mesmo no modo teste
         await notificarPedidoEnviado(pedido, nfLabel, fake.protocolo ?? "");
@@ -856,7 +857,7 @@ function SefazModal({
         p_dh_autorizacao: result.dhAutorizacao ?? new Date().toISOString(),
         p_user_id: user.id, p_user_name: "Financeiro",
         p_xml_nfe: result.xmlAssinado ?? null,
-      } as Record<string, unknown>);
+      });
       if (rpcErr) { toast.error(`NF autorizada, mas erro ao salvar: ${rpcErr.message}`); return; }
       const rpcData = rpc as { error?: string } | null;
       if (rpcData?.error) { toast.error(`Erro: ${rpcData.error}`); return; }

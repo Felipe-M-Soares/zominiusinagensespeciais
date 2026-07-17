@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
   Dialog,
@@ -6,10 +6,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, CheckCircle } from "lucide-react";
+import { Plus } from "lucide-react";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { supabase } from "@/integrations/supabase/client";
 import { addDeviceToStock } from "@/hooks/useStock";
@@ -29,7 +28,6 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
   const [results, setResults] = useState<DbDevice[]>([]);
   const [searching, setSearching] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const doSearch = useCallback(async (q: string) => {
     const s = q.trim().slice(0, 200).replace(/[(),]/g, "").replace(/[%_\\]/g, "\\$&");
@@ -50,22 +48,11 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
     setSearching(false);
   }, []);
 
+  const debouncedFn = useDebounce(doSearch, 300);
+
   function handleChange(v: string) {
     setSearch(v);
     debouncedFn(v);
-  }
-
-  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
-    e.preventDefault();
-    const v = e.clipboardData.getData("text").trim();
-    setSearch(v);
-    doSearch(v);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-        doSearch(search);
-    }
   }
 
   async function handleAdd(device: DbDevice) {

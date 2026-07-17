@@ -42,7 +42,7 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
       setLotesLoading(true);
       fetchLotesSummary(item.id, item.fase).then((data) => {
         if (!cancelled) {
-          let lotesComSaldo = data.filter((l) => l.saldo > 0);
+          const lotesComSaldo = data.filter((l) => l.saldo > 0);
           // Sem fallback de lote vazio — peças sem lote numerado não podem ser movimentadas.
           // O usuário deve primeiro registrar uma entrada com lote válido (DDMMYYS-NN).
           setExistingLotes(lotesComSaldo);

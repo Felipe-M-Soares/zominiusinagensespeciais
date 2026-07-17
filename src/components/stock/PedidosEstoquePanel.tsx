@@ -172,16 +172,6 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
     return () => { onExpandChange?.(pedido.id, false); };
   }, [expanded, pedido.id, onExpandChange]);
 
-  // Reseta loadedRef quando os itens do pedido mudam (peça removida ou adicionada)
-  // para que o card recarregue os lotes com os dados corretos
-  const itemCountRef = useRef(pedido.itens.length);
-  if (pedido.itens.length !== itemCountRef.current) {
-    itemCountRef.current = pedido.itens.length;
-    loadedRef.current = false;
-    // Limpa sel e confirmedItems pois os itens mudaram
-    confirmedItemsRef.current = new Set();
-  }
-
   // ── State ──────────────────────────────────────────────────────────────────
   // expId per item: the real expedição stock_item_id (may differ from pedido_item.stock_item_id)
   const [expIdByItem, setExpIdByItem] = useState<Record<string, string>>({});
@@ -203,6 +193,16 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
   // Ref espelho: sobrevive ao reset do useEffect de carga (race condition com Realtime)
   const confirmedItemsRef = useRef<Set<string>>(new Set());
   const [savingItem, setSavingItem] = useState<string | null>(null);
+
+  // Reseta loadedRef quando os itens do pedido mudam (peça removida ou adicionada)
+  // para que o card recarregue os lotes com os dados corretos
+  const itemCountRef = useRef(pedido.itens.length);
+  if (pedido.itens.length !== itemCountRef.current) {
+    itemCountRef.current = pedido.itens.length;
+    loadedRef.current = false;
+    // Limpa sel e confirmedItems pois os itens mudaram
+    confirmedItemsRef.current = new Set();
+  }
 
   const isSeparando = pedido.status === "separando";
   const isPendente  = pedido.status === "pendente";
@@ -555,7 +555,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
       : "A VISTA";
     // Parcelas em linha separada, sem traço
     const parcelasLabel = ["cartao_credito", "boleto"].includes(ex?.forma_pagamento ?? "") && (ex?.parcelas ?? 1) > 1
-      ? `<br><span style="font-weight:400;font-size:10px">${ex.parcelas}x</span>` : "";
+      ? `<br><span style="font-weight:400;font-size:10px">${ex?.parcelas}x</span>` : "";
     const desconto = ex?.desconto_pct ?? pedido.desconto_pct ?? 0;
     const frete = ex?.frete ?? 0;
 
@@ -1835,6 +1835,8 @@ function RetornarPedidoModal({ pedido, onClose, onSuccess }: RetornarPedidoModal
       if (pedido.vendedora_id) {
         await supabase.from("notificacoes").insert({
           user_id: pedido.vendedora_id,
+          pedido_id: pedido.id,
+          tipo: "pedido_retornado",
           titulo: "Pedido retornado ao comercial",
           mensagem: `O pedido de ${pedido.cliente_nome} foi retornado pelo estoque para revisão.${motivo.trim() ? " Motivo: " + motivo.trim() : ""}`,
         });
@@ -1926,11 +1928,11 @@ function RemoverItemModal({ pedido, item, onClose, onSuccess }: RemoverItemModal
         .select("quantidade, preco_unitario")
         .eq("pedido_id", pedido.id);
 
-      const novoTotal = (itensRestantes ?? []).reduce((s: number, i: { quantidade: number; preco_unitario?: number }) => {
+      const novoTotal = (itensRestantes ?? []).reduce((s: number, i: { quantidade: number; preco_unitario: number | null }) => {
         return s + (i.quantidade * (i.preco_unitario ?? 0));
       }, 0);
 
-      const descontoLabel = pedido.desconto_pct > 0 ? ` (com ${pedido.desconto_pct}% desc.)` : "";
+      const descontoLabel = (pedido.desconto_pct ?? 0) > 0 ? ` (com ${pedido.desconto_pct}% desc.)` : "";
       const totalFmt = novoTotal > 0
         ? "R$ " + (novoTotal * (1 - (pedido.desconto_pct ?? 0) / 100)).toFixed(2).replace(".", ",")
         : null;
@@ -1939,6 +1941,8 @@ function RemoverItemModal({ pedido, item, onClose, onSuccess }: RemoverItemModal
       if (pedido.vendedora_id) {
         await supabase.from("notificacoes").insert({
           user_id: pedido.vendedora_id,
+          pedido_id: pedido.id,
+          tipo: "peca_removida",
           titulo: "Peça removida do pedido pelo estoque",
           mensagem: `A peça "${item.device_model}" (${item.quantidade} un.) foi removida do pedido de ${pedido.cliente_nome} pelo estoque.${totalFmt ? ` Novo valor do pedido: ${totalFmt}${descontoLabel}.` : ""}`,
         });
@@ -2482,8 +2486,8 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         .in("pedido_id", ids),
     ]);
 
-    type ExtraRow = { id: string; forma_pagamento?: string; parcelas?: number; endereco_entrega?: string; usar_endereco_cliente?: boolean; desconto_pct?: number; frete?: number };
-    type ClienteRow = { id: string; documento?: string; email?: string; telefone?: string; logradouro?: string; numero?: string; bairro?: string; municipio?: string; uf?: string; cep?: string; endereco?: string };
+    type ExtraRow = { id: string; forma_pagamento?: string | null; parcelas?: number | null; endereco_entrega?: string | null; usar_endereco_cliente?: boolean | null; desconto_pct?: number; frete?: number };
+    type ClienteRow = { id: string; documento?: string | null; email?: string | null; telefone?: string | null; logradouro?: string | null; numero?: string | null; bairro?: string | null; municipio?: string | null; uf?: string | null; cep?: string | null; endereco?: string | null };
     type DevRow = { id: string; devices?: { model?: string; reference?: string; preco_venda?: number } };
     type ItemPrecoRow = { pedido_id: string; stock_item_id: string; quantidade: number; preco_unitario?: number };
 
@@ -2522,7 +2526,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       // Pagamento
       const pgtoLabel = ex?.forma_pagamento ? fmtPgto[ex.forma_pagamento] ?? ex.forma_pagamento : "—";
       const parcelasLabel = ["cartao_credito", "boleto"].includes(ex?.forma_pagamento ?? "") && (ex?.parcelas ?? 1) > 1
-        ? ` ${ex.parcelas}x` : "";
+        ? ` ${ex?.parcelas}x` : "";
 
       const printRows: { model?: string; reference?: string; lote: string; quantidade: number; precoUnit: number }[] = [];
 

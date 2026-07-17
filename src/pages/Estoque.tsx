@@ -37,7 +37,6 @@ import {
   List,
   Trash2,
   History,
-  DatabaseBackup,
   Tag,
   Menu,
   Shield,
@@ -72,7 +71,6 @@ const RetrabalhoModal         = lazy(() => import("@/components/stock/Retrabalho
 const ConcluirRetrabalhoModal = lazy(() => import("@/components/stock/ConcluirRetrabalhoModal").then(m => ({ default: m.ConcluirRetrabalhoModal })));
 const StockDashboard          = lazy(() => import("@/components/stock/StockDashboard").then(m => ({ default: m.StockDashboard })));
 const RecebimentoPanel        = lazy(() => import("@/components/stock/RecebimentoPanel").then(m => ({ default: m.RecebimentoPanel })));
-const BackupPanel             = lazy(() => import("@/components/stock/BackupPanel").then(m => ({ default: m.BackupPanel })));
 const ComercialPanelLazy      = lazy(() => import("@/components/stock/ComercialPanel").then(m => ({ default: m.ComercialPanel })));
 const PedidosEstoquePanel     = lazy(() => import("@/components/stock/PedidosEstoquePanel").then(m => ({ default: m.PedidosEstoquePanel })));
 import { supabase } from "@/integrations/supabase/client";
@@ -634,7 +632,6 @@ export default function Estoque() {
   const [listOpen, setListOpen] = useState(false);
   const [intermediaryLotesOpen, setIntermediaryLotesOpen] = useState(false);
   const [allMovOpen, setAllMovOpen] = useState(false);
-  const [backupOpen, setBackupOpen] = useState(false);
   const [baixoOpen, setBaixoOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -956,9 +953,6 @@ export default function Estoque() {
                     <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10" onClick={() => setExcelImportOpen(true)}>
                       <FileSpreadsheet className="h-3.5 w-3.5" /> Importar Excel
                     </Button>
-                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
-                      <DatabaseBackup className="h-3.5 w-3.5" /> Backup
-                    </Button>
                     <button
                       type="button"
                       onClick={() => setClearHistConfirm(true)}
@@ -990,7 +984,6 @@ export default function Estoque() {
                       ...(activeView === "intermediaria" ? [{ label: "Lotes do Intermediário", icon: Tag, action: () => setIntermediaryLotesOpen(true) }] : []),
                       ...(isAdmin ? [
                         { label: "Importar Excel / PDF", icon: FileSpreadsheet, action: () => setExcelImportOpen(true) },
-                        { label: "Backup", icon: DatabaseBackup, action: () => setBackupOpen(true) },
                         { label: "Apagar Histórico", icon: Trash2, action: () => setClearHistConfirm(true), danger: true },
                       ] : []),
                     ].map(({ label, icon: Icon, action, danger }) => (
@@ -1431,10 +1424,6 @@ export default function Estoque() {
           open={allMovOpen}
           onClose={() => setAllMovOpen(false)}
           fase={activeView === "expedicao" || activeView === "intermediaria" || activeView === "retrabalho" ? activeView : undefined}
-        />
-        <BackupPanel
-          open={backupOpen}
-          onClose={() => setBackupOpen(false)}
         />
         <LotesPanel
           item={lotesItem}

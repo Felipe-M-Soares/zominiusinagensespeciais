@@ -12,5 +12,3 @@ project_id = "lvbilwznflyyiuxfhjyb"
 
   [functions.admin-create-user]
     verify_jwt = false
-  [functions.auto-approve]
-    verify_jwt = false

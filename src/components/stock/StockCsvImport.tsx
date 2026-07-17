@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -272,7 +273,10 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
 
         // Separa inserções e atualizações
         const toInsert: { device_id: string; quantity: number; min_quantity: number; location: string | null; notes: string | null; fase: string }[] = [];
-        const toUpdate: { id: string; patch: Record<string, unknown> }[] = [];
+        const toUpdate: {
+          id: string;
+          patch: Pick<Database["public"]["Tables"]["stock_items"]["Update"], "quantity" | "min_quantity" | "location" | "notes">;
+        }[] = [];
 
         for (const row of batch) {
           const lookupKey = row.udi_di
@@ -295,7 +299,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
           const existing = existingItemsMap.get(device.id);
 
           if (existing) {
-            const patch: Record<string, unknown> = {};
+            const patch: Pick<Database["public"]["Tables"]["stock_items"]["Update"], "quantity" | "min_quantity" | "location" | "notes"> = {};
             if (row.quantity !== undefined) patch.quantity = row.quantity;
             if (row.min_quantity !== undefined) patch.min_quantity = row.min_quantity;
             if (row.location) patch.location = row.location;

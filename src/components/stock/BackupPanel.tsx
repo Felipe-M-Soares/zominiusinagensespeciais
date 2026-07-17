@@ -319,7 +319,7 @@ export function BackupPanel({ open, onClose }: Props) {
               </DialogTitle>
             </DialogHeader>
             <p className="text-[12px] text-muted-foreground mt-0.5">
-              Snapshots e planilha do estoque atual
+              Snapshot completo do sistema e planilha do estoque atual
             </p>
           </div>
         </div>
@@ -366,9 +366,9 @@ export function BackupPanel({ open, onClose }: Props) {
 
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[12px] font-semibold text-foreground">Subir backup do estoque</p>
+                      <p className="text-[12px] font-semibold text-foreground">Subir backup completo</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Restaura quantidades, fases, mínimos, locais e histórico salvo no arquivo JSON.
+                        Restaura estoque, pedidos, NFs, rastreabilidade, financeiro, produção e compras salvos no arquivo JSON.
                       </p>
                     </div>
                     <label className={cn(
@@ -489,7 +489,7 @@ export function BackupPanel({ open, onClose }: Props) {
                         <div className="min-w-0 flex-1">
                           <p className="text-[12px] font-medium">{fmtDate(b.created_at)}</p>
                           <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                            <span>{b.item_count} peça{b.item_count !== 1 ? "s" : ""}</span>
+                            <span>{b.item_count} registro{b.item_count !== 1 ? "s" : ""}</span>
                             {b.created_name && (
                               <span className="flex items-center gap-0.5">
                                 <User className="h-2.5 w-2.5" />{b.created_name}

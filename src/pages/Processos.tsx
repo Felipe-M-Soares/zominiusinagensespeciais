@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ExcelJS from "exceljs";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { logger } from "@/lib/logger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { cn } from "@/lib/utils";
 import { PageNav, type PageNavTab } from "@/components/PageNav";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { FornecedoresPanel } from "@/components/compras/FornecedoresPanel";
+import { PedidosCompraPanel } from "@/components/compras/PedidosCompraPanel";
 import {
   AlertTriangle,
   Bell,
@@ -24,9 +29,8 @@ import {
   Factory,
   FileCode2,
   FileSpreadsheet,
-  MessageCircle,
-  PackageMinus,
   Plus,
+  RefreshCw,
   Save,
   Search,
   ShoppingCart,
@@ -39,21 +43,51 @@ import { toast } from "sonner";
 
 type Tab = "ferramentas" | "compras" | "fornecedores" | "faltas" | "codigos";
 type Linguagem = "G-Code" | "Fanuc" | "Siemens" | "Mazak" | "Haas" | "Heidenhain" | "Okuma" | "Mitsubishi" | "Fagor" | "ISO CNC" | "Macro B" | "Outro";
+type TipoFerramenta = "broca" | "inserto" | "pastilha" | "fresa" | "alargador" | "outros";
+type StatusFerramenta = "ativo" | "alerta" | "substituir" | "inativo";
 
-type Ferramenta = { id: string; nome: string; codigo: string; categoria: string; total: number; usadas: number; danificadas: number; minimo: number; local: string; fornecedorId?: string };
-type Fornecedor = { id: string; nome: string; contato: string; telefone: string; email: string; observacoes: string };
-type Pedido = { id: string; ferramenta: string; fornecedorId: string; quantidade: number; status: "Solicitado" | "Aprovado" | "Comprado" | "Recebido"; data: string; observacoes: string };
-type Programa = { id: string; nome: string; maquina: string; linguagem: Linguagem; conteudo: string; atualizadoEm: string };
+// Estas 3 interfaces espelham exatamente as colunas das tabelas do Supabase
+// (ferramentas_cnc, programas_cnc, fornecedores/maquinas_producao para os
+// dropdowns) — ver migration 20260045000000_processos.sql.
+interface Ferramenta {
+  id: string;
+  codigo: string;
+  descricao: string;
+  tipo: TipoFerramenta;
+  maquina_codigo: string | null;
+  vida_util_pecas: number;
+  vida_util_horas: number | null;
+  pecas_produzidas: number;
+  horas_uso: number;
+  status: StatusFerramenta;
+  ultima_troca: string | null;
+  fornecedor_id: string | null;
+  custo_unitario: number | null;
+  observacoes: string | null;
+}
 
-const STORAGE_KEYS = { ferramentas: "processos:ferramentas", fornecedores: "processos:fornecedores", pedidos: "processos:pedidos", programas: "processos:programas" };
+interface Programa {
+  id: string;
+  nome: string;
+  maquina_codigo: string | null;
+  linguagem: Linguagem;
+  conteudo: string;
+  updated_at: string;
+}
+
+interface FornecedorOption { id: string; razao_social: string }
+interface MaquinaOption { codigo: string; nome: string }
+
+const TIPOS: TipoFerramenta[] = ["broca", "inserto", "pastilha", "fresa", "alargador", "outros"];
 const linguagens: Linguagem[] = ["G-Code", "Fanuc", "Siemens", "Mazak", "Haas", "Heidenhain", "Okuma", "Mitsubishi", "Fagor", "ISO CNC", "Macro B", "Outro"];
-const uid = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const today = () => new Date().toISOString().slice(0, 10);
 
-function readStorage<T>(key: string, fallback: T): T { try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) as T : fallback; } catch { return fallback; } }
-function useStoredState<T>(key: string, fallback: T) { const [value, setValue] = useState<T>(() => readStorage(key, fallback)); useEffect(() => localStorage.setItem(key, JSON.stringify(value)), [key, value]); return [value, setValue] as const; }
 function NumberInput(props: React.InputHTMLAttributes<HTMLInputElement>) { return <Input type="number" min={0} step={1} {...props} />; }
-const disponivel = (f: Ferramenta) => Math.max(Number(f.total || 0) - Number(f.usadas || 0) - Number(f.danificadas || 0), 0);
+
+// "Falta" para uma ferramenta de vida útil (ao contrário de peça de estoque com
+// quantidade) é ela estar perto ou além do limite de peças que pode produzir
+// antes de precisar ser trocada — status já calculado no banco pela RPC
+// atualizar_status_ferramentas() (chamada após cada "+1 peça produzida").
+const emFaltaStatus = (f: Ferramenta) => f.status === "alerta" || f.status === "substituir";
 
 const tabItems: PageNavTab<Tab>[] = [
   { id: "ferramentas", label: "Ferramentas", Icon: Wrench, activeColor: "text-primary", activeBg: "bg-primary/10", activeBorder: "border-primary/40", badgeBg: "bg-primary/15", badgeText: "text-primary" },
@@ -66,15 +100,32 @@ const tabItems: PageNavTab<Tab>[] = [
 export default function Processos() {
   const [tab, setTab] = useState<Tab>("ferramentas");
   const isMobile = useIsMobile();
-  const [ferramentas, setFerramentas] = useStoredState<Ferramenta[]>(STORAGE_KEYS.ferramentas, []);
-  const [fornecedores, setFornecedores] = useStoredState<Fornecedor[]>(STORAGE_KEYS.fornecedores, []);
-  const [pedidos, setPedidos] = useStoredState<Pedido[]>(STORAGE_KEYS.pedidos, []);
-  const [programas, setProgramas] = useStoredState<Programa[]>(STORAGE_KEYS.programas, []);
 
-  const emFalta = useMemo(() => ferramentas.filter((f) => disponivel(f) <= Number(f.minimo || 0)), [ferramentas]);
-  const totalDisponivel = ferramentas.reduce((acc, f) => acc + disponivel(f), 0);
-  const totalDanificadas = ferramentas.reduce((acc, f) => acc + Number(f.danificadas || 0), 0);
-  const pedidosAbertos = pedidos.filter((p) => p.status !== "Recebido").length;
+  const [ferramentas, setFerramentas] = useState<Ferramenta[]>([]);
+  const [loadingFerramentas, setLoadingFerramentas] = useState(true);
+  const [pedidosAbertos, setPedidosAbertos] = useState(0);
+
+  const fetchFerramentas = useCallback(async () => {
+    setLoadingFerramentas(true);
+    const { data, error } = await supabase.from("ferramentas_cnc").select("*").order("codigo");
+    if (error) { logger.error("fetchFerramentas error:", error.message); toast.error("Erro ao carregar ferramentas."); }
+    else setFerramentas((data ?? []) as Ferramenta[]);
+    setLoadingFerramentas(false);
+  }, []);
+
+  const fetchPedidosAbertos = useCallback(async () => {
+    const { count } = await supabase
+      .from("pedidos_compra")
+      .select("id", { count: "exact", head: true })
+      .not("status", "in", "(recebido,cancelado)");
+    setPedidosAbertos(count ?? 0);
+  }, []);
+
+  useEffect(() => { fetchFerramentas(); fetchPedidosAbertos(); }, [fetchFerramentas, fetchPedidosAbertos]);
+
+  const emFalta = useMemo(() => ferramentas.filter(emFaltaStatus), [ferramentas]);
+  const totalAtivas = ferramentas.filter((f) => f.status === "ativo").length;
+  const totalAlerta = ferramentas.filter(emFaltaStatus).length;
 
   return <div className="flex flex-col h-full bg-transparent">
     <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
@@ -90,12 +141,17 @@ export default function Processos() {
     </header>
     <main className="flex-1 overflow-y-auto"><div className="px-2.5 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4">
       <PageNav tabs={tabItems} activeTab={tab} onTabChange={setTab} cols={isMobile ? 2 : undefined} />
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4"><Metric title="Ferramentas cadastradas" value={ferramentas.length} icon={Wrench} tone="primary" /><Metric title="Disponíveis" value={totalDisponivel} icon={Boxes} tone="success" /><Metric title="Danificadas" value={totalDanificadas} icon={PackageMinus} tone="destructive" /><Metric title="Compras em aberto" value={pedidosAbertos} icon={ClipboardList} tone="warning" /></div>
-      {tab === "ferramentas" && <FerramentasPanel ferramentas={ferramentas} setFerramentas={setFerramentas} fornecedores={fornecedores} />}
-      {tab === "fornecedores" && <FornecedoresPanel fornecedores={fornecedores} setFornecedores={setFornecedores} />}
-      {tab === "compras" && <ComprasPanel pedidos={pedidos} setPedidos={setPedidos} fornecedores={fornecedores} ferramentas={ferramentas} />}
-      {tab === "faltas" && <FaltasPanel ferramentas={emFalta} fornecedores={fornecedores} pedidos={pedidos} setPedidos={setPedidos} />}
-      {tab === "codigos" && <CodigosPanel programas={programas} setProgramas={setProgramas} />}
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+        <Metric title="Ferramentas cadastradas" value={ferramentas.length} icon={Wrench} tone="primary" />
+        <Metric title="Ativas" value={totalAtivas} icon={Boxes} tone="success" />
+        <Metric title="Alerta / substituir" value={totalAlerta} icon={AlertTriangle} tone="destructive" />
+        <Metric title="Compras em aberto" value={pedidosAbertos} icon={ClipboardList} tone="warning" />
+      </div>
+      {tab === "ferramentas" && <FerramentasPanel ferramentas={ferramentas} loading={loadingFerramentas} onChange={fetchFerramentas} />}
+      {tab === "fornecedores" && <FornecedoresPanel />}
+      {tab === "compras" && <PedidosCompraPanel />}
+      {tab === "faltas" && <FaltasPanel ferramentas={emFalta} onChange={() => { fetchFerramentas(); fetchPedidosAbertos(); }} />}
+      {tab === "codigos" && <CodigosPanel />}
     </div></main>
   </div>;
 }
@@ -110,75 +166,163 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
   return <Card className="overflow-hidden border-border/70 shadow-sm bg-card"><CardContent className="p-3 sm:p-4 flex items-center justify-between gap-2 sm:gap-3"><div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground truncate">{title}</p><p className="text-xl sm:text-2xl font-semibold">{value}</p></div><div className={cn("h-9 w-9 sm:h-11 sm:w-11 rounded-2xl flex items-center justify-center shrink-0", tones[tone])}><Icon className="h-4 w-4 sm:h-5 sm:w-5" /></div></CardContent></Card>;
 }
 
-function FerramentasPanel({ ferramentas, setFerramentas, fornecedores }: { ferramentas: Ferramenta[]; setFerramentas: React.Dispatch<React.SetStateAction<Ferramenta[]>>; fornecedores: Fornecedor[] }) {
+// ── Ferramentas ────────────────────────────────────────────────────────────────
+
+function useDropdownOptions() {
+  const [fornecedores, setFornecedores] = useState<FornecedorOption[]>([]);
+  const [maquinas, setMaquinas] = useState<MaquinaOption[]>([]);
+  useEffect(() => {
+    supabase.from("fornecedores").select("id, razao_social").eq("ativo", true).order("razao_social")
+      .then(({ data }) => setFornecedores((data ?? []) as FornecedorOption[]));
+    supabase.from("maquinas_producao").select("codigo, nome").order("codigo")
+      .then(({ data }) => setMaquinas((data ?? []) as MaquinaOption[]));
+  }, []);
+  return { fornecedores, maquinas };
+}
+
+const STATUS_LABEL: Record<StatusFerramenta, string> = { ativo: "Ativo", alerta: "Alerta", substituir: "Substituir", inativo: "Inativo" };
+const STATUS_TONE: Record<StatusFerramenta, string> = {
+  ativo: "text-success bg-success/10 border-success/25",
+  alerta: "text-warning bg-warning/10 border-warning/25",
+  substituir: "text-destructive bg-destructive/10 border-destructive/25",
+  inativo: "text-muted-foreground bg-muted/30 border-border/50",
+};
+
+function FerramentasPanel({ ferramentas, loading, onChange }: { ferramentas: Ferramenta[]; loading: boolean; onChange: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busca, setBusca] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<Omit<Ferramenta, "id">>({ nome: "", codigo: "", categoria: "", total: 0, usadas: 0, danificadas: 0, minimo: 0, local: "", fornecedorId: undefined });
-  const filtradas = ferramentas.filter((f) => `${f.nome} ${f.codigo} ${f.categoria} ${f.local}`.toLowerCase().includes(busca.toLowerCase()));
+  const [saving, setSaving] = useState(false);
+  const { fornecedores, maquinas } = useDropdownOptions();
+  const emptyForm = { codigo: "", descricao: "", tipo: "broca" as TipoFerramenta, maquina_codigo: "", vida_util_pecas: 0, custo_unitario: 0, fornecedor_id: "", observacoes: "" };
+  const [form, setForm] = useState(emptyForm);
 
-  const resetForm = () => setForm({ nome: "", codigo: "", categoria: "", total: 0, usadas: 0, danificadas: 0, minimo: 0, local: "", fornecedorId: undefined });
-  const salvar = () => {
-    if (!form.nome.trim()) return toast.error("Informe o nome da ferramenta.");
-    setFerramentas((old) => [{ ...form, id: uid(), total: Number(form.total), usadas: Number(form.usadas), danificadas: Number(form.danificadas), minimo: Number(form.minimo) }, ...old]);
-    resetForm();
+  const filtradas = ferramentas.filter((f) => `${f.descricao} ${f.codigo} ${f.tipo}`.toLowerCase().includes(busca.toLowerCase()));
+
+  const salvar = async () => {
+    if (!form.descricao.trim()) return toast.error("Informe a descrição da ferramenta.");
+    if (!form.codigo.trim()) return toast.error("Informe o código da ferramenta.");
+    setSaving(true);
+    const { error } = await supabase.from("ferramentas_cnc").insert({
+      codigo: form.codigo.trim(),
+      descricao: form.descricao.trim(),
+      tipo: form.tipo,
+      maquina_codigo: form.maquina_codigo || null,
+      vida_util_pecas: Number(form.vida_util_pecas) || 0,
+      custo_unitario: form.custo_unitario ? Number(form.custo_unitario) : null,
+      fornecedor_id: form.fornecedor_id || null,
+      observacoes: form.observacoes || null,
+    });
+    setSaving(false);
+    if (error) { toast.error(error.message.includes("duplicate") ? "Já existe uma ferramenta com esse código." : "Erro ao cadastrar ferramenta."); return; }
+    setForm(emptyForm);
     setOpen(false);
     toast.success("Ferramenta cadastrada com sucesso.");
+    onChange();
   };
-  const movimentar = (id: string, field: "usadas" | "danificadas", delta: number) => setFerramentas((old) => old.map((f) => f.id === id ? { ...f, [field]: Math.max(0, Number(f[field] || 0) + delta) } : f));
+
+  const registrarPeca = async (f: Ferramenta) => {
+    const { error } = await supabase.from("ferramentas_cnc").update({ pecas_produzidas: f.pecas_produzidas + 1 }).eq("id", f.id);
+    if (error) { toast.error("Erro ao registrar peça."); return; }
+    await supabase.rpc("atualizar_status_ferramentas");
+    onChange();
+  };
+
+  const registrarTroca = async (f: Ferramenta) => {
+    const { error } = await supabase.from("ferramentas_cnc").update({
+      pecas_produzidas: 0, horas_uso: 0, status: "ativo", ultima_troca: new Date().toISOString().slice(0, 10),
+    }).eq("id", f.id);
+    if (error) { toast.error("Erro ao registrar troca."); return; }
+    toast.success("Troca registrada — contador zerado.");
+    onChange();
+  };
+
+  const excluir = async (id: string) => {
+    const { error } = await supabase.from("ferramentas_cnc").delete().eq("id", id);
+    if (error) { toast.error("Erro ao excluir ferramenta."); return; }
+    toast.success("Ferramenta excluída.");
+    onChange();
+  };
+
   const importar = async (file?: File) => {
     if (!file) return;
     try {
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(await file.arrayBuffer());
       const ws = wb.worksheets[0];
-      const rows: Ferramenta[] = [];
+      const rows: { codigo: string; descricao: string; tipo: string; vida_util_pecas: number; custo_unitario: number | null }[] = [];
       ws.eachRow((row, index) => {
         if (index === 1) return;
         const vals = row.values as ExcelJS.CellValue[];
-        const nome = String(vals[1] ?? "").trim();
-        if (!nome) return;
-        rows.push({ id: uid(), nome, codigo: String(vals[2] ?? "").trim(), categoria: String(vals[3] ?? "").trim(), total: Number(vals[4] ?? 0), usadas: Number(vals[5] ?? 0), danificadas: Number(vals[6] ?? 0), minimo: Number(vals[7] ?? 0), local: String(vals[8] ?? "").trim(), fornecedorId: undefined });
+        const codigo = String(vals[1] ?? "").trim();
+        const descricao = String(vals[2] ?? "").trim();
+        if (!codigo || !descricao) return;
+        const tipoRaw = String(vals[3] ?? "outros").trim().toLowerCase();
+        rows.push({
+          codigo, descricao,
+          tipo: (TIPOS as string[]).includes(tipoRaw) ? tipoRaw : "outros",
+          vida_util_pecas: Number(vals[4] ?? 0) || 0,
+          custo_unitario: vals[5] ? Number(vals[5]) : null,
+        });
       });
-      setFerramentas((old) => [...rows, ...old]);
+      if (rows.length === 0) { toast.error("Nenhuma linha válida encontrada (verifique Código e Descrição)."); return; }
+      const { error } = await supabase.from("ferramentas_cnc").upsert(rows, { onConflict: "codigo" });
+      if (error) { toast.error("Erro ao importar: " + error.message); return; }
       toast.success(`${rows.length} ferramenta(s) importada(s).`);
+      onChange();
     } catch {
       toast.error("Não foi possível importar a planilha.");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
   };
+
   const baixarModelo = async () => {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Ferramentas");
-    ws.addRow(["Nome", "Código", "Categoria", "Total", "Usadas", "Danificadas", "Mínimo", "Local"]);
-    ws.addRow(["Pastilha CNMG", "CNMG120408", "Pastilha", 50, 8, 2, 10, "Armário A1"]);
+    ws.addRow(["Código", "Descrição", "Tipo", "Vida útil (peças)", "Custo unitário"]);
+    ws.addRow(["CNMG120408", "Pastilha CNMG", "pastilha", 500, 12.5]);
     const buffer = await wb.xlsx.writeBuffer();
     downloadBlob(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "modelo_ferramentas_processos.xlsx");
     toast.success("Modelo de planilha baixado.");
   };
 
+  const fornecedorNome = (id: string | null) => fornecedores.find((f) => f.id === id)?.razao_social;
+  const maquinaNome = (codigo: string | null) => maquinas.find((m) => m.codigo === codigo)?.nome;
+
   return <Card className="shadow-sm">
     <CardHeader>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle className="text-sm flex items-center gap-2"><Wrench className="h-4 w-4 text-primary" />Estoque de ferramentas</CardTitle>
-          <p className="mt-1 text-xs text-muted-foreground">Cadastre, importe e controle o uso das ferramentas do processo.</p>
+          <CardTitle className="text-sm flex items-center gap-2"><Wrench className="h-4 w-4 text-primary" />Ferramentas de corte / CNC</CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">Cadastre, importe e acompanhe a vida útil das ferramentas.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Button variant="outline" className="w-full sm:w-auto" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-2" />Importar</Button>
           <Button variant="outline" className="w-full sm:w-auto" onClick={baixarModelo}><FileSpreadsheet className="h-4 w-4 mr-2" />Modelo</Button>
+          <button onClick={onChange} className="h-10 w-10 shrink-0 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40 sm:h-auto sm:w-auto sm:px-3">
+            <RefreshCw className={cn("h-4 w-4 text-muted-foreground", loading && "animate-spin")} />
+          </button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild><Button className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" />Cadastrar</Button></DialogTrigger>
             <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
               <DialogHeader><DialogTitle className="flex items-center gap-2"><Wrench className="h-4 w-4 text-primary" />Cadastrar ferramenta</DialogTitle></DialogHeader>
               <div className="space-y-3 pt-2">
-                <Field label="Nome"><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Pastilha, broca, macho..." /></Field>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><Field label="Código"><Input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} /></Field><Field label="Categoria"><Input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} /></Field></div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2"><Field label="Total"><NumberInput value={form.total} onChange={(e) => setForm({ ...form, total: Number(e.target.value) })} /></Field><Field label="Usadas"><NumberInput value={form.usadas} onChange={(e) => setForm({ ...form, usadas: Number(e.target.value) })} /></Field><Field label="Danific."><NumberInput value={form.danificadas} onChange={(e) => setForm({ ...form, danificadas: Number(e.target.value) })} /></Field><Field label="Mín."><NumberInput value={form.minimo} onChange={(e) => setForm({ ...form, minimo: Number(e.target.value) })} /></Field></div>
-                <Field label="Local"><Input value={form.local} onChange={(e) => setForm({ ...form, local: e.target.value })} placeholder="Armário / gaveta" /></Field>
-                <Field label="Fornecedor padrão"><Select value={form.fornecedorId ?? "nenhum"} onValueChange={(v) => setForm({ ...form, fornecedorId: v === "nenhum" ? undefined : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhum">Nenhum</SelectItem>{fornecedores.map((f) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}</SelectContent></Select></Field>
-                <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2"><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={salvar}><Plus className="h-4 w-4 mr-2" />Adicionar</Button></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Field label="Código"><Input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} placeholder="CNMG120408" /></Field>
+                  <Field label="Tipo"><Select value={form.tipo} onValueChange={(v: TipoFerramenta) => setForm({ ...form, tipo: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{TIPOS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></Field>
+                </div>
+                <Field label="Descrição"><Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} placeholder="Pastilha, broca, macho..." /></Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Field label="Vida útil (peças, 0 = ilimitado)"><NumberInput value={form.vida_util_pecas} onChange={(e) => setForm({ ...form, vida_util_pecas: Number(e.target.value) })} /></Field>
+                  <Field label="Custo unitário (R$)"><Input type="number" min={0} step="0.01" value={form.custo_unitario} onChange={(e) => setForm({ ...form, custo_unitario: Number(e.target.value) })} /></Field>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Field label="Máquina"><Select value={form.maquina_codigo || "nenhuma"} onValueChange={(v) => setForm({ ...form, maquina_codigo: v === "nenhuma" ? "" : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhuma">Nenhuma</SelectItem>{maquinas.map((m) => <SelectItem key={m.codigo} value={m.codigo}>{m.nome}</SelectItem>)}</SelectContent></Select></Field>
+                  <Field label="Fornecedor"><Select value={form.fornecedor_id || "nenhum"} onValueChange={(v) => setForm({ ...form, fornecedor_id: v === "nenhum" ? "" : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhum">Nenhum</SelectItem>{fornecedores.map((f) => <SelectItem key={f.id} value={f.id}>{f.razao_social}</SelectItem>)}</SelectContent></Select></Field>
+                </div>
+                <Field label="Observações"><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></Field>
+                <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2"><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={salvar} disabled={saving}><Plus className="h-4 w-4 mr-2" />{saving ? "Salvando..." : "Adicionar"}</Button></div>
               </div>
             </DialogContent>
           </Dialog>
@@ -188,146 +332,121 @@ function FerramentasPanel({ ferramentas, setFerramentas, fornecedores }: { ferra
     </CardHeader>
     <CardContent className="space-y-3">
       <div className="relative w-full sm:max-w-xs sm:ml-auto"><Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9 h-9" placeholder="Buscar ferramenta..." value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
-      <div className="space-y-2">{filtradas.map((f) => { const disp = disponivel(f); const critical = disp <= f.minimo; return <div key={f.id} className={cn("rounded-2xl border p-3 bg-card shadow-sm", critical ? "border-warning/40 bg-warning/8" : "border-border") }><div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3"><div><div className="font-semibold text-sm flex items-center gap-2">{f.nome}{critical && <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">falta</Badge>}</div><div className="text-xs text-muted-foreground">{f.codigo || "Sem código"} • {f.categoria || "Sem categoria"} • {f.local || "Sem local"}</div></div><div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 text-xs"><Pill label="Disponível" value={disp} tone="success" /><Pill label="Usadas" value={f.usadas} tone="primary" /><Pill label="Danificadas" value={f.danificadas} tone="destructive" /><Pill label="Mínimo" value={f.minimo} tone="warning" /></div></div><div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-3"><Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => movimentar(f.id, "usadas", 1)}>+ usada</Button><Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => movimentar(f.id, "usadas", -1)}>- usada</Button><Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => movimentar(f.id, "danificadas", 1)}>+ danificada</Button><Button size="sm" variant="ghost" className="w-full sm:w-auto" onClick={() => setFerramentas((old) => old.filter((x) => x.id !== f.id))}><Trash2 className="h-4 w-4" /></Button></div></div>; })}{!filtradas.length && <Empty text="Nenhuma ferramenta encontrada." />}</div>
+      {loading && !ferramentas.length ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin" />Carregando...</div>
+      ) : (
+        <div className="space-y-2">
+          {filtradas.map((f) => {
+            const pctVida = f.vida_util_pecas > 0 ? Math.min(100, Math.round((f.pecas_produzidas / f.vida_util_pecas) * 100)) : null;
+            return <div key={f.id} className={cn("rounded-2xl border p-3 bg-card shadow-sm", emFaltaStatus(f) ? "border-warning/40 bg-warning/8" : "border-border")}>
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-sm flex items-center gap-2 flex-wrap">
+                    {f.descricao}
+                    <Badge variant="outline" className={cn("border", STATUS_TONE[f.status])}>{STATUS_LABEL[f.status]}</Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {f.codigo} • {f.tipo}{maquinaNome(f.maquina_codigo) ? ` • ${maquinaNome(f.maquina_codigo)}` : ""}{fornecedorNome(f.fornecedor_id) ? ` • ${fornecedorNome(f.fornecedor_id)}` : ""}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 text-xs">
+                  <Pill label="Peças" value={f.pecas_produzidas} tone="primary" />
+                  {f.vida_util_pecas > 0 && <Pill label="Vida útil" value={f.vida_util_pecas} tone="success" />}
+                  {pctVida !== null && <Pill label="% usado" value={pctVida} tone={pctVida >= 100 ? "destructive" : pctVida >= 80 ? "warning" : "success"} />}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-3">
+                <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => registrarPeca(f)}>+1 peça produzida</Button>
+                <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => registrarTroca(f)}><CheckCircle2 className="h-4 w-4 mr-1.5" />Registrar troca</Button>
+                <Button size="sm" variant="ghost" className="w-full sm:w-auto" onClick={() => excluir(f.id)}><Trash2 className="h-4 w-4" /></Button>
+              </div>
+            </div>;
+          })}
+          {!filtradas.length && <Empty text="Nenhuma ferramenta encontrada." />}
+        </div>
+      )}
     </CardContent>
   </Card>;
 }
 
-function whatsappUrl(telefone: string): string | null {
-  const digits = telefone.replace(/\D/g, "");
-  if (!digits) return null;
-  const normalized = digits.startsWith("55") ? digits : `55${digits}`;
-  return `https://wa.me/${normalized}`;
-}
+// ── Faltas (ferramentas em alerta ou além da vida útil) ─────────────────────────
 
-function FornecedoresPanel({ fornecedores, setFornecedores }: { fornecedores: Fornecedor[]; setFornecedores: React.Dispatch<React.SetStateAction<Fornecedor[]>> }) {
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<Omit<Fornecedor, "id">>({ nome: "", contato: "", telefone: "", email: "", observacoes: "" });
-  const resetForm = () => setForm({ nome: "", contato: "", telefone: "", email: "", observacoes: "" });
-  const salvar = () => {
-    if (!form.nome.trim()) return toast.error("Informe o nome do fornecedor.");
-    setFornecedores((old) => [{ ...form, id: uid() }, ...old]);
-    resetForm();
-    setOpen(false);
-    toast.success("Fornecedor cadastrado.");
+function FaltasPanel({ ferramentas, onChange }: { ferramentas: Ferramenta[]; onChange: () => void }) {
+  const { fornecedores } = useDropdownOptions();
+  const [gerando, setGerando] = useState<string | null>(null);
+  const fornecedorNome = (id: string | null) => fornecedores.find((f) => f.id === id)?.razao_social ?? "A definir";
+
+  const gerarPedido = async (f: Ferramenta) => {
+    setGerando(f.id);
+    try {
+      const nomeFornecedor = fornecedorNome(f.fornecedor_id);
+      const { data: pedido, error } = await supabase.from("pedidos_compra").insert({
+        fornecedor_id: f.fornecedor_id, fornecedor_nome: nomeFornecedor,
+        observacoes: `Gerado automaticamente pelo controle de faltas de ferramentas (${f.codigo} — ${f.descricao}).`,
+        valor_total: f.custo_unitario ?? 0, status: "rascunho",
+      }).select("id").single();
+      if (error || !pedido) { toast.error(error?.message ?? "Erro ao gerar pedido."); return; }
+      await supabase.from("pedido_compra_itens").insert({
+        pedido_id: pedido.id, descricao: `${f.codigo} — ${f.descricao}`,
+        quantidade: 1, unidade: "un", valor_unitario: f.custo_unitario ?? 0,
+      });
+      toast.success("Pedido de compra gerado a partir da falta.");
+      onChange();
+    } finally {
+      setGerando(null);
+    }
   };
 
-  return <Card className="shadow-sm bg-card">
-    <CardHeader className="border-b border-border/40">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <CardTitle className="text-sm flex items-center gap-2"><Truck className="h-4 w-4 text-primary" />Lista de fornecedores</CardTitle>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" />Cadastrar</Button></DialogTrigger>
-          <DialogContent className="sm:max-w-2xl">
-            <DialogHeader><DialogTitle>Cadastrar fornecedor</DialogTitle></DialogHeader>
-            <div className="space-y-3 pt-2">
-              <Field label="Empresa"><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></Field>
-              <Field label="Contato"><Input value={form.contato} onChange={(e) => setForm({ ...form, contato: e.target.value })} /></Field>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Field label="Telefone / WhatsApp"><Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} placeholder="(11) 99999-9999" /></Field>
-                <Field label="E-mail"><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-              </div>
-              <Field label="Observações"><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></Field>
-              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => { resetForm(); setOpen(false); }}>Cancelar</Button>
-                <Button onClick={salvar}><Plus className="h-4 w-4 mr-2" />Adicionar</Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </CardHeader>
-    <CardContent className="grid gap-2 pt-4">
-      {fornecedores.map((f) => {
-        const whats = whatsappUrl(f.telefone);
-        return <div key={f.id} className="rounded-2xl border border-border/70 p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3 bg-card shadow-sm">
-          <div className="min-w-0">
-            <div className="font-semibold text-sm truncate">{f.nome}</div>
-            <div className="text-xs text-muted-foreground">{f.contato || "Sem contato"} • {f.email || "Sem e-mail"}</div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {whats ? (
-                <a href={whats} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/8 px-2.5 py-1 text-xs font-medium text-success hover:bg-success/12 transition-colors">
-                  <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
-                </a>
-              ) : (
-                <span className="inline-flex items-center rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-muted-foreground">Sem WhatsApp</span>
-              )}
-              {f.telefone && <span className="inline-flex items-center rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-xs text-muted-foreground">{f.telefone}</span>}
-            </div>
-            {f.observacoes && <p className="text-xs mt-2 text-muted-foreground">{f.observacoes}</p>}
-          </div>
-          <Button size="icon" variant="ghost" className="self-end sm:self-start" onClick={() => { setFornecedores((old) => old.filter((x) => x.id !== f.id)); toast.success("Fornecedor removido."); }}><Trash2 className="h-4 w-4" /></Button>
-        </div>;
-      })}
-      {!fornecedores.length && <Empty text="Nenhum fornecedor cadastrado." />}
-    </CardContent>
-  </Card>;
-}
-
-function ComprasPanel({ pedidos, setPedidos, fornecedores, ferramentas }: { pedidos: Pedido[]; setPedidos: React.Dispatch<React.SetStateAction<Pedido[]>>; fornecedores: Fornecedor[]; ferramentas: Ferramenta[] }) {
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<Omit<Pedido, "id">>({ ferramenta: "", fornecedorId: "", quantidade: 1, status: "Solicitado", data: today(), observacoes: "" });
-  const resetForm = () => setForm({ ferramenta: "", fornecedorId: "", quantidade: 1, status: "Solicitado", data: today(), observacoes: "" });
-  const salvar = () => {
-    if (!form.ferramenta.trim()) return toast.error("Informe a ferramenta para compra.");
-    setPedidos((old) => [{ ...form, id: uid(), quantidade: Number(form.quantidade) }, ...old]);
-    resetForm();
-    setOpen(false);
-    toast.success("Pedido de compra criado.");
-  };
-  const fornecedorNome = (id: string) => fornecedores.find((f) => f.id === id)?.nome ?? "Sem fornecedor";
-
-  return <Card className="shadow-sm bg-card">
-    <CardHeader className="border-b border-border/40">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <CardTitle className="text-sm flex items-center gap-2"><ShoppingCart className="h-4 w-4 text-primary" />Pedidos de compra</CardTitle>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" />Novo pedido</Button></DialogTrigger>
-          <DialogContent className="sm:max-w-2xl">
-            <DialogHeader><DialogTitle>Novo pedido de compra</DialogTitle></DialogHeader>
-            <div className="space-y-3 pt-2">
-              <Field label="Ferramenta"><Input list="ferramentas" value={form.ferramenta} onChange={(e) => setForm({ ...form, ferramenta: e.target.value })} /><datalist id="ferramentas">{ferramentas.map((f) => <option key={f.id} value={f.nome} />)}</datalist></Field>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><Field label="Quantidade"><NumberInput value={form.quantidade} onChange={(e) => setForm({ ...form, quantidade: Number(e.target.value) })} /></Field><Field label="Data"><Input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} /></Field></div>
-              <Field label="Fornecedor"><Select value={form.fornecedorId || "nenhum"} onValueChange={(v) => setForm({ ...form, fornecedorId: v === "nenhum" ? "" : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhum">Sem fornecedor</SelectItem>{fornecedores.map((f) => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}</SelectContent></Select></Field>
-              <Field label="Observações"><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} /></Field>
-              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => { resetForm(); setOpen(false); }}>Cancelar</Button>
-                <Button onClick={salvar}><ShoppingCart className="h-4 w-4 mr-2" />Criar pedido</Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+  return <Card className="shadow-sm">
+    <CardHeader className="bg-warning/5 rounded-t-lg border-b border-border/40">
+      <CardTitle className="text-sm flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-warning" />Ferramentas em alerta ou além da vida útil</CardTitle>
     </CardHeader>
     <CardContent className="space-y-2 pt-4">
-      {pedidos.map((p) => <div key={p.id} className="rounded-2xl border border-border/70 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-card shadow-sm">
-        <div><div className="font-semibold text-sm">{p.quantidade}x {p.ferramenta}</div><div className="text-xs text-muted-foreground">{fornecedorNome(p.fornecedorId)} • {p.data}</div><p className="text-xs mt-1">{p.observacoes}</p></div>
-        <div className="flex gap-2"><Select value={p.status} onValueChange={(v: Pedido["status"]) => { setPedidos((old) => old.map((x) => x.id === p.id ? { ...x, status: v } : x)); toast.info(`Status alterado para ${v}.`); }}><SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger><SelectContent>{["Solicitado", "Aprovado", "Comprado", "Recebido"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select><Button size="icon" variant="ghost" onClick={() => setPedidos((old) => old.filter((x) => x.id !== p.id))}><Trash2 className="h-4 w-4" /></Button></div>
-      </div>)}
-      {!pedidos.length && <Empty text="Nenhum pedido de compra." />}
+      {ferramentas.map((f) => (
+        <div key={f.id} className="rounded-2xl border border-warning/35 bg-warning/8 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <div className="font-semibold text-sm">{f.descricao}</div>
+            <div className="text-xs text-muted-foreground">{f.pecas_produzidas}/{f.vida_util_pecas || "∞"} peças • {STATUS_LABEL[f.status]} • {fornecedorNome(f.fornecedor_id)}</div>
+          </div>
+          <Button size="sm" className="w-full sm:w-auto" disabled={gerando === f.id} onClick={() => gerarPedido(f)}>
+            <ShoppingCart className="h-4 w-4 mr-2" />{gerando === f.id ? "Gerando..." : "Gerar compra"}
+          </Button>
+        </div>
+      ))}
+      {!ferramentas.length && <Empty text="Nenhuma ferramenta em falta." />}
     </CardContent>
   </Card>;
 }
 
-function FaltasPanel({ ferramentas, fornecedores, pedidos, setPedidos }: { ferramentas: Ferramenta[]; fornecedores: Fornecedor[]; pedidos: Pedido[]; setPedidos: React.Dispatch<React.SetStateAction<Pedido[]>> }) { const fornecedorNome = (id?: string) => fornecedores.find((f) => f.id === id)?.nome ?? "Sem fornecedor padrão"; const gerarPedido = (f: Ferramenta) => { const qtd = Math.max(f.minimo * 2 - disponivel(f), 1); setPedidos([{ id: uid(), ferramenta: f.nome, fornecedorId: f.fornecedorId ?? "", quantidade: qtd, status: "Solicitado", data: today(), observacoes: "Gerado automaticamente pelo controle de faltas." }, ...pedidos]); toast.success("Pedido gerado pela falta de ferramenta."); }; return <Card className="shadow-sm"><CardHeader className="bg-warning/5 rounded-t-lg border-b border-border/40"><CardTitle className="text-sm flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-warning" />Ferramentas abaixo do estoque mínimo</CardTitle></CardHeader><CardContent className="space-y-2 pt-4">{ferramentas.map((f) => { const disp = disponivel(f); return <div key={f.id} className="rounded-2xl border border-warning/35 bg-warning/8 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><div className="font-semibold text-sm">{f.nome}</div><div className="text-xs text-muted-foreground">Disponível: {disp} • Mínimo: {f.minimo} • {fornecedorNome(f.fornecedorId)}</div></div><Button size="sm" className="w-full sm:w-auto" onClick={() => gerarPedido(f)}><ShoppingCart className="h-4 w-4 mr-2" />Gerar compra</Button></div>; })}{!ferramentas.length && <Empty text="Nenhuma ferramenta em falta." />}</CardContent></Card>; }
+// ── Códigos CNC (biblioteca de programas) ───────────────────────────────────────
 
-function CodigosPanel({ programas, setProgramas }: { programas: Programa[]; setProgramas: React.Dispatch<React.SetStateAction<Programa[]>> }) {
-  const [selectedId, setSelectedId] = useState<string>(programas[0]?.id ?? "novo");
-  const selected = programas.find((p) => p.id === selectedId);
-  const novo = (): Programa => ({
-    id: "novo",
-    nome: "Novo programa",
-    maquina: "",
-    linguagem: "G-Code",
-    conteudo: "(INICIO)\nG21 G90\nM30\n(FIM)",
-    atualizadoEm: new Date().toISOString(),
-  });
-  const [draft, setDraft] = useState<Programa>(selected ?? novo());
+function CodigosPanel() {
+  const { user } = useAuth();
+  const [programas, setProgramas] = useState<Programa[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string>("novo");
+  const [saving, setSaving] = useState(false);
+  const novo = useCallback((): Programa => ({ id: "novo", nome: "Novo programa", maquina_codigo: null, linguagem: "G-Code", conteudo: "(INICIO)\nG21 G90\nM30\n(FIM)", updated_at: new Date().toISOString() }), []);
+  const [draft, setDraft] = useState<Programa>(novo());
+  const { maquinas } = useDropdownOptions();
 
-  useEffect(() => {
-    const next = programas.find((p) => p.id === selectedId);
-    if (next) setDraft(next);
-  }, [selectedId, programas]);
+  const fetchProgramas = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from("programas_cnc").select("*").order("nome");
+    if (error) { logger.error("fetchProgramas error:", error.message); toast.error("Erro ao carregar programas."); }
+    else {
+      const list = (data ?? []) as Programa[];
+      setProgramas(list);
+      if (selectedId !== "novo") {
+        const next = list.find((p) => p.id === selectedId);
+        if (next) setDraft(next);
+      }
+    }
+    setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { fetchProgramas(); }, [fetchProgramas]);
 
   const linhas = draft.conteudo.split("\n").map((_, i) => i + 1).join("\n");
   const selecionar = (id: string) => {
@@ -335,23 +454,41 @@ function CodigosPanel({ programas, setProgramas }: { programas: Programa[]; setP
     const next = programas.find((p) => p.id === id);
     if (next) setDraft(next);
   };
-  const criarNovo = () => {
-    setSelectedId("novo");
-    setDraft(novo());
-  };
-  const salvar = () => {
+  const criarNovo = () => { setSelectedId("novo"); setDraft(novo()); };
+
+  const salvar = async () => {
     if (!draft.nome.trim()) return toast.error("Informe o nome do programa.");
-    const item = { ...draft, id: draft.id === "novo" ? uid() : draft.id, atualizadoEm: new Date().toISOString() };
-    setProgramas((old) => draft.id === "novo" ? [item, ...old] : old.map((p) => p.id === item.id ? item : p));
-    setSelectedId(item.id);
-    toast.success("Código salvo.");
+    setSaving(true);
+    if (draft.id === "novo") {
+      const { data, error } = await supabase.from("programas_cnc").insert({
+        nome: draft.nome.trim(), maquina_codigo: draft.maquina_codigo, linguagem: draft.linguagem,
+        conteudo: draft.conteudo, created_by: user?.id ?? null,
+      }).select("id").single();
+      setSaving(false);
+      if (error || !data) { toast.error(error?.message ?? "Erro ao salvar."); return; }
+      setSelectedId(data.id);
+      toast.success("Código salvo.");
+      fetchProgramas();
+    } else {
+      const { error } = await supabase.from("programas_cnc").update({
+        nome: draft.nome.trim(), maquina_codigo: draft.maquina_codigo, linguagem: draft.linguagem, conteudo: draft.conteudo,
+      }).eq("id", draft.id);
+      setSaving(false);
+      if (error) { toast.error("Erro ao salvar."); return; }
+      toast.success("Código salvo.");
+      fetchProgramas();
+    }
   };
-  const excluir = () => {
+
+  const excluir = async () => {
     if (draft.id === "novo") return toast.error("Esse programa ainda não foi salvo.");
-    setProgramas((old) => old.filter((p) => p.id !== draft.id));
+    const { error } = await supabase.from("programas_cnc").delete().eq("id", draft.id);
+    if (error) { toast.error("Erro ao apagar programa."); return; }
     criarNovo();
     toast.success("Programa apagado.");
+    fetchProgramas();
   };
+
   const baixar = () => {
     const ext = draft.linguagem === "Siemens" ? "mpf" : draft.linguagem === "Heidenhain" ? "h" : "nc";
     downloadBlob(new Blob([draft.conteudo], { type: "text/plain;charset=utf-8" }), `${draft.nome.replace(/[^a-z0-9_-]+/gi, "_")}.${ext}`);
@@ -372,22 +509,26 @@ function CodigosPanel({ programas, setProgramas }: { programas: Programa[]; setP
       </CardHeader>
       <CardContent className="p-3 sm:p-4 space-y-3">
         <Button className="w-full h-10" onClick={criarNovo}><Plus className="h-4 w-4 mr-2" />Novo código</Button>
-        <div className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-2 lg:overflow-visible">
-          {programas.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => selecionar(p.id)}
-              className={cn(
-                "min-w-[210px] lg:min-w-0 lg:w-full text-left rounded-2xl border p-3 text-sm transition-all bg-card",
-                selectedId === p.id ? "border-primary/50 bg-primary/10 shadow-sm" : "border-border/70 hover:bg-muted/40"
-              )}
-            >
-              <div className="font-semibold truncate">{p.nome}</div>
-              <div className="text-xs text-muted-foreground truncate">{p.maquina || "Sem máquina"} • {p.linguagem}</div>
-            </button>
-          ))}
-        </div>
-        {!programas.length && <Empty text="Nenhum programa salvo." />}
+        {loading && !programas.length ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin" />Carregando...</div>
+        ) : (
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-2 lg:overflow-visible">
+            {programas.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => selecionar(p.id)}
+                className={cn(
+                  "min-w-[210px] lg:min-w-0 lg:w-full text-left rounded-2xl border p-3 text-sm transition-all bg-card",
+                  selectedId === p.id ? "border-primary/50 bg-primary/10 shadow-sm" : "border-border/70 hover:bg-muted/40"
+                )}
+              >
+                <div className="font-semibold truncate">{p.nome}</div>
+                <div className="text-xs text-muted-foreground truncate">{maquinas.find((m) => m.codigo === p.maquina_codigo)?.nome || "Sem máquina"} • {p.linguagem}</div>
+              </button>
+            ))}
+          </div>
+        )}
+        {!loading && !programas.length && <Empty text="Nenhum programa salvo." />}
       </CardContent>
     </Card>
 
@@ -396,20 +537,20 @@ function CodigosPanel({ programas, setProgramas }: { programas: Programa[]; setP
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <CardTitle className="text-sm flex items-center gap-2"><Database className="h-4 w-4 text-primary" />Editor de código</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">No celular, os comandos ficam grandes e o editor ocupa a largura da tela.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Compartilhado com toda a equipe — salvo no banco, não só neste dispositivo.</p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:flex xl:flex-wrap">
             <Button variant="outline" className="h-10" onClick={copiar}><Copy className="h-4 w-4 mr-2" />Copiar</Button>
             <Button variant="outline" className="h-10" onClick={baixar}><Download className="h-4 w-4 mr-2" />Baixar</Button>
             <Button variant="outline" className="h-10 text-destructive hover:text-destructive" onClick={excluir}><Trash2 className="h-4 w-4 mr-2" />Apagar</Button>
-            <Button className="h-10" onClick={salvar}><Save className="h-4 w-4 mr-2" />Salvar</Button>
+            <Button className="h-10" onClick={salvar} disabled={saving}><Save className="h-4 w-4 mr-2" />{saving ? "Salvando..." : "Salvar"}</Button>
           </div>
         </div>
       </CardHeader>
       <CardContent className="p-3 sm:p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Field label="Nome"><Input value={draft.nome} onChange={(e) => setDraft({ ...draft, nome: e.target.value })} /></Field>
-          <Field label="Máquina"><Input value={draft.maquina} onChange={(e) => setDraft({ ...draft, maquina: e.target.value })} /></Field>
+          <Field label="Máquina"><Select value={draft.maquina_codigo ?? "nenhuma"} onValueChange={(v) => setDraft({ ...draft, maquina_codigo: v === "nenhuma" ? null : v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="nenhuma">Nenhuma</SelectItem>{maquinas.map((m) => <SelectItem key={m.codigo} value={m.codigo}>{m.nome}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="Linguagem"><Select value={draft.linguagem} onValueChange={(v: Linguagem) => setDraft({ ...draft, linguagem: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{linguagens.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select></Field>
         </div>
         <div className="rounded-2xl border border-border/70 overflow-hidden bg-card">

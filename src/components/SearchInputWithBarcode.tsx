@@ -23,6 +23,7 @@ interface Props {
   value?: string;
   onChange?: (v: string) => void;
   onSearch?: (v: string) => void;
+  onFocus?: () => void;
   placeholder?: string;
   className?: string;
   inputClass?: string;
@@ -36,6 +37,7 @@ export function SearchInputWithBarcode({
   value,
   onChange,
   onSearch,
+  onFocus,
   placeholder = "Bipe o código de barras ou pesquise aqui...",
   className,
   inputClass,
@@ -99,6 +101,7 @@ export function SearchInputWithBarcode({
           value={localValue}
           onChange={e => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={onFocus}
           placeholder={placeholder}
           autoFocus={autoFocus}
           className={cn(

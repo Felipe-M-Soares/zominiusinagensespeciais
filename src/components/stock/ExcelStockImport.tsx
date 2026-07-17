@@ -41,7 +41,7 @@ type Fase = "intermediaria" | "expedicao";
 interface ParsedRow {
   line: number;
   nome: string;
-  referencia: string;
+  referencia?: string;
   lote: string;
   quantidade: number | null;
   fase: Fase | null;
@@ -77,8 +77,10 @@ function cellStr(cell: ExcelJS.Cell): string {
   if (v === null || v === undefined) return "";
   if (typeof v === "object" && "result" in v)
     return String((v as ExcelJS.CellFormulaValue).result ?? "");
+  if (typeof v === "object" && "richText" in v)
+    return (v as ExcelJS.CellRichTextValue).richText.map(r => r.text).join("").trim();
   if (typeof v === "object" && "text" in v)
-    return String((v as ExcelJS.CellRichTextValue).text ?? "");
+    return String((v as ExcelJS.CellHyperlinkValue).text ?? "");
   return String(v).trim();
 }
 

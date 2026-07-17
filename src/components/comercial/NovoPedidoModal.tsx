@@ -65,12 +65,13 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
   }, [open]);
 
   async function toggleFavorita(deviceId: string) {
+    if (!user?.id) return;
     const isFav = favoritas.has(deviceId);
     if (isFav) {
-      await supabase.from("peca_favoritas").delete().eq("device_id", deviceId);
+      await supabase.from("peca_favoritas").delete().eq("device_id", deviceId).eq("user_id", user.id);
       setFavoritas(prev => { const n = new Set(prev); n.delete(deviceId); return n; });
     } else {
-      await supabase.from("peca_favoritas").insert({ device_id: deviceId });
+      await supabase.from("peca_favoritas").insert({ device_id: deviceId, user_id: user.id });
       setFavoritas(prev => new Set([...prev, deviceId]));
     }
   }
@@ -314,6 +315,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
   async function handleSave() {
     if (!clienteId) { toast.error("Selecione um cliente"); return; }
     if (itens.length === 0) { toast.error("Adicione ao menos uma peça"); return; }
+    if (!user?.id) { toast.error("Sessão expirada. Faça login novamente."); return; }
     setSaving(true);
     try {
       const clienteSelecionado = clientes.find(c => c.id === clienteId);
@@ -386,8 +388,8 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
       }
 
       // ── Modo criação normal ───────────────────────────────────────────────
-      const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
-      const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Vendedora";
+      const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle();
+      const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user.email ?? "Vendedora";
 
       const result = await criarPedidoComReserva({
         clienteId,
@@ -398,7 +400,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
           device_model: i.device_model,
           valorUnitarioLiquido: precoLiquido(i),
         })),
-        vendedoraId: user?.id,
+        vendedoraId: user.id,
         vendedoraNome,
         observacoes: obs || null,
         descontoPct: descontoMedio,

@@ -32,13 +32,15 @@ export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | nul
 
   async function handleEnviar() {
     if (!texto.trim() || saving) return;
+    if (!user?.id) { toast.error("Sessão expirada. Faça login novamente."); return; }
+    if (!pedidoId) return;
     setSaving(true);
     const { data: profile } = await supabase
-      .from("profiles").select("display_name").eq("user_id", user?.id).maybeSingle();
-    const userName = (profile as { display_name?: string } | null)?.display_name ?? user?.email ?? "Usuário";
+      .from("profiles").select("display_name").eq("user_id", user.id).maybeSingle();
+    const userName = (profile as { display_name?: string } | null)?.display_name ?? user.email ?? "Usuário";
     const { data, error } = await supabase.from("pedido_comentarios").insert({
       pedido_id: pedidoId,
-      user_id: user?.id ?? null,
+      user_id: user.id,
       user_name: userName,
       texto: texto.trim().slice(0, 2000),
     }).select("id, user_name, texto, created_at").single();

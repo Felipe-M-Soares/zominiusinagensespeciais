@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { Clock, LogOut, ShieldOff, Loader2 } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 export default function PendingApproval() {
   const { signOut, user, refreshApproval, approved, blocked } = useAuth();
@@ -73,7 +74,7 @@ export default function PendingApproval() {
     );
   }
 
-  // ── TELA DE AGUARDANDO APROVAÇÃO ───────────────────────────────────────────
+  // ── TELA DE ACESSO SUSPENSO (approved=false, definido manualmente pelo admin) ──
   return (
     <div className="min-h-screen bg-gradient-to-br from-transparent via-transparent to-accent/20 flex items-center justify-center px-4">
       <div className="w-full max-w-sm text-center space-y-6">
@@ -86,12 +87,12 @@ export default function PendingApproval() {
           </div>
 
           <div className="space-y-2">
-            <h1 className="text-lg font-semibold">Aguardando Aprovação</h1>
+            <h1 className="text-lg font-semibold">Acesso Suspenso</h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              A sua conta foi criada com sucesso.
+              O administrador suspendeu temporariamente o acesso desta conta.
             </p>
             <p className="text-xs text-muted-foreground/70">
-              Você receberá acesso assim que o administrador aprovar seu cadastro.
+              Você recupera o acesso assim que o administrador reativar sua conta no painel.
             </p>
           </div>
 
@@ -104,7 +105,7 @@ export default function PendingApproval() {
           >
             {checking
               ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Verificando...</>
-              : "Já fui aprovado? Verificar agora"
+              : "Já fui reativado? Verificar agora"
             }
           </Button>
 

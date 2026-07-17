@@ -657,7 +657,7 @@ function NovaDevolucaoTrocaModal({
         p_chave_acesso: result.chaveAcesso ?? null, p_protocolo: result.protocolo ?? null,
         p_dh_autorizacao: result.dhAutorizacao ?? new Date().toISOString(),
         p_xml_nfe: result.xmlAssinado ?? null,
-      } as Record<string, unknown>);
+      });
 
       toast.success(`✅ ${tipo === "devolucao" ? "Devolução" : "Troca"} autorizada! Protocolo ${result.protocolo}`, { duration: 6000 });
       onSuccess();

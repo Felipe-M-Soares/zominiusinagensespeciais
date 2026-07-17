@@ -800,7 +800,7 @@ export type Database = {
           pix_chave: string | null
           saldo_atual: number
           tipo: string
-          token_api: string | null
+          token_api_secret_id: string | null
           updated_at: string
           webhook_url: string | null
         }
@@ -817,7 +817,7 @@ export type Database = {
           pix_chave?: string | null
           saldo_atual?: number
           tipo?: string
-          token_api?: string | null
+          token_api_secret_id?: string | null
           updated_at?: string
           webhook_url?: string | null
         }
@@ -834,7 +834,7 @@ export type Database = {
           pix_chave?: string | null
           saldo_atual?: number
           tipo?: string
-          token_api?: string | null
+          token_api_secret_id?: string | null
           updated_at?: string
           webhook_url?: string | null
         }
@@ -1186,6 +1186,108 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notas_devolucao_troca: {
+        Row: {
+          avulsa: boolean
+          chave_acesso: string | null
+          cliente_documento: string | null
+          cliente_email: string | null
+          cliente_endereco: string | null
+          cliente_ie: string | null
+          cliente_nome: string
+          cliente_telefone: string | null
+          created_at: string
+          created_by: string | null
+          dh_autorizacao: string | null
+          id: string
+          itens: Json
+          modo_teste: boolean
+          motivo: string
+          natureza_operacao: string | null
+          nf_original_chave: string | null
+          nf_original_numero: string | null
+          numero: string | null
+          pedido_id: string | null
+          protocolo_sefaz: string | null
+          serie: string
+          status: string
+          status_msg: string | null
+          tipo: string
+          tipo_nota: string
+          tp_nf: string
+          updated_at: string
+          valor_frete: number
+          valor_total: number
+          xml_nfe: string | null
+        }
+        Insert: {
+          avulsa?: boolean
+          chave_acesso?: string | null
+          cliente_documento?: string | null
+          cliente_email?: string | null
+          cliente_endereco?: string | null
+          cliente_ie?: string | null
+          cliente_nome: string
+          cliente_telefone?: string | null
+          created_at?: string
+          created_by?: string | null
+          dh_autorizacao?: string | null
+          id?: string
+          itens?: Json
+          modo_teste?: boolean
+          motivo: string
+          natureza_operacao?: string | null
+          nf_original_chave?: string | null
+          nf_original_numero?: string | null
+          numero?: string | null
+          pedido_id?: string | null
+          protocolo_sefaz?: string | null
+          serie?: string
+          status?: string
+          status_msg?: string | null
+          tipo: string
+          tipo_nota?: string
+          tp_nf?: string
+          updated_at?: string
+          valor_frete?: number
+          valor_total?: number
+          xml_nfe?: string | null
+        }
+        Update: {
+          avulsa?: boolean
+          chave_acesso?: string | null
+          cliente_documento?: string | null
+          cliente_email?: string | null
+          cliente_endereco?: string | null
+          cliente_ie?: string | null
+          cliente_nome?: string
+          cliente_telefone?: string | null
+          created_at?: string
+          created_by?: string | null
+          dh_autorizacao?: string | null
+          id?: string
+          itens?: Json
+          modo_teste?: boolean
+          motivo?: string
+          natureza_operacao?: string | null
+          nf_original_chave?: string | null
+          nf_original_numero?: string | null
+          numero?: string | null
+          pedido_id?: string | null
+          protocolo_sefaz?: string | null
+          serie?: string
+          status?: string
+          status_msg?: string | null
+          tipo?: string
+          tipo_nota?: string
+          tp_nf?: string
+          updated_at?: string
+          valor_frete?: number
+          valor_total?: number
+          xml_nfe?: string | null
+        }
+        Relationships: []
       }
       nfe_sequencia: {
         Row: {
@@ -1746,6 +1848,47 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      programas_cnc: {
+        Row: {
+          conteudo: string
+          created_at: string
+          created_by: string | null
+          id: string
+          linguagem: string
+          maquina_codigo: string | null
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          conteudo?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          linguagem?: string
+          maquina_codigo?: string | null
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          conteudo?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          linguagem?: string
+          maquina_codigo?: string | null
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "programas_cnc_maquina_codigo_fkey"
+            columns: ["maquina_codigo"]
+            isOneToOne: false
+            referencedRelation: "maquinas_producao"
+            referencedColumns: ["codigo"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -2315,6 +2458,10 @@ export type Database = {
         Returns: Json
       }
       can_write_stock: { Args: never; Returns: boolean }
+      cancelar_devolucao_troca: {
+        Args: { p_id: string; p_motivo: string }
+        Returns: Json
+      }
       cancel_movement: {
         Args: { p_movement_id: string; p_stock_item_id: string }
         Returns: Json
@@ -2327,8 +2474,8 @@ export type Database = {
       cleanup_audit_log: { Args: never; Returns: undefined }
       criar_apontamento_ppi51: {
         Args: {
-          p_comprimento_mm: number
-          p_consumo_mp_metros: number
+          p_comprimento_mm: number | null
+          p_consumo_mp_metros: number | null
           p_cycle_time_min: number
           p_data: string
           p_descricao_mp: string
@@ -2358,7 +2505,7 @@ export type Database = {
         Args: {
           p_device_id: string
           p_fase: string
-          p_notes_override?: string
+          p_notes_override?: string | null
           p_source_item_id: string
         }
         Returns: string
@@ -2408,7 +2555,7 @@ export type Database = {
           p_protocolo: string
           p_user_id: string
           p_user_name: string
-          p_xml_nfe?: string
+          p_xml_nfe?: string | null
         }
         Returns: Json
       }
@@ -2432,6 +2579,10 @@ export type Database = {
               saldo: number
             }[]
           }
+      get_conta_bancaria_token: {
+        Args: { p_conta_id: string }
+        Returns: string
+      }
       get_my_role: { Args: never; Returns: string }
       get_next_nf_number: {
         Args: { p_serie?: string; p_tipo?: string }
@@ -2453,10 +2604,10 @@ export type Database = {
       is_approved_user: { Args: never; Returns: boolean }
       load_stock_page: {
         Args: {
-          p_device_ids?: string[]
+          p_device_ids?: string[] | null
           p_limit?: number
           p_offset?: number
-          p_search?: string
+          p_search?: string | null
         }
         Returns: Json
       }
@@ -2471,6 +2622,18 @@ export type Database = {
       peek_next_nf_number: {
         Args: { p_serie?: string; p_tipo?: string }
         Returns: number
+      }
+      registrar_devolucao_troca: {
+        Args: {
+          p_chave_acesso: string | null
+          p_dh_autorizacao: string | null
+          p_id: string
+          p_protocolo: string | null
+          p_status: string
+          p_status_msg: string
+          p_xml_nfe?: string | null
+        }
+        Returns: Json
       }
       release_item_reservation: {
         Args: { p_quantity: number; p_stock_item_id: string }
@@ -2502,17 +2665,21 @@ export type Database = {
         Args: { p_search: string }
         Returns: string[]
       }
+      set_conta_bancaria_token: {
+        Args: { p_conta_id: string; p_token: string | null }
+        Returns: Json
+      }
       set_own_password: { Args: { p_password: string }; Returns: Json }
       set_password_done: { Args: never; Returns: undefined }
       stock_movement_atomic: {
         Args: {
           p_item_id: string
-          p_lote: string
+          p_lote: string | null
           p_qty: number
-          p_reason: string
+          p_reason: string | null
           p_type: string
-          p_user_id: string
-          p_user_name: string
+          p_user_id: string | null
+          p_user_name: string | null
         }
         Returns: Json
       }
@@ -2520,9 +2687,9 @@ export type Database = {
       update_stock_item_settings: {
         Args: {
           p_item_id: string
-          p_location?: string
-          p_min_qty?: number
-          p_notes?: string
+          p_location?: string | null
+          p_min_qty?: number | null
+          p_notes?: string | null
         }
         Returns: undefined
       }
@@ -2539,7 +2706,7 @@ export type Database = {
         | "comercial"
         | "financeiro"
         | "producao"
-        | "fornecedor"
+        | "processos"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2677,7 +2844,7 @@ export const Constants = {
         "comercial",
         "financeiro",
         "producao",
-        "fornecedor",
+        "processos",
       ],
     },
   },

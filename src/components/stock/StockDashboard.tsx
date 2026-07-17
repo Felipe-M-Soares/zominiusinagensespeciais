@@ -461,7 +461,9 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
                     </span>
                     <span className="text-[10px] text-muted-foreground/50">un.</span>
                     {m.fase === "expedicao" && (
-                      <Truck className="h-3 w-3 text-muted-foreground/40" title="Expedição" />
+                      <span title="Expedição">
+                        <Truck className="h-3 w-3 text-muted-foreground/40" />
+                      </span>
                     )}
                   </div>
                 </div>
