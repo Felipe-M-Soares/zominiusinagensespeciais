@@ -2,21 +2,27 @@
  * DesenhoTecnicoUploader — Upload em massa de desenhos técnicos (PDF) a partir
  * de um único arquivo .zip com pastas e subpastas.
  *
- * Para cada PDF dentro do zip, tenta casar com uma peça do banco comparando
- * (nesta ordem, até achar um match exato):
- *   1. Nome do próprio arquivo (sem extensão) — ex: "UCEAR 4814.pdf"
- *   2. Nome da pasta que contém o arquivo — ex: ".../UCEAR 4814/desenho.pdf"
- *   3. Nome da pasta avó, bisavó etc. (sobe na árvore até a raiz do zip)
- *
- * A comparação ignora acentos, maiúsculas/minúsculas e espaços — mesma
- * normalização usada no upload de imagens em massa (DeviceImageUploader).
+ * Para cada PDF dentro do zip, tenta casar com uma peça do banco em duas
+ * etapas:
+ *   1. Correspondência EXATA — nome do próprio arquivo (sem extensão) ou de
+ *      alguma pasta ancestral bate exatamente com a referência (ou modelo)
+ *      cadastrado, ignorando acentos, maiúsculas/minúsculas, espaços, traços,
+ *      underscores e pontuação (ex: "UCEAR-4814", "ucear_4814" e "UCEAR 4814"
+ *      são todos tratados como o mesmo texto).
+ *   2. Correspondência APROXIMADA (fallback) — se nada bateu exato, verifica
+ *      se o nome do arquivo/pasta CONTÉM a referência cadastrada (ou é contido
+ *      por ela) — cobre casos como "UCEAR 4814 Rev02.pdf" ou "Desenho_UCEAR4814".
+ *      Só aceita esse tipo de match quando ele aponta pra EXATAMENTE UMA peça
+ *      (se mais de uma referência poderia bater, fica marcado como sem match
+ *      pra não arriscar vincular o desenho errado). Esses casos aparecem
+ *      marcados como "aproximado" na prévia, pra conferência antes de enviar.
  */
 
 import { useState, useCallback, useMemo, useRef } from "react";
 import JSZip from "jszip";
 import {
   X, CheckCircle2, AlertTriangle, XCircle,
-  FileText, ArrowUpCircle, Loader2, FileArchive, Copy,
+  FileText, ArrowUpCircle, Loader2, FileArchive, Copy, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -25,6 +31,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 
 const MAX_ZIP_SIZE_MB = 1024;
+// Candidatos de nome com menos que isso (já normalizado) não entram na
+// correspondência aproximada — evita casar "01" com qualquer peça que tenha
+// "01" em algum canto da referência.
+const MIN_FUZZY_LEN = 4;
 
 interface Device {
   id: string;
@@ -39,17 +49,18 @@ interface FileResult {
   deviceId?:  string;
   reference?: string;
   model?:     string;
+  fuzzy?:     boolean;  // true = correspondência aproximada (conferir antes de enviar)
   status:     "pending" | "uploading" | "done" | "error" | "no_match" | "duplicate";
   error?:     string;
 }
 
+/** Remove acentos, caixa e QUALQUER separador (espaço, traço, underscore, ponto...) */
 function norm(s: string): string {
   return s
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "");
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function stemName(filename: string) {
@@ -64,18 +75,34 @@ function sanitizePath(name: string): string {
     .trim();
 }
 
-/** Tenta casar por nome do arquivo, depois por cada pasta ancestral. */
-function findMatch(zipPath: string, devices: Device[]): { device: Device; refName: string } | null {
+/** Tenta casar por nome do arquivo, depois por cada pasta ancestral — exato primeiro, aproximado como fallback. */
+function findMatch(zipPath: string, devices: Device[]): { device: Device; refName: string; fuzzy: boolean } | null {
   const parts = zipPath.split("/").filter(Boolean);
   const fileName = parts[parts.length - 1];
   const candidates = [stemName(fileName), ...parts.slice(0, -1).reverse()];
 
+  // Etapa 1: correspondência exata (referência ou modelo, normalizados)
   for (const candidate of candidates) {
     const candNorm = norm(candidate);
     if (!candNorm) continue;
-    const match = devices.find(d => norm(d.reference) === candNorm);
-    if (match) return { device: match, refName: candidate };
+    const match = devices.find(d => norm(d.reference) === candNorm || norm(d.model) === candNorm);
+    if (match) return { device: match, refName: candidate, fuzzy: false };
   }
+
+  // Etapa 2: correspondência aproximada — só aceita se apontar pra uma única peça
+  for (const candidate of candidates) {
+    const candNorm = norm(candidate);
+    if (!candNorm || candNorm.length < MIN_FUZZY_LEN) continue;
+    const matches = devices.filter(d => {
+      const refNorm = norm(d.reference);
+      const modelNorm = norm(d.model);
+      const refHit = refNorm.length >= MIN_FUZZY_LEN && (candNorm.includes(refNorm) || refNorm.includes(candNorm));
+      const modelHit = modelNorm.length >= MIN_FUZZY_LEN && (candNorm.includes(modelNorm) || modelNorm.includes(candNorm));
+      return refHit || modelHit;
+    });
+    if (matches.length === 1) return { device: matches[0], refName: candidate, fuzzy: true };
+  }
+
   return null;
 }
 
@@ -136,6 +163,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
           return {
             zipPath: entry.name, refName: found.refName, entry,
             deviceId: found.device.id, reference: found.device.reference, model: found.device.model,
+            fuzzy: found.fuzzy,
             status: "duplicate" as const,
           };
         }
@@ -143,6 +171,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
         return {
           zipPath: entry.name, refName: found.refName, entry,
           deviceId: found.device.id, reference: found.device.reference, model: found.device.model,
+          fuzzy: found.fuzzy,
           status: "pending" as const,
         };
       });
@@ -167,6 +196,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
     const matched = results.filter(r => r.status === "pending");
     return {
       matched: matched.length,
+      fuzzy: matched.filter(r => r.fuzzy).length,
       noMatch: results.filter(r => r.status === "no_match").length,
       duplicate: results.filter(r => r.status === "duplicate").length,
       total: results.length,
@@ -299,6 +329,11 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">PDFs no zip</p>
                 </div>
               </div>
+              {counts.fuzzy > 0 && (
+                <p className="text-[11px] text-amber-600 flex items-center gap-1.5">
+                  <Sparkles className="h-3 w-3" /> {counts.fuzzy} correspondência(s) aproximada(s) — confira antes de enviar.
+                </p>
+              )}
               {counts.duplicate > 0 && (
                 <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
                   <Copy className="h-3 w-3" /> {counts.duplicate} PDF(s) ignorado(s) por casar com uma peça que já recebeu outro arquivo neste envio.
@@ -313,6 +348,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                     r.status === "duplicate" && "bg-muted/20",
                     r.status === "done"      && "bg-green-500/5",
                     r.status === "error"     && "bg-red-500/5",
+                    r.fuzzy && r.status === "pending" && "bg-amber-500/5",
                   )}>
                     <FileText className="h-4 w-4 text-muted-foreground/60 shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -324,7 +360,9 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                       ) : r.status === "error" ? (
                         <p className="text-red-500 text-[10px] truncate">{r.error}</p>
                       ) : r.reference ? (
-                        <p className="text-muted-foreground text-[10px] truncate">{r.reference} · {r.model}</p>
+                        <p className={cn("text-[10px] truncate", r.fuzzy ? "text-amber-600" : "text-muted-foreground")}>
+                          {r.fuzzy && "≈ "}{r.reference} · {r.model}{r.fuzzy && " (aproximado)"}
+                        </p>
                       ) : null}
                     </div>
                     <div className="shrink-0">{statusIcon(r.status)}</div>
