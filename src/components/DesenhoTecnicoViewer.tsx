@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as pdfjsLib from "pdfjs-dist";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url
 ).toString();
+
+// Escala usada na pré-visualização em tela (rápida, resolução de tela é suficiente).
+const PREVIEW_SCALE = 2;
+// Escala usada só na hora de imprimir — equivale a ~300dpi (padrão gráfico),
+// bem mais nítido que a prévia em tela. Renderizado sob demanda, só quando
+// o usuário clica em Imprimir, pra não deixar a abertura do desenho lenta.
+const PRINT_SCALE = 4;
 
 interface Props {
   path: string | null;
@@ -32,8 +40,27 @@ interface Props {
 export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
+  const pdfRef = useRef<PDFDocumentProxy | null>(null);
+
+  async function renderPages(pdf: PDFDocumentProxy, scale: number): Promise<string[]> {
+    const images: string[] = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      if (cancelledRef.current) break;
+      const page = await pdf.getPage(p);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+      images.push(canvas.toDataURL("image/png"));
+    }
+    return images;
+  }
 
   useEffect(() => {
     if (!path) return;
@@ -43,6 +70,7 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
       setLoading(true);
       setError(null);
       setPages([]);
+      pdfRef.current = null;
       try {
         const { data: signed, error: signErr } = await supabase.storage
           .from("desenhos-tecnicos")
@@ -55,19 +83,10 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
         if (cancelledRef.current) return;
 
         const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-        const images: string[] = [];
-        for (let p = 1; p <= pdf.numPages; p++) {
-          if (cancelledRef.current) return;
-          const page = await pdf.getPage(p);
-          const viewport = page.getViewport({ scale: 2 });
-          const canvas = document.createElement("canvas");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) continue;
-          await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-          images.push(canvas.toDataURL("image/png"));
-        }
+        if (cancelledRef.current) return;
+        pdfRef.current = pdf;
+
+        const images = await renderPages(pdf, PREVIEW_SCALE);
         if (cancelledRef.current) return;
         setPages(images);
       } catch (e) {
@@ -82,50 +101,60 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
     return () => { cancelledRef.current = true; };
   }, [path]);
 
-  function handlePrint() {
-    if (pages.length === 0) return;
-    const win = window.open("", "_blank");
-    if (!win) return;
-    const imgsHtml = pages
-      .map(src => `<div class="page"><img src="${src}" /></div>`)
-      .join("");
-    win.document.write(`
-      <html>
-        <head>
-          <title>Desenho técnico — ${title}</title>
-          <style>
-            @page { size: A4 landscape; margin: 0; }
-            html, body { margin: 0; padding: 0; background: #525659; }
-            .page {
-              width: 297mm;
-              height: 210mm;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              page-break-after: always;
-              background: white;
-            }
-            .page img {
-              max-width: 100%;
-              max-height: 100%;
-              width: auto;
-              height: auto;
-              object-fit: contain;
-            }
-            @media print {
-              html, body { background: white; }
-              .page { page-break-after: always; }
-              .page:last-child { page-break-after: auto; }
-            }
-          </style>
-        </head>
-        <body>
-          ${imgsHtml}
-          <script>window.onload = function() { window.print(); }</script>
-        </body>
-      </html>
-    `);
-    win.document.close();
+  async function handlePrint() {
+    if (!pdfRef.current || printing) return;
+    setPrinting(true);
+    try {
+      const printImages = await renderPages(pdfRef.current, PRINT_SCALE);
+      if (cancelledRef.current || printImages.length === 0) return;
+
+      const win = window.open("", "_blank");
+      if (!win) return;
+      const imgsHtml = printImages
+        .map(src => `<div class="page"><img src="${src}" /></div>`)
+        .join("");
+      win.document.write(`
+        <html>
+          <head>
+            <title>Desenho técnico — ${title}</title>
+            <style>
+              @page { size: A4 landscape; margin: 0; }
+              html, body { margin: 0; padding: 0; background: #525659; }
+              .page {
+                width: 297mm;
+                height: 210mm;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                page-break-after: always;
+                background: white;
+              }
+              .page img {
+                max-width: 100%;
+                max-height: 100%;
+                width: auto;
+                height: auto;
+                object-fit: contain;
+              }
+              @media print {
+                html, body { background: white; }
+                .page { page-break-after: always; }
+                .page:last-child { page-break-after: auto; }
+              }
+            </style>
+          </head>
+          <body>
+            ${imgsHtml}
+            <script>window.onload = function() { window.print(); }</script>
+          </body>
+        </html>
+      `);
+      win.document.close();
+    } catch (e) {
+      logger.error("handlePrint render error:", e);
+    } finally {
+      if (!cancelledRef.current) setPrinting(false);
+    }
   }
 
   if (!path) return null;
@@ -136,8 +165,9 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
         <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-border/30 shrink-0">
           <h3 className="font-semibold text-sm truncate pr-2">Desenho técnico — {title}</h3>
           <div className="flex items-center gap-2 shrink-0">
-            <Button size="sm" className="gap-1.5 h-8" onClick={handlePrint} disabled={pages.length === 0}>
-              <Printer className="h-3.5 w-3.5" /> Imprimir
+            <Button size="sm" className="gap-1.5 h-8" onClick={handlePrint} disabled={pages.length === 0 || printing}>
+              {printing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+              {printing ? "Preparando..." : "Imprimir"}
             </Button>
             <button onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40">
               <X className="h-4 w-4" />
