@@ -24,14 +24,15 @@ import { toast } from "sonner";
 import { formatLote, loteStatus } from "@/lib/lote";
 
 function loteHint(lote: string): string {
-  if (!lote) return "Ex: 0101261-01  ou  0101261-01/A";
+  if (!lote) return "Ex: 0101261-01 (com turno) ou 010126-01 (peça de terceiro, sem turno)";
   if (loteStatus(lote) === "valid") return "Lote válido ✓";
-  if (lote.length < 7) return "Digite os 7 dígitos da data (DDMMYYS)";
-  if (lote.length === 7 && !lote.includes("-")) return "Adicione o hífen após a data";
-  if (/^\d{7}-\d$/.test(lote)) return "Digite os 2 dígitos do turno";
-  if (/^\d{7}-\d{2}$/.test(lote)) return "Lote válido! Adicione /A, /B... se for continuação";
-  if (/^\d{7}-\d{2}\//.test(lote)) return "Adicione a letra de continuação (A, B, C...)";
-  return "Formato: DDMMYYS-TT   ou   DDMMYYS-TT/A";
+  if (lote.length < 6) return "Digite a data: DDMMAA";
+  if (lote.length === 6) return "Adicione o turno (1 dígito) ou já coloque o hífen se a peça não tem turno";
+  if (lote.length === 7 && !lote.includes("-")) return "Adicione o hífen";
+  if (/^\d{6,7}-\d$/.test(lote)) return "Digite os 2 dígitos do sublote";
+  if (/^\d{6,7}-\d{2}$/.test(lote)) return "Lote válido! Adicione /A, /B... se for continuação";
+  if (/^\d{6,7}-\d{2}\//.test(lote)) return "Adicione a letra de continuação (A, B, C...)";
+  return "Formato: DDMMYYS-NN (com turno) ou DDMMYY-NN (sem turno)";
 }
 
 interface Props {
@@ -70,7 +71,7 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
     const safeQty = Math.trunc(resolvedQty);
     if (safeQty < 1) { toast.error("Quantidade deve ser maior que zero."); return; }
     if (!lote.trim()) { toast.error("Informe o número do lote."); return; }
-    if (loteOk === "invalid") { toast.error("Lote inválido. Use o formato DDMMYYS-TT ou DDMMYYS-TT/A\nEx: 0101261-01 ou 0101261-01/A"); return; }
+    if (loteOk === "invalid") { toast.error("Lote inválido. Use DDMMYYS-NN (com turno) ou DDMMYY-NN (sem turno, peça de terceiro).\nEx: 0101261-01 ou 010126-01"); return; }
     if (!descricao.trim()) { toast.error("Descreva o material recebido."); return; }
 
     setLoading(true);

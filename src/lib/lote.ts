@@ -1,11 +1,19 @@
 // Helpers compartilhados para validação e formatação de lotes
 // Formato aceito: DDMMYYS-NN ou DDMMYYS-NN/A (ex: 0101261-01 ou 0101261-01/A)
+// TAMBÉM aceito: DDMMYY-NN ou DDMMYY-NN/A, sem o dígito de turno — usado para
+// peças de terceiros (ex.: chaves) que não têm turno de produção próprio.
+// Ex: 010126-01 ou 010126-01/A
 
-export const LOTE_REGEX = /^\d{7}-\d{2}([/][A-Za-z])?$/;
+export const LOTE_REGEX = /^\d{6,7}-\d{2}([/][A-Za-z])?$/;
 
 export function formatLote(raw: string): string {
   let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");
-  if (/^\d{8,}/.test(v)) v = v.slice(0, 7) + "-" + v.slice(7);
+  if (!v.includes("-")) {
+    // 9+ dígitos seguidos: DDMMYYS (7) + pelo menos os 2 da sequência
+    if (/^\d{9,}/.test(v)) v = v.slice(0, 7) + "-" + v.slice(7);
+    // exatamente 8 dígitos seguidos: só pode ser DDMMYY (6, sem turno) + NN (2)
+    else if (/^\d{8}$/.test(v)) v = v.slice(0, 6) + "-" + v.slice(6);
+  }
   return v.slice(0, 13);
 }
 

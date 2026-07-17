@@ -87,7 +87,7 @@ describe("validatePassword", () => {
 // ─── loteValido / formatLote / loteStatus (TEST-01 FIX) ─────────────────────
 // Lógica crítica de rastreabilidade — sem testes anteriores
 describe("loteValido", () => {
-  it("accepts valid lote DDMMYYS-NN format", () => {
+  it("accepts valid lote DDMMYYS-NN format (com turno)", () => {
     expect(loteValido("0101261-01")).toBe(true);
   });
 
@@ -95,8 +95,16 @@ describe("loteValido", () => {
     expect(loteValido("0101261-01/A")).toBe(true);
   });
 
+  it("accepts valid lote DDMMYY-NN format (sem turno — peça de terceiro)", () => {
+    expect(loteValido("010126-01")).toBe(true);
+  });
+
+  it("accepts valid lote sem turno with suffix /A", () => {
+    expect(loteValido("010126-01/A")).toBe(true);
+  });
+
   it("rejects lote with too few digits", () => {
-    expect(loteValido("010126-01")).toBe(false);
+    expect(loteValido("01012-01")).toBe(false);
   });
 
   it("rejects lote with too many digits before dash", () => {
@@ -117,10 +125,16 @@ describe("loteValido", () => {
 });
 
 describe("formatLote", () => {
-  it("formats continuous digits by inserting dash", () => {
-    // 7 digits + 2 digits without dash → auto-inserts dash
+  it("formats continuous digits by inserting dash (com turno, 9 dígitos)", () => {
+    // 7 digits + 2 digits without dash → auto-inserts dash after position 7
     const result = formatLote("010126101");
     expect(result).toBe("0101261-01");
+  });
+
+  it("formats continuous digits by inserting dash (sem turno, 8 dígitos)", () => {
+    // 6 digits + 2 digits without dash → auto-inserts dash after position 6
+    const result = formatLote("01012601");
+    expect(result).toBe("010126-01");
   });
 
   it("strips non-allowed characters", () => {
@@ -144,6 +158,10 @@ describe("loteStatus", () => {
 
   it("returns valid for valid lote", () => {
     expect(loteStatus("0101261-01")).toBe("valid");
+  });
+
+  it("returns valid for valid lote sem turno", () => {
+    expect(loteStatus("010126-01")).toBe("valid");
   });
 
   it("returns invalid for malformed lote", () => {

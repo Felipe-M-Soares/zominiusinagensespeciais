@@ -44,7 +44,7 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
         if (!cancelled) {
           const lotesComSaldo = data.filter((l) => l.saldo > 0);
           // Sem fallback de lote vazio — peças sem lote numerado não podem ser movimentadas.
-          // O usuário deve primeiro registrar uma entrada com lote válido (DDMMYYS-NN).
+          // O usuário deve primeiro registrar uma entrada com lote válido (DDMMYYS-NN ou DDMMYY-NN).
           setExistingLotes(lotesComSaldo);
           setLotesLoading(false);
         }
@@ -190,7 +190,7 @@ export function ConcluirRetrabalhoModal({ item, open, onClose, onSuccess }: Prop
                   ) : existingLotes.length === 0 ? (
                     <div className="px-3 py-3 text-[12px] text-muted-foreground text-center">
                       Sem lote numerado no retrabalho.
-Registre uma entrada com lote (DDMMYYS-NN) antes de concluir.
+Registre uma entrada com lote (DDMMYYS-NN ou DDMMYY-NN) antes de concluir.
                     </div>
                   ) : (
                     <div className="max-h-[180px] overflow-y-auto">
