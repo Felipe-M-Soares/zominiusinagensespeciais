@@ -87,16 +87,36 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
     const win = window.open("", "_blank");
     if (!win) return;
     const imgsHtml = pages
-      .map(src => `<img src="${src}" />`)
+      .map(src => `<div class="page"><img src="${src}" /></div>`)
       .join("");
     win.document.write(`
       <html>
         <head>
           <title>Desenho técnico — ${title}</title>
           <style>
-            body { margin: 0; background: #525659; }
-            img { display: block; width: 100%; height: auto; page-break-after: always; }
-            @media print { body { background: white; } img { page-break-after: always; } }
+            @page { size: A4 landscape; margin: 0; }
+            html, body { margin: 0; padding: 0; background: #525659; }
+            .page {
+              width: 297mm;
+              height: 210mm;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              page-break-after: always;
+              background: white;
+            }
+            .page img {
+              max-width: 100%;
+              max-height: 100%;
+              width: auto;
+              height: auto;
+              object-fit: contain;
+            }
+            @media print {
+              html, body { background: white; }
+              .page { page-break-after: always; }
+              .page:last-child { page-break-after: auto; }
+            }
           </style>
         </head>
         <body>
