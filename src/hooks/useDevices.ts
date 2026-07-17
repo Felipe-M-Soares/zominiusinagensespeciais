@@ -38,6 +38,7 @@ function toDevice(d: DbDevice): Device {
     exocad_compatibility: d.exocad_compatibility ?? "",
     compatible_systems: d.compatible_systems,
     icon_url: d.icon_url,
+    desenho_tecnico_path: d.desenho_tecnico_path,
   };
 }
 

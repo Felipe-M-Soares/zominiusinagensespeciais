@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { Device } from "@/types/device";
-import { Shield, Package, Activity, Copy, Check, Box } from "lucide-react";
+import { Shield, Package, Activity, Copy, Check, Box, FileText } from "lucide-react";
+import { DesenhoTecnicoViewer } from "@/components/DesenhoTecnicoViewer";
 
 interface Props {
 device: Device;
@@ -46,6 +47,7 @@ export function countryFlag(country: string): string {
 export function DeviceCard({ device, onClick }: Props) {
   const [copied,    setCopied]    = useState(false);
   const [imgError,  setImgError]  = useState(false);
+  const [desenhoOpen, setDesenhoOpen] = useState(false);
 
   // Reseta imgError quando icon_url muda (ex: imagem atualizada em sessão ativa)
   useEffect(() => { setImgError(false); }, [device.icon_url]);
@@ -63,6 +65,7 @@ export function DeviceCard({ device, onClick }: Props) {
   const hasImage = !!(device.icon_url && !imgError);
 
   return (
+  <>
   <div
     role="button"
     tabIndex={0}
@@ -136,6 +139,19 @@ export function DeviceCard({ device, onClick }: Props) {
           : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover/copy:text-foreground shrink-0 transition-colors" />}
       </button>
 
+      {/* Desenho técnico — só aparece se houver PDF vinculado */}
+      {device.desenho_tecnico_path && (
+        <button
+          type="button"
+          title="Visualizar e imprimir o desenho técnico"
+          onClick={(e) => { e.stopPropagation(); setDesenhoOpen(true); }}
+          className="w-full flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Desenho técnico
+        </button>
+      )}
+
       {/* Material — apoio, discreto */}
       {device.primary_material && (
         <p className="text-[11px] text-muted-foreground truncate" title={device.primary_material}>
@@ -186,5 +202,13 @@ export function DeviceCard({ device, onClick }: Props) {
       </div>
     </div>
   </div>
+  {desenhoOpen && (
+    <DesenhoTecnicoViewer
+      path={device.desenho_tecnico_path}
+      title={device.reference || device.model}
+      onClose={() => setDesenhoOpen(false)}
+    />
+  )}
+  </>
 );
 }

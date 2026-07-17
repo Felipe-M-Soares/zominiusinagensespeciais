@@ -550,6 +550,7 @@ export type Database = {
           data_registro_anvisa: string | null
           data_vencimento_anvisa: string | null
           desconto_max_pct: number
+          desenho_tecnico_path: string | null
           empresa_afe: boolean
           empresa_bpf: boolean
           empresa_lf: boolean
@@ -596,6 +597,7 @@ export type Database = {
           data_registro_anvisa?: string | null
           data_vencimento_anvisa?: string | null
           desconto_max_pct?: number
+          desenho_tecnico_path?: string | null
           empresa_afe?: boolean
           empresa_bpf?: boolean
           empresa_lf?: boolean
@@ -642,6 +644,7 @@ export type Database = {
           data_registro_anvisa?: string | null
           data_vencimento_anvisa?: string | null
           desconto_max_pct?: number
+          desenho_tecnico_path?: string | null
           empresa_afe?: boolean
           empresa_bpf?: boolean
           empresa_lf?: boolean

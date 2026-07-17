@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchDevicesPage } from "@/lib/supabaseUtils";
 import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
 import { DeviceImageUploader } from "@/components/admin/DeviceImageUploader";
+import { DesenhoTecnicoUploader } from "@/components/admin/DesenhoTecnicoUploader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert, FileImage } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert, FileImage, FileText } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { logger } from "@/lib/logger";
@@ -76,6 +77,7 @@ const emptyDevice: Omit<TablesInsert<"devices">, "id" | "created_at" | "updated_
 
 export function AdminDevices() {
   const [imgUploaderOpen, setImgUploaderOpen] = useState(false);
+  const [desenhoUploaderOpen, setDesenhoUploaderOpen] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
@@ -550,6 +552,14 @@ export function AdminDevices() {
           </Button>
           <Button
             variant="outline"
+            className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+            onClick={() => setDesenhoUploaderOpen(true)}
+          >
+            <FileText className="h-4 w-4" />
+            Desenhos
+          </Button>
+          <Button
+            variant="outline"
             className="text-destructive border-destructive/40 hover:bg-destructive/10"
             onClick={() => setDeleteAllConfirm(true)}
             disabled={deletingAll || totalCount === 0}
@@ -760,6 +770,12 @@ export function AdminDevices() {
         <DeviceImageUploader
           onClose={() => setImgUploaderOpen(false)}
           onDone={() => setImgUploaderOpen(false)}
+        />
+      )}
+      {desenhoUploaderOpen && (
+        <DesenhoTecnicoUploader
+          onClose={() => setDesenhoUploaderOpen(false)}
+          onDone={() => setDesenhoUploaderOpen(false)}
         />
       )}
     </>

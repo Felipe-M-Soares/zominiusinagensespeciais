@@ -19,6 +19,7 @@ export interface Device {
   exocad_compatibility: string;
   compatible_systems: unknown;
   icon_url: string | null;
+  desenho_tecnico_path: string | null;
 }
 
 export interface DevicesData {
