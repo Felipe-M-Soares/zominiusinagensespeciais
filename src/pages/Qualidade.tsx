@@ -42,6 +42,8 @@ import type { StockFase, AllMovement } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
 import { toast } from "sonner";
 import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -96,45 +98,53 @@ interface Suggestion { device_id: string; model: string; reference: string }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const TABS: PageNavTab<QualidadeView>[] = [
-  { id: "pipeline",     label: "Pipeline",     Icon: ClipboardCheck, activeColor: "text-violet-500",  activeBg: "bg-violet-500/10",  activeBorder: "border-violet-500/40" },
-  { id: "rastreamento", label: "Rastreamento", Icon: Search,         activeColor: "text-blue-500",    activeBg: "bg-blue-500/10",    activeBorder: "border-blue-500/40"   },
-  { id: "historico",    label: "Histórico",    Icon: History,        activeColor: "text-amber-500",   activeBg: "bg-amber-500/10",   activeBorder: "border-amber-500/40"  },
-  { id: "rastreabilidade_pos", label: "Rastreab. Pós-venda", Icon: MapPin, activeColor: "text-rose-500", activeBg: "bg-rose-500/10", activeBorder: "border-rose-500/40" },
-  { id: "certificados", label: "Certificados", Icon: Shield,         activeColor: "text-teal-500",    activeBg: "bg-teal-500/10",    activeBorder: "border-teal-500/40"   },
-  { id: "recall",       label: "Recall",       Icon: AlertTriangle,  activeColor: "text-red-500",     activeBg: "bg-red-500/10",     activeBorder: "border-red-500/40"    },
-  { id: "gs1",          label: "GS1",          Icon: Barcode,        activeColor: "text-cyan-500",    activeBg: "bg-cyan-500/10",    activeBorder: "border-cyan-500/40"   },
-];
+function buildTabs(t: (k: string) => string): PageNavTab<QualidadeView>[] {
+  return [
+  { id: "pipeline",     label: t("qualidade.tabs.pipeline"),     Icon: ClipboardCheck, activeColor: "text-violet-500",  activeBg: "bg-violet-500/10",  activeBorder: "border-violet-500/40" },
+  { id: "rastreamento", label: t("qualidade.tabs.rastreamento"), Icon: Search,         activeColor: "text-blue-500",    activeBg: "bg-blue-500/10",    activeBorder: "border-blue-500/40"   },
+  { id: "historico",    label: t("qualidade.tabs.historico"),    Icon: History,        activeColor: "text-amber-500",   activeBg: "bg-amber-500/10",   activeBorder: "border-amber-500/40"  },
+  { id: "rastreabilidade_pos", label: t("qualidade.tabs.rastreabilidade_pos"), Icon: MapPin, activeColor: "text-rose-500", activeBg: "bg-rose-500/10", activeBorder: "border-rose-500/40" },
+  { id: "certificados", label: t("qualidade.tabs.certificados"), Icon: Shield,         activeColor: "text-teal-500",    activeBg: "bg-teal-500/10",    activeBorder: "border-teal-500/40"   },
+  { id: "recall",       label: t("qualidade.tabs.recall"),       Icon: AlertTriangle,  activeColor: "text-red-500",     activeBg: "bg-red-500/10",     activeBorder: "border-red-500/40"    },
+  { id: "gs1",          label: t("qualidade.tabs.gs1"),          Icon: Barcode,        activeColor: "text-cyan-500",    activeBg: "bg-cyan-500/10",    activeBorder: "border-cyan-500/40"   },
+  ];
+}
 
-const FASE_CONFIG: Record<StockFase, { label: string; Icon: React.ElementType; color: string; bg: string; border: string }> = {
-  intermediaria: { label: "Intermediário", Icon: Package, color: "text-violet-500", bg: "bg-violet-500/10", border: "border-violet-500/30" },
-  expedicao:     { label: "Expedição",     Icon: Truck,   color: "text-emerald-500", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
-  retrabalho:    { label: "Retrabalho",    Icon: Wrench,  color: "text-amber-500",   bg: "bg-amber-500/10",   border: "border-amber-500/30" },
-};
+function buildFaseConfig(t: (k: string) => string): Record<StockFase, { label: string; Icon: React.ElementType; color: string; bg: string; border: string }> {
+  return {
+  intermediaria: { label: t("qualidade.fase.intermediaria"), Icon: Package, color: "text-violet-500", bg: "bg-violet-500/10", border: "border-violet-500/30" },
+  expedicao:     { label: t("qualidade.fase.expedicao"),     Icon: Truck,   color: "text-emerald-500", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
+  retrabalho:    { label: t("qualidade.fase.retrabalho"),    Icon: Wrench,  color: "text-amber-500",   bg: "bg-amber-500/10",   border: "border-amber-500/30" },
+  };
+}
 
-const STATUS_CONFIG: Record<StatusReg, { label: string; color: string; bg: string; border: string }> = {
-  pendente:    { label: "Pendente",      color: "text-muted-foreground", bg: "bg-muted/30",           border: "border-border/40"           },
-  em_processo: { label: "Em processo",  color: "text-amber-600",        bg: "bg-amber-500/10",        border: "border-amber-500/30"        },
-  notificado:  { label: "Notificado",   color: "text-emerald-600",      bg: "bg-emerald-500/10",      border: "border-emerald-500/30"      },
-  registrado:  { label: "Registrado",   color: "text-blue-600",         bg: "bg-blue-500/10",         border: "border-blue-500/30"         },
-  cancelado:   { label: "Cancelado",    color: "text-destructive",      bg: "bg-destructive/10",      border: "border-destructive/30"      },
-};
+function buildStatusConfig(t: (k: string) => string): Record<StatusReg, { label: string; color: string; bg: string; border: string }> {
+  return {
+  pendente:    { label: t("qualidade.status.pendente"),      color: "text-muted-foreground", bg: "bg-muted/30",           border: "border-border/40"           },
+  em_processo: { label: t("qualidade.status.em_processo"),  color: "text-amber-600",        bg: "bg-amber-500/10",        border: "border-amber-500/30"        },
+  notificado:  { label: t("qualidade.status.notificado"),   color: "text-emerald-600",      bg: "bg-emerald-500/10",      border: "border-emerald-500/30"      },
+  registrado:  { label: t("qualidade.status.registrado"),   color: "text-blue-600",         bg: "bg-blue-500/10",         border: "border-blue-500/30"         },
+  cancelado:   { label: t("qualidade.status.cancelado"),    color: "text-destructive",      bg: "bg-destructive/10",      border: "border-destructive/30"      },
+  };
+}
 
-const FASE_LABELS: Record<FaseNum, string> = {
-  1: "Empresa",
-  2: "Classificação",
-  3: "ANVISA",
-  4: "UDI / GTIN",
-  5: "Concluído",
-};
+function buildFaseLabels(t: (k: string) => string): Record<FaseNum, string> {
+  return {
+  1: t("qualidade.faseLabels.1"),
+  2: t("qualidade.faseLabels.2"),
+  3: t("qualidade.faseLabels.3"),
+  4: t("qualidade.faseLabels.4"),
+  5: t("qualidade.faseLabels.5"),
+  };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  return new Date(iso).toLocaleDateString(i18n.t("qualidade.localeCode"), { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleString(i18n.t("qualidade.localeCode"), { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 function calcGTIN13Check(digits12: string): string {
@@ -147,6 +157,8 @@ function calcGTIN13Check(digits12: string): string {
 // ─── Barra de Progresso de Fase ───────────────────────────────────────────────
 
 function FaseProgress({ fase }: { fase: FaseNum }) {
+  const { t } = useTranslation();
+  const FASE_LABELS = buildFaseLabels(t);
   return (
     <div className="flex items-center gap-1">
       {([1, 2, 3, 4, 5] as FaseNum[]).map((f) => (
@@ -188,6 +200,7 @@ interface EditModalProps {
 }
 
 function EditModal({ device, onClose, onSaved }: EditModalProps) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     empresa_lf:             device.empresa_lf,
     empresa_afe:            device.empresa_afe,
@@ -215,11 +228,11 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
 
   function gerarGTIN() {
     const base = `${gtinPrefix}${gtinCompany.padEnd(4, "0").slice(0, 4)}${gtinProduct.padEnd(5, "0").slice(0, 5)}`;
-    if (base.length !== 12) { toast.error("Preencha os 3 campos para gerar o GTIN"); return; }
+    if (base.length !== 12) { toast.error(t("editModal.toastGtinFields")); return; }
     const check = calcGTIN13Check(base);
     const gtin = `${base}${check}`;
     setForm(f => ({ ...f, gtin, udi_di: f.udi_di || gtin }));
-    toast.success(`GTIN-13 gerado: ${gtin}`);
+    toast.success(t("editModal.toastGtinGenerated", { gtin }));
   }
 
   async function handleSave() {
@@ -241,8 +254,8 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
       siud_transmitido_em:    form.siud_transmitido_em ? new Date(form.siud_transmitido_em).toISOString() : null,
     }).eq("id", device.id);
     setSaving(false);
-    if (error) { toast.error("Erro ao salvar: " + error.message); return; }
-    toast.success("Dados de regularização atualizados!");
+    if (error) { toast.error(t("editModal.toastSaveError") + error.message); return; }
+    toast.success(t("editModal.toastSaved"));
     onSaved();
     onClose();
   }
@@ -310,17 +323,17 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                 faseAtual > 1 ? "bg-emerald-500 text-white" : "bg-violet-500 text-white")}>
                 {faseAtual > 1 ? <CheckCircle2 className="h-3 w-3" /> : "1"}
               </div>
-              <p className="text-[12px] font-semibold">Fase 1 — Pré-requisitos da empresa</p>
+              <p className="text-[12px] font-semibold">{t("editModal.phase1Title")}</p>
               <a href="https://www.gov.br/pt-br/servicos/solicitar-autorizacao-de-funcionamento-afe-dispositivos-medicos"
                 target="_blank" rel="noopener noreferrer"
                 className="ml-auto text-[10px] text-blue-500 hover:underline flex items-center gap-0.5">
-                Portal ANVISA <ExternalLink className="h-2.5 w-2.5" />
+                {t("editModal.anvisaPortal")} <ExternalLink className="h-2.5 w-2.5" />
               </a>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <Toggle value={form.empresa_lf}  onChange={v => setForm(f => ({ ...f, empresa_lf: v }))}  label="LF — Licença local" />
-              <Toggle value={form.empresa_afe} onChange={v => setForm(f => ({ ...f, empresa_afe: v }))} label="AFE — ANVISA" />
-              <Toggle value={form.empresa_bpf} onChange={v => setForm(f => ({ ...f, empresa_bpf: v }))} label="BPF — Fab." />
+              <Toggle value={form.empresa_lf}  onChange={v => setForm(f => ({ ...f, empresa_lf: v }))}  label={t("editModal.lfLabel")} />
+              <Toggle value={form.empresa_afe} onChange={v => setForm(f => ({ ...f, empresa_afe: v }))} label={t("editModal.afeLabel")} />
+              <Toggle value={form.empresa_bpf} onChange={v => setForm(f => ({ ...f, empresa_bpf: v }))} label={t("editModal.bpfLabel")} />
             </div>
           </section>
 
@@ -331,23 +344,23 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                 faseAtual > 2 ? "bg-emerald-500 text-white" : faseAtual === 2 ? "bg-violet-500 text-white" : "bg-muted/40 text-muted-foreground/40")}>
                 {faseAtual > 2 ? <CheckCircle2 className="h-3 w-3" /> : "2"}
               </div>
-              <p className="text-[12px] font-semibold">Fase 2 — Classificação de risco (RDC 751/2022)</p>
+              <p className="text-[12px] font-semibold">{t("editModal.phase2Title")}</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Classe de risco">
+              <Field label={t("editModal.riskClass")}>
                 <select
                   value={form.risk_class}
                   onChange={e => setForm(f => ({ ...f, risk_class: e.target.value }))}
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 >
-                  <option value="">Selecionar...</option>
-                  <option value="I">Classe I — Risco mínimo (Notificação)</option>
-                  <option value="II">Classe II — Risco médio (Notificação)</option>
-                  <option value="III">Classe III — Risco elevado (Registro)</option>
-                  <option value="IV">Classe IV — Risco máximo (Registro)</option>
+                  <option value="">{t("editModal.select")}</option>
+                  <option value="I">{t("editModal.classI")}</option>
+                  <option value="II">{t("editModal.classII")}</option>
+                  <option value="III">{t("editModal.classIII")}</option>
+                  <option value="IV">{t("editModal.classIV")}</option>
                 </select>
               </Field>
-              <Field label="Código de classificação">
+              <Field label={t("editModal.classCode")}>
                 <input
                   value={form.classification_code}
                   onChange={e => setForm(f => ({ ...f, classification_code: e.target.value }))}
@@ -363,8 +376,8 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                   : "bg-violet-500/8 text-violet-600 border-violet-500/20"
               )}>
                 {["I","II"].includes(form.risk_class)
-                  ? "✓ Notificação — formulário eletrônico no Solicita · Prazo: semanas"
-                  : "⚠ Registro — dossiê técnico IMDRF + possível certificação Inmetro · Prazo: meses a anos"
+                  ? t("editModal.notificationNote")
+                  : t("editModal.registrationNote")
                 }
               </p>
             )}
@@ -377,27 +390,27 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                 faseAtual > 3 ? "bg-emerald-500 text-white" : faseAtual === 3 ? "bg-violet-500 text-white" : "bg-muted/40 text-muted-foreground/40")}>
                 {faseAtual > 3 ? <CheckCircle2 className="h-3 w-3" /> : "3"}
               </div>
-              <p className="text-[12px] font-semibold">Fase 3 — Regularização ANVISA</p>
+              <p className="text-[12px] font-semibold">{t("editModal.phase3Title")}</p>
               <a href="https://solicita.anvisa.gov.br" target="_blank" rel="noopener noreferrer"
                 className="ml-auto text-[10px] text-blue-500 hover:underline flex items-center gap-0.5">
-                Solicita <ExternalLink className="h-2.5 w-2.5" />
+                {t("editModal.solicita")} <ExternalLink className="h-2.5 w-2.5" />
               </a>
             </div>
-            <Field label="Status no Solicita">
+            <Field label={t("editModal.solicitaStatus")}>
               <select
                 value={form.status_regularizacao}
                 onChange={e => setForm(f => ({ ...f, status_regularizacao: e.target.value as StatusReg }))}
                 className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
               >
-                <option value="pendente">Pendente — ainda não peticionado</option>
-                <option value="em_processo">Em processo — petição protocolada</option>
-                <option value="notificado">Notificado — notificação concedida</option>
-                <option value="registrado">Registrado — registro concedido</option>
-                <option value="cancelado">Cancelado</option>
+                <option value="pendente">{t("editModal.statusPendingOpt")}</option>
+                <option value="em_processo">{t("editModal.statusInProcessOpt")}</option>
+                <option value="notificado">{t("editModal.statusNotifiedOpt")}</option>
+                <option value="registrado">{t("editModal.statusRegisteredOpt")}</option>
+                <option value="cancelado">{t("editModal.statusCancelledOpt")}</option>
               </select>
             </Field>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Número do processo (Solicita)">
+              <Field label={t("editModal.processNumber")}>
                 <input
                   value={form.numero_processo_anvisa}
                   onChange={e => setForm(f => ({ ...f, numero_processo_anvisa: e.target.value }))}
@@ -405,7 +418,7 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </Field>
-              <Field label="Número de registro / notificação">
+              <Field label={t("editModal.registrationNumber")}>
                 <input
                   value={form.anvisa_registration}
                   onChange={e => setForm(f => ({ ...f, anvisa_registration: e.target.value }))}
@@ -413,13 +426,13 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </Field>
-              <Field label="Data de concessão">
+              <Field label={t("editModal.grantDate")}>
                 <input type="date" value={form.data_registro_anvisa}
                   onChange={e => setForm(f => ({ ...f, data_registro_anvisa: e.target.value }))}
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </Field>
-              <Field label="Validade (10 anos)">
+              <Field label={t("editModal.validity")}>
                 <input type="date" value={form.data_vencimento_anvisa}
                   onChange={e => setForm(f => ({ ...f, data_vencimento_anvisa: e.target.value }))}
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
@@ -433,7 +446,7 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                 className="flex items-center gap-1.5 text-[11px] text-blue-500 hover:underline"
               >
                 <ExternalLink className="h-3 w-3" />
-                Consultar no portal ANVISA
+                {t("editModal.checkAnvisaPortal")}
               </a>
             )}
           </section>
@@ -445,16 +458,16 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                 faseAtual > 4 ? "bg-emerald-500 text-white" : faseAtual === 4 ? "bg-violet-500 text-white" : "bg-muted/40 text-muted-foreground/40")}>
                 {faseAtual > 4 ? <CheckCircle2 className="h-3 w-3" /> : "4"}
               </div>
-              <p className="text-[12px] font-semibold">Fase 4 — Rastreabilidade UDI + GTIN</p>
+              <p className="text-[12px] font-semibold">{t("editModal.phase4Title")}</p>
               <a href="https://gs1br.org" target="_blank" rel="noopener noreferrer"
                 className="ml-auto text-[10px] text-blue-500 hover:underline flex items-center gap-0.5">
-                GS1 Brasil <ExternalLink className="h-2.5 w-2.5" />
+                {t("editModal.gs1Brazil")} <ExternalLink className="h-2.5 w-2.5" />
               </a>
             </div>
 
             {/* Gerador GTIN inline */}
             <div className="rounded-xl border border-border/30 bg-muted/10 p-3 space-y-2">
-              <p className="text-[11px] font-medium text-muted-foreground">Gerar GTIN-13 (prefixo + empresa + produto)</p>
+              <p className="text-[11px] font-medium text-muted-foreground">{t("editModal.generateGtin")}</p>
               <div className="flex gap-2">
                 <input value={gtinPrefix} onChange={e => setGtinPrefix(e.target.value.replace(/\D/g,"").slice(0,3))}
                   placeholder="789" maxLength={3}
@@ -470,24 +483,24 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                 />
                 <button type="button" onClick={gerarGTIN}
                   className="flex-1 h-8 rounded-lg bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-500 transition-colors">
-                  Gerar
+                  {t("editModal.generate")}
                 </button>
               </div>
-              <p className="text-[10px] text-muted-foreground/50">Brasil: 789 ou 790 · Empresa: 4 dígitos · Produto: 5 dígitos</p>
+              <p className="text-[10px] text-muted-foreground/50">{t("editModal.gtinHint")}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <Field label="GTIN-13 / GTIN-14">
+              <Field label={t("editModal.gtin1314")}>
                 <input value={form.gtin}
                   onChange={e => setForm(f => ({ ...f, gtin: e.target.value.replace(/\D/g,"").slice(0,14) }))}
                   placeholder="7890001000012"
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </Field>
-              <Field label="UDI-DI">
+              <Field label={t("editModal.udiDi")}>
                 <input value={form.udi_di}
                   onChange={e => setForm(f => ({ ...f, udi_di: e.target.value }))}
-                  placeholder="Igual ao GTIN (padrão GS1)"
+                  placeholder={t("editModal.udiDiPlaceholder")}
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </Field>
@@ -495,8 +508,8 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
             <div className="grid grid-cols-2 gap-2">
               <Toggle value={form.rotulo_udi_ok}
                 onChange={v => setForm(f => ({ ...f, rotulo_udi_ok: v }))}
-                label="Rótulo com código de barras UDI" />
-              <Field label="Transmitido ao SIUD em">
+                label={t("editModal.labelBarcode")} />
+              <Field label={t("editModal.transmittedToSiud")}>
                 <input type="date" value={form.siud_transmitido_em}
                   onChange={e => setForm(f => ({ ...f, siud_transmitido_em: e.target.value }))}
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
@@ -511,12 +524,12 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
           <div className="flex gap-2">
             <button type="button" onClick={onClose}
               className="flex-1 h-10 rounded-xl border border-border/30 text-[12px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
-              Cancelar
+              {t("editModal.cancel")}
             </button>
             <button type="button" onClick={handleSave} disabled={saving}
               className="flex-1 h-10 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Salvar
+              {t("editModal.save")}
             </button>
           </div>
         </div>
@@ -530,6 +543,8 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
 function PipelineCard({
   device, isAdmin, onEdit,
 }: { device: DeviceReg; isAdmin: boolean; onEdit: (d: DeviceReg) => void }) {
+  const { t } = useTranslation();
+  const STATUS_CONFIG = buildStatusConfig(t);
   const st = STATUS_CONFIG[device.status_regularizacao];
   const diasVencer = device.dias_ate_vencer;
   const venceBreve = diasVencer !== null && diasVencer < 365;
@@ -620,13 +635,13 @@ function PipelineCard({
           {device.fase_atual === 3 && (
             <a href="https://solicita.anvisa.gov.br" target="_blank" rel="noopener noreferrer"
               className="text-[11px] text-blue-500 hover:underline flex items-center gap-1">
-              Protocolar no Solicita <ExternalLink className="h-2.5 w-2.5" />
+              Protocolar no {t("editModal.solicita")} <ExternalLink className="h-2.5 w-2.5" />
             </a>
           )}
           {device.fase_atual === 4 && (
             <a href="https://gs1br.org" target="_blank" rel="noopener noreferrer"
               className="text-[11px] text-blue-500 hover:underline flex items-center gap-1">
-              Obter GTIN na GS1 Brasil <ExternalLink className="h-2.5 w-2.5" />
+              Obter GTIN na {t("editModal.gs1Brazil")} <ExternalLink className="h-2.5 w-2.5" />
             </a>
           )}
         </div>
@@ -935,6 +950,8 @@ function LoteRow({ lote }: { lote: LoteInfo }) {
 }
 
 function FaseCard({ fase }: { fase: FaseInfo }) {
+  const { t } = useTranslation();
+  const FASE_CONFIG = buildFaseConfig(t);
   const cfg = FASE_CONFIG[fase.fase];
   return (
     <div className={cn("rounded-lg border overflow-hidden", cfg.border)}>
@@ -966,6 +983,8 @@ function FaseCard({ fase }: { fase: FaseInfo }) {
 }
 
 function PecaCard({ peca }: { peca: PecaResult }) {
+  const { t } = useTranslation();
+  const FASE_CONFIG = buildFaseConfig(t);
   const totalQty = peca.fases.reduce((s, f) => s + f.quantity, 0);
   return (
     <div className="rounded-xl border border-border/40 bg-card overflow-hidden hover:border-border/70 transition-colors">
@@ -976,8 +995,8 @@ function PecaCard({ peca }: { peca: PecaResult }) {
             <span className="text-[10px] text-muted-foreground/60 font-mono">{peca.reference}</span>
             {peca.udi_di && <span className="flex items-center gap-0.5 text-[9px] text-violet-600 font-mono"><Hash className="h-2.5 w-2.5" />{peca.udi_di}</span>}
             {peca.anvisa_registration && <span className="flex items-center gap-0.5 text-[9px] text-blue-600"><ShieldCheck className="h-2.5 w-2.5" />{peca.anvisa_registration}</span>}
-            {peca.em_retrabalho && <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">Retrab.</span>}
-            {peca.tem_reservas && <span className="text-[9px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">Reserv.</span>}
+            {peca.em_retrabalho && <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">{t("pecaCard.reworkAbbrev")}</span>}
+            {peca.tem_reservas && <span className="text-[9px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">{t("pecaCard.reservedAbbrev")}</span>}
           </div>
         </div>
         <span className="text-[13px] font-bold tabular-nums text-foreground shrink-0">{totalQty.toLocaleString("pt-BR")}<span className="text-[9px] font-normal text-muted-foreground/60 ml-0.5">un.</span></span>
@@ -990,6 +1009,7 @@ function PecaCard({ peca }: { peca: PecaResult }) {
 }
 
 const RastreamentoPanel = memo(function RastreamentoPanel() {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PecaResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1004,7 +1024,7 @@ const RastreamentoPanel = memo(function RastreamentoPanel() {
     try {
       const { results: res } = await searchPecas(trimmed);
       setResults(res); setSearched(true);
-    } catch { setError("Erro ao pesquisar."); }
+    } catch { setError(t("rastreamentoPanel.toastSearchError")); }
     finally { setLoading(false); }
   }, 400);
 
@@ -1022,7 +1042,7 @@ const RastreamentoPanel = memo(function RastreamentoPanel() {
           value={query}
           onChange={v => handleChange(v)}
           onSearch={v => { setQuery(v); debouncedSearch(v); }}
-          placeholder="Modelo, referência, lote (ex: 010125-01), UDI-DI ou ANVISA..."
+          placeholder={t("rastreamentoPanel.searchPlaceholder")}
           height="h-10"
         />
         {loading && (
@@ -1041,10 +1061,10 @@ const RastreamentoPanel = memo(function RastreamentoPanel() {
         results.length === 0
           ? <div className="rounded-xl border border-border/30 bg-muted/10 py-8 text-center">
               <Package className="h-7 w-7 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-[13px] text-muted-foreground/60">Nenhuma peça encontrada</p>
+              <p className="text-[13px] text-muted-foreground/60">{t("rastreamentoPanel.noPieceFound")}</p>
             </div>
           : <div className="space-y-2">
-              <p className="text-[10px] text-muted-foreground/50 px-0.5">{results.length} resultado{results.length !== 1 ? "s" : ""}</p>
+              <p className="text-[10px] text-muted-foreground/50 px-0.5">{t("rastreamentoPanel.results", { plural: results.length !== 1 ? "s" : "" })}</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {results.map(p => <PecaCard key={p.device_id} peca={p} />)}
               </div>
@@ -1052,7 +1072,7 @@ const RastreamentoPanel = memo(function RastreamentoPanel() {
       )}
       {!searched && !loading && !query && (
         <p className="text-[11px] text-muted-foreground/40 text-center py-3">
-          Digite o nome, referência, lote ou código
+          {t("rastreamentoPanel.typeToSearch")}
         </p>
       )}
     </div>
@@ -1062,6 +1082,8 @@ const RastreamentoPanel = memo(function RastreamentoPanel() {
 // ─── Aba: Histórico ───────────────────────────────────────────────────────────
 
 const HistoricoPanel = memo(function HistoricoPanel() {
+  const { t } = useTranslation();
+  const FASE_CONFIG = buildFaseConfig(t);
   const { isAdmin } = useAuth();
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1099,22 +1121,22 @@ const HistoricoPanel = memo(function HistoricoPanel() {
       <div className="rounded-2xl border border-border/40 bg-card overflow-hidden">
         <div className="px-4 py-3 border-b border-border/30 flex items-center gap-3 flex-wrap">
           <History className="h-4 w-4 text-amber-500 shrink-0" />
-          <p className="text-sm font-semibold">Histórico de Movimentações</p>
+          <p className="text-sm font-semibold">{t("historicoPanel.movementHistory")}</p>
           <div className="ml-auto flex items-center gap-2 flex-wrap">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filtrar..."
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("historicoPanel.filterPlaceholder")}
               className="h-8 w-36 rounded-lg border border-border/50 bg-background px-3 text-[12px] focus:outline-none focus:ring-2 focus:ring-amber-500/30" />
             <select value={faseFilter} onChange={e => setFaseFilter(e.target.value as typeof faseFilter)}
               className="h-8 rounded-lg border border-border/50 bg-background px-2 text-[12px] focus:outline-none">
-              <option value="all">Todas as fases</option>
-              <option value="intermediaria">Intermediário</option>
-              <option value="expedicao">Expedição</option>
-              <option value="retrabalho">Retrabalho</option>
+              <option value="all">{t("historicoPanel.allPhases")}</option>
+              <option value="intermediaria">{t("qualidade.fase.intermediaria")}</option>
+              <option value="expedicao">{t("qualidade.fase.expedicao")}</option>
+              <option value="retrabalho">{t("qualidade.fase.retrabalho")}</option>
             </select>
             <select value={tipoFilter} onChange={e => setTipoFilter(e.target.value as typeof tipoFilter)}
               className="h-8 rounded-lg border border-border/50 bg-background px-2 text-[12px] focus:outline-none">
-              <option value="all">Entrada e Saída</option>
-              <option value="entrada">Entradas</option>
-              <option value="saida">Saídas</option>
+              <option value="all">{t("historicoPanel.entryAndExit")}</option>
+              <option value="entrada">{t("historicoPanel.entries")}</option>
+              <option value="saida">{t("historicoPanel.exits")}</option>
             </select>
             <button onClick={load} className="h-8 w-8 rounded-lg border border-border/40 flex items-center justify-center text-muted-foreground hover:bg-muted/40 transition-colors">
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
@@ -1122,8 +1144,8 @@ const HistoricoPanel = memo(function HistoricoPanel() {
             {isAdmin && (
               <ClearHistoryButton
                 rpc="admin_clear_stock_movements"
-                confirmTitle="Apagar histórico de movimentações?"
-                confirmDescription="Apaga todo o histórico de entradas e saídas de estoque. As quantidades atuais e as peças cadastradas são mantidas."
+                confirmTitle={t("historicoPanel.clearHistTitle")}
+                confirmDescription={t("historicoPanel.clearHistDesc")}
                 onCleared={load}
               />
             )}
@@ -1132,7 +1154,7 @@ const HistoricoPanel = memo(function HistoricoPanel() {
         {loading ? (
           <div className="p-4 space-y-2">{[...Array(6)].map((_, i) => <div key={i} className="h-12 rounded-xl bg-muted/30 animate-pulse" />)}</div>
         ) : filtered.length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground/60">Nenhuma movimentação encontrada</div>
+          <div className="py-10 text-center text-sm text-muted-foreground/60">{t("historicoPanel.noMovementFound")}</div>
         ) : (
           <div className="divide-y divide-border/20">
             {filtered.map(m => {
@@ -1168,11 +1190,11 @@ const HistoricoPanel = memo(function HistoricoPanel() {
         {!loading && movements.length === limit && (
           <div className="px-4 py-3 border-t border-border/20">
             <button onClick={() => setLimit(l => l + 50)} className="w-full h-9 rounded-xl border border-border/40 text-[12px] text-muted-foreground hover:bg-muted/30 transition-colors">
-              Carregar mais
+              {t("historicoPanel.loadMore")}
             </button>
           </div>
         )}
-        {!loading && <div className="px-4 py-2 border-t border-border/20 bg-muted/10"><p className="text-[10px] text-muted-foreground/50">{filtered.length} movimentações exibidas</p></div>}
+        {!loading && <div className="px-4 py-2 border-t border-border/20 bg-muted/10"><p className="text-[10px] text-muted-foreground/50">{filtered.length} {t("historicoPanel.movementsShown")}</p></div>}
       </div>
     </div>
   );
@@ -1182,7 +1204,16 @@ const HistoricoPanel = memo(function HistoricoPanel() {
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function Qualidade() {
-  const [activeView, setActiveView] = useState<QualidadeView>("pipeline");
+  const { t, i18n } = useTranslation();
+  // O pipeline de regularização ANVISA (notificação/registro, RDC 751/2022,
+  // portal Solicita) e a integração GS1 (API GS1 Brasil, CNP, NCM) são
+  // processos/integrações exclusivamente brasileiros — sem equivalente
+  // direto em outros países. Fora do Brasil essas abas ficam ocultas,
+  // igual ao módulo fiscal NF-e/SEFAZ.
+  const isBrazilMarket = i18n.language.split("-")[0] === "pt";
+  const TABS = buildTabs(t).filter(tab => isBrazilMarket || (tab.id !== "pipeline" && tab.id !== "gs1"));
+  const FASE_CONFIG = buildFaseConfig(t);
+  const [activeView, setActiveView] = useState<QualidadeView>(isBrazilMarket ? "pipeline" : "rastreamento");
 
   return (
     <div className="flex flex-col h-full">
@@ -1192,8 +1223,10 @@ export default function Qualidade() {
             <ShieldCheck className="h-5 w-5 text-violet-500" />
           </div>
           <div>
-            <h1 className="text-[15px] font-bold leading-tight">Qualidade</h1>
-            <p className="text-[11px] text-muted-foreground/60">Pipeline ANVISA · Rastreabilidade · Histórico · GS1</p>
+            <h1 className="text-[15px] font-bold leading-tight">{t("qualidadeMain.title")}</h1>
+            <p className="text-[11px] text-muted-foreground/60">
+              {isBrazilMarket ? t("qualidadeMain.subtitleBR") : t("qualidadeMain.subtitleOther")}
+            </p>
           </div>
         </div>
         <PageNav tabs={TABS} activeTab={activeView} onTabChange={setActiveView} />

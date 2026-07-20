@@ -8,6 +8,7 @@ import { StockGlobalSearch } from "@/components/stock/StockGlobalSearch";
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   items: StockItem[];
@@ -62,6 +63,7 @@ interface EstoqueBaixoModalProps {
 }
 
 function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
+  const { t } = useTranslation();
   if (!open) return null;
 
   return (
@@ -76,7 +78,7 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
           <div className="flex items-center gap-2">
             <TrendingDown className="h-4 w-4 text-warning" />
-            <p className="text-sm font-semibold">Lotes com Estoque Baixo na Expedição</p>
+            <p className="text-sm font-semibold">{t("stockDashboard.lowStockTitle")}</p>
           </div>
           <button
             onClick={onClose}
@@ -89,7 +91,7 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
         <div className="max-h-96 overflow-y-auto divide-y divide-border/20">
           {lotes.length === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground/60">
-              Nenhum lote com estoque baixo
+              {t("stockDashboard.noLowStockLots")}
             </div>
           ) : (
             lotes.map((lote, idx) => (
@@ -99,7 +101,7 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
                   "text-sm font-bold tabular-nums px-2.5 py-0.5 rounded-lg",
                   lote.quantity === 0 ? "text-red-500 bg-red-500/10" : "text-warning bg-warning/10"
                 )}>
-                  {lote.quantity} un.
+                  {lote.quantity} {t("stockDashboard.units")}
                 </span>
               </div>
             ))
@@ -108,7 +110,7 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
 
         <div className="px-5 py-3 border-t border-border/40 bg-muted/10">
           <p className="text-[11px] text-muted-foreground/60">
-            {lotes.length} {lotes.length === 1 ? "lote abaixo" : "lotes abaixo"} de 100 unidades na expedição (incluindo zerados)
+            {lotes.length} {lotes.length === 1 ? t("stockDashboard.lotsBelowSingular") : t("stockDashboard.lotsBelowPlural")} {t("stockDashboard.lotsBelowSuffix")}
           </p>
         </div>
       </div>
@@ -117,6 +119,7 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
 }
 
 export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
+  const { t } = useTranslation();
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [movLoading, setMovLoading] = useState(true);
   const [pedidosSeparando, setPedidosSeparando] = useState(0);
@@ -135,8 +138,8 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
     if (lotesBaixo.length > 0 && !alertedRef.current) {
       alertedRef.current = true;
       toast.warning(
-        `${lotesBaixo.length} ${lotesBaixo.length === 1 ? "produto" : "produtos"} com estoque baixo na expedição.`,
-        { duration: 6000, action: { label: "Ver", onClick: () => onEstoqueBaixo?.() } }
+        t("stockDashboard.lowStockToast", { count: lotesBaixo.length, noun: lotesBaixo.length === 1 ? t("stockDashboard.productSingular") : t("stockDashboard.productPlural") }),
+        { duration: 6000, action: { label: t("stockDashboard.viewAction"), onClick: () => onEstoqueBaixo?.() } }
       );
     }
   }, [lotesBaixo, onEstoqueBaixo]);
@@ -323,8 +326,8 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
       <div className="rounded-2xl border border-border/40 overflow-hidden">
         <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
           <Package className="h-4 w-4 text-muted-foreground" />
-          <p className="text-sm font-semibold">Pesquisa Geral do Estoque</p>
-          <span className="text-[10px] text-muted-foreground/50 ml-auto">Localização · Lotes · Reservas · Retrabalho</span>
+          <p className="text-sm font-semibold">{t("stockDashboard.globalSearchTitle")}</p>
+          <span className="text-[10px] text-muted-foreground/50 ml-auto">{t("stockDashboard.globalSearchSubtitle")}</span>
         </div>
         <div className="p-4">
           <StockGlobalSearch />
@@ -335,46 +338,46 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
         {/* Card 1 — Total de Peças na Expedição */}
         <KpiCard
           icon={Package}
-          label="Total de Peças"
-          value={totalExpedicao.toLocaleString("pt-BR")}
+          label={t("stockDashboard.totalPieces")}
+          value={totalExpedicao.toLocaleString(t("stockDashboard.localeCode"))}
           color="text-primary"
           bg="bg-primary/5"
           border="border-primary/20"
-          description={`${totalTipos} tipos · ${lotesExpedicao} lotes na expedição`}
+          description={t("stockDashboard.typesLots", { types: totalTipos, lots: lotesExpedicao })}
         />
 
         {/* Card 2 — Peças em Retrabalho */}
         <KpiCard
           icon={Wrench}
-          label="Peças em Retrabalho"
-          value={totalRetrabalho.toLocaleString("pt-BR")}
+          label={t("stockDashboard.reworkPieces")}
+          value={totalRetrabalho.toLocaleString(t("stockDashboard.localeCode"))}
           color="text-amber-500"
           bg="bg-amber-500/5"
           border="border-amber-500/20"
-          description={`${lotesRetrabalho} ${lotesRetrabalho === 1 ? "lote" : "lotes"} em retrabalho`}
+          description={`${lotesRetrabalho} ${lotesRetrabalho === 1 ? t("stockDashboard.reworkLotSingular") : t("stockDashboard.reworkLotPlural")} ${t("stockDashboard.reworkLotSuffix")}`}
         />
 
         {/* Card 3 — Estoque Baixo (clicável) */}
         <KpiCard
           icon={TrendingDown}
-          label="Estoque Baixo"
+          label={t("stockDashboard.lowStock")}
           value={lotesBaixo.length}
           color="text-warning"
           bg="bg-warning/5"
           border="border-warning/20"
-          description="Lotes na expedição zerados ou abaixo de 100 un."
+          description={t("stockDashboard.lowStockDesc")}
           onClick={() => setModalBaixoOpen(true)}
         />
 
         {/* Card 4 — Pedidos Separando (inalterado) */}
         <KpiCard
           icon={PackageCheck}
-          label="Pedidos Separando"
+          label={t("stockDashboard.ordersPicking")}
           value={pedidosSeparando}
           color="text-blue-500"
           bg="bg-blue-500/5"
           border="border-blue-500/20"
-          description="Em separação no estoque"
+          description={t("stockDashboard.ordersPickingDesc")}
         />
       </div>
 
@@ -390,9 +393,9 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
           <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm font-semibold">Distribuição de Estoque por Produto</p>
+              <p className="text-sm font-semibold">{t("stockDashboard.distributionTitle")}</p>
             </div>
-            <span className="text-[11px] text-muted-foreground/60">Top {giroData.length} produtos · Expedição</span>
+            <span className="text-[11px] text-muted-foreground/60">{t("stockDashboard.topProducts", { count: giroData.length })}</span>
           </div>
           <div className="p-4">
             <ResponsiveContainer width="100%" height={200}>
@@ -408,7 +411,7 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
                     background: "hsl(var(--card))", border: "1px solid hsl(var(--border))",
                     borderRadius: 12, fontSize: 12,
                   }}
-                  formatter={(v: number) => [`${v}% do estoque`, "Participação"]}
+                  formatter={(v: number) => [`${v}` + t("stockDashboard.shareOfStock"), t("stockDashboard.participation")]}
                 />
                 <Bar dataKey="giro" radius={[6, 6, 0, 0]}>
                   {giroData.map((entry, i) => (
@@ -425,7 +428,7 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
       <div className="rounded-2xl border border-border/40 overflow-hidden">
         <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
           <Activity className="h-4 w-4 text-muted-foreground" />
-          <p className="text-sm font-semibold">Últimas Movimentações</p>
+          <p className="text-sm font-semibold">{t("stockDashboard.lastMovements")}</p>
         </div>
         {movLoading ? (
           <div className="p-4 space-y-2">
@@ -434,7 +437,7 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
             ))}
           </div>
         ) : movements.length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground/60">Nenhuma movimentação registrada</div>
+          <div className="py-10 text-center text-sm text-muted-foreground/60">{t("stockDashboard.noMovements")}</div>
         ) : (
           <div className="divide-y divide-border/20">
             {movements.map(m => {
@@ -452,16 +455,16 @@ export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
                   <div className="flex-1 min-w-0">
                     <p className="text-[12px] font-medium truncate">{m.device_model}</p>
                     <p className="text-[10px] text-muted-foreground/60">
-                      {m.user_display_name ?? "—"} · {new Date(m.created_at).toLocaleDateString("pt-BR")}
+                      {m.user_display_name ?? "—"} · {new Date(m.created_at).toLocaleDateString(t("stockDashboard.localeCode"))}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-primary" : "text-success")}>
                       {isEntrada ? "+" : "-"}{m.quantity}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/50">un.</span>
+                    <span className="text-[10px] text-muted-foreground/50">{t("stockDashboard.units")}</span>
                     {m.fase === "expedicao" && (
-                      <span title="Expedição">
+                      <span title={t("stockDashboard.shipping")}>
                         <Truck className="h-3 w-3 text-muted-foreground/40" />
                       </span>
                     )}

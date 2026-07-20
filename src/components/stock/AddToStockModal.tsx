@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { addDeviceToStock } from "@/hooks/useStock";
 import type { Device } from "@/types/device";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   open: boolean;
@@ -24,6 +25,7 @@ interface Props {
 type DbDevice = Device & { id: string };
 
 export function AddToStockModal({ open, onClose, onSuccess }: Props) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<DbDevice[]>([]);
   const [searching, setSearching] = useState(false);
@@ -60,10 +62,10 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
     const result = await addDeviceToStock(device.id);
     setAdding(null);
     if (result.ok) {
-      toast.success("Peça adicionada ao estoque", { description: device.model });
+      toast.success(t("addToStockModal.toastAdded"), { description: device.model });
       onSuccess();
     } else {
-      toast.error("Erro ao adicionar peça. Tente novamente.");
+      toast.error(t("addToStockModal.toastAddError"));
     }
   }
 
@@ -82,11 +84,11 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                 <Plus className="h-4 w-4 text-primary" />
-                Adicionar Peça ao Estoque
+                {t("addToStockModal.title")}
               </DialogTitle>
             </DialogHeader>
             <p className="text-xs text-muted-foreground mt-1">
-              Pesquise pelo catálogo de dispositivos
+              {t("addToStockModal.subtitle")}
             </p>
           </div>
         </div>
@@ -96,7 +98,7 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
             value={search}
             onChange={v => handleChange(v)}
             onSearch={v => handleChange(v)}
-            placeholder="Modelo, referência, UDI ou bipe o código..."
+            placeholder={t("addToStockModal.searchPlaceholder")}
             height="h-10"
             autoFocus
             inputClass="bg-muted/20"
@@ -112,12 +114,12 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
           )}
           {!searching && search && results.length === 0 && (
             <div className="text-center py-8 text-sm text-muted-foreground">
-              Nenhum dispositivo encontrado
+              {t("addToStockModal.noDeviceFound")}
             </div>
           )}
           {!searching && !search && (
             <div className="text-center py-8 text-sm text-muted-foreground">
-              Digite para buscar no catálogo
+              {t("addToStockModal.typeToSearch")}
             </div>
           )}
           {results.map((device) => (
@@ -136,7 +138,7 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
                     {device.classification_code}
                   </Badge>
                   {device.sterile && (
-                    <Badge className="text-[9px] px-1.5 py-0 bg-success/10 text-success border-0">Estéril</Badge>
+                    <Badge className="text-[9px] px-1.5 py-0 bg-success/10 text-success border-0">{t("deviceCard.sterile")}</Badge>
                   )}
                 </div>
               </div>
@@ -146,7 +148,7 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
                 className="h-8 w-8 p-0 rounded-xl shrink-0 border-primary/30 hover:bg-primary/10 hover:border-primary"
                 onClick={() => handleAdd(device)}
                 disabled={adding === device.id}
-                title="Adicionar ao estoque"
+                title={t("addToStockModal.addTitle")}
               >
                 {adding === device.id ? (
                   <div className="h-3.5 w-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -160,7 +162,7 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
 
         <div className="px-5 pb-5">
           <Button variant="outline" className="w-full h-10 rounded-xl" onClick={handleClose}>
-            Fechar
+            {t("addToStockModal.close")}
           </Button>
         </div>
       </DialogContent>

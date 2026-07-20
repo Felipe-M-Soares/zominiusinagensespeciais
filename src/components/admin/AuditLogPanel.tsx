@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import { Search, RefreshCw, Shield, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface AuditEntry {
   id: string;
@@ -34,14 +35,15 @@ function getActionStyle(action: string) {
   return "text-muted-foreground bg-muted/50";
 }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", {
+function fmtDate(iso: string, locale: string) {
+  return new Date(iso).toLocaleString(locale, {
     day: "2-digit", month: "2-digit", year: "2-digit",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
 }
 
 export function AuditLogPanel() {
+  const { t } = useTranslation();
   const [entries, setEntries]     = useState<AuditEntry[]>([]);
   const [loading, setLoading]     = useState(false);
   const [search, setSearch]       = useState("");
@@ -83,13 +85,13 @@ export function AuditLogPanel() {
   function handleExport() {
     const header = "data,usuario,acao,entidade,entity_id\n";
     const rows = filtered.map((e) =>
-      [fmtDate(e.created_at), e.user_name ?? "", e.action, e.entity_type ?? "", e.entity_id ?? ""].join(",")
+      [fmtDate(e.created_at, t("auditLogPanel.localeCode")), e.user_name ?? "", e.action, e.entity_type ?? "", e.entity_id ?? ""].join(",")
     ).join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `audit-log-${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.csv`;
+    a.download = `audit-log-${new Date().toLocaleDateString(t("auditLogPanel.localeCode")).replace(/\//g, "-")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -105,7 +107,7 @@ export function AuditLogPanel() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por usuário, ação..."
+            placeholder={t("auditLogPanel.searchPlaceholder")}
             className="w-full pl-8 pr-3 h-8 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
@@ -114,7 +116,7 @@ export function AuditLogPanel() {
           onChange={(e) => setFilter(e.target.value)}
           className="h-8 px-2 text-xs rounded-lg border border-border bg-background focus:outline-none"
         >
-          <option value="">Todas as ações</option>
+          <option value="">{t("auditLogPanel.allActions")}</option>
           {uniqueActions.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
         <button
@@ -124,7 +126,7 @@ export function AuditLogPanel() {
           className="h-8 px-3 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted/40 transition-colors"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-          Atualizar
+          {t("auditLogPanel.refresh")}
         </button>
         <button
           type="button"
@@ -132,14 +134,14 @@ export function AuditLogPanel() {
           className="h-8 px-3 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted/40 transition-colors"
         >
           <Download className="h-3.5 w-3.5" />
-          Exportar CSV
+          {t("auditLogPanel.exportCsv")}
         </button>
       </div>
 
       {/* Contador */}
       <p className="text-[11px] text-muted-foreground">
-        {filtered.length} {filtered.length === 1 ? "registro" : "registros"}
-        {filtered.length < entries.length && ` (de ${entries.length})`}
+        {filtered.length} {filtered.length === 1 ? t("auditLogPanel.recordSingular") : t("auditLogPanel.recordPlural")}
+        {filtered.length < entries.length && ` ${t("auditLogPanel.ofTotal", { total: entries.length })}`}
       </p>
 
       {/* Lista */}
@@ -152,7 +154,7 @@ export function AuditLogPanel() {
       {!loading && filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
           <Shield className="h-8 w-8 opacity-20" />
-          <p className="text-sm">Nenhum registro encontrado</p>
+          <p className="text-sm">{t("auditLogPanel.noRecordsFound")}</p>
         </div>
       )}
 
@@ -171,13 +173,13 @@ export function AuditLogPanel() {
                 {e.action}
               </span>
               <span className="text-[12px] font-medium text-foreground truncate flex-1">
-                {e.user_name ?? e.user_id?.slice(0, 8) ?? "sistema"}
+                {e.user_name ?? e.user_id?.slice(0, 8) ?? t("auditLogPanel.system")}
               </span>
               {e.entity_type && (
                 <span className="text-[11px] text-muted-foreground shrink-0">{e.entity_type}</span>
               )}
               <span className="text-[10px] text-muted-foreground/60 shrink-0 ml-auto">
-                {fmtDate(e.created_at)}
+                {fmtDate(e.created_at, t("auditLogPanel.localeCode"))}
               </span>
             </button>
 

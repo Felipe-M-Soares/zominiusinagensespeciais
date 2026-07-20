@@ -3,7 +3,7 @@
  * Armazena dados localmente quando sem conexão e sincroniza ao reconectar
  */
 
-const DB_NAME = "concept_producao_offline";
+const DB_NAME = "zomini_producao_offline";
 const DB_VERSION = 2;
 
 export type OfflineTable =

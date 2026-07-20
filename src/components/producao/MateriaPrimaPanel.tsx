@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 
 type MovimentoTipo = "entrada"|"saida"|"ajuste";
 
@@ -34,6 +35,7 @@ interface Movimento {
 }
 
 function MovimentoModal({open,materias,onClose,onSaved}:{open:boolean;materias:MateriaPrima[];onClose:()=>void;onSaved:(m:Movimento,delta:number,mpId:string)=>void}) {
+  const { t } = useTranslation();
   const [form,setForm]=useState({materia_prima_id:"",tipo:"saida" as MovimentoTipo,quantidade:"",lote:"",operador:"",ordem_producao:"",observacoes:""});
   const [saving,setSaving]=useState(false);
   const {saveWithFallback}=useOfflineSync();
@@ -42,10 +44,10 @@ function MovimentoModal({open,materias,onClose,onSaved}:{open:boolean;materias:M
   if(!open) return null;
 
   async function save() {
-    if(!form.materia_prima_id||!form.quantidade||!form.operador){toast.error("Preencha os campos obrigatórios");return;}
+    if(!form.materia_prima_id||!form.quantidade||!form.operador){toast.error(t("materiaPrimaPanel.toastRequiredFields"));return;}
     const mp=materias.find(m=>m.id===form.materia_prima_id)!;
     const qtd=Number(form.quantidade);
-    if(form.tipo==="saida"&&qtd>mp.estoque_atual){toast.error("Quantidade insuficiente em estoque!");return;}
+    if(form.tipo==="saida"&&qtd>mp.estoque_atual){toast.error(t("materiaPrimaPanel.toastInsufficientStock"));return;}
     setSaving(true);
     const id=crypto.randomUUID();
     const mov:Movimento={id,materia_prima_id:form.materia_prima_id,materia_prima_desc:mp.descricao,
@@ -53,7 +55,7 @@ function MovimentoModal({open,materias,onClose,onSaved}:{open:boolean;materias:M
       ordem_producao:form.ordem_producao||undefined,observacoes:form.observacoes||undefined,
       user_id:user?.id,created_at:new Date().toISOString()};
     const {error,savedOffline}=await saveWithFallback("movimentos_mp_producao","movimentos_mp","INSERT",mov);
-    if(error){setSaving(false);toast.error("Erro ao registrar movimento");return;}
+    if(error){setSaving(false);toast.error(t("materiaPrimaPanel.toastRegisterError"));return;}
 
     // Atualiza estoque
     const delta=form.tipo==="saida"?-qtd:form.tipo==="entrada"?qtd:0;
@@ -64,38 +66,38 @@ function MovimentoModal({open,materias,onClose,onSaved}:{open:boolean;materias:M
     await saveWithFallback("materias_primas_producao","materias_primas","UPDATE",mpUpdated);
 
     setSaving(false);
-    toast.success(savedOffline?"Salvo offline":"Movimento registrado!");
+    toast.success(savedOffline?t("materiaPrimaPanel.toastSavedOffline"):t("materiaPrimaPanel.toastRegistered"));
     onSaved(mov,delta,mp.id);onClose();
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4">
-        <div className="flex items-center justify-between"><h3 className="font-semibold">Movimentação de MP</h3><button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button></div>
+        <div className="flex items-center justify-between"><h3 className="font-semibold">{t("materiaPrimaPanel.movementTitle")}</h3><button onClick={onClose} aria-label={t("materiaPrimaPanel.close")}><X className="h-4 w-4"/></button></div>
         <div className="space-y-3">
-          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Matéria-Prima *</label>
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{t("materiaPrimaPanel.rawMaterial")}</label>
             <select value={form.materia_prima_id} onChange={e=>setForm(p=>({...p,materia_prima_id:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
-              <option value="">Selecione...</option>{materias.map(m=><option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
+              <option value="">{t("materiaPrimaPanel.select")}</option>{materias.map(m=><option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
             </select>
           </div>
           <div className="flex gap-2">
-            {(["entrada","saida","ajuste"] as MovimentoTipo[]).map(t=>(
-              <button key={t} onClick={()=>setForm(p=>({...p,tipo:t}))}
-                className={cn("flex-1 h-9 rounded-lg border text-sm transition-colors capitalize",form.tipo===t?"border-primary bg-primary/10 text-primary":"border-input hover:bg-muted/30")}>
-                {t==="entrada"?"Entrada":t==="saida"?"Saída":"Ajuste"}
+            {(["entrada","saida","ajuste"] as MovimentoTipo[]).map(tp=>(
+              <button key={tp} onClick={()=>setForm(p=>({...p,tipo:tp}))}
+                className={cn("flex-1 h-9 rounded-lg border text-sm transition-colors capitalize",form.tipo===tp?"border-primary bg-primary/10 text-primary":"border-input hover:bg-muted/30")}>
+                {tp==="entrada"?t("materiaPrimaPanel.entry"):tp==="saida"?t("materiaPrimaPanel.exit"):t("materiaPrimaPanel.adjustment")}
               </button>
             ))}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade *</label><Input type="number" min="0.001" step="0.001" value={form.quantidade} onChange={e=>setForm(p=>({...p,quantidade:e.target.value}))}/></div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Lote</label><Input value={form.lote} onChange={e=>setForm(p=>({...p,lote:e.target.value}))} placeholder="Opcional"/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{t("materiaPrimaPanel.quantity")}</label><Input type="number" min="0.001" step="0.001" value={form.quantidade} onChange={e=>setForm(p=>({...p,quantidade:e.target.value}))}/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{t("materiaPrimaPanel.lot")}</label><Input value={form.lote} onChange={e=>setForm(p=>({...p,lote:e.target.value}))} placeholder={t("materiaPrimaPanel.optional")}/></div>
           </div>
-          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Operador *</label><Input value={form.operador} onChange={e=>setForm(p=>({...p,operador:e.target.value}))} placeholder="Nome do operador"/></div>
-          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Ordem de produção</label><Input value={form.ordem_producao} onChange={e=>setForm(p=>({...p,ordem_producao:e.target.value}))} placeholder="Opcional"/></div>
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{t("materiaPrimaPanel.operator")}</label><Input value={form.operador} onChange={e=>setForm(p=>({...p,operador:e.target.value}))} placeholder={t("materiaPrimaPanel.operatorPlaceholder")}/></div>
+          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{t("materiaPrimaPanel.productionOrder")}</label><Input value={form.ordem_producao} onChange={e=>setForm(p=>({...p,ordem_producao:e.target.value}))} placeholder={t("materiaPrimaPanel.optional")}/></div>
         </div>
         <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Registrar"}</Button>
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>{t("materiaPrimaPanel.cancel")}</Button>
+          <Button className="flex-1" onClick={save} disabled={saving}>{saving?t("materiaPrimaPanel.saving"):t("materiaPrimaPanel.register")}</Button>
         </div>
       </div>
     </div>
@@ -103,6 +105,7 @@ function MovimentoModal({open,materias,onClose,onSaved}:{open:boolean;materias:M
 }
 
 export function MateriaPrimaPanel() {
+  const { t } = useTranslation();
   const [materias,setMaterias]=useState<MateriaPrima[]>([]);
   const [movimentos,setMovimentos]=useState<Movimento[]>([]);
   const [loading,setLoading]=useState(true);
@@ -137,31 +140,31 @@ export function MateriaPrimaPanel() {
       {alerta.length>0 && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0"/>
-          <p className="text-sm text-amber-700 dark:text-amber-400"><b>{alerta.length}</b> matéria{alerta.length>1?"s-primas":"-prima"} abaixo do estoque mínimo</p>
+          <p className="text-sm text-amber-700 dark:text-amber-400"><b>{alerta.length}</b> {alerta.length>1?t("materiaPrimaPanel.alertBelowMinPlural"):t("materiaPrimaPanel.alertBelowMinSingular")}</p>
         </div>
       )}
 
       <div className="flex border rounded-xl overflow-hidden">
-        {(["estoque","movimentos"] as const).map(t=>(
-          <button key={t} onClick={()=>setAba(t)}
-            className={cn("flex-1 py-2 text-sm font-medium transition-colors",aba===t?"bg-primary text-primary-foreground":"hover:bg-muted/40")}>
-            {t==="estoque"?"Estoque":"Movimentos"}
+        {(["estoque","movimentos"] as const).map(ab=>(
+          <button key={ab} onClick={()=>setAba(ab)}
+            className={cn("flex-1 py-2 text-sm font-medium transition-colors",aba===ab?"bg-primary text-primary-foreground":"hover:bg-muted/40")}>
+            {ab==="estoque"?t("materiaPrimaPanel.tabStock"):t("materiaPrimaPanel.tabMovements")}
           </button>
         ))}
       </div>
 
       <div className="flex gap-2">
-        <div className="relative flex-1"><SearchInputWithBarcode value={search} onChange={setSearch} onSearch={setSearch} placeholder="Bipe o código ou busque material..." height="h-9"/></div>
-        <Button size="sm" className="gap-1 h-9" onClick={()=>setModalOpen(true)}><Plus className="h-4 w-4"/>Movimentar</Button>
+        <div className="relative flex-1"><SearchInputWithBarcode value={search} onChange={setSearch} onSearch={setSearch} placeholder={t("materiaPrimaPanel.searchPlaceholder")} height="h-9"/></div>
+        <Button size="sm" className="gap-1 h-9" onClick={()=>setModalOpen(true)}><Plus className="h-4 w-4"/>{t("materiaPrimaPanel.move")}</Button>
         <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
+        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>{t("materiaPrimaPanel.loading")}</div>
       ) : aba==="estoque" ? (
         filtered.length===0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-            <Boxes className="h-8 w-8 opacity-30"/><p>{materias.length===0?"Nenhuma matéria-prima cadastrada":"Nenhum resultado"}</p>
+            <Boxes className="h-8 w-8 opacity-30"/><p>{materias.length===0?t("materiaPrimaPanel.noRawMaterialsRegistered"):t("materiaPrimaPanel.noResults")}</p>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -181,14 +184,14 @@ export function MateriaPrimaPanel() {
                   <div>
                     <div className="flex justify-between text-[11px] mb-1">
                       <span className="font-medium">{m.estoque_atual} {m.unidade}</span>
-                      <span className="text-muted-foreground">Mín: {m.estoque_minimo} / Máx: {m.estoque_maximo}</span>
+                      <span className="text-muted-foreground">{t("materiaPrimaPanel.min")} {m.estoque_minimo} / {t("materiaPrimaPanel.max")} {m.estoque_maximo}</span>
                     </div>
                     <div className="h-2 rounded-full bg-muted overflow-hidden">
                       <div className={cn("h-full rounded-full transition-all",abaixo?"bg-amber-500":"bg-green-500")} style={{width:`${pct}%`}}/>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    {m.lote_atual&&<span>Lote: {m.lote_atual}</span>}
+                    {m.lote_atual&&<span>{t("materiaPrimaPanel.lot_label")} {m.lote_atual}</span>}
                     {m.localizacao&&<span>📍 {m.localizacao}</span>}
                   </div>
                 </div>
@@ -199,7 +202,7 @@ export function MateriaPrimaPanel() {
       ) : (
         movimentos.length===0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-            <ArrowDown className="h-8 w-8 opacity-30"/><p>Nenhum movimento registrado</p>
+            <ArrowDown className="h-8 w-8 opacity-30"/><p>{t("materiaPrimaPanel.noMovementRegistered")}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -217,7 +220,7 @@ export function MateriaPrimaPanel() {
                   <p className={cn("font-semibold text-sm",mov.tipo==="entrada"?"text-green-600":"text-red-600")}>
                     {mov.tipo==="entrada"?"+":"-"}{mov.quantidade}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">{mov.created_at?new Date(mov.created_at).toLocaleDateString("pt-BR"):""}</p>
+                  <p className="text-[10px] text-muted-foreground">{mov.created_at?new Date(mov.created_at).toLocaleDateString(t("materiaPrimaPanel.localeCode")):""}</p>
                 </div>
               </div>
             ))}

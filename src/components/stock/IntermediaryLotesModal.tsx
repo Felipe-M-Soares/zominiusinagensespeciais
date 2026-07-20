@@ -10,6 +10,7 @@ import { Tag, Printer, RefreshCw, Package, AlertCircle, X, Eye } from "lucide-re
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -129,6 +130,7 @@ function printLabelFallback(model: string, reference: string, copies = 2) {
 
 
 function LabelPreview({ model, reference }: { model: string; reference: string }) {
+  const { t } = useTranslation();
   // Proporção 50x45 mm → renderiza como 250x225px
   const W = 250;
   const H = 225;
@@ -141,7 +143,7 @@ function LabelPreview({ model, reference }: { model: string; reference: string }
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <p className="text-[11px] text-muted-foreground font-medium">Prévia — Etiqueta 50×45 mm · 2 cópias</p>
+      <p className="text-[11px] text-muted-foreground font-medium">{t("intermediaryLotesModal.previewCaption")}</p>
       <div
         style={{ width: W, height: H }}
         className="relative rounded-lg border-2 border-border bg-white text-black overflow-hidden shadow-md font-mono"
@@ -182,6 +184,7 @@ interface PrintPreviewModalProps {
 }
 
 function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
+  const { t } = useTranslation();
   const [printing, setPrinting] = useState(false);
 
   async function handlePrint() {
@@ -191,11 +194,11 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
       const zpl = buildZpl(row.model, row.reference);
       const sent = await sendZplDirect(zpl);
       if (sent) {
-        toast.success("Enviado para a ZD220 — 2 cópias impressas");
+        toast.success(t("intermediaryLotesModal.printedToPrinter"));
         onClose();
       } else {
         printLabelFallback(row.model, row.reference, 2);
-        toast.info("Zebra Browser Print não encontrado — abrindo diálogo de impressão", { duration: 5000 });
+        toast.info(t("intermediaryLotesModal.printerNotFound"), { duration: 5000 });
         onClose();
       }
     } finally {
@@ -211,7 +214,7 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
         <DialogHeader className="px-5 py-4 border-b border-border/30">
           <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
             <Eye className="h-4 w-4 text-primary" />
-            Prévia da Etiqueta
+            {t("intermediaryLotesModal.labelPreviewTitle")}
           </DialogTitle>
         </DialogHeader>
 
@@ -233,7 +236,7 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
                 <div className="flex items-center gap-2">
                   <Tag className="h-3.5 w-3.5 shrink-0 text-primary/60" />
                   <span className="font-bold font-mono text-primary">{row.lote}</span>
-                  <span className="ml-auto text-muted-foreground/60">{row.saldo} un.</span>
+                  <span className="ml-auto text-muted-foreground/60">{row.saldo} {t("intermediaryLotesModal.units")}</span>
                 </div>
               </div>
             </div>
@@ -245,7 +248,7 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
                 onClick={onClose}
                 className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
               >
-                Cancelar
+                {t("intermediaryLotesModal.cancel")}
               </button>
               <button
                 type="button"
@@ -256,7 +259,7 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
                 {printing
                   ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   : <Printer className="h-3.5 w-3.5" />}
-                {printing ? "Enviando…" : "Imprimir (2 cópias)"}
+                {printing ? t("intermediaryLotesModal.sending") : t("intermediaryLotesModal.printCopies")}
               </button>
             </div>
           </>
@@ -269,6 +272,7 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
 // ─── Modal Principal ──────────────────────────────────────────────────────────
 
 export function IntermediaryLotesModal({ open, onClose }: Props) {
+  const { t } = useTranslation();
   const [rows, setRows]       = useState<LoteRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro]       = useState<string | null>(null);
@@ -291,14 +295,14 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
       if (!mountedRef.current) return;
 
       if (error) {
-        setErro(`Erro: ${error.message}`);
+        setErro(`${t("intermediaryLotesModal.errorPrefix")} ${error.message}`);
         return;
       }
 
       setRows((data as LoteRow[]) ?? []);
     } catch (e: unknown) {
       if (!mountedRef.current) return;
-      setErro(e instanceof Error ? e.message : "Erro desconhecido");
+      setErro(e instanceof Error ? e.message : t("intermediaryLotesModal.unknownError"));
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -325,13 +329,13 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
             <div className="flex items-center justify-between">
               <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                 <Tag className="h-4 w-4 text-primary" />
-                Lotes — Intermediário
+                {t("intermediaryLotesModal.title")}
               </DialogTitle>
               <button
                 type="button"
                 onClick={load}
                 disabled={loading}
-                title="Atualizar"
+                title={t("intermediaryLotesModal.refresh")}
                 className="h-7 w-7 flex items-center justify-center rounded-lg border border-border
                            text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors
                            disabled:opacity-40 disabled:cursor-not-allowed"
@@ -347,7 +351,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
             {loading && (
               <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground text-sm">
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                Carregando lotes…
+                {t("intermediaryLotesModal.loading")}
               </div>
             )}
 
@@ -356,7 +360,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
                 <AlertCircle className="h-6 w-6 text-destructive" />
                 <p className="text-destructive text-center text-xs px-4">{erro}</p>
                 <Button size="sm" variant="outline" onClick={load}>
-                  Tentar novamente
+                  {t("intermediaryLotesModal.tryAgain")}
                 </Button>
               </div>
             )}
@@ -364,7 +368,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
             {!loading && !erro && rows.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
                 <Package className="h-8 w-8 opacity-30" />
-                <p className="text-sm">Nenhum lote com saldo no intermediário.</p>
+                <p className="text-sm">{t("intermediaryLotesModal.noLotes")}</p>
               </div>
             )}
 
@@ -380,7 +384,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <Tag className="h-3 w-3 text-primary/60" />
                     <span className="text-[12px] font-bold text-primary font-mono">{row.lote}</span>
-                    <span className="text-[10px] text-muted-foreground/50 ml-1">{row.saldo} un.</span>
+                    <span className="text-[10px] text-muted-foreground/50 ml-1">{row.saldo} {t("intermediaryLotesModal.units")}</span>
                   </div>
                 </div>
                 <Button
@@ -390,7 +394,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
                   onClick={(e) => { e.stopPropagation(); setPreviewRow(row); }}
                 >
                   <Eye className="h-3.5 w-3.5" />
-                  Ver e imprimir
+                  {t("intermediaryLotesModal.viewAndPrint")}
                 </Button>
               </div>
             ))}
@@ -399,7 +403,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
           {/* Rodapé */}
           <div className="px-5 py-3 border-t border-border/40 shrink-0">
             <p className="text-[11px] text-muted-foreground">
-              {rows.length} lote{rows.length !== 1 ? "s" : ""} com saldo positivo · Etiqueta 50×45 mm · Zebra ZD220 · 2 cópias por impressão
+              {t("intermediaryLotesModal.footer", { count: rows.length, plural: rows.length !== 1 ? "s" : "" })}
             </p>
           </div>
 

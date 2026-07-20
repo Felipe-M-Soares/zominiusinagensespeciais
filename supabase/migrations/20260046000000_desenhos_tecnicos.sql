@@ -9,9 +9,11 @@ ALTER TABLE public.devices
 
 -- ── 2. Bucket privado (mesmo padrão de 'manuals': leitura por usuário aprovado,
 --       escrita só admin) ───────────────────────────────────────────────────
-INSERT INTO storage.buckets (id, name, public)
-  VALUES ('desenhos-tecnicos', 'desenhos-tecnicos', false)
-  ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  VALUES ('desenhos-tecnicos', 'desenhos-tecnicos', false, 52428800, ARRAY['application/pdf'])
+  ON CONFLICT (id) DO UPDATE SET
+    file_size_limit = 52428800,
+    allowed_mime_types = ARRAY['application/pdf'];
 
 DROP POLICY IF EXISTS "desenhos_tecnicos_approved_read" ON storage.objects;
 CREATE POLICY "desenhos_tecnicos_approved_read" ON storage.objects

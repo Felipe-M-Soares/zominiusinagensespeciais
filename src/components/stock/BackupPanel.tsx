@@ -20,6 +20,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import i18n from "@/i18n";
+import { useTranslation } from "react-i18next";
 
 // ─── Funções de apagar histórico por módulo (admin only via RPC segura) ───────
 async function clearStockMovements(): Promise<{ ok: boolean; error?: string }> {
@@ -64,34 +66,34 @@ async function exportExcel() {
     `)
     .order("updated_at", { ascending: false });
 
-  if (error || !items) { toast.error("Erro ao buscar dados do estoque."); return; }
+  if (error || !items) { toast.error(i18n.t("backupPanel.toastLoadDataError")); return; }
 
-  const bool = (v: unknown) => v === true ? "Sim" : v === false ? "Não" : "";
+  const bool = (v: unknown) => v === true ? i18n.t("backupPanel.xlsxHeaders.yes") : v === false ? i18n.t("backupPanel.xlsxHeaders.no") : "";
 
   const dataRows = (items as Record<string, unknown>[]).map((row) => {
     const d = (Array.isArray(row.device) ? row.device[0] : row.device) as Record<string, unknown> | null ?? {};
     return {
-      "Modelo":             String(d.model ?? ""),
-      "Referência":         String(d.reference ?? ""),
+      [i18n.t("backupPanel.xlsxHeaders.model")]:        String(d.model ?? ""),
+      [i18n.t("backupPanel.xlsxHeaders.reference")]:    String(d.reference ?? ""),
       "UDI-DI":             String(d.udi_di ?? ""),
-      "Cód. Interno":       String(d.internal_code ?? ""),
-      "Classificação":      String(d.classification_code ?? ""),
-      "Classe de Risco":    String(d.risk_class ?? ""),
-      "Material":           String(d.primary_material ?? ""),
-      "Estéril":            bool(d.sterile),
-      "Uso Único":          bool(d.single_use),
-      "Quantidade":         Number(row.quantity ?? 0),
-      "Estoque Mínimo":     Number(row.min_quantity ?? 0),
-      "Localização":        String(row.location ?? ""),
-      "Observações":        String(row.notes ?? ""),
-      "Última Atualização": row.updated_at
-        ? new Date(row.updated_at as string).toLocaleDateString("pt-BR")
+      [i18n.t("backupPanel.xlsxHeaders.internalCode")]: String(d.internal_code ?? ""),
+      [i18n.t("backupPanel.xlsxHeaders.classification")]: String(d.classification_code ?? ""),
+      [i18n.t("backupPanel.xlsxHeaders.riskClass")]:    String(d.risk_class ?? ""),
+      [i18n.t("backupPanel.xlsxHeaders.material")]:     String(d.primary_material ?? ""),
+      [i18n.t("backupPanel.xlsxHeaders.sterile")]:      bool(d.sterile),
+      [i18n.t("backupPanel.xlsxHeaders.singleUse")]:    bool(d.single_use),
+      [i18n.t("backupPanel.xlsxHeaders.quantity")]:     Number(row.quantity ?? 0),
+      [i18n.t("backupPanel.xlsxHeaders.minStock")]:     Number(row.min_quantity ?? 0),
+      [i18n.t("backupPanel.xlsxHeaders.location")]:     String(row.location ?? ""),
+      [i18n.t("backupPanel.xlsxHeaders.notes")]:        String(row.notes ?? ""),
+      [i18n.t("backupPanel.xlsxHeaders.lastUpdate")]: row.updated_at
+        ? new Date(row.updated_at as string).toLocaleDateString(i18n.t("backupPanel.localeCode"))
         : "",
     };
   });
 
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("Estoque");
+  const ws = wb.addWorksheet(i18n.t("backupPanel.xlsxSheetStock"));
   const colWidths = [40, 18, 22, 16, 16, 14, 22, 9, 10, 12, 15, 20, 30, 20];
   const headers = Object.keys(dataRows[0] ?? {});
   ws.columns = headers.map((h, i) => ({ header: h, key: h, width: colWidths[i] ?? 16 }));
@@ -106,15 +108,15 @@ async function exportExcel() {
   dataRows.forEach((row, rowIdx) => {
     const exRow = ws.addRow(row);
     const isEven = rowIdx % 2 === 0;
-    const qty = Number(row["Quantidade"]);
-    const min = Number(row["Estoque Mínimo"]);
+    const qty = Number(row[i18n.t("backupPanel.xlsxHeaders.quantity")]);
+    const min = Number(row[i18n.t("backupPanel.xlsxHeaders.minStock")]);
     exRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const key = headers[colNumber - 1];
-      const isNum = key === "Quantidade" || key === "Estoque Mínimo";
+      const isNum = key === i18n.t("backupPanel.xlsxHeaders.quantity") || key === i18n.t("backupPanel.xlsxHeaders.minStock");
       let bgArgb = isEven ? "FFF0F4FA" : "FFFFFFFF";
       let fgArgb = "FF222222";
       let bold   = false;
-      if (key === "Quantidade") {
+      if (key === i18n.t("backupPanel.xlsxHeaders.quantity")) {
         if (qty === 0)       { bgArgb = "FFFFEAEA"; fgArgb = "FFCC0000"; bold = true; }
         else if (qty <= min) { bgArgb = "FFFFF7E0"; fgArgb = "FFB45309"; bold = true; }
       }
@@ -125,31 +127,34 @@ async function exportExcel() {
     });
   });
   const total   = dataRows.length;
-  const zerados = dataRows.filter((r) => Number(r["Quantidade"]) === 0).length;
-  const baixos  = dataRows.filter((r) => { const q = Number(r["Quantidade"]); const m = Number(r["Estoque Mínimo"]); return q > 0 && q <= m; }).length;
+  const zerados = dataRows.filter((r) => Number(r[i18n.t("backupPanel.xlsxHeaders.quantity")]) === 0).length;
+  const baixos  = dataRows.filter((r) => { const q = Number(r[i18n.t("backupPanel.xlsxHeaders.quantity")]); const m = Number(r[i18n.t("backupPanel.xlsxHeaders.minStock")]); return q > 0 && q <= m; }).length;
   const ok      = total - zerados - baixos;
-  const ws2 = wb.addWorksheet("Resumo");
-  ws2.columns = [{ header: "Indicador", key: "Indicador", width: 35 }, { header: "Valor", key: "Valor", width: 20 }];
+  const ws2 = wb.addWorksheet(i18n.t("backupPanel.xlsxSheetSummary"));
+  const indKey = i18n.t("backupPanel.xlsxSummary.indicator");
+  const valKey = i18n.t("backupPanel.xlsxSummary.value");
+  ws2.columns = [{ header: indKey, key: "Indicador", width: 35 }, { header: valKey, key: "Valor", width: 20 }];
   [
-    { Indicador: "Total de peças no estoque",  Valor: total },
-    { Indicador: "Peças com estoque OK",        Valor: ok },
-    { Indicador: "Peças com estoque baixo",     Valor: baixos },
-    { Indicador: "Peças zeradas (sem estoque)", Valor: zerados },
-    { Indicador: "Data de exportação",          Valor: new Date().toLocaleString("pt-BR") },
+    { Indicador: i18n.t("backupPanel.xlsxSummary.totalPieces"),  Valor: total },
+    { Indicador: i18n.t("backupPanel.xlsxSummary.okPieces"),        Valor: ok },
+    { Indicador: i18n.t("backupPanel.xlsxSummary.lowPieces"),     Valor: baixos },
+    { Indicador: i18n.t("backupPanel.xlsxSummary.zeroPieces"), Valor: zerados },
+    { Indicador: i18n.t("backupPanel.xlsxSummary.exportDate"),          Valor: new Date().toLocaleString(i18n.t("backupPanel.localeCode")) },
   ].forEach((r) => ws2.addRow(r));
   const buf  = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href     = url;
-  a.download = `estoque-${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.xlsx`;
+  a.download = `estoque-${new Date().toLocaleDateString(i18n.t("backupPanel.localeCode")).replace(/\//g, "-")}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
-  toast.success(`${items.length} peça${items.length !== 1 ? "s" : ""} exportada${items.length !== 1 ? "s" : ""} para Excel (.xlsx).`);
+  toast.success(i18n.t("backupPanel.toastExportedExcel", { count: items.length, plural: items.length !== 1 ? "s" : "", plural2: items.length !== 1 ? "s" : "" }));
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 export function BackupPanel({ open, onClose }: Props) {
+  const { t } = useTranslation();
   const { user, isAdmin } = useAuth();
   const displayName: string | null =
     (user?.user_metadata?.display_name as string) ?? user?.email ?? null;
@@ -175,8 +180,8 @@ export function BackupPanel({ open, onClose }: Props) {
     setDeletingBackups(true);
     const { error } = await supabase.from("stock_backups").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     setDeletingBackups(false);
-    if (error) { toast.error("Erro ao apagar backups."); return; }
-    toast.success("Todos os backups foram apagados.");
+    if (error) { toast.error(t("backupPanel.toastDeleteBackupsError")); return; }
+    toast.success(t("backupPanel.toastAllBackupsDeleted"));
     setDeleteBackupsConfirm(false);
     load();
   }
@@ -207,8 +212,8 @@ export function BackupPanel({ open, onClose }: Props) {
     setSaving(true);
     const result = await saveBackupConfig(schedule);
     setSaving(false);
-    if (result.ok) toast.success("Agendamento salvo.");
-    else toast.error(result.error ?? "Erro ao salvar.");
+    if (result.ok) toast.success(t("backupPanel.toastScheduleSaved"));
+    else toast.error(result.error ?? t("backupPanel.toastSaveError"));
     load();
   }
 
@@ -216,8 +221,8 @@ export function BackupPanel({ open, onClose }: Props) {
     setRunning(true);
     const result = await runBackup(user?.id ?? null, displayName);
     setRunning(false);
-    if (result.ok) { toast.success("Backup criado com sucesso!"); load(); }
-    else toast.error(result.error ?? "Erro ao criar backup.");
+    if (result.ok) { toast.success(t("backupPanel.toastBackupCreated")); load(); }
+    else toast.error(result.error ?? t("backupPanel.toastBackupCreateError"));
   }
 
   async function handleExportExcel() {
@@ -230,7 +235,7 @@ export function BackupPanel({ open, onClose }: Props) {
     setDownloading(b.id);
     const data = await downloadBackup(b.id);
     setDownloading(null);
-    if (!data) { toast.error("Erro ao baixar backup."); return; }
+    if (!data) { toast.error(t("backupPanel.toastDownloadError")); return; }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -244,7 +249,7 @@ export function BackupPanel({ open, onClose }: Props) {
   async function handleUploadBackup(file: File | null) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".json")) {
-      toast.error("Envie um backup em JSON.");
+      toast.error(t("backupPanel.toastUploadJsonOnly"));
       return;
     }
     setRestoring(true);
@@ -253,13 +258,13 @@ export function BackupPanel({ open, onClose }: Props) {
       const payload = JSON.parse(text) as Record<string, unknown>;
       const result = await restoreStockBackup(payload);
       if (result.ok) {
-        toast.success("Backup do estoque restaurado.");
+        toast.success(t("backupPanel.toastRestoreSuccess"));
         load();
       } else {
-        toast.error(result.error ?? "Erro ao restaurar backup.");
+        toast.error(result.error ?? t("backupPanel.toastRestoreError"));
       }
     } catch (_e) {
-      toast.error("Arquivo de backup inválido.");
+      toast.error(t("backupPanel.toastInvalidFile"));
     } finally {
       setRestoring(false);
     }
@@ -274,11 +279,15 @@ export function BackupPanel({ open, onClose }: Props) {
     else result = await clearProducao();
     setClearingModule(false);
     if (result.ok) {
-      const labels: Record<string, string> = { estoque: "Movimentos de estoque", comercial: "Pedidos comerciais", producao: "Produção" };
-      toast.success(`${labels[confirmModule]} apagado com sucesso.`);
+      const labels: Record<string, string> = {
+        estoque: t("backupPanel.moduleLabelsShort.estoque"),
+        comercial: t("backupPanel.moduleLabelsShort.comercial"),
+        producao: t("backupPanel.moduleLabelsShort.producao"),
+      };
+      toast.success(t("backupPanel.toastModuleCleared", { module: labels[confirmModule] }));
       setConfirmModule(null);
     } else {
-      toast.error(result.error ?? "Erro ao apagar.");
+      toast.error(result.error ?? t("backupPanel.toastClearError"));
     }
   }
 
@@ -286,21 +295,21 @@ export function BackupPanel({ open, onClose }: Props) {
     setRegularizando(true);
     const result = await regularizarTodosDevices();
     setRegularizando(false);
-    if (result.ok) toast.success("Todas as peças confirmadas como regularizadas (Fase 5).");
-    else toast.error(result.error ?? "Erro ao regularizar.");
+    if (result.ok) toast.success(t("backupPanel.toastRegularizeSuccess"));
+    else toast.error(result.error ?? t("backupPanel.toastRegularizeError"));
   }
 
   function fmtDate(iso: string) {
-    return new Date(iso).toLocaleString("pt-BR", {
+    return new Date(iso).toLocaleString(t("backupPanel.localeCode"), {
       day: "2-digit", month: "2-digit", year: "2-digit",
       hour: "2-digit", minute: "2-digit",
     });
   }
 
   const moduleLabels: Record<string, { title: string; desc: string }> = {
-    estoque:   { title: "Apagar movimentos de estoque?", desc: "Apaga todo o histórico de entradas e saídas. As quantidades atuais e as peças cadastradas são mantidas." },
-    comercial: { title: "Apagar histórico comercial?",   desc: "Apaga todos os pedidos e itens comerciais. O estoque e os cadastros de peças são mantidos." },
-    producao:  { title: "Apagar histórico de produção?", desc: "Apaga todos os apontamentos de produção. Máquinas e produtos continuam cadastrados." },
+    estoque:   { title: t("backupPanel.clearModuleTitle.estoque"), desc: t("backupPanel.clearModuleDesc.estoque") },
+    comercial: { title: t("backupPanel.clearModuleTitle.comercial"),   desc: t("backupPanel.clearModuleDesc.comercial") },
+    producao:  { title: t("backupPanel.clearModuleTitle.producao"), desc: t("backupPanel.clearModuleDesc.producao") },
   };
 
   return (
@@ -314,12 +323,12 @@ export function BackupPanel({ open, onClose }: Props) {
               <DialogTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-sm font-semibold">
                   <DatabaseBackup className="h-4 w-4 text-primary" />
-                  Backup e Exportação
+                  {t("backupPanel.title")}
                 </span>
               </DialogTitle>
             </DialogHeader>
             <p className="text-[12px] text-muted-foreground mt-0.5">
-              Snapshot completo do sistema e planilha do estoque atual
+              {t("backupPanel.subtitle")}
             </p>
           </div>
         </div>
@@ -339,10 +348,10 @@ export function BackupPanel({ open, onClose }: Props) {
                   <div>
                     <p className="text-[12px] font-semibold text-foreground flex items-center gap-1.5">
                       <FileSpreadsheet className="h-3.5 w-3.5 text-success" />
-                      Exportar Planilha Excel
+                      {t("backupPanel.exportExcelTitle")}
                     </p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Todas as peças com quantidade atual, localização e dados do dispositivo.
+                      {t("backupPanel.exportExcelDesc")}
                     </p>
                   </div>
                   <Button size="sm" variant="outline"
@@ -351,7 +360,7 @@ export function BackupPanel({ open, onClose }: Props) {
                     {exporting
                       ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       : <Download className="h-3.5 w-3.5" />}
-                    {exporting ? "Exportando..." : "Baixar .xlsx"}
+                    {exporting ? t("backupPanel.exporting") : t("backupPanel.downloadXlsx")}
                   </Button>
                 </div>
               </div>
@@ -360,15 +369,15 @@ export function BackupPanel({ open, onClose }: Props) {
               {isAdmin && (
                 <div className="space-y-2.5">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                    <ShieldCheck className="h-3.5 w-3.5" /> Ações administrativas
+                    <ShieldCheck className="h-3.5 w-3.5" /> {t("backupPanel.adminActions")}
                   </p>
 
 
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[12px] font-semibold text-foreground">Subir backup completo</p>
+                      <p className="text-[12px] font-semibold text-foreground">{t("backupPanel.uploadBackupTitle")}</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Restaura estoque, pedidos, NFs, rastreabilidade, financeiro, produção e compras salvos no arquivo JSON.
+                        {t("backupPanel.uploadBackupDesc")}
                       </p>
                     </div>
                     <label className={cn(
@@ -378,7 +387,7 @@ export function BackupPanel({ open, onClose }: Props) {
                       {restoring
                         ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                         : <Upload className="h-3.5 w-3.5" />}
-                      {restoring ? "Restaurando..." : "Subir JSON"}
+                      {restoring ? t("backupPanel.restoring") : t("backupPanel.uploadJson")}
                       <input type="file" accept="application/json,.json" className="hidden"
                         onChange={(e) => { handleUploadBackup(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }} />
                     </label>
@@ -387,9 +396,9 @@ export function BackupPanel({ open, onClose }: Props) {
                   {/* Regularizar todos */}
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[12px] font-semibold text-foreground">Confirmar peças regularizadas</p>
+                      <p className="text-[12px] font-semibold text-foreground">{t("backupPanel.regularizeTitle")}</p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Marca todas as peças cadastradas como regularizadas (Fase 5) na qualidade.
+                        {t("backupPanel.regularizeDesc")}
                       </p>
                     </div>
                     <Button size="sm" variant="outline"
@@ -398,20 +407,20 @@ export function BackupPanel({ open, onClose }: Props) {
                       {regularizando
                         ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                         : <ShieldCheck className="h-3.5 w-3.5" />}
-                      Confirmar
+                      {t("backupPanel.confirm")}
                     </Button>
                   </div>
 
                   {/* Apagar histórico por módulo */}
-                  <p className="text-[11px] text-muted-foreground font-medium mt-1">Apagar histórico por módulo:</p>
+                  <p className="text-[11px] text-muted-foreground font-medium mt-1">{t("backupPanel.clearByModule")}</p>
                   <div className="space-y-1.5">
                     {(["estoque", "comercial", "producao"] as const).map((mod) => (
                       <div key={mod} className="rounded-xl border border-destructive/15 bg-destructive/5 p-2.5 flex items-center justify-between gap-3">
-                        <p className="text-[12px] font-medium text-foreground capitalize">{mod === "estoque" ? "Movimentos de Estoque" : mod === "comercial" ? "Pedidos Comerciais" : "Produção"}</p>
+                        <p className="text-[12px] font-medium text-foreground capitalize">{mod === "estoque" ? t("backupPanel.moduleStock") : mod === "comercial" ? t("backupPanel.moduleCommercial") : t("backupPanel.moduleProduction")}</p>
                         <button type="button"
                           onClick={() => setConfirmModule(mod)}
                           className="h-7 px-2.5 rounded-lg border border-destructive/30 text-[11px] text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-1">
-                          <Trash2 className="h-3 w-3" /> Apagar
+                          <Trash2 className="h-3 w-3" /> {t("backupPanel.delete")}
                         </button>
                       </div>
                     ))}
@@ -423,7 +432,7 @@ export function BackupPanel({ open, onClose }: Props) {
               {isAdmin && (
                 <div className="space-y-2.5">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5" /> Backup automático
+                    <Calendar className="h-3.5 w-3.5" /> {t("backupPanel.autoBackup")}
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {(Object.keys(SCHEDULE_LABELS) as BackupSchedule[]).map((key) => (
@@ -434,14 +443,14 @@ export function BackupPanel({ open, onClose }: Props) {
                             ? "bg-primary/10 border-primary/40 text-primary"
                             : "bg-background border-border text-muted-foreground hover:bg-muted/30"
                         )}>
-                        {SCHEDULE_LABELS[key]}
+                        {t(`backupPanel.schedule.${key}`)}
                       </button>
                     ))}
                   </div>
                   {config?.last_backup && (
                     <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <Clock className="h-3 w-3" />
-                      Último backup: {fmtDate(config.last_backup)}
+                      {t("backupPanel.lastBackup")} {fmtDate(config.last_backup)}
                     </p>
                   )}
                   <div className="flex gap-2">
@@ -450,14 +459,14 @@ export function BackupPanel({ open, onClose }: Props) {
                       {saving
                         ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin mr-1" />
                         : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
-                      Salvar agendamento
+                      {t("backupPanel.saveSchedule")}
                     </Button>
                     <Button size="sm" className="flex-1 h-9 rounded-xl text-xs gap-1.5"
                       onClick={handleRunNow} disabled={running}>
                       {running
                         ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                         : <RefreshCw className="h-3.5 w-3.5" />}
-                      Fazer backup agora
+                      {t("backupPanel.runNow")}
                     </Button>
                   </div>
                 </div>
@@ -468,18 +477,18 @@ export function BackupPanel({ open, onClose }: Props) {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Backups salvos ({backups.length})
+                      {t("backupPanel.savedBackups", { count: backups.length })}
                     </p>
                     {backups.length > 0 && (
                       <button type="button" onClick={() => setDeleteBackupsConfirm(true)}
-                        title="Apagar todos os backups"
+                        title={t("backupPanel.deleteAllBackupsTitle")}
                         className="h-6 w-6 flex items-center justify-center rounded-lg text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors">
                         <Trash2 className="h-3 w-3" />
                       </button>
                     )}
                   </div>
                   {backups.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum backup criado ainda</p>
+                    <p className="text-sm text-muted-foreground text-center py-4">{t("backupPanel.noBackupsYet")}</p>
                   )}
                   <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
                     {backups.map((b) => (
@@ -489,7 +498,7 @@ export function BackupPanel({ open, onClose }: Props) {
                         <div className="min-w-0 flex-1">
                           <p className="text-[12px] font-medium">{fmtDate(b.created_at)}</p>
                           <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                            <span>{b.item_count} registro{b.item_count !== 1 ? "s" : ""}</span>
+                            <span>{t("backupPanel.recordsCount", { count: b.item_count, plural: b.item_count !== 1 ? "s" : "" })}</span>
                             {b.created_name && (
                               <span className="flex items-center gap-0.5">
                                 <User className="h-2.5 w-2.5" />{b.created_name}
@@ -498,7 +507,7 @@ export function BackupPanel({ open, onClose }: Props) {
                           </div>
                         </div>
                         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"
-                          title="Baixar JSON" onClick={() => handleDownload(b)}
+                          title={t("backupPanel.downloadJson")} onClick={() => handleDownload(b)}
                           disabled={downloading === b.id}>
                           {downloading === b.id
                             ? <div className="h-3.5 w-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -531,14 +540,14 @@ export function BackupPanel({ open, onClose }: Props) {
           <div className="flex gap-2">
             <button type="button" onClick={() => setConfirmModule(null)} disabled={clearingModule}
               className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">
-              Cancelar
+              {t("backupPanel.cancel")}
             </button>
             <button type="button" disabled={clearingModule} onClick={handleClearModule}
               className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
               {clearingModule
                 ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <Trash2 className="h-3.5 w-3.5" />}
-              Apagar
+              {t("backupPanel.delete")}
             </button>
           </div>
         </div>
@@ -554,23 +563,23 @@ export function BackupPanel({ open, onClose }: Props) {
               <AlertTriangle className="h-5 w-5 text-destructive" />
             </div>
             <div>
-              <p className="text-sm font-bold text-destructive">Apagar todos os backups?</p>
+              <p className="text-sm font-bold text-destructive">{t("backupPanel.deleteAllBackupsConfirmTitle")}</p>
               <p className="text-[12px] text-muted-foreground mt-1">
-                Todos os <strong>{backups.length} backups salvos</strong> serão removidos permanentemente.
+                {t("backupPanel.deleteAllBackupsConfirmDesc")} <strong>{backups.length} {t("backupPanel.deleteAllBackupsConfirmStrong")}</strong> {t("backupPanel.deleteAllBackupsConfirmEnd")}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setDeleteBackupsConfirm(false)} disabled={deletingBackups}
               className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">
-              Cancelar
+              {t("backupPanel.cancel")}
             </button>
             <button type="button" disabled={deletingBackups} onClick={handleDeleteAllBackups}
               className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
               {deletingBackups
                 ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <Trash2 className="h-3.5 w-3.5" />}
-              Apagar backups
+              {t("backupPanel.deleteBackupsAction")}
             </button>
           </div>
         </div>

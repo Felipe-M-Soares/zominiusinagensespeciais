@@ -7,6 +7,8 @@ import { Bell, BellOff, CheckCheck, ShoppingBag, Package, AlertCircle, Info } fr
 import { cn } from "@/lib/utils";
 import type { NotificacoesState, Notificacao } from "@/hooks/useNotifications";
 import { useNavigate } from "react-router-dom";
+import i18n from "@/i18n";
+import { useTranslation } from "react-i18next";
 
 function tipoIcon(tipo: string) {
   if (tipo.includes("pedido") || tipo.includes("comercial")) return ShoppingBag;
@@ -29,11 +31,11 @@ function fmtDate(iso: string) {
   const min  = Math.floor(diff / 60000);
   const hour = Math.floor(diff / 3600000);
   const day  = Math.floor(diff / 86400000);
-  if (min  <  1) return "agora";
+  if (min  <  1) return i18n.t("notifications.now");
   if (min  < 60) return `${min}min`;
   if (hour < 24) return `${hour}h`;
   if (day  <  7) return `${day}d`;
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  return d.toLocaleDateString(i18n.t("notifications.localeCode"), { day: "2-digit", month: "2-digit" });
 }
 
 function NotificacaoItem({ n, onRead, onNav }: {
@@ -84,6 +86,7 @@ export interface NotificacoesPanelProps extends NotificacoesState {
 export function NotificacoesPanel({
   notificacoes, unreadCount, loading, marcarComoLida, marcarTodasComoLidas, align = "right", dropUp = false
 }: NotificacoesPanelProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -107,7 +110,7 @@ export function NotificacoesPanel({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title="Notificações"
+        title={t("notifications.title")}
         className={cn(
           "relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors",
           open && "bg-muted/60 text-foreground"
@@ -130,7 +133,7 @@ export function NotificacoesPanel({
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/40">
             <p className="text-[12px] font-semibold flex items-center gap-1.5">
               <Bell className="h-3.5 w-3.5 text-primary" />
-              Notificações
+              {t("notifications.title")}
               {unreadCount > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
                   {unreadCount}
@@ -142,10 +145,10 @@ export function NotificacoesPanel({
                 type="button"
                 onClick={marcarTodasComoLidas}
                 className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                title="Marcar todas como lidas"
+                title={t("notifications.markAllRead")}
               >
                 <CheckCheck className="h-3.5 w-3.5" />
-                Ler todas
+                {t("notifications.readAll")}
               </button>
             )}
           </div>
@@ -159,7 +162,7 @@ export function NotificacoesPanel({
             {!loading && notificacoes.length === 0 && (
               <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
                 <BellOff className="h-8 w-8 opacity-20" />
-                <p className="text-[12px]">Sem notificações</p>
+                <p className="text-[12px]">{t("notifications.empty")}</p>
               </div>
             )}
             {!loading && notificacoes.map((n) => (

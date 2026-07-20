@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import i18n from "@/i18n";
+import { useTranslation } from "react-i18next";
 
 // ── Thumbnail ────────────────────────────────────────────────────────────────
 function BlobThumb({ file, uploadedUrl }: { file: File; uploadedUrl?: string }) {
@@ -124,6 +126,7 @@ interface Props {
 }
 
 export function DeviceImageUploader({ onClose, onDone }: Props) {
+  const { t } = useTranslation();
   const [results,   setResults]   = useState<FileResult[]>([]);
   const [uploading, setUploading] = useState(false);
   const [done,      setDone]      = useState(false);
@@ -140,7 +143,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
     );
 
     if (arr.length === 0) {
-      toast.error("Nenhuma imagem encontrada (.webp, .jpg, .png, .gif)");
+      toast.error(i18n.t("deviceImageUploader.toastNoImageFound"));
       return;
     }
 
@@ -149,7 +152,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
       .select("id, reference, model");
 
     if (error || !devices) {
-      toast.error("Erro ao buscar componentes do banco");
+      toast.error(i18n.t("deviceImageUploader.toastLoadDevicesError"));
       return;
     }
 
@@ -173,7 +176,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
         model:      matched.length === 1
                       ? matched[0].model
                       : matched.length > 1
-                        ? `${matched.length} peças (família)`
+                        ? i18n.t("deviceImageUploader.piecesFamily", { count: matched.length })
                         : null,
         status: matched.length > 0 ? "pending" : "no_match",
       });
@@ -340,9 +343,9 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
           <div className="flex items-center gap-2">
             <FileImage className="h-4 w-4 text-primary" />
             <div>
-              <h3 className="font-semibold text-sm">Upload de Imagens em Massa</h3>
+              <h3 className="font-semibold text-sm">{t("deviceImageUploader.title")}</h3>
               <p className="text-[11px] text-muted-foreground">
-                Arquivo cobre a família inteira — ex: PIM 4818N → todas as alturas
+                {t("deviceImageUploader.subtitle")}
               </p>
             </div>
           </div>
@@ -364,8 +367,8 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                   <Upload className="h-6 w-6 text-primary" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold">Arraste uma pasta ou arquivos aqui</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">Ou use os botões abaixo</p>
+                  <p className="text-sm font-semibold">{t("deviceImageUploader.dragHint")}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">{t("deviceImageUploader.orUseButtons")}</p>
                 </div>
               </div>
 
@@ -374,16 +377,16 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                   className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-muted/30 p-4 hover:bg-primary/5 hover:border-primary/40 transition-colors">
                   <FolderOpen className="h-7 w-7 text-primary/70" />
                   <div className="text-center">
-                    <p className="text-[13px] font-semibold">Selecionar Pasta</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Varre pasta e subpastas</p>
+                    <p className="text-[13px] font-semibold">{t("deviceImageUploader.selectFolder")}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t("deviceImageUploader.scanFolderHint")}</p>
                   </div>
                 </button>
                 <button type="button" onClick={() => filesInputRef.current?.click()}
                   className="flex flex-col items-center gap-2 rounded-xl border border-border/50 bg-muted/30 p-4 hover:bg-primary/5 hover:border-primary/40 transition-colors">
                   <Files className="h-7 w-7 text-primary/70" />
                   <div className="text-center">
-                    <p className="text-[13px] font-semibold">Selecionar Arquivos</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Escolha múltiplos arquivos</p>
+                    <p className="text-[13px] font-semibold">{t("deviceImageUploader.selectFiles")}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{t("deviceImageUploader.multipleFilesHint")}</p>
                   </div>
                 </button>
               </div>
@@ -403,15 +406,15 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3 text-center">
                   <p className="text-xl font-bold text-green-600">{counts.matchedDevs}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Peças cobertas</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("deviceImageUploader.piecesCovered")}</p>
                 </div>
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
                   <p className="text-xl font-bold text-amber-600">{counts.noMatch}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Sem match</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("deviceImageUploader.noMatch")}</p>
                 </div>
                 <div className="rounded-xl border border-border/40 p-3 text-center">
                   <p className="text-xl font-bold">{counts.total}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Arquivos únicos</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("deviceImageUploader.uniqueFiles")}</p>
                 </div>
               </div>
 
@@ -427,7 +430,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                     <div className="flex-1 min-w-0">
                       <p className="font-mono font-medium truncate">{r.refName}</p>
                       {r.status === "no_match" ? (
-                        <p className="text-amber-600 text-[10px]">Nenhuma peça com esta referência</p>
+                        <p className="text-amber-600 text-[10px]">{t("deviceImageUploader.noMatchDetail")}</p>
                       ) : r.status === "error" ? (
                         <p className="text-red-500 text-[10px] truncate">{r.error}</p>
                       ) : r.model ? (
@@ -446,7 +449,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
 
               {!uploading && (
                 <button onClick={resetar} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">
-                  ← Selecionar outros arquivos
+                  {t("deviceImageUploader.selectOtherFiles")}
                 </button>
               )}
             </>
@@ -455,7 +458,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
 
         <div className="flex gap-3 px-5 py-4 border-t border-border/30 shrink-0">
           <Button variant="outline" className="flex-1" onClick={onClose} disabled={uploading}>
-            {done ? "Fechar" : "Cancelar"}
+            {done ? t("deviceImageUploader.close") : t("deviceImageUploader.cancel")}
           </Button>
 
           {counts.matchedFiles > 0 && !done && (
@@ -464,17 +467,17 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <ArrowUpCircle className="h-4 w-4" />}
               {uploading
-                ? "Enviando..."
-                : `Enviar ${counts.matchedFiles} arquivo${counts.matchedFiles !== 1 ? "s" : ""} → ${counts.matchedDevs} peça${counts.matchedDevs !== 1 ? "s" : ""}`}
+                ? t("deviceImageUploader.sending")
+                : t("deviceImageUploader.sendFiles", { count: counts.matchedFiles, plural: counts.matchedFiles !== 1 ? "s" : "", devCount: counts.matchedDevs, devPlural: counts.matchedDevs !== 1 ? "s" : "" })}
             </Button>
           )}
 
           {done && (
             <div className="flex-1 flex items-center justify-center gap-2 text-green-600 text-sm font-medium">
               <CheckCircle2 className="h-4 w-4" />
-              {counts.done} arquivo{counts.done !== 1 ? "s" : ""} enviado{counts.done !== 1 ? "s" : ""}
+              {t("deviceImageUploader.filesSent", { count: counts.done, plural: counts.done !== 1 ? "s" : "" })}
               {counts.errors > 0 && (
-                <span className="text-red-500 ml-2">({counts.errors} erro{counts.errors !== 1 ? "s" : ""})</span>
+                <span className="text-red-500 ml-2">{t("deviceImageUploader.errorsCount", { count: counts.errors, plural: counts.errors !== 1 ? "s" : "" })}</span>
               )}
             </div>
           )}

@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement, StockFase } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   open: boolean;
@@ -19,13 +20,17 @@ interface Props {
   fase?: StockFase; // quando passado, filtra apenas esse setor
 }
 
-const FASE_LABELS: Record<StockFase, { label: string; Icon: React.ElementType }> = {
-  intermediaria: { label: "Intermediária", Icon: Package },
-  expedicao: { label: "Expedição", Icon: Truck },
-  retrabalho: { label: "Retrabalho", Icon: Wrench },
-};
+function buildFaseLabels(t: (k: string) => string): Record<StockFase, { label: string; Icon: React.ElementType }> {
+  return {
+    intermediaria: { label: t("allMovementsModal.phases.intermediaria"), Icon: Package },
+    expedicao: { label: t("allMovementsModal.phases.expedicao"), Icon: Truck },
+    retrabalho: { label: t("allMovementsModal.phases.retrabalho"), Icon: Wrench },
+  };
+}
 
 export function AllMovementsModal({ open, onClose, fase }: Props) {
+  const { t } = useTranslation();
+  const FASE_LABELS = buildFaseLabels(t);
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -90,8 +95,8 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
   function fmtDate(iso: string) {
     const d = new Date(iso);
     return {
-      date: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }),
-      time: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      date: d.toLocaleDateString(t("allMovementsModal.localeCode"), { day: "2-digit", month: "2-digit", year: "2-digit" }),
+      time: d.toLocaleTimeString(t("allMovementsModal.localeCode"), { hour: "2-digit", minute: "2-digit" }),
     };
   }
 
@@ -106,11 +111,11 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                   <History className="h-4 w-4 text-primary" />
-                  {fase ? `Histórico do Estoque — ${FASE_LABELS[fase].label}` : "Histórico do Estoque"}
+                  {fase ? `${t("allMovementsModal.titlePrefix")} ${FASE_LABELS[fase].label}` : t("allMovementsModal.titleGeneric")}
                 </DialogTitle>
               </DialogHeader>
               <p className="text-[12px] text-muted-foreground mt-0.5">
-                {movimentosFiltrados.length} movimentações
+                {t("allMovementsModal.movementsCount", { count: movimentosFiltrados.length })}
               </p>
             </div>
             <Button
@@ -119,14 +124,14 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
               className="h-7 w-7 mt-0.5"
               onClick={load}
               disabled={loading}
-              title="Atualizar"
+              title={t("allMovementsModal.refresh")}
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             </Button>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 px-4 pb-3 border-b border-border/20">
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar peça, lote..." className="flex-1 min-w-[120px] h-8 rounded-lg border border-border/50 bg-background text-[11px] px-3 focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder={t("allMovementsModal.searchPlaceholder")} className="flex-1 min-w-[120px] h-8 rounded-lg border border-border/50 bg-background text-[11px] px-3 focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
           <input type="date" value={filtroInicio} onChange={e => setFiltroInicio(e.target.value)} className="h-8 rounded-lg border border-border/50 bg-background text-[11px] px-2" />
           <span className="text-[10px] text-muted-foreground self-center">–</span>
           <input type="date" value={filtroFim} onChange={e => setFiltroFim(e.target.value)} className="h-8 rounded-lg border border-border/50 bg-background text-[11px] px-2" />
@@ -141,7 +146,7 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
 
           {!loading && movimentosFiltrados.length === 0 && (
             <div className="text-center py-12 text-sm text-muted-foreground">
-              Nenhuma movimentação registrada
+              {t("allMovementsModal.noMovements")}
             </div>
           )}
 
@@ -173,7 +178,7 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
                   {/* Lote */}
                   {displayLote(mv.lote) && (
                     <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-primary/80">
-                      <Tag className="h-2.5 w-2.5" />Lote {displayLote(mv.lote)}
+                      <Tag className="h-2.5 w-2.5" />{t("allMovementsModal.lotLabel")} {displayLote(mv.lote)}
                     </p>
                   )}
 
@@ -198,7 +203,7 @@ export function AllMovementsModal({ open, onClose, fase }: Props) {
                     mv.type === "entrada" ? "text-success" : "text-destructive"
                   )}>
                     {mv.type === "entrada" ? "+" : "-"}{mv.quantity}
-                    <span className="text-[10px] font-normal ml-0.5 opacity-70">un.</span>
+                    <span className="text-[10px] font-normal ml-0.5 opacity-70">{t("allMovementsModal.units")}</span>
                   </span>
                   <span className="text-[10px] text-muted-foreground">{date}</span>
                   <span className="text-[10px] text-muted-foreground/60">{time}</span>

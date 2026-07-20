@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useTranslation } from "react-i18next";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useAuth } from "@/hooks/useAuth";
 import { useStock } from "@/hooks/useStock";
@@ -97,6 +98,7 @@ interface IntermediaryCardProps {
 const IntermediaryCard = memo(function IntermediaryCard({
   item, onEntrada, onTransfer, onHistory, onDelete, onLotes, onReset, loteCount, isAdmin,
 }: IntermediaryCardProps) {
+  const { t } = useTranslation();
   const d = item.device;
   const qty = item.quantity;
   const isLow = qty > 0 && qty <= item.min_quantity;
@@ -115,52 +117,52 @@ const IntermediaryCard = memo(function IntermediaryCard({
         isEmpty ? "via-destructive opacity-80" : isLow ? "via-warning opacity-70" : "via-primary opacity-50"
       )} />
 
-      <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
-            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
+      <div className="p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <h3 className="text-[17px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
+            <p className="text-[14px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
           </div>
-          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-primary/25 text-primary/80 bg-primary/5 rounded-lg">
+          <Badge variant="outline" className="shrink-0 text-[13px] font-mono px-2 py-1 border-primary/25 text-primary/80 bg-primary/5 rounded-lg">
             {d.classification_code}
           </Badge>
         </div>
 
-        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
+        {d.brand_name && <p className="text-[14px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
 
         <div className="flex flex-wrap gap-1 -mt-1">
           {d.sterile && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
-              <Shield className="h-2.5 w-2.5" /> Estéril
+            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2.5 py-1 text-[13px] font-medium text-success">
+              <Shield className="h-[13px] w-[13px]" /> Estéril
             </span>
           )}
           {d.single_use && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
-              <Package className="h-2.5 w-2.5" /> Uso único
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2.5 py-1 text-[13px] font-medium text-orange-500">
+              <Package className="h-[13px] w-[13px]" /> Uso único
             </span>
           )}
           {d.implantable && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-medium text-primary">
-              <Activity className="h-2.5 w-2.5" /> Implantável
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-[13px] font-medium text-primary">
+              <Activity className="h-[13px] w-[13px]" /> Implantável
             </span>
           )}
         </div>
 
         <div className={cn(
-          "flex items-center justify-between rounded-xl px-3 py-2 border",
+          "flex items-center justify-between rounded-xl px-4 py-2.5 border",
           isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-primary/8 border-primary/25"
         )}>
-          <div className="flex items-center gap-1.5">
-            <PackageCheck className={cn("h-3.5 w-3.5", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")} />
-            <span className="text-[11px] font-medium text-muted-foreground">Intermediário</span>
+          <div className="flex items-center gap-2">
+            <PackageCheck className={cn("h-[18px] w-[18px]", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")} />
+            <span className="text-[14px] font-medium text-muted-foreground">{t("estoque.intermediate")}</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            {isEmpty && <AlertTriangle className="h-3 w-3 text-destructive" />}
-            {isLow && !isEmpty && <TrendingDown className="h-3 w-3 text-warning" />}
-            <span className={cn("text-[15px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")}>
+          <div className="flex items-center gap-2">
+            {isEmpty && <AlertTriangle className="h-4 w-4 text-destructive" />}
+            {isLow && !isEmpty && <TrendingDown className="h-4 w-4 text-warning" />}
+            <span className={cn("text-[20px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")}>
               {qty}
             </span>
-            <span className="text-[10px] text-muted-foreground">un.</span>
+            <span className="text-[13px] text-muted-foreground">un.</span>
           </div>
         </div>
 
@@ -168,66 +170,66 @@ const IntermediaryCard = memo(function IntermediaryCard({
           <button
             type="button"
             onClick={() => onLotes(item)}
-            className="flex items-center gap-1.5 text-[11px] text-primary/70 hover:text-primary transition-colors -mt-1"
+            className="flex items-center gap-2 text-[14px] text-primary/70 hover:text-primary transition-colors -mt-1"
           >
-            <Tag className="h-3 w-3" />
+            <Tag className="h-4 w-4" />
             <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""}</span>
             <span className="text-muted-foreground/40">→</span>
           </button>
         )}
 
-        <div className="space-y-1.5 pt-1 border-t border-border/20">
+        <div className="space-y-2 pt-1 border-t border-border/20">
           <button
             type="button"
             onClick={() => onEntrada(item)}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-primary/8 hover:bg-primary/15 text-primary text-[11px] font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-primary/8 hover:bg-primary/15 text-primary text-[14px] font-medium transition-colors"
           >
-            <ArrowDownCircle className="h-3.5 w-3.5" />
+            <ArrowDownCircle className="h-[18px] w-[18px]" />
             Registrar Entrada
           </button>
           <button
             type="button"
             onClick={() => onTransfer(item)}
             disabled={qty === 0}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 text-[14px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
-            <Truck className="h-3.5 w-3.5" />
+            <Truck className="h-[18px] w-[18px]" />
             Mover para Expedição
           </button>
-          <div className="flex gap-1.5">
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => onHistory(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
-              title="Histórico"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
+              title={t("estoque.historyTitle")}
             >
-              <Clock className="h-3 w-3" /> Histórico
+              <Clock className="h-4 w-4" /> Histórico
             </button>
             <button
               type="button"
               onClick={() => onLotes(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-primary/10 hover:text-primary text-muted-foreground text-[10px] transition-colors"
-              title="Lotes"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-primary/10 hover:text-primary text-muted-foreground text-[13px] transition-colors"
+              title={t("estoque.lotesTitle")}
             >
-              <Tag className="h-3 w-3" /> Lotes
+              <Tag className="h-4 w-4" /> Lotes
             </button>
             {isAdmin && (
               <>
                 <button
                   type="button"
                   onClick={() => onReset(item)}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
-                  title="Zerar estoque e histórico"
+                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
+                  title={t("estoque.resetStockTitle")}
                 >
-                  <PackageCheck className="h-3 w-3" />
+                  <PackageCheck className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => onDelete(item)}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-                  title="Remover"
+                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                  title={t("estoque.removeTitle")}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </>
             )}
@@ -246,6 +248,7 @@ interface RetrabalhoCardProps {
 }
 
 const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistory, onLotes, loteCount }: RetrabalhoCardProps) {
+  const { t } = useTranslation();
   const d = item.device;
 
   return (
@@ -258,29 +261,29 @@ const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistor
     >
       <div className="h-0.5 bg-gradient-to-r from-transparent via-orange-500 to-transparent opacity-70 group-hover:opacity-100 transition-opacity" />
 
-      <div className="p-4 space-y-3">
+      <div className="p-5 space-y-4">
         {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0 space-y-0.5">
-            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight truncate">{d.reference}</p>
+          <div className="flex-1 min-w-0 space-y-1">
+            <h3 className="text-[17px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
+            <p className="text-[14px] text-muted-foreground font-mono tracking-tight truncate">{d.reference}</p>
           </div>
-          <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/25 px-2 py-0.5 text-[10px] font-medium text-orange-500 whitespace-nowrap">
-            <Wrench className="h-2.5 w-2.5" /> Retrabalho
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/25 px-2.5 py-1 text-[13px] font-medium text-orange-500 whitespace-nowrap">
+            <Wrench className="h-[13px] w-[13px]" /> Retrabalho
           </span>
         </div>
 
-        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate">{d.brand_name}</p>}
+        {d.brand_name && <p className="text-[14px] text-muted-foreground/70 truncate">{d.brand_name}</p>}
 
         {/* Quantidade em retrabalho */}
-        <div className="flex items-center justify-between rounded-xl px-3 py-2 border bg-orange-500/8 border-orange-500/25">
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            <Wrench className="h-3.5 w-3.5 text-orange-500 shrink-0" />
-            <span className="text-[11px] font-medium text-muted-foreground truncate">Em retrabalho</span>
+        <div className="flex items-center justify-between rounded-xl px-4 py-2.5 border bg-orange-500/8 border-orange-500/25">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <Wrench className="h-[18px] w-[18px] text-orange-500 shrink-0" />
+            <span className="text-[14px] font-medium text-muted-foreground truncate">{t("estoque.inRework")}</span>
           </div>
           <div className="flex items-center gap-1 shrink-0 ml-2">
-            <span className="text-[15px] font-bold tabular-nums text-orange-500">{item.quantity}</span>
-            <span className="text-[10px] text-muted-foreground">un.</span>
+            <span className="text-[20px] font-bold tabular-nums text-orange-500">{item.quantity}</span>
+            <span className="text-[13px] text-muted-foreground">un.</span>
           </div>
         </div>
 
@@ -289,48 +292,48 @@ const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistor
           <button
             type="button"
             onClick={() => onLotes(item)}
-            className="flex items-center gap-1.5 text-[11px] text-orange-500/70 hover:text-orange-500 transition-colors -mt-1"
+            className="flex items-center gap-2 text-[14px] text-orange-500/70 hover:text-orange-500 transition-colors -mt-1"
           >
-            <Tag className="h-3 w-3" />
+            <Tag className="h-4 w-4" />
             <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""}</span>
             <span className="text-muted-foreground/40">→</span>
           </button>
         )}
 
         {/* Info */}
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
+        <div className="flex items-center justify-between text-[13px] text-muted-foreground/60">
           <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
           {d.manufacturer_country && (
-            <span className="flex items-center gap-0.5 shrink-0 ml-2">
+            <span className="flex items-center gap-1 shrink-0 ml-2">
               <span>{countryFlag(d.manufacturer_country)}</span>
             </span>
           )}
         </div>
 
         {/* Botões */}
-        <div className="space-y-1.5 pt-1 border-t border-border/20">
+        <div className="space-y-2 pt-1 border-t border-border/20">
           <button
             type="button"
             onClick={() => onConcluir(item)}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[11px] font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[14px] font-medium transition-colors"
           >
-            <PackageCheck className="h-3.5 w-3.5" />
+            <PackageCheck className="h-[18px] w-[18px]" />
             Concluir Retrabalho → Expedição
           </button>
-          <div className="flex gap-1.5">
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => onHistory(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
             >
-              <Clock className="h-3 w-3" /> Histórico
+              <Clock className="h-4 w-4" /> Histórico
             </button>
             <button
               type="button"
               onClick={() => onLotes(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-orange-500/10 hover:text-orange-500 text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-orange-500/10 hover:text-orange-500 text-muted-foreground text-[13px] transition-colors"
             >
-              <Tag className="h-3 w-3" /> Lotes
+              <Tag className="h-4 w-4" /> Lotes
             </button>
           </div>
         </div>
@@ -356,6 +359,7 @@ interface ExpedicaoCardProps {
 const ExpedicaoCard = memo(function ExpedicaoCard({
   item, onSaida, onHistory, onDelete, onLotes, onRetrabalho, onReset, loteCount, isAdmin,
 }: ExpedicaoCardProps) {
+  const { t } = useTranslation();
   const d = item.device;
   const available = item.quantity_available;
   const isLow = available > 0 && available <= item.min_quantity;
@@ -374,66 +378,66 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
         isEmpty ? "via-destructive opacity-80" : isLow ? "via-warning opacity-70" : "via-success opacity-50"
       )} />
 
-      <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
-            <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[11px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
+      <div className="p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <h3 className="text-[17px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
+            <p className="text-[14px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
           </div>
-          <Badge variant="outline" className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 border-success/25 text-success/80 bg-success/5 rounded-lg">
+          <Badge variant="outline" className="shrink-0 text-[13px] font-mono px-2 py-1 border-success/25 text-success/80 bg-success/5 rounded-lg">
             {d.classification_code}
           </Badge>
         </div>
 
-        {d.brand_name && <p className="text-[11px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
+        {d.brand_name && <p className="text-[14px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
 
         <div className="flex flex-wrap gap-1 -mt-1">
           {d.sterile && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2 py-0.5 text-[10px] font-medium text-success">
-              <Shield className="h-2.5 w-2.5" /> Estéril
+            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2.5 py-1 text-[13px] font-medium text-success">
+              <Shield className="h-[13px] w-[13px]" /> Estéril
             </span>
           )}
           {d.single_use && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2 py-0.5 text-[10px] font-medium text-orange-500">
-              <Package className="h-2.5 w-2.5" /> Uso único
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2.5 py-1 text-[13px] font-medium text-orange-500">
+              <Package className="h-[13px] w-[13px]" /> Uso único
             </span>
           )}
           {d.implantable && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-[10px] font-medium text-primary">
-              <Activity className="h-2.5 w-2.5" /> Implantável
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-[13px] font-medium text-primary">
+              <Activity className="h-[13px] w-[13px]" /> Implantável
             </span>
           )}
         </div>
 
         <div className={cn(
-          "flex items-center justify-between rounded-xl px-3 py-2 border",
+          "flex items-center justify-between rounded-xl px-4 py-2.5 border",
           isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-success/8 border-success/25"
         )}>
-          <div className="flex items-center gap-1.5">
-            <PackageCheck className={cn("h-3.5 w-3.5", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")} />
-            <span className="text-[11px] font-medium text-muted-foreground">Expedição</span>
+          <div className="flex items-center gap-2">
+            <PackageCheck className={cn("h-[18px] w-[18px]", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")} />
+            <span className="text-[14px] font-medium text-muted-foreground">{t("estoque.shipping")}</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            {isEmpty && <AlertTriangle className="h-3 w-3 text-destructive" />}
-            {isLow && !isEmpty && <TrendingDown className="h-3 w-3 text-warning" />}
-            <span className={cn("text-[15px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")}>
+          <div className="flex items-center gap-2">
+            {isEmpty && <AlertTriangle className="h-4 w-4 text-destructive" />}
+            {isLow && !isEmpty && <TrendingDown className="h-4 w-4 text-warning" />}
+            <span className={cn("text-[20px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")}>
               {available}
             </span>
-            <span className="text-[10px] text-muted-foreground">un.</span>
+            <span className="text-[13px] text-muted-foreground">un.</span>
           </div>
         </div>
 
         {item.quantity_reserved > 0 && (
-          <div className="flex items-center justify-between rounded-xl px-3 py-2 border bg-amber-500/8 border-amber-500/25 -mt-1">
-            <div className="flex items-center gap-1.5">
-              <Archive className={cn("h-3.5 w-3.5 text-amber-500")} />
-              <span className="text-[11px] font-medium text-muted-foreground">Reservado</span>
+          <div className="flex items-center justify-between rounded-xl px-4 py-2.5 border bg-amber-500/8 border-amber-500/25 -mt-1">
+            <div className="flex items-center gap-2">
+              <Archive className={cn("h-[18px] w-[18px] text-amber-500")} />
+              <span className="text-[14px] font-medium text-muted-foreground">{t("estoque.reserved")}</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[15px] font-bold tabular-nums text-amber-500">
+            <div className="flex items-center gap-2">
+              <span className="text-[20px] font-bold tabular-nums text-amber-500">
                 {item.quantity_reserved}
               </span>
-              <span className="text-[10px] text-muted-foreground">un.</span>
+              <span className="text-[13px] text-muted-foreground">un.</span>
             </div>
           </div>
         )}
@@ -442,79 +446,79 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
           <button
             type="button"
             onClick={() => onLotes(item)}
-            className="flex items-center gap-1.5 text-[11px] text-success/70 hover:text-success transition-colors -mt-1"
+            className="flex items-center gap-2 text-[14px] text-success/70 hover:text-success transition-colors -mt-1"
           >
-            <Tag className="h-3 w-3" />
+            <Tag className="h-4 w-4" />
             <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""} prontos</span>
             <span className="text-muted-foreground/40">→</span>
           </button>
         )}
 
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
+        <div className="flex items-center justify-between text-[13px] text-muted-foreground/60">
           <span>Mín: {item.min_quantity} un.</span>
           {item.location && <span className="truncate ml-2">📍 {item.location}</span>}
         </div>
 
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
+        <div className="flex items-center justify-between text-[13px] text-muted-foreground/60 pt-1 border-t border-border/20">
           <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
           {d.manufacturer_country && (
-            <span className="flex items-center gap-0.5 shrink-0 ml-2" title={d.manufacturer_country}>
+            <span className="flex items-center gap-1 shrink-0 ml-2" title={d.manufacturer_country}>
               <span>{countryFlag(d.manufacturer_country)}</span>
             </span>
           )}
         </div>
 
-        <div className="space-y-1.5 pt-1 border-t border-border/20">
+        <div className="space-y-2 pt-1 border-t border-border/20">
           <button
             type="button"
             onClick={() => onSaida(item)}
             disabled={item.quantity === 0}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[14px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
-            <ArrowUpCircle className="h-3.5 w-3.5" />
+            <ArrowUpCircle className="h-[18px] w-[18px]" />
             Retirada
           </button>
           <button
             type="button"
             onClick={() => onRetrabalho(item)}
             disabled={item.quantity === 0}
-            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[14px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
-            <Wrench className="h-3.5 w-3.5" />
+            <Wrench className="h-[18px] w-[18px]" />
             Retrabalho
           </button>
-          <div className="flex gap-1.5">
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => onHistory(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
             >
-              <Clock className="h-3 w-3" /> Histórico
+              <Clock className="h-4 w-4" /> Histórico
             </button>
             <button
               type="button"
               onClick={() => onLotes(item)}
-              className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-success/10 hover:text-success text-muted-foreground text-[10px] transition-colors"
+              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-success/10 hover:text-success text-muted-foreground text-[13px] transition-colors"
             >
-              <Tag className="h-3 w-3" /> Lotes
+              <Tag className="h-4 w-4" /> Lotes
             </button>
             {isAdmin && (
               <>
                 <button
                   type="button"
                   onClick={() => onReset(item)}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
-                  title="Zerar estoque e histórico"
+                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
+                  title={t("estoque.resetStockTitle")}
                 >
-                  <PackageCheck className="h-3 w-3" />
+                  <PackageCheck className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => onDelete(item)}
-                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-                  title="Remover"
+                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
+                  title={t("estoque.removeTitle")}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </>
             )}
@@ -544,6 +548,7 @@ interface SearchBarProps {
 const SearchBar = memo(function SearchBar({
   onSearch, onClear, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
 }: SearchBarProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   useClickOutside(containerRef, onCloseSuggestions);
 
@@ -552,7 +557,7 @@ const SearchBar = memo(function SearchBar({
       <SearchInputWithBarcode
         onChange={v => { if (!v.trim()) { onClear(); return; } onSearch(v.trim()); }}
         onSearch={v => { onSearch(v.trim()); onCloseSuggestions(); }}
-        placeholder="Bipe o código ou busque por modelo, referência, UDI ou lote..."
+        placeholder={t("estoque.searchPlaceholderBarcode")}
         height="h-11"
       />
       {showSuggestions && suggestions.length > 0 && (
@@ -572,6 +577,7 @@ const SearchBar = memo(function SearchBar({
 const HIDE_EMPTY_INTERMEDIARIA = false;
 
 export default function Estoque() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
@@ -661,7 +667,7 @@ export default function Estoque() {
       // Zera quantidades mas MANTÉM os stock_items (peças regularizadas ficam com qty=0)
       const { error: e4 } = await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
       if (e4) throw e4;
-      toast.success("Histórico apagado. Peças cadastradas mantidas com saldo zerado.");
+      toast.success(t("estoque.toasts.clearHistSuccess"));
       setClearHistConfirm(false);
       refetch();
     } catch (err: unknown) {
@@ -854,9 +860,9 @@ export default function Estoque() {
     const { error } = await supabase.from("stock_items").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     setDeletingAll(false);
     if (error) {
-      toast.error("Erro ao excluir estoque.");
+      toast.error(t("estoque.toasts.deleteStockError"));
     } else {
-      toast.success("Todo o estoque foi excluído.");
+      toast.success(t("estoque.toasts.allStockDeleted"));
       setDeleteAllOpen(false);
       setDeleteAllTyped("");
       refetch();
@@ -901,14 +907,14 @@ export default function Estoque() {
         .eq("stock_item_id", resetItem.id);
 
       if (movErr) {
-        toast.error("Estoque zerado, mas não foi possível limpar o histórico.");
+        toast.error(t("estoque.toasts.resetStockPartial"));
       } else {
-        toast.success("Estoque e histórico zerados com sucesso.");
+        toast.success(t("estoque.toasts.resetStockSuccess"));
       }
       setResetItem(null);
       refetch();
     } catch (_e) {
-      toast.error("Erro ao zerar estoque. Tente novamente.", {
+      toast.error(t("estoque.toasts.resetStockError"), {
         action: { label: "Tentar novamente", onClick: handleResetItem }
       });
     } finally {
@@ -928,7 +934,7 @@ export default function Estoque() {
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
               <Boxes className="h-4 w-4 text-primary" />
-              <h1 className="text-sm font-semibold">Estoque</h1>
+              <h1 className="text-sm font-semibold">{t("estoque.title")}</h1>
             {globalLowCount > 0 && (
               <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-600 dark:text-red-400">
                 <AlertTriangle className="h-3 w-3" />{globalLowCount} crítico{globalLowCount !== 1 ? "s" : ""}
@@ -956,7 +962,7 @@ export default function Estoque() {
                     <button
                       type="button"
                       onClick={() => setClearHistConfirm(true)}
-                      title="Apagar todo o histórico"
+                      title={t("estoque.clearAllHistoryTitle")}
                       className="h-8 w-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-colors"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -1052,7 +1058,7 @@ export default function Estoque() {
                 value={search}
                 onChange={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); }}
                 onSearch={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
-                placeholder="Buscar por modelo, referência, UDI ou lote..."
+                placeholder={t("estoque.searchPlaceholder")}
                 height="h-11"
               />
               <Button
@@ -1071,7 +1077,7 @@ export default function Estoque() {
                 size="icon"
                 className="h-11 w-11 shrink-0 relative"
                 onClick={() => setShowFilters(v => !v)}
-                title="Filtros"
+                title={t("estoque.filtersTitle")}
               >
                 <Filter className="h-4 w-4" />
                 {hasActiveFilters && (
@@ -1084,7 +1090,7 @@ export default function Estoque() {
             {showFilters && (
               <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filtros</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("estoque.filters")}</p>
                   {hasActiveFilters && (
                     <button
                       type="button"
@@ -1098,7 +1104,7 @@ export default function Estoque() {
 
                 {/* Status */}
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground font-medium">Status</p>
+                  <p className="text-[11px] text-muted-foreground font-medium">{t("estoque.status")}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {([
                       { value: "all", label: "Todos" },
@@ -1125,9 +1131,9 @@ export default function Estoque() {
 
                 {/* Localização */}
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground font-medium">Localização</p>
+                  <p className="text-[11px] text-muted-foreground font-medium">{t("estoque.location")}</p>
                   <Input
-                    placeholder="Filtrar por localização..."
+                    placeholder={t("estoque.locationPlaceholder")}
                     value={filterLocation}
                     onChange={e => setFilterLocation(e.target.value)}
                     className="h-9 text-sm"
@@ -1136,9 +1142,9 @@ export default function Estoque() {
 
                 {/* Marca */}
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground font-medium">Marca</p>
+                  <p className="text-[11px] text-muted-foreground font-medium">{t("estoque.brand")}</p>
                   <Input
-                    placeholder="Filtrar por marca..."
+                    placeholder={t("estoque.brandPlaceholder")}
                     value={filterBrand}
                     onChange={e => setFilterBrand(e.target.value)}
                     className="h-9 text-sm"
@@ -1231,7 +1237,7 @@ export default function Estoque() {
         {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && loading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
-            <p className="text-sm text-muted-foreground">Carregando estoque...</p>
+            <p className="text-sm text-muted-foreground">{t("estoque.loading")}</p>
           </div>
         )}
 
@@ -1396,7 +1402,7 @@ export default function Estoque() {
               </div>
               <div className="max-h-[420px] overflow-y-auto divide-y divide-border/20">
                 {baixoItems.length === 0 ? (
-                  <p className="text-center text-sm text-muted-foreground py-10">Nenhuma peça com estoque baixo</p>
+                  <p className="text-center text-sm text-muted-foreground py-10">{t("estoque.noLowStock")}</p>
                 ) : baixoItems.map(item => (
                   <div key={item.id} className="flex items-center justify-between gap-3 px-5 py-3">
                     <div className="min-w-0">
@@ -1454,36 +1460,36 @@ export default function Estoque() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <Trash2 className="h-4 w-4" /> Excluir todo o estoque?
+              <Trash2 className="h-4 w-4" /> {t("estoque.deleteAllTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <span className="block">
-                Isso irá remover <strong>todas as peças</strong> do estoque (intermediário + expedição) e <strong>todo o histórico</strong>. Ação irreversível.
+                {t("estoque.deleteAllDesc1")} <strong>{t("estoque.deleteAllDesc1Strong")}</strong> {t("estoque.deleteAllDesc1Mid")} <strong>{t("estoque.deleteAllDesc1Strong2")}</strong>{t("estoque.deleteAllDesc1End")}
               </span>
-              <span className="block text-xs text-muted-foreground">💡 Faça um Backup antes de continuar.</span>
+              <span className="block text-xs text-muted-foreground">{t("estoque.backupHint")}</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="px-1 space-y-1.5">
             <p className="text-sm text-muted-foreground">
-              Digite <strong className="text-destructive font-mono">EXCLUIR</strong> para confirmar:
+              {t("estoque.typeToConfirm")} <strong className="text-destructive font-mono">{t("estoque.confirmWord")}</strong> {t("estoque.typeToConfirmEnd")}
             </p>
             <Input
               value={deleteAllTyped}
               onChange={(e) => setDeleteAllTyped(e.target.value)}
-              placeholder="EXCLUIR"
+              placeholder={t("estoque.confirmWord")}
               className="font-mono"
               disabled={deletingAll}
               autoFocus
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>{t("estoque.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteAll}
-              disabled={deletingAll || deleteAllTyped !== "EXCLUIR"}
+              disabled={deletingAll || deleteAllTyped !== t("estoque.confirmWord")}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingAll ? "Excluindo..." : "Excluir tudo"}
+              {deletingAll ? t("estoque.deleting") : t("estoque.deleteAllAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1498,14 +1504,14 @@ export default function Estoque() {
                 <PackageCheck className="h-4 w-4 text-warning" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Zerar estoque e histórico?</p>
+                <p className="text-sm font-semibold">{t("estoque.resetStockConfirmTitle")}</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
                   {resetItem.device.model}
                 </p>
               </div>
             </div>
             <p className="text-[12px] text-muted-foreground">
-              Isso vai zerar a quantidade para <strong>0</strong> e apagar <strong>todo o histórico de movimentos</strong> desta peça. A peça permanece cadastrada no estoque.
+              {t("estoque.resetStockConfirmDesc1")} <strong>{t("estoque.resetStockConfirmDesc1Strong")}</strong> {t("estoque.resetStockConfirmDesc1Mid")} <strong>{t("estoque.resetStockConfirmDesc1Strong2")}</strong> {t("estoque.resetStockConfirmDesc1End")}
             </p>
             <div className="flex gap-2">
               <button
@@ -1514,7 +1520,7 @@ export default function Estoque() {
                 onClick={() => setResetItem(null)}
                 disabled={resetting}
               >
-                Cancelar
+                {t("estoque.cancel")}
               </button>
               <button
                 type="button"
@@ -1523,8 +1529,8 @@ export default function Estoque() {
                 disabled={resetting}
               >
                 {resetting
-                  ? <span className="flex items-center justify-center gap-1.5"><span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" /> Zerando...</span>
-                  : "Zerar tudo"}
+                  ? <span className="flex items-center justify-center gap-1.5"><span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" /> {t("estoque.resetting")}</span>
+                  : t("estoque.resetAll")}
               </button>
             </div>
           </div>
@@ -1540,15 +1546,15 @@ export default function Estoque() {
                 <Trash2 className="h-4 w-4 text-destructive" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Remover do estoque?</p>
+                <p className="text-sm font-semibold">{t("estoque.removeConfirmTitle")}</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
                   {deleteItem.device.model}
                 </p>
                 <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-                  Fase: {deleteItem.fase === "intermediaria" ? "Intermediário" : "Expedição"}
+                  {t("estoque.phaseLabel")} {deleteItem.fase === "intermediaria" ? t("estoque.phaseIntermediate") : t("estoque.phaseShipping")}
                 </p>
                 <p className="text-[11px] text-destructive/80 mt-1">
-                  Todo o histórico de movimentos será apagado.
+                  {t("estoque.historyWillBeDeleted")}
                 </p>
               </div>
             </div>
@@ -1558,7 +1564,7 @@ export default function Estoque() {
                 className="flex-1 h-10 rounded-xl border border-border text-sm font-medium hover:bg-muted/30 transition-colors"
                 onClick={() => setDeleteItem(null)}
               >
-                Cancelar
+                {t("estoque.cancel")}
               </button>
               <button
                 type="button"
@@ -1570,18 +1576,18 @@ export default function Estoque() {
                   const result = await deleteStockItem(deleteItem.id);
                   setDeleting(false);
                   if (result.ok) {
-                    toast.success("Peça removida do estoque.", { description: deleteItem.device.model });
+                    toast.success(t("estoque.toasts.pieceRemoved"), { description: deleteItem.device.model });
                     setDeleteItem(null);
                     refetch();
                   } else {
-                    toast.error("Erro ao remover peça. Tente novamente.");
+                    toast.error(t("estoque.toasts.removePieceError"));
                   }
                 }}
               >
                 {deleting
                   ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   : <Trash2 className="h-4 w-4" />}
-                Remover
+                {t("estoque.remove")}
               </button>
             </div>
           </div>
@@ -1598,23 +1604,23 @@ export default function Estoque() {
               <AlertTriangle className="h-5 w-5 text-destructive" />
             </div>
             <div>
-              <p className="text-sm font-bold text-destructive">Apagar todo o histórico?</p>
+              <p className="text-sm font-bold text-destructive">{t("estoque.clearHistConfirmTitle")}</p>
               <p className="text-[12px] text-muted-foreground mt-1">
-                Isso vai apagar <strong>todos os movimentos</strong>, pedidos comerciais e zerar o estoque de todas as peças. Esta ação <strong>não pode ser desfeita</strong>.
+                {t("estoque.clearHistConfirmDesc1")} <strong>{t("estoque.clearHistConfirmDesc1Strong")}</strong>{t("estoque.clearHistConfirmDesc1Mid")} <strong>{t("estoque.clearHistConfirmDesc1Strong2")}</strong>{t("estoque.clearHistConfirmDesc1End")}
               </p>
             </div>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setClearHistConfirm(false)} disabled={clearingHist}
               className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">
-              Cancelar
+              {t("estoque.cancel")}
             </button>
             <button type="button" onClick={clearAllHistory} disabled={clearingHist}
               className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
               {clearingHist
                 ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <Trash2 className="h-3.5 w-3.5" />}
-              Apagar tudo
+              {t("estoque.deleteAllAction2")}
             </button>
           </div>
         </div>

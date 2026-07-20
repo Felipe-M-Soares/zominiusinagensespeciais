@@ -9,7 +9,7 @@ function getRequiredEnv(key: string): string {
 }
 
 function loginToEmail(login: string): string {
-  return `${login.toLowerCase().trim()}@interno.conceptus`;
+  return `${login.toLowerCase().trim()}@interno.zomini`;
 }
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();

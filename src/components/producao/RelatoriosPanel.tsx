@@ -13,15 +13,18 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 
 type RelatorioTipo = "producao_diaria"|"eficiencia"|"paradas"|"refugo";
 
-const RELATORIOS: {id:RelatorioTipo;label:string;descricao:string;Icon:React.ElementType;color:string;bg:string}[] = [
-  {id:"producao_diaria", label:"Produção Diária",    descricao:"Peças produzidas por dia e turno",           Icon:BarChart2,    color:"text-blue-500",   bg:"bg-blue-500/10"},
-  {id:"eficiencia",      label:"Eficiência / OEE",   descricao:"Disponibilidade e desempenho das máquinas",  Icon:FileBarChart2, color:"text-green-500",  bg:"bg-green-500/10"},
-  {id:"paradas",         label:"Análise de Paradas",  descricao:"Tempo perdido, motivos e frequência",        Icon:Clock,        color:"text-red-500",    bg:"bg-red-500/10"},
-  {id:"refugo",          label:"Refugo e Qualidade",  descricao:"Índice de refugo, defeitos e destinações",   Icon:ShieldAlert,  color:"text-orange-500", bg:"bg-orange-500/10"},
-];
+function buildRelatorios(t: (k: string) => string): {id:RelatorioTipo;label:string;descricao:string;Icon:React.ElementType;color:string;bg:string}[] {
+  return [
+  {id:"producao_diaria", label:t("relatoriosPanel.reports.dailyProd.label"),    descricao:t("relatoriosPanel.reports.dailyProd.desc"),           Icon:BarChart2,    color:"text-blue-500",   bg:"bg-blue-500/10"},
+  {id:"eficiencia",      label:t("relatoriosPanel.reports.efficiency.label"),   descricao:t("relatoriosPanel.reports.efficiency.desc"),  Icon:FileBarChart2, color:"text-green-500",  bg:"bg-green-500/10"},
+  {id:"paradas",         label:t("relatoriosPanel.reports.stops.label"),  descricao:t("relatoriosPanel.reports.stops.desc"),        Icon:Clock,        color:"text-red-500",    bg:"bg-red-500/10"},
+  {id:"refugo",          label:t("relatoriosPanel.reports.scrap.label"),  descricao:t("relatoriosPanel.reports.scrap.desc"),   Icon:ShieldAlert,  color:"text-orange-500", bg:"bg-orange-500/10"},
+  ];
+}
 
 interface RelData {
   producaoDiaria?: {dia:string;producao:number}[];
@@ -31,6 +34,8 @@ interface RelData {
 }
 
 export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
+  const { t } = useTranslation();
+  const RELATORIOS = buildRelatorios(t);
   const [relatorio,setRelatorio]=useState<RelatorioTipo|null>(null);
   const [dataInicio,setDataInicio]=useState(()=>{const d=new Date();d.setDate(d.getDate()-14);return d.toISOString().split("T")[0];});
   const [dataFim,setDataFim]=useState(()=>new Date().toISOString().split("T")[0]);
@@ -43,7 +48,7 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
     setRelData(null);
 
     if(!navigator.onLine){
-      toast.warning("Relatórios detalhados requerem conexão com a internet");
+      toast.warning(t("relatoriosPanel.toastNeedsConnection"));
       setLoading(false);
       return;
     }
@@ -56,7 +61,7 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
         const {data}=await supabase.from("apontamentos_producao").select("quantidade,created_at").gte("created_at",inicioISO).lte("created_at",fimISO);
         const diasMap:Record<string,number>={};
         (data||[]).forEach((a:{quantidade:number;created_at:string})=>{
-          const dia=new Date(a.created_at).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+          const dia=new Date(a.created_at).toLocaleDateString(t("relatoriosPanel.localeCode"),{day:"2-digit",month:"2-digit"});
           diasMap[dia]=(diasMap[dia]||0)+(a.quantidade||0);
         });
         setRelData({producaoDiaria:Object.entries(diasMap).map(([dia,producao])=>({dia,producao}))});
@@ -82,26 +87,26 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
         setRelData({refugo:Object.entries(tipoMap).map(([tipo,quantidade])=>({tipo,quantidade})).sort((a,b)=>b.quantidade-a.quantidade)});
       }
     } catch(e){
-      toast.error("Erro ao gerar relatório");
+      toast.error(t("relatoriosPanel.toastGenerateError"));
       logger.error("RelatoriosPanel buscarDados error:", e);
     }
     setLoading(false);
   },[dataInicio,dataFim]);
 
   function exportarCSV(){
-    if(!relData){toast.error("Gere um relatório antes de exportar");return;}
+    if(!relData){toast.error(t("relatoriosPanel.toastGenerateFirst"));return;}
     const rows:string[][]=[];
-    if(relData.producaoDiaria){rows.push(["Dia","Produção"]);relData.producaoDiaria.forEach(r=>rows.push([r.dia,String(r.producao)]));}
-    if(relData.eficiencia){rows.push(["Máquina","Disponibilidade %"]);relData.eficiencia.forEach(r=>rows.push([r.maquina,String(r.disponib)]));}
-    if(relData.paradas){rows.push(["Motivo","Minutos","Ocorrências"]);relData.paradas.forEach(r=>rows.push([r.motivo,String(r.minutos),String(r.ocorrencias)]));}
-    if(relData.refugo){rows.push(["Tipo Defeito","Quantidade"]);relData.refugo.forEach(r=>rows.push([r.tipo,String(r.quantidade)]));}
+    if(relData.producaoDiaria){rows.push([t("relatoriosPanel.csvDay"),t("relatoriosPanel.csvProduction")]);relData.producaoDiaria.forEach(r=>rows.push([r.dia,String(r.producao)]));}
+    if(relData.eficiencia){rows.push([t("relatoriosPanel.csvMachine"),t("relatoriosPanel.csvAvailabilityPct")]);relData.eficiencia.forEach(r=>rows.push([r.maquina,String(r.disponib)]));}
+    if(relData.paradas){rows.push([t("relatoriosPanel.csvReason"),t("relatoriosPanel.csvMinutes"),t("relatoriosPanel.csvOccurrences")]);relData.paradas.forEach(r=>rows.push([r.motivo,String(r.minutos),String(r.ocorrencias)]));}
+    if(relData.refugo){rows.push([t("relatoriosPanel.csvDefectType"),t("relatoriosPanel.csvQuantity")]);relData.refugo.forEach(r=>rows.push([r.tipo,String(r.quantidade)]));}
     const csv=rows.map(r=>r.map(c=>`"${c}"`).join(",")).join("\n");
     const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
     a.href=url;a.download=`relatorio_${relatorio}_${dataInicio}_${dataFim}.csv`;a.click();
     URL.revokeObjectURL(url);
-    toast.success("Relatório exportado!");
+    toast.success(t("relatoriosPanel.toastExported"));
   }
 
   return (
@@ -115,17 +120,17 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
             📥
           </span>
           <div className="text-left">
-            <p className="text-sm font-semibold text-green-700 dark:text-green-400">Importar PPI-51 (Excel)</p>
-            <p className="text-[11px] text-muted-foreground">Migre dados históricos do arquivo Excel para o sistema</p>
+            <p className="text-sm font-semibold text-green-700 dark:text-green-400">{t("relatoriosPanel.importPPI51Title")}</p>
+            <p className="text-[11px] text-muted-foreground">{t("relatoriosPanel.importPPI51Desc")}</p>
           </div>
         </button>
       )}
       {/* Filtro de período */}
       <div className="rounded-2xl border bg-card/60 p-4">
-        <p className="text-sm font-medium mb-3">Período</p>
+        <p className="text-sm font-medium mb-3">{t("relatoriosPanel.period")}</p>
         <div className="flex gap-3">
-          <div className="flex-1"><label className="text-xs text-muted-foreground mb-1 block">De</label><Input type="date" value={dataInicio} onChange={e=>setDataInicio(e.target.value)}/></div>
-          <div className="flex-1"><label className="text-xs text-muted-foreground mb-1 block">Até</label><Input type="date" value={dataFim} onChange={e=>setDataFim(e.target.value)}/></div>
+          <div className="flex-1"><label className="text-xs text-muted-foreground mb-1 block">{t("relatoriosPanel.from")}</label><Input type="date" value={dataInicio} onChange={e=>setDataInicio(e.target.value)}/></div>
+          <div className="flex-1"><label className="text-xs text-muted-foreground mb-1 block">{t("relatoriosPanel.to")}</label><Input type="date" value={dataFim} onChange={e=>setDataFim(e.target.value)}/></div>
         </div>
       </div>
 
@@ -145,7 +150,7 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
       {/* Resultado */}
       {loading && (
         <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <RefreshCw className="h-4 w-4 animate-spin"/>Gerando relatório...
+          <RefreshCw className="h-4 w-4 animate-spin"/>{t("relatoriosPanel.generatingReport")}
         </div>
       )}
 
@@ -154,7 +159,7 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">{RELATORIOS.find(r=>r.id===relatorio)?.label}</p>
             <Button size="sm" variant="outline" className="gap-1 h-8 text-xs" onClick={exportarCSV}>
-              <Download className="h-3.5 w-3.5"/>CSV
+              <Download className="h-3.5 w-3.5"/>{t("relatoriosPanel.csvBtn")}
             </Button>
           </div>
 
@@ -165,7 +170,7 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
                 <XAxis dataKey="dia" tick={{fontSize:10}}/>
                 <YAxis tick={{fontSize:10}}/>
                 <Tooltip/>
-                <Line type="monotone" dataKey="producao" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} name="Peças"/>
+                <Line type="monotone" dataKey="producao" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} name={t("relatoriosPanel.pieces")}/>
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -177,7 +182,7 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
                 <XAxis dataKey="maquina" tick={{fontSize:10}}/>
                 <YAxis domain={[0,100]} tick={{fontSize:10}}/>
                 <Tooltip/>
-                <Bar dataKey="disponib" fill="#22c55e" radius={[4,4,0,0]} name="Disponib. %"/>
+                <Bar dataKey="disponib" fill="#22c55e" radius={[4,4,0,0]} name={t("relatoriosPanel.availabilityPctLegend")}/>
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -203,7 +208,7 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
                 <XAxis dataKey="tipo" tick={{fontSize:9}}/>
                 <YAxis tick={{fontSize:10}}/>
                 <Tooltip/>
-                <Bar dataKey="quantidade" fill="#f97316" radius={[4,4,0,0]} name="Qtd"/>
+                <Bar dataKey="quantidade" fill="#f97316" radius={[4,4,0,0]} name={t("relatoriosPanel.qty")}/>
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -212,7 +217,7 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
           {((relData.producaoDiaria?.length===0)||(relData.eficiencia?.length===0)||(relData.paradas?.length===0)||(relData.refugo?.length===0)) && (
             <div className="text-center py-6 text-muted-foreground text-sm">
               <FileBarChart2 className="h-8 w-8 mx-auto mb-2 opacity-30"/>
-              Nenhum dado no período selecionado
+              {t("relatoriosPanel.noDataPeriod")}
             </div>
           )}
         </div>
@@ -221,7 +226,7 @@ export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
       {!relatorio && !loading && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
           <FileBarChart2 className="h-8 w-8 opacity-30"/>
-          <p>Selecione um tipo de relatório acima</p>
+          <p>{t("relatoriosPanel.selectReportType")}</p>
         </div>
       )}
     </div>

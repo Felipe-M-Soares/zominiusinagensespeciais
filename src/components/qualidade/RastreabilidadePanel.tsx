@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { sanitizeQuery } from "@/lib/sanitize";
 import { useAuth } from "@/hooks/useAuth";
 import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
+import { useTranslation } from "react-i18next";
 
 interface RastrItem {
   id:string; lote:string; device_ref:string; device_model:string; udi_di:string|null;
@@ -19,12 +20,21 @@ interface ClienteInfo {
   telefone:string|null; email:string|null; documento:string|null; endereco:string|null;
 }
 
+function recallLabel(s: string, t: (k: string) => string): string {
+  const map: Record<string, string> = {
+    normal: t("rastreabilidadePanel.recallNormal"), alerta: t("rastreabilidadePanel.recallAlert"),
+    recall_ativo: t("rastreabilidadePanel.recallActive"), devolvido: t("rastreabilidadePanel.recallReturned"),
+  };
+  return map[s] ?? s;
+}
+
 const RECALL_COLOR: Record<string,string> = {
   normal:"text-green-600 bg-green-500/10", alerta:"text-amber-600 bg-amber-500/10",
   recall_ativo:"text-red-600 bg-red-500/10 animate-pulse", devolvido:"text-muted-foreground bg-muted/20"
 };
 
 export function RastreabilidadePanel() {
+  const { t } = useTranslation();
   const { isAdmin } = useAuth();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<RastrItem[]>([]);
@@ -74,16 +84,16 @@ export function RastreabilidadePanel() {
       <div>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold mb-1">Busca de Rastreabilidade</p>
+            <p className="text-sm font-semibold mb-1">{t("rastreabilidadePanel.title")}</p>
             <p className="text-[11px] text-muted-foreground mb-3">
-              Busque por lote, referência, modelo, UDI-DI ou cliente para rastrear destino dos produtos
+              {t("rastreabilidadePanel.subtitle")}
             </p>
           </div>
           {isAdmin && (
             <ClearHistoryButton
               rpc="admin_clear_rastreabilidade"
-              confirmTitle="Apagar rastreabilidade pós-venda?"
-              confirmDescription="Apaga todos os registros de lote → cliente/recall. Pedidos, estoque e cadastro de peças são mantidos."
+              confirmTitle={t("rastreabilidadePanel.clearConfirmTitle")}
+              confirmDescription={t("rastreabilidadePanel.clearConfirmDesc")}
               onCleared={() => { setResults([]); setSearched(false); }}
             />
           )}
@@ -95,7 +105,7 @@ export function RastreabilidadePanel() {
               value={search}
               onChange={e=>setSearch(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&buscar()}
-              placeholder="Lote, referência, modelo, UDI-DI ou cliente..."
+              placeholder={t("rastreabilidadePanel.searchPlaceholder")}
               className="pl-9 h-9"
             />
           </div>
@@ -105,7 +115,7 @@ export function RastreabilidadePanel() {
             className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {loading?<RefreshCw className="h-4 w-4 animate-spin"/>:<Search className="h-4 w-4"/>}
-            Buscar
+            {t("rastreabilidadePanel.search")}
           </button>
         </div>
       </div>
@@ -113,14 +123,14 @@ export function RastreabilidadePanel() {
       {searched && !loading && results.length === 0 && (
         <div className="text-center py-10 text-muted-foreground text-sm">
           <Package className="h-8 w-8 mx-auto opacity-20 mb-2"/>
-          <p>Nenhum resultado para "{search}"</p>
-          <p className="text-[10px] mt-1">Os registros são criados automaticamente quando um pedido é marcado como "Enviado"</p>
+          <p>{t("rastreabilidadePanel.noResultsFor", { query: search })}</p>
+          <p className="text-[10px] mt-1">{t("rastreabilidadePanel.autoCreatedHint")}</p>
         </div>
       )}
 
       {results.length > 0 && (
         <div className="space-y-2">
-          <p className="text-[11px] text-muted-foreground">{results.length} registro(s) encontrado(s)</p>
+          <p className="text-[11px] text-muted-foreground">{t("rastreabilidadePanel.resultsFound", { count: results.length })}</p>
           {results.map(r=>(
             <div key={r.id} className={cn("rounded-2xl border overflow-hidden",
               r.status_recall==="recall_ativo"?"border-red-500/30 bg-red-500/5":
@@ -133,9 +143,9 @@ export function RastreabilidadePanel() {
                   r.status_recall==="alerta"?"bg-amber-500":
                   r.status_recall==="recall_ativo"?"bg-red-500 animate-pulse":"bg-muted-foreground")}/>
                 <p className="text-[12px] font-mono font-semibold">{r.lote}</p>
-                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",RECALL_COLOR[r.status_recall])}>{r.status_recall.replace("_"," ")}</span>
-                <span className="text-[11px] text-muted-foreground truncate flex-1">· {r.device_ref} · {r.quantidade}un → {r.cliente_nome}</span>
-                <span className="text-[10px] text-muted-foreground shrink-0">{new Date(r.data_envio+"T12:00:00").toLocaleDateString("pt-BR")}</span>
+                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",RECALL_COLOR[r.status_recall])}>{recallLabel(r.status_recall, t)}</span>
+                <span className="text-[11px] text-muted-foreground truncate flex-1">· {r.device_ref} · {r.quantidade}{t("rastreabilidadePanel.units")} → {r.cliente_nome}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">{new Date(r.data_envio+"T12:00:00").toLocaleDateString(t("rastreabilidadePanel.localeCode"))}</span>
                 {expanded===r.id?<ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0"/>:<ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0"/>}
               </div>
               {expanded===r.id && (() => {
@@ -144,31 +154,31 @@ export function RastreabilidadePanel() {
                 <div className="border-t border-border/20 px-3 pb-3 pt-2.5 space-y-2.5">
                   {/* Produto */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-                    <div><p className="text-muted-foreground">Referência</p><p className="font-mono font-medium">{r.device_ref}</p></div>
+                    <div><p className="text-muted-foreground">{t("rastreabilidadePanel.reference")}</p><p className="font-mono font-medium">{r.device_ref}</p></div>
                     <div><p className="text-muted-foreground">UDI-DI</p><p className="font-mono">{r.udi_di||"—"}</p></div>
-                    <div><p className="text-muted-foreground">Quantidade</p><p className="font-medium">{r.quantidade} un.</p></div>
-                    <div><p className="text-muted-foreground">Envio</p><p className="font-medium">{new Date(r.data_envio+"T12:00:00").toLocaleDateString("pt-BR")}</p></div>
+                    <div><p className="text-muted-foreground">{t("rastreabilidadePanel.quantity")}</p><p className="font-medium">{r.quantidade} {t("rastreabilidadePanel.units")}.</p></div>
+                    <div><p className="text-muted-foreground">{t("rastreabilidadePanel.shipping")}</p><p className="font-medium">{new Date(r.data_envio+"T12:00:00").toLocaleDateString(t("rastreabilidadePanel.localeCode"))}</p></div>
                   </div>
                   {/* Cliente — info de recall */}
                   <div className="rounded-lg bg-muted/20 px-3 py-2 space-y-1.5">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Contato para Recall</p>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{t("rastreabilidadePanel.recallContact")}</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                      <div><p className="text-muted-foreground">Cliente</p><p className="font-medium">{r.cliente_nome}</p></div>
-                      {cli?.telefone&&<div><p className="text-muted-foreground">Telefone</p><p className="font-medium">{cli.telefone}</p></div>}
-                      {cli?.email&&<div><p className="text-muted-foreground">E-mail</p><p className="font-medium truncate">{cli.email}</p></div>}
-                      {cli?.documento&&<div><p className="text-muted-foreground">CNPJ/CPF</p><p className="font-mono">{cli.documento}</p></div>}
-                      {r.clinica&&<div><p className="text-muted-foreground">Clínica</p><p className="font-medium">{r.clinica}</p></div>}
-                      {r.cirurgiao&&<div><p className="text-muted-foreground">Cirurgião</p><p className="font-medium">{r.cirurgiao}</p></div>}
+                      <div><p className="text-muted-foreground">{t("rastreabilidadePanel.client")}</p><p className="font-medium">{r.cliente_nome}</p></div>
+                      {cli?.telefone&&<div><p className="text-muted-foreground">{t("rastreabilidadePanel.phone")}</p><p className="font-medium">{cli.telefone}</p></div>}
+                      {cli?.email&&<div><p className="text-muted-foreground">{t("rastreabilidadePanel.email")}</p><p className="font-medium truncate">{cli.email}</p></div>}
+                      {cli?.documento&&<div><p className="text-muted-foreground">{t("rastreabilidadePanel.taxId")}</p><p className="font-mono">{cli.documento}</p></div>}
+                      {r.clinica&&<div><p className="text-muted-foreground">{t("rastreabilidadePanel.clinic")}</p><p className="font-medium">{r.clinica}</p></div>}
+                      {r.cirurgiao&&<div><p className="text-muted-foreground">{t("rastreabilidadePanel.surgeon")}</p><p className="font-medium">{r.cirurgiao}</p></div>}
                     </div>
                   </div>
                   {/* Status recall */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-[10px] text-muted-foreground">Status:</p>
+                    <p className="text-[10px] text-muted-foreground">{t("rastreabilidadePanel.status")}</p>
                     {(["normal","alerta","recall_ativo","devolvido"] as const).map(s=>(
                       <button key={s} onClick={()=>updateRecall(r.id,s)}
                         className={cn("h-6 px-2 rounded-lg text-[10px] font-medium border transition-colors",
                           r.status_recall===s?"bg-primary text-primary-foreground border-primary":"border-input hover:bg-muted/40")}>
-                        {s.replace("_"," ")}
+                        {recallLabel(s, t)}
                       </button>
                     ))}
                   </div>

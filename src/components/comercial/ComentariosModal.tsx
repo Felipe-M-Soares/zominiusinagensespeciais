@@ -5,8 +5,10 @@ import { cn } from "@/lib/utils";
 import { MessageSquare, X, Send } from "lucide-react";
 import { toast } from "sonner";
 import type { Comentario } from "@/types/comercial";
+import { useTranslation } from "react-i18next";
 
 export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | null; onClose: () => void }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [comentarios, setComentarios] = useState<Comentario[]>([]);
   const [texto, setTexto] = useState("");
@@ -32,12 +34,12 @@ export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | nul
 
   async function handleEnviar() {
     if (!texto.trim() || saving) return;
-    if (!user?.id) { toast.error("Sessão expirada. Faça login novamente."); return; }
+    if (!user?.id) { toast.error(t("comentariosModal.sessionExpired")); return; }
     if (!pedidoId) return;
     setSaving(true);
     const { data: profile } = await supabase
       .from("profiles").select("display_name").eq("user_id", user.id).maybeSingle();
-    const userName = (profile as { display_name?: string } | null)?.display_name ?? user.email ?? "Usuário";
+    const userName = (profile as { display_name?: string } | null)?.display_name ?? user.email ?? t("comentariosModal.defaultUser");
     const { data, error } = await supabase.from("pedido_comentarios").insert({
       pedido_id: pedidoId,
       user_id: user.id,
@@ -45,7 +47,7 @@ export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | nul
       texto: texto.trim().slice(0, 2000),
     }).select("id, user_name, texto, created_at").single();
     setSaving(false);
-    if (error) { toast.error("Erro ao enviar comentário."); return; }
+    if (error) { toast.error(t("comentariosModal.sendError")); return; }
     setComentarios(prev => [...prev, data as Comentario]);
     setTexto("");
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -57,7 +59,7 @@ export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | nul
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
           <div className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-violet-500" />
-            <p className="text-sm font-semibold">Comentários internos</p>
+            <p className="text-sm font-semibold">{t("comentariosModal.title")}</p>
           </div>
           <button type="button" onClick={onClose}
             className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
@@ -67,7 +69,7 @@ export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | nul
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {loading && <div className="flex justify-center py-6"><div className="h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}
           {!loading && comentarios.length === 0 && (
-            <p className="text-center text-sm text-muted-foreground py-8">Nenhum comentário ainda.</p>
+            <p className="text-center text-sm text-muted-foreground py-8">{t("comentariosModal.empty")}</p>
           )}
           {comentarios.map(cm => (
             <div key={cm.id} className={cn(
@@ -79,7 +81,7 @@ export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | nul
               <p className="font-semibold text-[10px] text-muted-foreground mb-0.5">{cm.user_name}</p>
               <p className="leading-relaxed whitespace-pre-wrap">{cm.texto}</p>
               <p className="text-[9px] text-muted-foreground/60 mt-1 text-right">
-                {new Date(cm.created_at).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}
+                {new Date(cm.created_at).toLocaleString(t("comentariosModal.localeCode"), { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}
               </p>
             </div>
           ))}
@@ -88,7 +90,7 @@ export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | nul
         <div className="flex gap-2 px-4 py-3 border-t border-border/20 shrink-0">
           <input type="text" value={texto} onChange={e => setTexto(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleEnviar(); } }}
-            placeholder="Escreva um comentário..." maxLength={2000}
+            placeholder={t("comentariosModal.placeholder")} maxLength={2000}
             className="flex-1 h-9 rounded-xl border border-border/50 bg-background text-[12px] px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
           <button type="button" onClick={handleEnviar} disabled={!texto.trim() || saving}
             className="h-9 w-9 flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-40">

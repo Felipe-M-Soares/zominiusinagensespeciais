@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Bug, Lightbulb, MessageCircleQuestion, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface FeedbackReport {
   id: string;
@@ -21,26 +22,33 @@ interface FeedbackReport {
   created_at: string;
 }
 
-const TIPO_META: Record<FeedbackReport["tipo"], { label: string; Icon: React.ElementType; color: string }> = {
-  bug:      { label: "Problema",  Icon: Bug,                   color: "text-red-600 bg-red-500/10" },
-  sugestao: { label: "Sugestão",  Icon: Lightbulb,              color: "text-amber-600 bg-amber-500/10" },
-  outro:    { label: "Outro",     Icon: MessageCircleQuestion,  color: "text-blue-600 bg-blue-500/10" },
-};
+function buildTipoMeta(t: (k: string) => string): Record<FeedbackReport["tipo"], { label: string; Icon: React.ElementType; color: string }> {
+  return {
+  bug:      { label: t("feedbackPanel.type.bug"),  Icon: Bug,                   color: "text-red-600 bg-red-500/10" },
+  sugestao: { label: t("feedbackPanel.type.sugestao"),  Icon: Lightbulb,              color: "text-amber-600 bg-amber-500/10" },
+  outro:    { label: t("feedbackPanel.type.outro"),     Icon: MessageCircleQuestion,  color: "text-blue-600 bg-blue-500/10" },
+  };
+}
 
-const STATUS_LABELS: Record<FeedbackReport["status"], string> = {
-  novo: "Novo", em_analise: "Em análise", resolvido: "Resolvido", arquivado: "Arquivado",
-};
+function buildStatusLabels(t: (k: string) => string): Record<FeedbackReport["status"], string> {
+  return {
+  novo: t("feedbackPanel.status.novo"), em_analise: t("feedbackPanel.status.em_analise"), resolvido: t("feedbackPanel.status.resolvido"), arquivado: t("feedbackPanel.status.arquivado"),
+  };
+}
 
 const STATUS_OPTIONS: FeedbackReport["status"][] = ["novo", "em_analise", "resolvido", "arquivado"];
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", {
+function fmtDate(iso: string, locale: string) {
+  return new Date(iso).toLocaleString(locale, {
     day: "2-digit", month: "2-digit", year: "2-digit",
     hour: "2-digit", minute: "2-digit",
   });
 }
 
 export function FeedbackPanel() {
+  const { t } = useTranslation();
+  const TIPO_META = buildTipoMeta(t);
+  const STATUS_LABELS = buildStatusLabels(t);
   const [reports, setReports] = useState<FeedbackReport[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("");
@@ -55,7 +63,7 @@ export function FeedbackPanel() {
       if (error) throw error;
       setReports((data as FeedbackReport[]) ?? []);
     } catch {
-      toast.error("Erro ao carregar feedbacks.");
+      toast.error(t("feedbackPanel.toastLoadError"));
     } finally {
       setLoading(false);
     }
@@ -67,7 +75,7 @@ export function FeedbackPanel() {
     const { data, error } = await supabase.rpc("atualizar_status_feedback", { p_id: id, p_status: status });
     const result = data as { ok?: boolean; error?: string } | null;
     if (error || result?.ok === false) {
-      toast.error(result?.error ?? "Erro ao atualizar status.");
+      toast.error(result?.error ?? t("feedbackPanel.toastStatusError"));
       return;
     }
     setReports(prev => prev.map(r => r.id === id ? { ...r, status } : r));
@@ -89,7 +97,7 @@ export function FeedbackPanel() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por mensagem ou nome..."
+            placeholder={t("feedbackPanel.searchPlaceholder")}
             className="w-full h-9 pl-8 pr-3 rounded-lg border border-border bg-background text-[12px] focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
@@ -98,20 +106,20 @@ export function FeedbackPanel() {
           onChange={e => setFilterStatus(e.target.value)}
           className="h-9 px-2 rounded-lg border border-border bg-background text-[12px]"
         >
-          <option value="">Todos os status</option>
+          <option value="">{t("feedbackPanel.allStatuses")}</option>
           {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
         </select>
         <button
           onClick={fetchReports}
           disabled={loading}
           className="h-9 w-9 flex items-center justify-center rounded-lg border border-border hover:bg-muted/40 text-muted-foreground transition-colors"
-          title="Atualizar"
+          title={t("feedbackPanel.refresh")}
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
         </button>
         {countNovo > 0 && (
           <span className="text-[11px] font-semibold text-amber-600 bg-amber-500/10 px-2 py-1 rounded-full">
-            {countNovo} novo{countNovo !== 1 ? "s" : ""}
+            {countNovo} {t("feedbackPanel.newSuffix", { plural: countNovo !== 1 ? "s" : "" })}
           </span>
         )}
       </div>
@@ -123,7 +131,7 @@ export function FeedbackPanel() {
           </div>
         )}
         {!loading && filtered.length === 0 && (
-          <div className="text-center py-10 text-sm text-muted-foreground">Nenhum feedback encontrado</div>
+          <div className="text-center py-10 text-sm text-muted-foreground">{t("feedbackPanel.noFeedbackFound")}</div>
         )}
         {filtered.map(r => {
           const meta = TIPO_META[r.tipo];
@@ -137,7 +145,7 @@ export function FeedbackPanel() {
                   <div>
                     <p className="text-[11px] font-semibold">{meta.label}</p>
                     <p className="text-[10px] text-muted-foreground">
-                      {r.user_name ?? "Desconhecido"} · {fmtDate(r.created_at)}
+                      {r.user_name ?? t("feedbackPanel.unknown")} · {fmtDate(r.created_at, t("feedbackPanel.localeCode"))}
                       {r.pagina && <> · <span className="font-mono">{r.pagina}</span></>}
                       {r.app_version && <> · v{r.app_version}</>}
                     </p>

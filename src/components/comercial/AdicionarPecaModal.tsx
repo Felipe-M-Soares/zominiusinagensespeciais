@@ -7,6 +7,7 @@ import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { X, Plus, Package, Minus } from "lucide-react";
 import { toast } from "sonner";
 import type { PedidoCompleto } from "@/types/comercial";
+import { useTranslation } from "react-i18next";
 
 interface AdicionarPecaModalProps {
   pedido: PedidoCompleto | null;
@@ -16,6 +17,7 @@ interface AdicionarPecaModalProps {
 }
 
 export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: AdicionarPecaModalProps) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [autocomplete, setAutocomplete] = useState<ReturnType<typeof useStock>["items"]>([]);
   const [showAutocomp, setShowAutocomp] = useState(false);
@@ -102,7 +104,7 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
       quantidade_reservada: qtd,
       valor_unitario: valorLiquido,
     });
-    if (error) { setSaving(false); toast.error("Erro ao adicionar peça."); return; }
+    if (error) { setSaving(false); toast.error(t("adicionarPecaModal.toastAddError")); return; }
 
     // FIX: chama reserve_stock para incrementar quantity_reserved no banco.
     // Antes: inseria com quantidade_reservada: 0 e nunca chamava reserve_stock.
@@ -136,7 +138,7 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
               <Plus className="h-4 w-4 text-violet-500" />
             </div>
             <div>
-              <p className="text-sm font-semibold leading-none">Adicionar Peça</p>
+              <p className="text-sm font-semibold leading-none">{t("adicionarPecaModal.title")}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5 truncate max-w-[200px]">{pedido.cliente_nome}</p>
             </div>
           </div>
@@ -154,7 +156,7 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
               onChange={v => handleInput(v)}
               onSearch={v => handleInput(v)}
               onFocus={handleFocus}
-              placeholder="Modelo, referência ou bipe o código..."
+              placeholder={t("adicionarPecaModal.searchPlaceholder")}
               height="h-11"
               inputClass="text-[13px]"
               autoFocus
@@ -169,13 +171,13 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
                 {autocomplete.length === 0 && search.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground">
                     <Package className="h-10 w-10 opacity-15" />
-                    <p className="text-[12px]">Digite para buscar peças da expedição</p>
+                    <p className="text-[12px]">{t("adicionarPecaModal.typeToSearch")}</p>
                   </div>
                 )}
                 {autocomplete.length === 0 && search.length > 0 && (
                   <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground">
                     <Package className="h-10 w-10 opacity-15" />
-                    <p className="text-[12px]">Nenhuma peça encontrada com saldo disponível</p>
+                    <p className="text-[12px]">{t("adicionarPecaModal.noPieceWithBalance")}</p>
                   </div>
                 )}
                 {autocomplete.length > 0 && (
@@ -234,7 +236,7 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
                     <button type="button"
                       onClick={() => { setSelectedPeca(null); setSearch(""); setTimeout(() => inputRef.current?.focus(), 50); }}
                       className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50 text-muted-foreground shrink-0 transition-colors"
-                      title="Trocar peça">
+                      title={t("adicionarPecaModal.swapPiece")}>
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -242,7 +244,7 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
 
                 {/* Seletor de quantidade */}
                 <div className="space-y-2">
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Quantidade</label>
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t("adicionarPecaModal.quantity")}</label>
                   <div className="flex items-center gap-3">
                     <button type="button"
                       onClick={() => setQtd(q => Math.max(1, q - 1))}
@@ -274,7 +276,7 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
                   </div>
                   {qtd > 0 && (
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
-                      <span>Restará na expedição:</span>
+                      <span>{t("adicionarPecaModal.willRemain")}</span>
                       <span className={qtd > maxDisponivel ? "text-destructive font-bold" : "font-semibold text-foreground"}>
                         {Math.max(0, maxDisponivel - qtd)} un.
                       </span>
@@ -287,13 +289,13 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-medium text-muted-foreground">Preço un.</label>
+                        <label className="text-[10px] font-medium text-muted-foreground">{t("adicionarPecaModal.unitPrice")}</label>
                         <div className="h-9 rounded-lg border border-border/40 bg-muted/30 flex items-center justify-center text-[13px] font-bold text-foreground">
                           R$ {(precoMap[selectedPeca.device_id] ?? 0).toFixed(2).replace(".", ",")}
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-medium text-muted-foreground">Desconto %</label>
+                        <label className="text-[10px] font-medium text-muted-foreground">{t("adicionarPecaModal.discountPct")}</label>
                         <input
                           type="text"
                           inputMode="decimal"
@@ -328,7 +330,7 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
         <div className="px-4 pb-4 pt-3 shrink-0 border-t border-border/20 flex gap-2.5">
           <button type="button" onClick={onClose}
             className="flex-1 h-11 rounded-xl border border-border/40 text-[13px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
-            Cancelar
+            {t("adicionarPecaModal.cancel")}
           </button>
           <button type="button" onClick={handleAdd}
             disabled={!selectedPeca || saving || qtd < 1 || qtd > maxDisponivel}
@@ -336,7 +338,7 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
             {saving
               ? <div className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
               : <Plus className="h-4 w-4" />}
-            {selectedPeca ? `Adicionar ${qtd} un.` : "Selecione uma peça"}
+            {selectedPeca ? t("adicionarPecaModal.addUnits", { qty: qtd }) : t("adicionarPecaModal.selectPiece")}
           </button>
         </div>
       </div>

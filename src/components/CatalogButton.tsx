@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Download, Upload, FileUp, Trash2, ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 const MAX_FILE_SIZE_MB = 20;
 
@@ -39,6 +40,7 @@ interface Catalog {
 }
 
 export function CatalogButton() {
+  const { t } = useTranslation();
   const { isAdmin } = useAuth();
   const [catalogs, setCatalogs] = useState<Catalog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,8 +107,8 @@ export function CatalogButton() {
         // Mensagem específica: ajuda o admin a saber que é problema de storage policy
         toast.error(
           isAdmin
-            ? "Erro ao gerar link. Verifique as políticas do bucket 'catalogs' no Supabase Storage."
-            : "Erro ao gerar link de download. Contacte o administrador."
+            ? t("catalogButton.toastLinkErrorAdmin")
+            : t("catalogButton.toastLinkErrorUser")
         );
         return;
       }
@@ -123,7 +125,7 @@ export function CatalogButton() {
       }, 200);
     } catch (err: unknown) {
       logger.error("Download error:", err);
-      toast.error("Erro inesperado ao baixar catálogo.");
+      toast.error(t("catalogButton.toastDownloadError"));
     } finally {
       setDownloadingId(null);
     }
@@ -131,15 +133,15 @@ export function CatalogButton() {
 
   const handleUpload = async () => {
     if (!file || !title.trim()) {
-      toast.error("Preencha o título e selecione um arquivo");
+      toast.error(t("catalogButton.toastFillTitleAndFile"));
       return;
     }
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      toast.error(`Arquivo muito grande. Máximo: ${MAX_FILE_SIZE_MB}MB`);
+      toast.error(t("catalogButton.toastFileTooLarge", { mb: MAX_FILE_SIZE_MB }));
       return;
     }
     if (file.type !== "application/pdf") {
-      toast.error("Apenas arquivos PDF são permitidos");
+      toast.error(t("catalogButton.toastOnlyPdf"));
       return;
     }
 
@@ -163,9 +165,9 @@ export function CatalogButton() {
           uploadError.message?.toLowerCase().includes("row-level security") ||
           uploadError.message?.toLowerCase().includes("403")
         ) {
-          toast.error("Sem permissão para fazer upload. Verifique as políticas do bucket 'catalogs' no Supabase Storage → Policies.");
+          toast.error(t("catalogButton.toastNoUploadPermission"));
         } else {
-          toast.error("Erro ao enviar arquivo. Tente novamente.");
+          toast.error(t("catalogButton.toastUploadError"));
         }
         return;
       }
@@ -181,11 +183,11 @@ export function CatalogButton() {
         await supabase.storage.from("catalogs").remove([filePath]);
         logger.error("DB insert error:", dbError.message);
         // SECURITY: não expor mensagem interna do DB ao usuário
-        toast.error("Erro ao salvar catálogo. Tente novamente.");
+        toast.error(t("catalogButton.toastSaveError"));
         return;
       }
 
-      toast.success("Catálogo adicionado com sucesso");
+      toast.success(t("catalogButton.toastCatalogAdded"));
       setDialogOpen(false);
       setTitle("");
       setFile(null);
@@ -193,7 +195,7 @@ export function CatalogButton() {
       fetchCatalogs();
     } catch (err: unknown) {
       logger.error("Upload unexpected error:", err);
-      toast.error("Erro inesperado ao enviar catálogo.");
+      toast.error(t("catalogButton.toastUploadUnexpectedError"));
     } finally {
       setUploading(false);
     }
@@ -207,7 +209,7 @@ export function CatalogButton() {
     // Delete DB record first — if it fails, storage file stays intact (no broken links)
     const { error: dbErr } = await supabase.from("catalogs").delete().eq("id", cat.id);
     if (dbErr) {
-      toast.error("Erro ao excluir catálogo: " + dbErr.message);
+      toast.error(t("catalogButton.toastDeleteError") + dbErr.message);
       return;
     }
 
@@ -216,7 +218,7 @@ export function CatalogButton() {
     if (storageErr) logger.error("Storage delete error:", storageErr.message);
     // An orphan file in storage is less harmful than a broken link in the DB
 
-    toast.success("Catálogo excluído");
+    toast.success(t("catalogButton.toastCatalogDeleted"));
     fetchCatalogs();
   };
 
@@ -235,7 +237,7 @@ export function CatalogButton() {
           ? <Loader2 className="h-4 w-4 animate-spin" />
           : <Download className="h-4 w-4" />
         }
-        Catálogo
+        {t("catalogButton.catalog")}
       </Button>
     );
   }
@@ -245,18 +247,18 @@ export function CatalogButton() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir catálogo</AlertDialogTitle>
+            <AlertDialogTitle>{t("catalogButton.deleteCatalogTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir "{deleteTarget?.title}"? Esta ação não pode ser desfeita.
+              {t("catalogButton.deleteCatalogDesc", { title: deleteTarget?.title })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t("catalogButton.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Excluir
+              {t("catalogButton.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -266,13 +268,13 @@ export function CatalogButton() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 gap-1 text-xs">
             <Download className="h-4 w-4" />
-            Catálogo
+            {t("catalogButton.catalog")}
             <ChevronDown className="h-3 w-3 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           {catalogs.length === 0 && isAdmin && (
-            <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum catálogo cadastrado</div>
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">{t("catalogButton.noCatalogRegistered")}</div>
           )}
           {catalogs.map((cat) => (
             <DropdownMenuItem
@@ -297,7 +299,7 @@ export function CatalogButton() {
                 onClick={() => setDialogOpen(true)}
               >
                 <FileUp className="h-3.5 w-3.5 shrink-0" />
-                Adicionar catálogo
+                {t("catalogButton.addCatalog")}
               </DropdownMenuItem>
               {catalogs.map((cat) => (
                 <DropdownMenuItem
@@ -306,7 +308,7 @@ export function CatalogButton() {
                   onClick={() => setDeleteTarget(cat)}
                 >
                   <Trash2 className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">Excluir: {cat.title}</span>
+                  <span className="truncate">{t("catalogButton.deletePrefix", { title: cat.title })}</span>
                 </DropdownMenuItem>
               ))}
             </>
@@ -317,20 +319,20 @@ export function CatalogButton() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Adicionar Catálogo</DialogTitle>
+            <DialogTitle>{t("catalogButton.addCatalog")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Título *</Label>
+              <Label>{t("catalogButton.titleLabel")}</Label>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ex: Catálogo 2025"
+                placeholder={t("catalogButton.titlePlaceholder")}
                 maxLength={100}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Arquivo PDF * (máx. {MAX_FILE_SIZE_MB}MB)</Label>
+              <Label>{t("catalogButton.pdfFileLabel", { mb: MAX_FILE_SIZE_MB })}</Label>
               <input
                 type="file"
                 accept=".pdf,application/pdf"
@@ -340,15 +342,15 @@ export function CatalogButton() {
               />
               <Button variant="outline" className="w-full gap-2 truncate" onClick={() => fileRef.current?.click()}>
                 <Upload className="h-4 w-4 shrink-0" />
-                <span className="truncate">{file ? file.name : "Selecionar PDF"}</span>
+                <span className="truncate">{file ? file.name : t("catalogButton.selectPdf")}</span>
               </Button>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => { setDialogOpen(false); setFile(null); setTitle(""); }}>
-                Cancelar
+                {t("catalogButton.cancel")}
               </Button>
               <Button onClick={handleUpload} disabled={uploading || !file || !title.trim()}>
-                {uploading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Enviando...</> : "Enviar"}
+                {uploading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />{t("catalogButton.sending")}</> : t("catalogButton.send")}
               </Button>
             </div>
           </div>

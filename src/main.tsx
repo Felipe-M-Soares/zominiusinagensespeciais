@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import "./i18n"; // inicializa i18next (detecção automática de idioma do navegador + seletor manual)
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { getStoredTheme, applyTheme } from "./lib/theme";
 import { initSentryEarly } from "./lib/logger";

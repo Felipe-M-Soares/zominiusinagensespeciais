@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/hooks/useNotifications";
 import { getStoredTheme, applyTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS } from "@/types/roles";
+import { buildRoleLabels } from "@/types/roles";
 import type { AppRole } from "@/types/roles";
 import logoZomini from "@/assets/logo_zomini.png";
 import { NotificacoesPanel } from "@/components/NotificacoesPanel";
@@ -26,7 +26,9 @@ import {
   Info,
 } from "lucide-react";
 import { FeedbackButton } from "@/components/FeedbackButton";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { APP_VERSION } from "@/lib/appInfo";
+import { useTranslation } from "react-i18next";
 
 interface NavItem {
   label: string;
@@ -36,18 +38,27 @@ interface NavItem {
   adminOnly?: boolean;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { label: "Componentes", icon: Cpu,          path: "/",          roles: ["admin","estoque","qualidade","producao"] },
-  { label: "Estoque",     icon: Boxes,         path: "/estoque",   roles: ["admin","estoque","qualidade"] },
-  { label: "Qualidade",   icon: ShieldCheck,   path: "/qualidade", roles: ["admin","qualidade"] },
-  { label: "Comercial",   icon: ShoppingBag,   path: "/comercial", roles: ["admin","comercial"] },
-  { label: "Financeiro",  icon: Receipt,       path: "/financeiro",roles: ["admin","financeiro"] },
-  { label: "Produção",    icon: Factory,       path: "/producao",  roles: ["admin","producao"] },
-  { label: "Processos",   icon: Workflow,      path: "/processos", roles: ["admin","processos","producao"] },
+interface NavItemDef {
+  labelKey: string;
+  icon: React.ElementType;
+  path: string;
+  roles?: string[];
+  adminOnly?: boolean;
+}
+
+// labelKey aponta para src/i18n/locales/*.json → nav.*
+const NAV_ITEMS_DEF: NavItemDef[] = [
+  { labelKey: "nav.components",  icon: Cpu,          path: "/",          roles: ["admin","estoque","qualidade","producao"] },
+  { labelKey: "nav.stock",       icon: Boxes,         path: "/estoque",   roles: ["admin","estoque","qualidade"] },
+  { labelKey: "nav.quality",     icon: ShieldCheck,   path: "/qualidade", roles: ["admin","qualidade"] },
+  { labelKey: "nav.commercial",  icon: ShoppingBag,   path: "/comercial", roles: ["admin","comercial"] },
+  { labelKey: "nav.financial",   icon: Receipt,       path: "/financeiro",roles: ["admin","financeiro"] },
+  { labelKey: "nav.production",  icon: Factory,       path: "/producao",  roles: ["admin","producao"] },
+  { labelKey: "nav.processes",   icon: Workflow,      path: "/processos", roles: ["admin","processos","producao"] },
 ];
 
-const ADMIN_ITEMS: NavItem[] = [
-  { label: "Admin", icon: Settings, path: "/admin", adminOnly: true },
+const ADMIN_ITEMS_DEF: NavItemDef[] = [
+  { labelKey: "nav.admin", icon: Settings, path: "/admin", adminOnly: true },
 ];
 
 interface SidebarNavProps {
@@ -59,11 +70,13 @@ interface SidebarNavProps {
 }
 
 function SidebarNav({ visibleItems, isAdmin, collapsed, isActive, onNav }: SidebarNavProps) {
+  const { t } = useTranslation();
+  const ADMIN_ITEMS = ADMIN_ITEMS_DEF.map(d => ({ ...d, label: t(d.labelKey) }));
   return (
     <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto scrollbar-thin">
       {!collapsed && (
         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 pb-1 pt-1">
-          Módulos
+          {t("nav.modulesLabel")}
         </p>
       )}
       {visibleItems.map((item) => {
@@ -100,7 +113,7 @@ function SidebarNav({ visibleItems, isAdmin, collapsed, isActive, onNav }: Sideb
         <>
           {!collapsed && (
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 pb-1 pt-3">
-              Administração
+              {t("nav.administration")}
             </p>
           )}
           {collapsed && <div className="border-t border-sidebar-border/60 my-2" />}
@@ -139,10 +152,12 @@ interface MobileNavProps {
 }
 
 function MobileNav({ visibleItems, isAdmin, isActive, onNav }: MobileNavProps) {
+  const { t } = useTranslation();
+  const ADMIN_ITEMS = ADMIN_ITEMS_DEF.map(d => ({ ...d, label: t(d.labelKey) }));
   return (
     <nav className="py-3 px-2 space-y-0.5">
       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 pb-1 pt-1">
-        Módulos
+        {t("nav.modulesLabel")}
       </p>
       {visibleItems.map((item) => {
         const Icon = item.icon;
@@ -166,7 +181,7 @@ function MobileNav({ visibleItems, isAdmin, isActive, onNav }: MobileNavProps) {
       {isAdmin && (
         <>
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 pb-1 pt-3">
-            Administração
+            {t("nav.administration")}
           </p>
           {ADMIN_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -196,7 +211,10 @@ function MobileNav({ visibleItems, isAdmin, isActive, onNav }: MobileNavProps) {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const { signOut, isAdmin, role, user } = useAuth();
+  const NAV_ITEMS = useMemo(() => NAV_ITEMS_DEF.map(d => ({ ...d, label: t(d.labelKey) })), [t]);
+  const ADMIN_ITEMS = useMemo(() => ADMIN_ITEMS_DEF.map(d => ({ ...d, label: t(d.labelKey) })), [t]);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -282,7 +300,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 onClick={() => handleNav("/")}
                 className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 hover:bg-primary/20 transition-colors"
-                title="Ir para Componentes"
+                title={t("nav.goToComponents")}
               >
                 <Cpu className="w-4 h-4 text-primary" />
               </button>
@@ -290,7 +308,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 onClick={() => handleNav("/")}
                 className="flex-1 min-w-0 hover:opacity-80 transition-opacity cursor-pointer"
-                title="Ir para Componentes"
+                title={t("nav.goToComponents")}
               >
                 <img
                   src={logoZomini}
@@ -303,7 +321,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 onClick={() => setCollapsed(true)}
                 className="ml-auto p-1 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                title="Recolher menu"
+                title={t("nav.collapseMenu")}
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -315,7 +333,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 onClick={() => setCollapsed(false)}
                 className="w-full flex items-center justify-center p-2 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-                title="Expandir menu"
+                title={t("nav.expandMenu")}
               >
                 <Menu className="w-4 h-4" />
               </button>
@@ -332,9 +350,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Bottom */}
           <div className="border-t border-sidebar-border/60 p-2 space-y-0.5">
+            {!collapsed && (
+              <div className="px-1 pb-1.5">
+                <LanguageSwitcher />
+              </div>
+            )}
             <button
               onClick={toggleTheme}
-              title={isDark ? "Modo claro" : "Modo escuro"}
+              title={isDark ? t("nav.lightMode") : t("nav.darkMode")}
               className={cn(
                 "w-full flex items-center rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors",
                 collapsed ? "p-2.5 justify-center" : "px-3 py-2 gap-3"
@@ -344,7 +367,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ? <Sun className={cn("shrink-0", collapsed ? "w-5 h-5" : "w-4 h-4")} />
                 : <Moon className={cn("shrink-0", collapsed ? "w-5 h-5" : "w-4 h-4")} />
               }
-              {!collapsed && <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>}
+              {!collapsed && <span>{isDark ? t("nav.lightModeLabel") : t("nav.darkModeLabel")}</span>}
             </button>
 
             {/* Notificações desktop — restrito a admin. A vendedora já tem
@@ -359,14 +382,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             <button
               onClick={() => navigate("/sobre")}
-              title="Sobre o sistema, manual, guia de uso e reportar problemas"
+              title={t("nav.aboutTitle")}
               className={cn(
                 "w-full flex items-center rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors",
                 collapsed ? "p-2.5 justify-center" : "px-3 py-2 gap-3"
               )}
             >
               <Info className={cn("shrink-0", collapsed ? "w-5 h-5" : "w-4 h-4")} />
-              {!collapsed && <span>Sobre / Ajuda</span>}
+              {!collapsed && <span>{t("sobre.title")}</span>}
             </button>
 
             {collapsed ? (
@@ -377,7 +400,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                   <button
                     onClick={() => signOut()}
-                    title="Sair"
+                    title={t("nav.signOut")}
                     className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors w-full flex justify-center"
                   >
                     <LogOut className="w-4 h-4" />
@@ -392,11 +415,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-foreground truncate">{userEmail}</p>
-                    <p className="text-[10px] text-muted-foreground capitalize">{role ? (ROLE_LABELS[role as AppRole] ?? role) : "Usuário"}</p>
+                    <p className="text-[10px] text-muted-foreground capitalize">{role ? (buildRoleLabels(t)[role as AppRole] ?? role) : t("common.user")}</p>
                   </div>
                   <button
                     onClick={() => signOut()}
-                    title="Sair"
+                    title={t("nav.signOut")}
                     className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
                   >
                     <LogOut className="w-3.5 h-3.5" />
@@ -444,19 +467,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="border-t border-sidebar-border/60 p-2 space-y-0.5">
+          <div className="px-1 pb-1.5">
+            <LanguageSwitcher />
+          </div>
           <button
             onClick={toggleTheme}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
           >
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>
+            <span>{isDark ? t("nav.lightModeLabel") : t("nav.darkModeLabel")}</span>
           </button>
           <button
             onClick={() => { setMobileOpen(false); navigate("/sobre"); }}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
           >
             <Info className="w-4 h-4" />
-            <span>Sobre / Ajuda</span>
+            <span>{t("sobre.title")}</span>
           </button>
           <div className="pt-1 border-t border-sidebar-border/40 mt-1">
             <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg">
@@ -465,11 +491,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground truncate">{userEmail}</p>
-                <p className="text-[10px] text-muted-foreground capitalize">{role ? (ROLE_LABELS[role as AppRole] ?? role) : "Usuário"}</p>
+                <p className="text-[10px] text-muted-foreground capitalize">{role ? (buildRoleLabels(t)[role as AppRole] ?? role) : t("common.user")}</p>
               </div>
               <button
                 onClick={() => signOut()}
-                title="Sair"
+                title={t("nav.signOut")}
                 className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -484,7 +510,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Mobile topbar */}
         <header className="md:hidden flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card/90 backdrop-blur-md shrink-0 z-30 mobile-header-safe">
-          <button onClick={() => handleNav("/")} className="hover:opacity-80 transition-opacity" title="Componentes">
+          <button onClick={() => handleNav("/")} className="hover:opacity-80 transition-opacity" title={t("nav.components")}>
             <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" decoding="async" />
           </button>
           <div className="flex items-center gap-1">
@@ -493,7 +519,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               onClick={() => setMobileOpen(true)}
               className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"
-              title="Menu"
+              title={t("nav.menu")}
             >
               <Menu className="w-5 h-5" />
             </button>

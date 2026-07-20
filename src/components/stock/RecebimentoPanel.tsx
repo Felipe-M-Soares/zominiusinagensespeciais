@@ -21,6 +21,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { RecebimentoMaterialModal } from "./RecebimentoMaterialModal";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
+import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,6 +57,7 @@ interface RecebimentoCardProps {
 }
 
 function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCardProps) {
+  const { t } = useTranslation();
   const isAtivo = item.status === "ativo";
 
   return (
@@ -93,7 +95,7 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
                 : "border-border/40 text-muted-foreground bg-muted/20"
             )}
           >
-            {isAtivo ? "Ativo" : "Retirado"}
+            {isAtivo ? t("recebimentoPanel.active") : t("recebimentoPanel.withdrawn")}
           </Badge>
         </div>
 
@@ -114,13 +116,13 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
         )}>
           <div className="flex items-center gap-1.5">
             <Package className={cn("h-3.5 w-3.5", isAtivo ? "text-cyan-500" : "text-muted-foreground/50")} />
-            <span className="text-[11px] font-medium text-muted-foreground">Quantidade</span>
+            <span className="text-[11px] font-medium text-muted-foreground">{t("recebimentoPanel.quantity")}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className={cn("text-[15px] font-bold tabular-nums", isAtivo ? "text-cyan-600 dark:text-cyan-400" : "text-muted-foreground")}>
               {item.quantity}
             </span>
-            <span className="text-[10px] text-muted-foreground">un.</span>
+            <span className="text-[10px] text-muted-foreground">{t("recebimentoPanel.units")}</span>
           </div>
         </div>
 
@@ -128,9 +130,9 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
         {!isAtivo && item.retirado_por && (
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
             <CheckCircle2 className="h-3 w-3" />
-            <span>Retirado por <span className="font-medium">{item.retirado_por}</span></span>
+            <span>{t("recebimentoPanel.withdrawnBy")} <span className="font-medium">{item.retirado_por}</span></span>
             {item.retirado_em && (
-              <span>· {new Date(item.retirado_em).toLocaleDateString("pt-BR")}</span>
+              <span>· {new Date(item.retirado_em).toLocaleDateString()}</span>
             )}
           </div>
         )}
@@ -139,7 +141,7 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
         <div className="flex items-center justify-between text-[10px] text-muted-foreground/50 pt-1 border-t border-border/20">
           <div className="flex items-center gap-1">
             <Clock className="h-2.5 w-2.5" />
-            <span>{new Date(item.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+            <span>{new Date(item.created_at).toLocaleDateString(undefined, { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
           </div>
           {item.user_display_name && (
             <span className="truncate ml-2">{item.user_display_name}</span>
@@ -155,7 +157,7 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
               className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 text-[11px] font-medium transition-colors"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
-              Confirmar Retirada
+              {t("recebimentoPanel.confirmWithdrawal")}
             </button>
           )}
           {isAdmin && (
@@ -164,7 +166,7 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
               onClick={() => onDelete(item)}
               className="w-full flex items-center justify-center gap-1 h-7 rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground text-[10px] transition-colors"
             >
-              <Trash2 className="h-3 w-3" /> Excluir
+              <Trash2 className="h-3 w-3" /> {t("recebimentoPanel.delete")}
             </button>
           )}
         </div>
@@ -181,6 +183,7 @@ interface RetiradaModalProps {
 }
 
 function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const displayName: string | null =
     (user?.user_metadata?.display_name as string) ?? user?.email ?? null;
@@ -199,9 +202,9 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
       .eq("id", item.id);
     setLoading(false);
     if (error) {
-      toast.error("Erro ao confirmar retirada. Tente novamente.");
+      toast.error(t("recebimentoPanel.toastWithdrawError"));
     } else {
-      toast.success("Retirada confirmada!", {
+      toast.success(t("recebimentoPanel.toastWithdrawSuccess"), {
         description: `${item.quantity} un.${displayLote(item.lote) ? ` · Lote ${displayLote(item.lote)}` : ""}`,
       });
       onSuccess();
@@ -219,17 +222,17 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
             <CheckCircle2 className="h-4 w-4 text-cyan-500" />
           </div>
           <div>
-            <p className="text-sm font-semibold">Confirmar retirada do material?</p>
+            <p className="text-sm font-semibold">{t("recebimentoPanel.confirmWithdrawalTitle")}</p>
             <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
               {item.descricao}
             </p>
             <p className="text-[11px] font-mono text-cyan-600 dark:text-cyan-400 mt-0.5">
-              {displayLote(item.lote) ? `Lote ${displayLote(item.lote)} · ` : ""}{item.quantity} un.
+              {displayLote(item.lote) ? `${t("recebimentoPanel.lotPrefix")} ${displayLote(item.lote)} · ` : ""}{item.quantity} {t("recebimentoPanel.units")}
             </p>
           </div>
         </div>
         <p className="text-[12px] text-muted-foreground">
-          Ao confirmar, este recebimento será marcado como <strong>Retirado</strong> e não poderá ser reativado.
+          {t("recebimentoPanel.confirmWithdrawalDesc1")} <strong>{t("recebimentoPanel.confirmWithdrawalDesc1Strong")}</strong> {t("recebimentoPanel.confirmWithdrawalDesc1End")}
         </p>
         <div className="flex gap-2">
           <button
@@ -238,7 +241,7 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
             onClick={onClose}
             disabled={loading}
           >
-            Cancelar
+            {t("recebimentoPanel.cancel")}
           </button>
           <button
             type="button"
@@ -249,7 +252,7 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
             {loading
               ? <span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
               : <CheckCircle2 className="h-3.5 w-3.5" />}
-            Confirmar Retirada
+            {t("recebimentoPanel.confirmWithdrawal")}
           </button>
         </div>
       </div>
@@ -263,6 +266,7 @@ interface RecebimentoPanelProps {
 }
 
 export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
+  const { t } = useTranslation();
   const [items, setItems] = useState<RecebimentoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -281,7 +285,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
       .order("created_at", { ascending: false });
     setLoading(false);
     if (error) {
-      toast.error("Erro ao carregar recebimentos. Verifique sua conexão.");
+      toast.error(t("recebimentoPanel.toastLoadError"));
     } else {
       setItems((data ?? []) as RecebimentoItem[]);
     }
@@ -318,9 +322,9 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
       .eq("id", deleteItem.id);
     setDeleting(false);
     if (error) {
-      toast.error("Erro ao excluir recebimento. Tente novamente.");
+      toast.error(t("recebimentoPanel.toastDeleteError"));
     } else {
-      toast.success("Recebimento excluído.");
+      toast.success(t("recebimentoPanel.toastDeleted"));
       setDeleteItem(null);
       fetchItems();
     }
@@ -332,9 +336,9 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/20 p-1 w-full sm:w-auto overflow-x-auto">
           {([
-            { value: "ativos", label: "Ativos", count: countAtivos },
-            { value: "retirados", label: "Retirados", count: countRetirados },
-            { value: "todos", label: "Todos", count: items.length },
+            { value: "ativos", label: t("recebimentoPanel.tabActive"), count: countAtivos },
+            { value: "retirados", label: t("recebimentoPanel.tabWithdrawn"), count: countRetirados },
+            { value: "todos", label: t("recebimentoPanel.tabAll"), count: items.length },
           ] as const).map(({ value, label, count }) => (
             <button
               key={value}
@@ -367,7 +371,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
           className="h-9 gap-1.5 text-xs rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white w-full sm:w-auto shrink-0"
           onClick={() => setAddOpen(true)}
         >
-          <PackagePlus className="h-3.5 w-3.5" /> Registrar Recebimento
+          <PackagePlus className="h-3.5 w-3.5" /> {t("recebimentoPanel.registerReceiving")}
         </Button>
       </div>
 
@@ -376,20 +380,20 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
         value={search}
         onChange={setSearch}
         onSearch={setSearch}
-        placeholder="Bipe o código ou busque por lote, descrição, fornecedor..."
+        placeholder={t("recebimentoPanel.searchPlaceholder")}
         height="h-11"
       />
 
       {/* Descrição da aba */}
       <div className="rounded-xl border px-4 py-3 text-[12px] bg-cyan-500/5 border-cyan-500/20 text-cyan-700 dark:text-cyan-300">
-        Registre a chegada de materiais informando o lote, a quantidade e a descrição. Quando o material for retirado, confirme a baixa aqui.
+        {t("recebimentoPanel.tabDescription")}
       </div>
 
       {/* Resumo */}
       {!loading && (
         <p className="text-xs text-muted-foreground">
-          {filteredItems.length} registro{filteredItems.length !== 1 ? "s" : ""}
-          {search && <span className="text-primary/70"> (filtrado)</span>}
+          {t("recebimentoPanel.recordsCount", { count: filteredItems.length, plural: filteredItems.length !== 1 ? "s" : "" })}
+          {search && <span className="text-primary/70"> {t("recebimentoPanel.filtered")}</span>}
         </p>
       )}
 
@@ -397,7 +401,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
       {loading && (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <div className="animate-spin h-8 w-8 border-2 border-cyan-500 border-t-transparent rounded-full" />
-          <p className="text-sm text-muted-foreground">Carregando recebimentos...</p>
+          <p className="text-sm text-muted-foreground">{t("recebimentoPanel.loading")}</p>
         </div>
       )}
 
@@ -406,17 +410,17 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
         <div className="text-center py-20 space-y-3">
           <Inbox className="h-10 w-10 text-muted-foreground/40 mx-auto" />
           <p className="text-muted-foreground font-medium">
-            {search ? "Nenhum registro encontrado" : showAtivos === "ativos" ? "Nenhum material ativo no momento" : showAtivos === "retirados" ? "Nenhum material retirado ainda" : "Nenhum recebimento registrado"}
+            {search ? t("recebimentoPanel.noRecordsFound") : showAtivos === "ativos" ? t("recebimentoPanel.noActiveMaterial") : showAtivos === "retirados" ? t("recebimentoPanel.noWithdrawnMaterial") : t("recebimentoPanel.noReceivingRegistered")}
           </p>
           <p className="text-sm text-muted-foreground/60">
-            {search ? "Tente outro termo de busca" : "Use o botão acima para registrar a chegada de materiais"}
+            {search ? t("recebimentoPanel.tryOtherSearch") : t("recebimentoPanel.useButtonAbove")}
           </p>
           {!search && (
             <Button
               className="mt-2 gap-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white"
               onClick={() => setAddOpen(true)}
             >
-              <PackagePlus className="h-4 w-4" /> Registrar primeiro recebimento
+              <PackagePlus className="h-4 w-4" /> {t("recebimentoPanel.registerFirst")}
             </Button>
           )}
         </div>
@@ -461,23 +465,23 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <Trash2 className="h-4 w-4" /> Excluir recebimento?
+              <Trash2 className="h-4 w-4" /> {t("recebimentoPanel.deleteConfirmTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               <span className="block">
-                Excluir o registro{displayLote(deleteItem?.lote) ? <> do lote <strong className="font-mono">{displayLote(deleteItem?.lote)}</strong></> : ""} — {deleteItem?.descricao}?
+                {t("recebimentoPanel.deleteConfirmBody")}{displayLote(deleteItem?.lote) ? <> {t("recebimentoPanel.deleteConfirmOfLot")} <strong className="font-mono">{displayLote(deleteItem?.lote)}</strong></> : ""} — {deleteItem?.descricao}?
               </span>
-              <span className="block mt-1 text-xs text-muted-foreground">Esta ação é irreversível.</span>
+              <span className="block mt-1 text-xs text-muted-foreground">{t("recebimentoPanel.irreversible")}</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("recebimentoPanel.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "Excluindo..." : "Excluir"}
+              {deleting ? t("recebimentoPanel.deleting") : t("recebimentoPanel.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 
 interface Fornecedor { id:string; razao_social:string; }
 interface MP { id:string; codigo:string; descricao:string; }
@@ -16,10 +17,13 @@ interface PedidoCompra {
   pedido_compra_itens: { id:string; descricao:string; quantidade:number; unidade:string; valor_unitario:number; valor_total:number; quantidade_recebida:number; }[];
 }
 
-const STATUS_LABEL: Record<string,string> = { rascunho:"Rascunho", enviado:"Enviado", parcial:"Parcial", recebido:"Recebido", cancelado:"Cancelado" };
+function buildStatusLabel(t: (k: string) => string): Record<string,string> {
+  return { rascunho:t("pedidosCompraPanel.status.rascunho"), enviado:t("pedidosCompraPanel.status.enviado"), parcial:t("pedidosCompraPanel.status.parcial"), recebido:t("pedidosCompraPanel.status.recebido"), cancelado:t("pedidosCompraPanel.status.cancelado") };
+}
 const STATUS_COLOR: Record<string,string> = { rascunho:"text-muted-foreground bg-muted/30", enviado:"text-blue-600 bg-blue-500/10", parcial:"text-amber-600 bg-amber-500/10", recebido:"text-green-600 bg-green-500/10", cancelado:"text-red-600 bg-red-500/10" };
 
 function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>void }) {
+  const { t } = useTranslation();
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [mps, setMPs] = useState<MP[]>([]);
   const [form, setForm] = useState({ fornecedor_id:"", fornecedor_nome:"", data_previsao:"", observacoes:"" });
@@ -43,9 +47,9 @@ function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>v
   const total = useMemo(() => itens.reduce((s,i) => s + (parseFloat(i.quantidade)||0)*(parseFloat(i.valor_unitario)||0), 0), [itens]);
 
   async function save() {
-    if(!form.fornecedor_nome) { toast.error("Selecione o fornecedor"); return; }
+    if(!form.fornecedor_nome) { toast.error(t("pedidosCompraPanel.toastSelectSupplier")); return; }
     const validItens = itens.filter(i => i.descricao && parseFloat(i.quantidade)>0);
-    if(validItens.length===0) { toast.error("Adicione pelo menos 1 item"); return; }
+    if(validItens.length===0) { toast.error(t("pedidosCompraPanel.toastAddAtLeastOneItem")); return; }
     setSaving(true);
 
     const { data: ped, error } = await supabase.from("pedidos_compra").insert({
@@ -57,7 +61,7 @@ function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>v
       status: "rascunho",
     }).select("id").single();
 
-    if(error || !ped) { toast.error(error?.message || "Erro"); setSaving(false); return; }
+    if(error || !ped) { toast.error(error?.message || t("pedidosCompraPanel.toastGenericError")); setSaving(false); return; }
 
     await supabase.from("pedido_compra_itens").insert(validItens.map(i => ({
       pedido_id: ped.id,
@@ -69,7 +73,7 @@ function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>v
     })));
 
     setSaving(false);
-    toast.success("Pedido de compra criado!");
+    toast.success(t("pedidosCompraPanel.toastOrderCreated"));
     onSaved(); onClose();
   }
 
@@ -80,30 +84,30 @@ function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>v
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
       <div className="w-full max-w-xl bg-card rounded-t-2xl sm:rounded-2xl border border-border/40 shadow-2xl flex flex-col max-h-[92vh]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
-          <h3 className="font-semibold text-sm">Novo Pedido de Compra</h3>
+          <h3 className="font-semibold text-sm">{t("pedidosCompraPanel.newPurchaseOrder")}</h3>
           <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40"><X className="h-4 w-4"/></button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className={lbl}>Fornecedor</label>
+              <label className={lbl}>{t("pedidosCompraPanel.supplier")}</label>
               <select value={form.fornecedor_id} onChange={e => {
                 const f = fornecedores.find(f=>f.id===e.target.value);
                 setForm(p=>({...p, fornecedor_id:e.target.value, fornecedor_nome:f?.razao_social||""}));
               }} className={sel}>
-                <option value="">Selecione ou digite...</option>
+                <option value="">{t("pedidosCompraPanel.selectOrType")}</option>
                 {fornecedores.map(f=><option key={f.id} value={f.id}>{f.razao_social}</option>)}
               </select>
-              {!form.fornecedor_id && <Input value={form.fornecedor_nome} onChange={e=>setForm(p=>({...p,fornecedor_nome:e.target.value}))} placeholder="Ou digite o nome do fornecedor" className="h-9 mt-1.5"/>}
+              {!form.fornecedor_id && <Input value={form.fornecedor_nome} onChange={e=>setForm(p=>({...p,fornecedor_nome:e.target.value}))} placeholder={t("pedidosCompraPanel.orTypeSupplierName")} className="h-9 mt-1.5"/>}
             </div>
-            <div><label className={lbl}>Previsão de Entrega</label><input type="date" value={form.data_previsao} onChange={e=>setForm(p=>({...p,data_previsao:e.target.value}))} className={sel}/></div>
+            <div><label className={lbl}>{t("pedidosCompraPanel.expectedDelivery")}</label><input type="date" value={form.data_previsao} onChange={e=>setForm(p=>({...p,data_previsao:e.target.value}))} className={sel}/></div>
           </div>
 
           {/* Itens */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className={lbl + " mb-0"}>Itens do Pedido</label>
-              <button onClick={addItem} className="text-[11px] text-primary hover:underline flex items-center gap-1"><Plus className="h-3 w-3"/>Adicionar item</button>
+              <label className={lbl + " mb-0"}>{t("pedidosCompraPanel.orderItems")}</label>
+              <button onClick={addItem} className="text-[11px] text-primary hover:underline flex items-center gap-1"><Plus className="h-3 w-3"/>{t("pedidosCompraPanel.addItem")}</button>
             </div>
             <div className="space-y-2">
               {itens.map((item,i)=>(
@@ -114,30 +118,30 @@ function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>v
                       updateItem(i,"mp_id",e.target.value);
                       if(mp) updateItem(i,"descricao",`${mp.codigo} — ${mp.descricao}`);
                     }} className={sel}>
-                      <option value="">Selecione a MP ou descreva manualmente</option>
+                      <option value="">{t("pedidosCompraPanel.selectMpOrDescribe")}</option>
                       {mps.map(m=><option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
                     </select>
-                    <Input value={item.descricao} onChange={e=>updateItem(i,"descricao",e.target.value)} placeholder="Descrição do item" className="h-9 mt-1.5"/>
+                    <Input value={item.descricao} onChange={e=>updateItem(i,"descricao",e.target.value)} placeholder={t("pedidosCompraPanel.itemDescription")} className="h-9 mt-1.5"/>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    <Input type="number" min="0" step="0.001" value={item.quantidade} onChange={e=>updateItem(i,"quantidade",e.target.value)} placeholder="Qtde" className="h-9"/>
+                    <Input type="number" min="0" step="0.001" value={item.quantidade} onChange={e=>updateItem(i,"quantidade",e.target.value)} placeholder={t("pedidosCompraPanel.qty")} className="h-9"/>
                     <select value={item.unidade} onChange={e=>updateItem(i,"unidade",e.target.value)} className={sel}>
                       {["m","kg","un","pc","litro"].map(u=><option key={u}>{u}</option>)}
                     </select>
-                    <Input type="number" min="0" step="0.01" value={item.valor_unitario} onChange={e=>updateItem(i,"valor_unitario",e.target.value)} placeholder="R$/un" className="h-9"/>
+                    <Input type="number" min="0" step="0.01" value={item.valor_unitario} onChange={e=>updateItem(i,"valor_unitario",e.target.value)} placeholder={t("pedidosCompraPanel.pricePerUnit")} className="h-9"/>
                   </div>
-                  {itens.length>1 && <button onClick={()=>removeItem(i)} className="text-[10px] text-muted-foreground hover:text-destructive transition-colors">Remover item</button>}
+                  {itens.length>1 && <button onClick={()=>removeItem(i)} className="text-[10px] text-muted-foreground hover:text-destructive transition-colors">{t("pedidosCompraPanel.removeItem")}</button>}
                 </div>
               ))}
             </div>
             <div className="flex justify-end mt-2">
-              <p className="text-sm font-bold">Total: {total.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>
+              <p className="text-sm font-bold">{t("pedidosCompraPanel.total")} {total.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>
             </div>
           </div>
         </div>
         <div className="flex gap-3 px-5 py-4 border-t border-border/30 shrink-0">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Criar Pedido"}</Button>
+          <Button variant="outline" className="flex-1" onClick={onClose}>{t("pedidosCompraPanel.cancel")}</Button>
+          <Button className="flex-1" onClick={save} disabled={saving}>{saving?t("pedidosCompraPanel.saving"):t("pedidosCompraPanel.createOrder")}</Button>
         </div>
       </div>
     </div>
@@ -145,6 +149,8 @@ function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>v
 }
 
 export function PedidosCompraPanel() {
+  const { t } = useTranslation();
+  const STATUS_LABEL = buildStatusLabel(t);
   const [pedidos, setPedidos] = useState<PedidoCompra[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -163,28 +169,28 @@ export function PedidosCompraPanel() {
 
   async function avancar(id:string, novoStatus:string) {
     await supabase.from("pedidos_compra").update({status:novoStatus, ...(novoStatus==="recebido"?{data_recebimento:new Date().toISOString().split("T")[0]}:{})}).eq("id",id);
-    toast.success("Status atualizado!");
+    toast.success(t("pedidosCompraPanel.toastStatusUpdated"));
     load();
   }
 
   const nextStatus: Record<string,{s:string;label:string}> = {
-    rascunho:{s:"enviado",label:"Marcar Enviado"},
-    enviado: {s:"recebido",label:"Confirmar Recebimento"},
-    parcial: {s:"recebido",label:"Confirmar Recebimento"},
+    rascunho:{s:"enviado",label:t("pedidosCompraPanel.markSent")},
+    enviado: {s:"recebido",label:t("pedidosCompraPanel.confirmReceipt")},
+    parcial: {s:"recebido",label:t("pedidosCompraPanel.confirmReceipt")},
   };
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] text-muted-foreground">{pedidos.length} pedido(s)</p>
+        <p className="text-[11px] text-muted-foreground">{pedidos.length} {t("pedidosCompraPanel.ordersSuffix")}</p>
         <div className="flex gap-2">
           <button onClick={load} className="h-8 w-8 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40"><RefreshCw className={cn("h-4 w-4 text-muted-foreground",loading&&"animate-spin")}/></button>
-          <Button size="sm" className="h-8 gap-1" onClick={()=>setModal(true)}><Plus className="h-3.5 w-3.5"/>Novo Pedido</Button>
+          <Button size="sm" className="h-8 gap-1" onClick={()=>setModal(true)}><Plus className="h-3.5 w-3.5"/>{t("pedidosCompraPanel.newOrder")}</Button>
         </div>
       </div>
 
-      {loading&&pedidos.length===0 ? <div className="flex justify-center py-12 text-sm text-muted-foreground gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
-      :pedidos.length===0 ? <div className="text-center py-12 text-muted-foreground text-sm"><PackageSearch className="h-8 w-8 mx-auto opacity-20 mb-2"/><p>Nenhum pedido de compra</p></div>
+      {loading&&pedidos.length===0 ? <div className="flex justify-center py-12 text-sm text-muted-foreground gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>{t("pedidosCompraPanel.loading")}</div>
+      :pedidos.length===0 ? <div className="text-center py-12 text-muted-foreground text-sm"><PackageSearch className="h-8 w-8 mx-auto opacity-20 mb-2"/><p>{t("pedidosCompraPanel.noPurchaseOrder")}</p></div>
       :(
         <div className="space-y-2">
           {pedidos.map(p=>(
@@ -196,7 +202,7 @@ export function PedidosCompraPanel() {
                     <p className="text-sm font-semibold truncate">{p.fornecedor_nome}</p>
                     <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",STATUS_COLOR[p.status])}>{STATUS_LABEL[p.status]}</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">{new Date(p.data_pedido+"T12:00:00").toLocaleDateString("pt-BR")} · {p.pedido_compra_itens?.length||0} itens · {(p.valor_total||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>
+                  <p className="text-[10px] text-muted-foreground">{new Date(p.data_pedido+"T12:00:00").toLocaleDateString(t("pedidosCompraPanel.localeCode"))} · {p.pedido_compra_itens?.length||0} {t("pedidosCompraPanel.itemsSuffix")} · {(p.valor_total||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</p>
                 </div>
                 {nextStatus[p.status] && (
                   <button onClick={e=>{e.stopPropagation();avancar(p.id,nextStatus[p.status].s);}} className="h-7 px-2 rounded-lg bg-green-500/10 text-green-600 text-[11px] font-medium hover:bg-green-500/20 transition-colors flex items-center gap-1 shrink-0">
@@ -214,7 +220,7 @@ export function PedidosCompraPanel() {
                       <span className="text-foreground font-medium shrink-0 ml-3">{item.valor_total?.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span>
                     </div>
                   ))}
-                  {p.data_previsao && <p className="text-[10px] text-muted-foreground">Previsão: {new Date(p.data_previsao+"T12:00:00").toLocaleDateString("pt-BR")}</p>}
+                  {p.data_previsao && <p className="text-[10px] text-muted-foreground">{t("pedidosCompraPanel.expected")} {new Date(p.data_previsao+"T12:00:00").toLocaleDateString(t("pedidosCompraPanel.localeCode"))}</p>}
                 </div>
               )}
             </div>

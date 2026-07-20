@@ -11,6 +11,7 @@ import { ChevronDown, Loader2, Search, SlidersHorizontal, ScanBarcode, X as XIco
 import { CatalogButton } from "@/components/CatalogButton";
 import { ManuaisButton } from "@/components/ManuaisButton";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const EMPTY_FILTERS: Filters = Object.freeze({ material: "", classification: "", sterile: "", single_use: "", exocad: "" }) as Filters;
@@ -28,6 +29,7 @@ interface SearchBarProps {
 const SearchBar = memo(function SearchBar({
   onSearch, onClear, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
 }: SearchBarProps) {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [localHasValue, setLocalHasValue] = useState(false);
@@ -52,7 +54,7 @@ const SearchBar = memo(function SearchBar({
       <input
         ref={inputRef}
         type="text"
-        placeholder="Bipe o código de barras ou pesquise aqui..."
+        placeholder={t("catalog.searchPlaceholder")}
         onChange={e => handleChange(e.target.value)}
         onKeyDown={e => {
           if (e.key === "Enter") {
@@ -85,6 +87,8 @@ const SearchBar = memo(function SearchBar({
 });
 
 const Index = () => {
+  const { t, i18n } = useTranslation();
+  const localeCode = t("catalog.localeCode");
   const [search, setSearch] = useState("");
   const [querySearch, setQuerySearch] = useState("");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -136,8 +140,8 @@ const Index = () => {
       <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-border/50 bg-card/40 backdrop-blur-sm shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-lg font-bold font-display text-foreground">Base ANVISA</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">Componentes médicos cadastrados</p>
+            <h1 className="text-lg font-bold font-display text-foreground">{t("catalog.title")}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("catalog.subtitle")}</p>
           </div>
           <div className="flex items-center gap-2">
             <ManuaisButton />
@@ -175,47 +179,47 @@ const Index = () => {
         <div className="border-b border-border/50 bg-card/60 px-4 sm:px-6 py-4 space-y-4 animate-in slide-in-from-top-2 duration-200 shrink-0">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             <Select value={filters.material || "all"} onValueChange={v => handleFilterChange("material", v === "all" ? "" : v)}>
-              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder="Material" /></SelectTrigger>
+              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder={t("catalog.material")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os materiais</SelectItem>
+                <SelectItem value="all">{t("catalog.allMaterials")}</SelectItem>
                 {options.materials.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={filters.classification || "all"} onValueChange={v => handleFilterChange("classification", v === "all" ? "" : v)}>
-              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder="Classificação" /></SelectTrigger>
+              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder={t("catalog.classification")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todas as classes</SelectItem>
-                {options.classifications.map(c => <SelectItem key={c} value={c}>Classe {c}</SelectItem>)}
+                <SelectItem value="all">{t("catalog.allClassifications")}</SelectItem>
+                {options.classifications.map(c => <SelectItem key={c} value={c}>{t("deviceCard.class")} {c}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={filters.sterile || "all"} onValueChange={v => handleFilterChange("sterile", v === "all" ? "" : v)}>
-              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder="Esterilidade" /></SelectTrigger>
+              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder={t("catalog.sterilityPlaceholder")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="true">Estéril</SelectItem>
-                <SelectItem value="false">Não Estéril</SelectItem>
+                <SelectItem value="all">{t("catalog.all")}</SelectItem>
+                <SelectItem value="true">{t("catalog.sterileLabel")}</SelectItem>
+                <SelectItem value="false">{t("catalog.notSterile")}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={filters.single_use || "all"} onValueChange={v => handleFilterChange("single_use", v === "all" ? "" : v)}>
-              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder="Uso" /></SelectTrigger>
+              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder={t("catalog.usePlaceholder")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os usos</SelectItem>
-                <SelectItem value="true">Uso único</SelectItem>
-                <SelectItem value="false">Reutilizável</SelectItem>
+                <SelectItem value="all">{t("catalog.allUses")}</SelectItem>
+                <SelectItem value="true">{t("catalog.singleUseLabel")}</SelectItem>
+                <SelectItem value="false">{t("catalog.reusable")}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={filters.exocad || "all"} onValueChange={v => handleFilterChange("exocad", v === "all" ? "" : v)}>
-              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder="Exocad" /></SelectTrigger>
+              <SelectTrigger className="bg-background text-xs h-9 rounded-lg"><SelectValue placeholder={t("catalog.exocad")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos Exocad</SelectItem>
+                <SelectItem value="all">{t("catalog.allExocad")}</SelectItem>
                 {options.exocadOptions.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground mb-2 font-medium">Filtrar por letra inicial</p>
+            <p className="text-xs text-muted-foreground mb-2 font-medium">{t("catalog.filterByLetter")}</p>
             <div className="flex flex-wrap gap-1">
-              <button onClick={() => handleLetterSelect("")} className={cn("h-7 px-2 rounded-md text-[11px] font-medium transition-colors", activeLetter === "" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-accent border border-border")}>Todos</button>
+              <button onClick={() => handleLetterSelect("")} className={cn("h-7 px-2 rounded-md text-[11px] font-medium transition-colors", activeLetter === "" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-accent border border-border")}>{t("catalog.all")}</button>
               {LETTERS.filter(l => options.availableLetters.has(l)).map(letter => (
                 <button key={letter} onClick={() => handleLetterSelect(letter)} className={cn("h-7 w-7 rounded-md text-[11px] font-medium transition-colors", activeLetter === letter ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-accent border border-border")}>{letter}</button>
               ))}
@@ -224,7 +228,7 @@ const Index = () => {
           {(filters.material || filters.classification || filters.sterile || filters.single_use || filters.exocad || activeLetter) && (
             <div className="flex justify-end">
               <Button variant="ghost" size="sm" onClick={handleClear} className="gap-1 text-muted-foreground text-xs h-8">
-                <XIcon className="h-3.5 w-3.5" /> Limpar filtros
+                <XIcon className="h-3.5 w-3.5" /> {t("catalog.clearFilters")}
               </Button>
             </div>
           )}
@@ -233,9 +237,9 @@ const Index = () => {
 
       <div className="px-4 sm:px-6 py-2 bg-background/50 border-b border-border/30 shrink-0">
         <p className="text-xs text-muted-foreground">
-          {loading ? "Buscando..." : devices.length === totalCount
-            ? `${totalCount.toLocaleString("pt-BR")} componentes`
-            : `${devices.length.toLocaleString("pt-BR")} de ${totalCount.toLocaleString("pt-BR")} componentes`}
+          {loading ? t("catalog.searching") : devices.length === totalCount
+            ? t("catalog.componentsCount", { count: totalCount.toLocaleString(localeCode) })
+            : t("catalog.componentsCountPartial", { shown: devices.length.toLocaleString(localeCode), total: totalCount.toLocaleString(localeCode) })}
         </p>
       </div>
 
@@ -243,14 +247,14 @@ const Index = () => {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
-            <p className="text-sm text-muted-foreground">Carregando componentes...</p>
+            <p className="text-sm text-muted-foreground">{t("catalog.loadingComponents")}</p>
           </div>
         ) : error ? (
           <div className="text-center py-20 text-destructive text-sm">{error}</div>
         ) : devices.length === 0 ? (
           <div className="text-center py-16 space-y-2">
-            <p className="text-muted-foreground text-lg font-display">Nenhum dispositivo encontrado</p>
-            <p className="text-muted-foreground text-sm">Tente ajustar os filtros ou a pesquisa</p>
+            <p className="text-muted-foreground text-lg font-display">{t("catalog.noDeviceFound")}</p>
+            <p className="text-muted-foreground text-sm">{t("catalog.noResultsHint")}</p>
           </div>
         ) : (
           <>
@@ -263,9 +267,9 @@ const Index = () => {
               <div className="flex justify-center pt-4 pb-2">
                 <Button variant="outline" onClick={loadMore} disabled={loadingMore} className="gap-2 rounded-lg">
                   {loadingMore ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" />Carregando...</>
+                    <><Loader2 className="h-4 w-4 animate-spin" />{t("common.loading")}</>
                   ) : (
-                    <><ChevronDown className="h-4 w-4" />Carregar mais ({(totalCount - devices.length).toLocaleString("pt-BR")} restantes)</>
+                    <><ChevronDown className="h-4 w-4" />{t("catalog.loadMore", { count: (totalCount - devices.length).toLocaleString(localeCode) })}</>
                   )}
                 </Button>
               </div>

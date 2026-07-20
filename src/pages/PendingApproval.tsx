@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { Clock, LogOut, ShieldOff, Loader2 } from "lucide-react";
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 
 export default function PendingApproval() {
+  const { t } = useTranslation();
   const { signOut, user, refreshApproval, approved, blocked } = useAuth();
   const navigate = useNavigate();
   const navigatedRef = useRef(false);
@@ -50,12 +52,12 @@ export default function PendingApproval() {
             </div>
 
             <div className="space-y-2">
-              <h1 className="text-lg font-semibold text-destructive">Acesso Bloqueado</h1>
+              <h1 className="text-lg font-semibold text-destructive">{t("pendingApproval.blockedTitle")}</h1>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                O seu acesso foi bloqueado pelo administrador.
+                {t("pendingApproval.blockedMessage")}
               </p>
               <p className="text-xs text-muted-foreground/70">
-                Entre em contato com o suporte para mais informações.
+                {t("pendingApproval.blockedHint")}
               </p>
             </div>
 
@@ -66,7 +68,7 @@ export default function PendingApproval() {
               onClick={signOut}
             >
               <LogOut className="h-4 w-4" />
-              Sair
+              {t("pendingApproval.signOut")}
             </Button>
           </div>
         </div>
@@ -87,12 +89,12 @@ export default function PendingApproval() {
           </div>
 
           <div className="space-y-2">
-            <h1 className="text-lg font-semibold">Acesso Suspenso</h1>
+            <h1 className="text-lg font-semibold">{t("pendingApproval.suspendedTitle")}</h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              O administrador suspendeu temporariamente o acesso desta conta.
+              {t("pendingApproval.suspendedMessage")}
             </p>
             <p className="text-xs text-muted-foreground/70">
-              Você recupera o acesso assim que o administrador reativar sua conta no painel.
+              {t("pendingApproval.suspendedHint")}
             </p>
           </div>
 
@@ -104,8 +106,8 @@ export default function PendingApproval() {
             disabled={checking}
           >
             {checking
-              ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Verificando...</>
-              : "Já fui reativado? Verificar agora"
+              ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />{t("pendingApproval.checking")}</>
+              : t("pendingApproval.checkNow")
             }
           </Button>
 
@@ -116,7 +118,7 @@ export default function PendingApproval() {
             onClick={signOut}
           >
             <LogOut className="h-4 w-4" />
-            Sair
+            {t("pendingApproval.signOut")}
           </Button>
         </div>
       </div>

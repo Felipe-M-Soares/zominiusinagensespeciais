@@ -10,6 +10,7 @@ import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, RefreshCw, CheckCircle2, Search, Download, Bell } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface RecallItem {
   id: string;
@@ -27,16 +28,20 @@ interface RecallItem {
   pedido_id: string;
 }
 
-const STATUS_CONFIG = {
-  alerta:      { label: "Alerta",       color: "text-amber-600", bg: "bg-amber-500/10 border-amber-500/20", dot: "bg-amber-500" },
-  recall_ativo:{ label: "Recall Ativo", color: "text-red-600",   bg: "bg-red-500/10 border-red-500/20",     dot: "bg-red-500 animate-pulse" },
-};
+function buildStatusConfig(t: (k: string) => string) {
+  return {
+  alerta:      { label: t("recallPanel.alertLabel"),       color: "text-amber-600", bg: "bg-amber-500/10 border-amber-500/20", dot: "bg-amber-500" },
+  recall_ativo:{ label: t("recallPanel.recallActiveLabel"), color: "text-red-600",   bg: "bg-red-500/10 border-red-500/20",     dot: "bg-red-500 animate-pulse" },
+  };
+}
 
 function fmtDate(iso: string) {
   return new Date(iso + "T12:00:00").toLocaleDateString("pt-BR");
 }
 
 export function RecallPanel() {
+  const { t } = useTranslation();
+  const STATUS_CONFIG = buildStatusConfig(t);
   const [items, setItems]       = useState<RecallItem[]>([]);
   const [loading, setLoading]   = useState(true);
   const [filtro, setFiltro]     = useState<"todos" | "alerta" | "recall_ativo">("todos");
@@ -102,7 +107,7 @@ export function RecallPanel() {
   }
 
   async function updateLote(novoStatus: string) {
-    if (selected.size === 0) { toast.error("Selecione ao menos um item"); return; }
+    if (selected.size === 0) { toast.error(t("recallPanel.toastSelectAtLeastOne")); return; }
     setUpdating(true);
     const ids = [...selected];
     const { error } = await supabase
@@ -111,7 +116,7 @@ export function RecallPanel() {
       .in("id", ids);
     setUpdating(false);
     if (error) { toast.error(error.message); return; }
-    toast.success(`${ids.length} item(s) atualizados para "${novoStatus}"`);
+    toast.success(t("recallPanel.toastUpdated", { count: ids.length, status: novoStatus }));
     setSelected(new Set());
     load();
   }
@@ -135,18 +140,18 @@ export function RecallPanel() {
         <div className={cn("rounded-2xl border p-3", countAtivo > 0 ? "border-red-500/20 bg-red-500/5" : "border-border/40 bg-card")}>
           <div className="flex items-center gap-1.5">
             <AlertTriangle className={cn("h-4 w-4", countAtivo > 0 ? "text-red-600" : "text-muted-foreground")} />
-            <p className="text-[10px] text-muted-foreground uppercase">Recall Ativo</p>
+            <p className="text-[10px] text-muted-foreground uppercase">{t("recallPanel.activeRecall")}</p>
           </div>
           <p className={cn("text-2xl font-black", countAtivo > 0 ? "text-red-600" : "text-foreground")}>{countAtivo}</p>
-          <p className="text-[10px] text-muted-foreground">unidade(s) com recall ativo</p>
+          <p className="text-[10px] text-muted-foreground">{t("recallPanel.unitsActiveRecall")}</p>
         </div>
         <div className={cn("rounded-2xl border p-3", countAlerta > 0 ? "border-amber-500/20 bg-amber-500/5" : "border-border/40 bg-card")}>
           <div className="flex items-center gap-1.5">
             <Bell className={cn("h-4 w-4", countAlerta > 0 ? "text-amber-600" : "text-muted-foreground")} />
-            <p className="text-[10px] text-muted-foreground uppercase">Em Alerta</p>
+            <p className="text-[10px] text-muted-foreground uppercase">{t("recallPanel.inAlert")}</p>
           </div>
           <p className={cn("text-2xl font-black", countAlerta > 0 ? "text-amber-600" : "text-foreground")}>{countAlerta}</p>
-          <p className="text-[10px] text-muted-foreground">unidade(s) em alerta</p>
+          <p className="text-[10px] text-muted-foreground">{t("recallPanel.unitsInAlert")}</p>
         </div>
       </div>
 
@@ -157,7 +162,7 @@ export function RecallPanel() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar lote, peça, cliente..."
+            placeholder={t("recallPanel.searchPlaceholder")}
             className="w-full pl-8 pr-3 h-8 text-[12px] rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
@@ -165,25 +170,25 @@ export function RecallPanel() {
           <button key={f} onClick={() => setFiltro(f)}
             className={cn("h-8 px-3 rounded-lg text-[12px] font-medium border transition-colors",
               filtro === f ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted/40")}>
-            {f === "todos" ? "Todos" : f === "recall_ativo" ? "Recall Ativo" : "Alerta"}
+            {f === "todos" ? t("recallPanel.all") : f === "recall_ativo" ? t("recallPanel.recallActiveLabel") : t("recallPanel.alertLabel")}
           </button>
         ))}
         <button onClick={load} className="h-8 w-8 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40">
           <RefreshCw className={cn("h-3.5 w-3.5 text-muted-foreground", loading && "animate-spin")} />
         </button>
         <button onClick={exportCSV} className="h-8 px-3 rounded-lg border border-input text-[12px] flex items-center gap-1.5 hover:bg-muted/40">
-          <Download className="h-3.5 w-3.5" /> CSV
+          <Download className="h-3.5 w-3.5" /> {t("recallPanel.csv")}
         </button>
       </div>
 
       {/* Ações em lote */}
       {selected.size > 0 && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/5 border border-primary/20">
-          <p className="text-[12px] text-primary font-medium flex-1">{selected.size} selecionado(s)</p>
+          <p className="text-[12px] text-primary font-medium flex-1">{selected.size} {t("recallPanel.selected")}</p>
           {(["normal","alerta","recall_ativo","devolvido"] as const).map(s => (
             <button key={s} onClick={() => updateLote(s)} disabled={updating}
               className="h-7 px-2 rounded-lg text-[10px] font-medium border border-input hover:bg-muted/40 transition-colors disabled:opacity-50">
-              → {s.replace("_"," ")}
+              → {t(`recallPanel.status.${s}`)}
             </button>
           ))}
         </div>
@@ -199,8 +204,8 @@ export function RecallPanel() {
       {!loading && filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
           <CheckCircle2 className="h-10 w-10 text-emerald-500 opacity-40" />
-          <p className="text-sm font-medium text-emerald-600">Nenhum recall ou alerta ativo</p>
-          <p className="text-[11px]">Todos os produtos estão com status "normal"</p>
+          <p className="text-sm font-medium text-emerald-600">{t("recallPanel.noActiveRecall")}</p>
+          <p className="text-[11px]">{t("recallPanel.allNormal")}</p>
         </div>
       )}
 
@@ -213,7 +218,7 @@ export function RecallPanel() {
               onChange={toggleAll}
               className="h-3.5 w-3.5 rounded"
             />
-            <p className="text-[11px] text-muted-foreground">{filtered.length} registro(s)</p>
+            <p className="text-[11px] text-muted-foreground">{filtered.length} {t("recallPanel.records")}</p>
           </div>
 
           {filtered.map(item => {
@@ -239,8 +244,8 @@ export function RecallPanel() {
                     <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
                       <span>{item.cliente_nome}</span>
                       {item.clinica && <span>· {item.clinica}</span>}
-                      {item.cirurgiao && <span>· Dr. {item.cirurgiao}</span>}
-                      <span>· {item.quantidade} un. enviado em {fmtDate(item.data_envio)}</span>
+                      {item.cirurgiao && <span>· {t("recallPanel.drAbbrev")} {item.cirurgiao}</span>}
+                      <span>· {item.quantidade} {t("recallPanel.shippedOn")} {fmtDate(item.data_envio)}</span>
                     </div>
                     {item.observacoes && <p className="text-[10px] text-muted-foreground/70 italic mt-0.5">{item.observacoes}</p>}
                   </div>

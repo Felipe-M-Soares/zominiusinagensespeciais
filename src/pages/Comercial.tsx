@@ -18,6 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { CardSkeleton } from "@/components/PageSkeleton";
 import { useStock, fetchAllMovements } from "@/hooks/useStock";
+import { useTranslation } from "react-i18next";
 import type { AllMovement } from "@/hooks/useStock";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { Button } from "@/components/ui/button";
@@ -88,13 +89,14 @@ const HistoricoGeralModal    = lazy(() => import("@/components/comercial/Histori
 // ─── Botão Reenviar Pedido Retornado ──────────────────────────────────────────
 
 function ReenviarPedidoRetornadoBtn({ pedidoId, onComentar, onReenviar }: { pedidoId: string; onComentar: () => void; onReenviar: () => void }) {
+  const { t } = useTranslation();
   async function handleReenviar() {
     onReenviar(); // otimista — atualiza UI na hora
     const { error } = await supabase
       .from("pedidos_comerciais")
       .update({ status: "pendente", observacoes: null })
       .eq("id", pedidoId);
-    if (error) toast.error("Erro ao reenviar pedido.");
+    if (error) toast.error(t("comercial.toasts.resendError"));
   }
 
   return (
@@ -113,7 +115,7 @@ function ReenviarPedidoRetornadoBtn({ pedidoId, onComentar, onReenviar }: { pedi
         className="flex-1 h-9 rounded-xl bg-orange-500 hover:bg-orange-400 active:scale-95 text-white text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 min-w-0"
       >
         <Send className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">Reenviar ao Estoque</span>
+        <span className="truncate">{t("comercial.resendToStock")}</span>
       </button>
     </div>
   );
@@ -137,6 +139,7 @@ interface PedidoCardProps {
 }
 
 function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar, onRemoverItemComercial, onEditarPedido }: PedidoCardProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
@@ -174,7 +177,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
         parcelas: d?.parcelas ?? null,
       });
     } catch {
-      toast.error("Erro ao gerar PDF.");
+      toast.error(t("comercial.toasts.pdfError"));
     } finally {
       setGerandoPdf(false);
     }
@@ -351,7 +354,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
               </div>
             ) : (
               <div className="flex items-center justify-center rounded-xl px-3 py-2 bg-muted/20 border border-border/40 min-w-[54px]">
-                <span className="text-[10px] font-medium text-muted-foreground/50">Sem desc.</span>
+                <span className="text-[10px] font-medium text-muted-foreground/50">{t("comercial.noDiscAbbrev")}</span>
               </div>
             )}
             {/* Frete */}
@@ -420,11 +423,11 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
                       <button
                         type="button"
                         onClick={() => {
-                          if (pedido.itens.length <= 1) { toast.error("O pedido precisa ter ao menos 1 peça."); return; }
+                          if (pedido.itens.length <= 1) { toast.error(t("comercial.toasts.orderNeedsOnePiece")); return; }
                           onRemoverItemComercial(pedido, it);
                         }}
                         className="h-6 w-6 flex items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/25 text-destructive/60 hover:text-destructive transition-colors shrink-0"
-                        title="Remover peça"
+                        title={t("comercial.removePieceTitle")}
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -450,7 +453,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
             className="w-full flex items-center justify-center gap-1.5 h-7 rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted/40 transition-colors border border-border/40"
           >
             {expanded
-              ? <><ChevronUp className="h-3 w-3" />Ocultar peças</>
+              ? <><ChevronUp className="h-3 w-3" />{t("comercial.hidePieces")}</>
               : <><ChevronDown className="h-3 w-3" />Ver {pedido.itens.length} peça{pedido.itens.length !== 1 ? "s" : ""}</>}
           </button>
 
@@ -507,7 +510,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
                 type="button"
                 onClick={() => onCancelar(pedido)}
                 className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-500 transition-colors border border-border"
-                title="Cancelar pedido"
+                title={t("comercial.cancelOrderTitle")}
               >
                 <Ban className="h-3.5 w-3.5" />
               </button>
@@ -522,12 +525,12 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
               "flex items-center justify-center gap-1.5 h-9 rounded-xl text-[11px] font-bold border",
               s.statusBtnBg, s.statusBtnText, s.statusBtnBorder
             )}>
-              {pedido.status === "separando" && <><PackageCheck className="h-3.5 w-3.5" />Estoque sendo separado...</>}
-              {pedido.status === "pronto"    && <><CheckCircle2 className="h-3.5 w-3.5" />Pronto — aguardando NF</>}
-              {pedido.status === "faturado"  && <><CheckCircle2 className="h-3.5 w-3.5" />Nota fiscal emitida</>}
-              {pedido.status === "enviado"   && <><Truck className="h-3.5 w-3.5" />Enviado ao cliente! 🎉</>}
-              {pedido.status === "cancelado" && <><Ban className="h-3.5 w-3.5" />Pedido cancelado</>}
-              {pedido.status === "retorno"   && <><RotateCcw className="h-3.5 w-3.5" />Retornado pelo estoque — revise</>}
+              {pedido.status === "separando" && <><PackageCheck className="h-3.5 w-3.5" />{t("comercial.statusSeparating")}</>}
+              {pedido.status === "pronto"    && <><CheckCircle2 className="h-3.5 w-3.5" />{t("comercial.statusReady")}</>}
+              {pedido.status === "faturado"  && <><CheckCircle2 className="h-3.5 w-3.5" />{t("comercial.statusInvoiced")}</>}
+              {pedido.status === "enviado"   && <><Truck className="h-3.5 w-3.5" />{t("comercial.statusShipped")}</>}
+              {pedido.status === "cancelado" && <><Ban className="h-3.5 w-3.5" />{t("comercial.statusCancelled")}</>}
+              {pedido.status === "retorno"   && <><RotateCcw className="h-3.5 w-3.5" />{t("comercial.statusReturned")}</>}
             </div>
           )}
 
@@ -565,6 +568,7 @@ interface ClienteCardProps {
 }
 
 function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir, onHistorico }: ClienteCardProps) {
+  const { t } = useTranslation();
   return (
     <div className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5" style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
       <div className="h-0.5 bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
@@ -587,7 +591,7 @@ function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir, onHis
           <button type="button" onClick={() => onPedido(c)} className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[10px] font-medium transition-colors">
             <ShoppingCart className="h-3 w-3" /> Pedido
           </button>
-          <button type="button" onClick={() => onHistorico && onHistorico(c)} className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground transition-colors" title="Histórico de compras">
+          <button type="button" onClick={() => onHistorico && onHistorico(c)} className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground transition-colors" title={t("comercial.purchaseHistoryTitle")}>
             <History className="h-3 w-3" />
           </button>
           <button type="button" onClick={() => onEditar(c)} className="h-7 flex items-center justify-center px-2 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors">
@@ -608,6 +612,7 @@ function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir, onHis
 // ─── Notificações Bell ───────────────────────────────────────────────────────
 
 function NotificacoesBell({ userId }: { userId: string }) {
+  const { t } = useTranslation();
   const [notifs, setNotifs] = useState<{ id: string; titulo: string; mensagem: string | null; lida: boolean; created_at: string }[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -672,12 +677,12 @@ function NotificacoesBell({ userId }: { userId: string }) {
       {open && (
         <div className="absolute right-0 top-full mt-1 w-72 rounded-2xl border border-border bg-card shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
           <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
-            <span className="text-[12px] font-semibold">Notificações</span>
+            <span className="text-[12px] font-semibold">{t("comercial.notifications")}</span>
             {naoLidas > 0 && <span className="text-[10px] text-violet-500">{naoLidas} nova{naoLidas > 1 ? "s" : ""}</span>}
           </div>
           <div className="max-h-64 overflow-y-auto divide-y divide-border/20">
             {notifs.length === 0 ? (
-              <div className="py-8 text-center text-[12px] text-muted-foreground">Nenhuma notificação</div>
+              <div className="py-8 text-center text-[12px] text-muted-foreground">{t("comercial.noNotifications")}</div>
             ) : notifs.map(n => (
               <div key={n.id} className={cn("px-4 py-3 transition-colors", n.lida ? "" : "bg-violet-500/5")}>
                 <div className="flex items-start gap-2">
@@ -707,6 +712,7 @@ interface DashboardComercialProps {
 }
 
 function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: DashboardComercialProps) {
+  const { t } = useTranslation();
   // Pedidos "confirmados" = qualquer status além de pendente e cancelado
   const CONFIRMADOS: PedidoCompleto["status"][] = ["separando", "pronto", "faturado", "enviado"];
   const confirmados = pedidos.filter(p => CONFIRMADOS.includes(p.status));
@@ -742,7 +748,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
     const meusPdfPedidos = isAdmin
       ? confirmados.filter(p => p.vendedora_nome === currentUserName)
       : meusPedidos;
-    if (meusPdfPedidos.length === 0) { toast.error("Nenhum pedido confirmado seu encontrado."); return; }
+    if (meusPdfPedidos.length === 0) { toast.error(t("comercial.toasts.noConfirmedOrderFound")); return; }
 
     // Agrupa por modelo de peça (device_model) — mais robusto que stock_item_id
     // pois pedidos faturados podem ter itens sem join de stock_items
@@ -766,7 +772,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
     // Monta HTML para impressão
     const html = `
       <!DOCTYPE html><html><head><meta charset="UTF-8">
-      <title>Relatório de Pedidos — ${esc(currentUserName ?? "")}</title>
+      <title>${t("comercial.reportTitle")} — ${esc(currentUserName ?? "")}</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
         h1 { font-size: 18px; margin-bottom: 4px; }
@@ -778,20 +784,20 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
         .total { font-weight: bold; font-size: 15px; color: #5b21b6; }
         .footer { margin-top: 20px; font-size: 11px; color: #999; }
       </style></head><body>
-      <h1>📋 Relatório de Pedidos</h1>
-      <p class="sub">Vendedora: <strong>${esc(currentUserName ?? "")}</strong> &nbsp;·&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
+      <h1>📋 ${t("comercial.reportTitle")}</h1>
+      <p class="sub">${t("comercial.vendorLabel")}<strong>${esc(currentUserName ?? "")}</strong> &nbsp;·&nbsp; ${t("comercial.generatedOn")}: ${new Date().toLocaleDateString(t("catalog.localeCode"))} ${new Date().toLocaleTimeString(t("catalog.localeCode"), { hour: "2-digit", minute: "2-digit" })}</p>
       ${pecasList.length > 0 ? `
       <table>
-        <thead><tr><th>#</th><th>Peça</th><th>Referência</th><th>Qtd. Vendida</th></tr></thead>
+        <thead><tr><th>#</th><th>${t("comercial.piece")}</th><th>${t("comercial.reference")}</th><th>${t("comercial.qtySold")}</th></tr></thead>
         <tbody>
           ${pecasList.map((p, idx2) => `<tr><td>${idx2 + 1}</td><td>${esc(p.model)}</td><td>${esc(p.ref)}</td><td class="total">${p.total}</td></tr>`).join("")}
         </tbody>
-      </table>` : `<p style="color:#888;font-size:13px">Detalhes das peças não disponíveis para este período.</p>`}
-      <h2 style="font-size:14px;margin:20px 0 8px;color:#5b21b6">Pedidos</h2>
+      </table>` : `<p style="color:#888;font-size:13px">${t("comercial.detailsUnavailable")}</p>`}
+      <h2 style="font-size:14px;margin:20px 0 8px;color:#5b21b6">${t("comercial.orders")}</h2>
       <table>
-        <thead><tr><th>#</th><th>Cliente</th><th>Status</th><th>Data</th><th>Peças</th></tr></thead>
+        <thead><tr><th>#</th><th>${t("comercial.client")}</th><th>${t("comercial.status")}</th><th>${t("comercial.date")}</th><th>${t("comercial.pieces")}</th></tr></thead>
         <tbody>
-          ${meusPdfPedidos.map((p, idx2) => `<tr><td>${idx2 + 1}</td><td>${esc(p.cliente_nome)}</td><td>${esc(p.status)}</td><td>${new Date(p.created_at).toLocaleDateString("pt-BR")}</td><td>${p.itens.reduce((s,i) => s + i.quantidade, 0)}</td></tr>`).join("")}
+          ${meusPdfPedidos.map((p, idx2) => `<tr><td>${idx2 + 1}</td><td>${esc(p.cliente_nome)}</td><td>${esc(p.status)}</td><td>${new Date(p.created_at).toLocaleDateString(t("catalog.localeCode"))}</td><td>${p.itens.reduce((s,i) => s + i.quantidade, 0)}</td></tr>`).join("")}
         </tbody>
       </table>
       <p class="footer">Total de ${meusPdfPedidos.length} pedido(s) confirmado(s) &nbsp;·&nbsp; ${pecasList.reduce((s, p) => s + p.total, 0)} peças no total</p>
@@ -802,7 +808,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
     const w = window.open(url, "_blank");
     if (!w) {
       URL.revokeObjectURL(url);
-      toast.error("Popup bloqueado. Permita popups para imprimir.");
+      toast.error(t("comercial.toasts.popupBlocked"));
       return;
     }
     w.addEventListener("load", () => {
@@ -833,7 +839,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
             <Package className="h-5 w-5 text-violet-500" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Pedidos Efetuados</p>
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{t("comercial.ordersPlaced")}</p>
             <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPedidosConfirmados.toLocaleString("pt-BR")}</p>
             <p className="text-[10px] text-muted-foreground/60 mt-0.5">confirmados pela vendedora</p>
           </div>
@@ -843,7 +849,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
             <Boxes className="h-5 w-5 text-emerald-500" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Total de Peças</p>
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{t("comercial.totalPieces")}</p>
             <p className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{totalPecasConfirmadas.toLocaleString("pt-BR")}</p>
             <p className="text-[10px] text-muted-foreground/60 mt-0.5">nos pedidos confirmados</p>
           </div>
@@ -855,11 +861,11 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
       <div className="rounded-2xl border border-border/40 overflow-hidden">
         <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
           <Trophy className="h-4 w-4 text-amber-500" />
-          <p className="text-sm font-semibold">Ranking de Vendedoras</p>
+          <p className="text-sm font-semibold">{t("comercial.topSellersRanking")}</p>
           <span className="text-[11px] text-muted-foreground/60">(peças em pedidos confirmados)</span>
         </div>
         {rankingVendList.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
+          <div className="py-8 text-center text-sm text-muted-foreground/60">{t("comercial.noDataAvailable")}</div>
         ) : (
           <div className="divide-y divide-border/20">
             {rankingVendList.map(([nome, total], idx) => (
@@ -894,11 +900,11 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
       <div className="rounded-2xl border border-border/40 overflow-hidden">
         <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-violet-500" />
-          <p className="text-sm font-semibold">Clientes que Mais Compraram</p>
+          <p className="text-sm font-semibold">{t("comercial.topClients")}</p>
           <span className="text-[11px] text-muted-foreground/60">(peças em pedidos confirmados)</span>
         </div>
         {rankingClientesList.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
+          <div className="py-8 text-center text-sm text-muted-foreground/60">{t("comercial.noDataAvailable")}</div>
         ) : (
           <div className="divide-y divide-border/20">
             {rankingClientesList.map(([nome, total], idx) => (
@@ -941,6 +947,7 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function Comercial() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { signOut, isAdmin, role, user } = useAuth();
 
@@ -1056,7 +1063,7 @@ export default function Comercial() {
         return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, frete: (p.frete as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
     } catch (_e) {
-      toast.error("Erro ao carregar pedidos.", {
+      toast.error(t("comercial.toasts.loadOrdersError"), {
         action: { label: "Tentar novamente", onClick: loadPedidos }
       });
     } finally {
@@ -1068,12 +1075,12 @@ export default function Comercial() {
     setLoadingClientes(true);
     try {
       const { data, error } = await supabase.from("clientes").select("*").order("nome");
-      if (error) { toast.error("Erro ao carregar clientes.", {
+      if (error) { toast.error(t("comercial.toasts.loadClientsError"), {
         action: { label: "Tentar novamente", onClick: loadClientes }
       }); return; }
       setClientes((data as Cliente[]) ?? []);
     } catch (_e) {
-      toast.error("Erro ao carregar clientes.", {
+      toast.error(t("comercial.toasts.loadClientsError"), {
         action: { label: "Tentar novamente", onClick: loadClientes }
       });
       setClientes([]);
@@ -1104,14 +1111,14 @@ export default function Comercial() {
     try {
       // Use atomic RPC — cancels pedido + releases all reservations in one transaction
       const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
-      if (error) { toast.error("Erro ao cancelar."); return; }
+      if (error) { toast.error(t("comercial.toasts.cancelError")); return; }
       await logAudit(user?.id, currentUserName, "cancel_pedido", "pedido_comercial", cancelarPedido.id, { cliente: cancelarPedido.cliente_nome });
-      toast.success("Pedido cancelado.");
+      toast.success(t("comercial.toasts.orderCancelled"));
       setCancelarPedido(null);
       loadPedidos();
       refetchStock();
     } catch (_e) {
-      toast.error("Erro inesperado ao cancelar pedido.");
+      toast.error(t("comercial.toasts.unexpectedCancelError"));
     } finally {
       setCancelando(false);
     }
@@ -1130,8 +1137,8 @@ export default function Comercial() {
     }
     const { error } = await supabase.from("clientes").delete().eq("id", deleteCliente.id);
     setDeletingCliente(false);
-    if (error) { toast.error("Não foi possível excluir o cliente."); return; }
-    toast.success("Cliente excluído.");
+    if (error) { toast.error(t("comercial.toasts.cannotDeleteClient")); return; }
+    toast.success(t("comercial.toasts.clientDeleted"));
     setDeleteCliente(null);
     loadClientes();
   }
@@ -1214,7 +1221,7 @@ export default function Comercial() {
         <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <ShoppingBag className="h-4 w-4 text-violet-500" />
-            <h1 className="text-sm font-semibold">Comercial</h1>
+            <h1 className="text-sm font-semibold">{t("comercial.title")}</h1>
             {!loadingPedidos && pedidosPendentes > 0 && (
               <span className="flex items-center gap-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                 <Clock className="h-2.5 w-2.5" />
@@ -1232,8 +1239,8 @@ export default function Comercial() {
         {!canAccess ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
             <ShoppingBag className="h-12 w-12 text-muted-foreground/20" />
-            <p className="text-muted-foreground font-medium">Acesso restrito</p>
-            <p className="text-sm text-muted-foreground/60">Esta área é exclusiva para vendedoras e administradores.</p>
+            <p className="text-muted-foreground font-medium">{t("comercial.accessRestrictedTitle")}</p>
+            <p className="text-sm text-muted-foreground/60">{t("comercial.accessRestrictedMessage")}</p>
           </div>
         ) : (
           <>
@@ -1301,7 +1308,7 @@ export default function Comercial() {
                 ) : pedidosFiltrados.length === 0 ? (
                   <div className="text-center py-16 space-y-2">
                     <ShoppingBag className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-                    <p className="text-muted-foreground font-medium">Nenhum pedido encontrado</p>
+                    <p className="text-muted-foreground font-medium">{t("comercial.noOrdersFound")}</p>
                     <button type="button" onClick={() => setNovoPedidoOpen(true)} className="mt-2 inline-flex items-center gap-1.5 h-8 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors">
                       <Plus className="h-3.5 w-3.5" /> Criar primeiro pedido
                     </button>
@@ -1328,7 +1335,7 @@ export default function Comercial() {
                     <input
                       ref={clienteSearchRef}
                       type="text"
-                      placeholder="Buscar cliente..."
+                      placeholder={t("comercial.searchClientPlaceholder")}
                       defaultValue=""
                       onChange={e => {
                         if (clienteSearchDebounce.current) clearTimeout(clienteSearchDebounce.current);
@@ -1433,13 +1440,13 @@ export default function Comercial() {
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0"><Ban className="h-4 w-4 text-destructive" /></div>
               <div>
-                <p className="text-sm font-semibold">Cancelar pedido?</p>
+                <p className="text-sm font-semibold">{t("comercial.cancelOrderConfirmTitle")}</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5">{cancelarPedido.cliente_nome}</p>
               </div>
             </div>
-            <p className="text-[12px] text-muted-foreground">As peças reservadas voltarão a ficar disponíveis na expedição.</p>
+            <p className="text-[12px] text-muted-foreground">{t("comercial.cancelOrderConfirmMessage")}</p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setCancelarPedido(null)} disabled={cancelando} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Voltar</button>
+              <button type="button" onClick={() => setCancelarPedido(null)} disabled={cancelando} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">{t("comercial.back")}</button>
               <button type="button" onClick={handleCancelar} disabled={cancelando} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
                 {cancelando ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
                 Cancelar pedido
@@ -1456,13 +1463,13 @@ export default function Comercial() {
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0"><Trash2 className="h-4 w-4 text-destructive" /></div>
               <div>
-                <p className="text-sm font-semibold">Excluir cliente?</p>
+                <p className="text-sm font-semibold">{t("comercial.deleteClientConfirmTitle")}</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5">{deleteCliente.nome}</p>
               </div>
             </div>
             <p className="text-[12px] text-muted-foreground">{isAdmin ? "Como admin, você pode excluir este cliente mesmo que tenha pedidos vinculados. Os pedidos também serão removidos." : "Clientes com pedidos vinculados não podem ser excluídos."}</p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setDeleteCliente(null)} disabled={deletingCliente} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
+              <button type="button" onClick={() => setDeleteCliente(null)} disabled={deletingCliente} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">{t("comercial.cancel")}</button>
               <button type="button" onClick={handleDeleteCliente} disabled={deletingCliente} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
                 {deletingCliente ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                 Excluir
@@ -1481,13 +1488,13 @@ export default function Comercial() {
                 <X className="h-4 w-4 text-destructive" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Remover peça do pedido?</p>
+                <p className="text-sm font-semibold">{t("comercial.removePieceConfirmTitle")}</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5">{removerItemPendente.item.device_model}</p>
               </div>
             </div>
             <p className="text-[12px] text-muted-foreground">{removerItemPendente.item.quantidade} un. voltam ao estoque disponível.</p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setRemoverItemPendente(null)} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
+              <button type="button" onClick={() => setRemoverItemPendente(null)} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">{t("comercial.cancel")}</button>
               <button type="button" onClick={async () => {
                 const { item, pedido } = removerItemPendente;
                 // Remove da UI imediatamente (otimista)

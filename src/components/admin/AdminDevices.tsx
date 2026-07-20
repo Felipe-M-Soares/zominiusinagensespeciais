@@ -29,27 +29,31 @@ import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { logger } from "@/lib/logger";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
-const deviceSchema = z.object({
-  udi_di: z.string().min(1, "UDI-DI é obrigatório").max(200),
-  model: z.string().min(1, "Modelo é obrigatório").max(300),
-  reference: z.string().min(1, "Referência é obrigatória").max(200),
+function buildDeviceSchema() {
+  return z.object({
+  udi_di: z.string().min(1, i18n.t("adminDevices.schema.udiRequired")).max(200),
+  model: z.string().min(1, i18n.t("adminDevices.schema.modelRequired")).max(300),
+  reference: z.string().min(1, i18n.t("adminDevices.schema.referenceRequired")).max(200),
   internal_code: z.string().max(100).optional().default(""),
   anvisa_registration: z.string().max(100).optional().default(""),
   brand_name: z.string().max(200).optional().default(""),
   primary_material: z.string().max(200).optional().default(""),
   secondary_material: z.string().max(200).optional().default(""),
   surface_treatment: z.string().max(200).optional().default(""),
-  classification_code: z.string().min(1, "Código de classificação é obrigatório").max(50),
+  classification_code: z.string().min(1, i18n.t("adminDevices.schema.classCodeRequired")).max(50),
   risk_class: z.enum(["I", "II", "III", "IV"]),
   sterile: z.boolean().default(false),
   single_use: z.boolean().default(false),
   implantable: z.boolean().default(true),
-  intended_use: z.string().min(1, "Uso pretendido é obrigatório").max(1000),
-  body_region: z.string().min(1, "Região do corpo é obrigatória").max(200),
+  intended_use: z.string().min(1, i18n.t("adminDevices.schema.intendedUseRequired")).max(1000),
+  body_region: z.string().min(1, i18n.t("adminDevices.schema.bodyRegionRequired")).max(200),
   manufacturer_country: z.string().max(100).optional().default(""),
   exocad_compatibility: z.string().max(200).optional().default(""),
-});
+  });
+}
 
 type Device = Tables<"devices">;
 
@@ -76,6 +80,9 @@ const emptyDevice: Omit<TablesInsert<"devices">, "id" | "created_at" | "updated_
 };
 
 export function AdminDevices() {
+  const { t, i18n } = useTranslation();
+  const deleteAllLang = i18n.language.split("-")[0];
+  const deleteAllConfirmWord = deleteAllLang === "en" ? "DELETE" : deleteAllLang === "es" ? "ELIMINAR" : "EXCLUIR";
   const [imgUploaderOpen, setImgUploaderOpen] = useState(false);
   const [desenhoUploaderOpen, setDesenhoUploaderOpen] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -102,7 +109,7 @@ export function AdminDevices() {
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (ev) => resolve(ev.target?.result as string ?? "");
-      reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
+      reader.onerror = () => reject(new Error(i18n.t("adminDevices.toastReadFileError")));
       reader.readAsText(f, encoding);
     });
 
@@ -184,8 +191,8 @@ export function AdminDevices() {
       sterile:              toBool(g(r,"sterile","esteril","Esteril","Estéril","labeled_as_a_sterile_device","labeledasasteriledevice","Labeled As A Sterile Device?")),
       single_use:           toBool(g(r,"single_use","uso_unico","Uso_Unico","labeled_as_a_single_use_device","labeledasasingleusedevice","Labeled As A Single-Use Device?")),
       implantable:          true,
-      intended_use:         tr(g(r,"intended_use","uso_pretendido","gmdn","descricao") || "Componente protético para implante dentário", 1000),
-      body_region:          tr(g(r,"body_region","regiao_corpo","categoria") || "Oral", 200),
+      intended_use:         tr(g(r,"intended_use","uso_pretendido","gmdn","descricao") || i18n.t("adminDevices.defaultIntendedUse"), 1000),
+      body_region:          tr(g(r,"body_region","regiao_corpo","categoria") || i18n.t("adminDevices.defaultBodyRegion"), 200),
       compatible_systems:   [] as string[],
       manufacturer_country: tr(g(r,"manufacturer_country","pais_fabricante","pais"), 100),
       exocad_compatibility: tr(g(r,"exocad_compatibility","exocad"), 200),
@@ -199,7 +206,7 @@ export function AdminDevices() {
 
     const MAX_FILE_SIZE_MB = 10;
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      toast.error(`Arquivo muito grande. Máximo: ${MAX_FILE_SIZE_MB}MB`);
+      toast.error(i18n.t("adminDevices.toastFileTooLarge", { mb: MAX_FILE_SIZE_MB }));
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -207,7 +214,7 @@ export function AdminDevices() {
     const isJson = file.name.toLowerCase().endsWith(".json");
     const isCsv  = file.name.toLowerCase().endsWith(".csv");
     if (!isJson && !isCsv) {
-      toast.error("Tipo de arquivo inválido. Aceitos: .json, .csv");
+      toast.error(i18n.t("adminDevices.toastInvalidFileType"));
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -219,7 +226,7 @@ export function AdminDevices() {
       "", // file.type pode ser vazio em alguns sistemas operacionais
     ];
     if (file.type !== "" && !ALLOWED_MIMES.includes(file.type)) {
-      toast.error("Tipo MIME inválido. Aceitos: JSON ou CSV.");
+      toast.error(i18n.t("adminDevices.toastInvalidMime"));
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -239,27 +246,27 @@ export function AdminDevices() {
 
       if (isCsv) {
         const rows = parseCSVBrowser(text);
-        if (rows.length === 0) { toast.error("CSV vazio ou sem dados."); return; }
+        if (rows.length === 0) { toast.error(i18n.t("adminDevices.toastCsvEmpty")); return; }
 
         const firstRow = rows[0];
         const hasUdi   = Object.keys(firstRow).some(k => ["udi_di","udidi","udi","udi-di"].includes(normalizeKey(k)));
         const hasModel = Object.keys(firstRow).some(k => ["model","modelo","nome"].includes(normalizeKey(k)));
         if (!hasUdi || !hasModel) {
-          toast.error(`CSV inválido. Necessário: 'udi_di' e 'model'. Detectado: ${Object.keys(firstRow).filter((_, i) => i < 8).join(", ")}`);
+          toast.error(i18n.t("adminDevices.toastCsvInvalid", { fields: Object.keys(firstRow).filter((_, i) => i < 8).join(", ") }));
           return;
         }
         mapped = rows.map(mapRow).filter(d => d.udi_di.length > 0);
       } else {
         let parsed: unknown;
-        try { parsed = JSON.parse(text); } catch { toast.error("Arquivo JSON inválido."); return; }
+        try { parsed = JSON.parse(text); } catch { toast.error(i18n.t("adminDevices.toastInvalidJson")); return; }
         const safe = parsed as Record<string, unknown>;
         const list = (Array.isArray(safe.devices) ? safe.devices :
                       Array.isArray(safe.dispositivos_medicos) ? safe.dispositivos_medicos : null) as Record<string,unknown>[] | null;
-        if (!list) { toast.error("JSON deve ter campo 'devices' ou 'dispositivos_medicos'."); return; }
+        if (!list) { toast.error(i18n.t("adminDevices.toastJsonFieldRequired")); return; }
         mapped = list.map(d => mapRow(d as Record<string, string>)).filter(d => d.udi_di.length > 0);
       }
 
-      if (mapped.length === 0) { toast.error("Nenhum dispositivo válido encontrado."); return; }
+      if (mapped.length === 0) { toast.error(i18n.t("adminDevices.toastNoValidDevice")); return; }
 
       // 3. Deduplicar por udi_di
       const seen = new Map<string, number>();
@@ -271,7 +278,7 @@ export function AdminDevices() {
       }
       const deduped = Array.from(new Map(mapped.map(d => [d.udi_di, d])).values());
 
-      toast.info(`Importando ${deduped.length} dispositivos...`);
+      toast.info(i18n.t("adminDevices.toastImporting", { count: deduped.length }));
 
       // 4. Apaga catálogo atual e insere em batches diretamente via supabase client.
       // O RLS já garante que só admins conseguem fazer DELETE e INSERT na tabela devices.
@@ -282,7 +289,7 @@ export function AdminDevices() {
         .neq("id", "00000000-0000-0000-0000-000000000000");
 
       if (deleteError) {
-        toast.error("Erro ao limpar catálogo: " + deleteError.message);
+        toast.error(i18n.t("adminDevices.toastClearCatalogError") + deleteError.message);
         return;
       }
 
@@ -309,7 +316,7 @@ export function AdminDevices() {
       }
 
       if (inserted === 0) {
-        toast.error("Nenhum dispositivo foi importado. Verifique o arquivo e tente novamente.");
+        toast.error(i18n.t("adminDevices.toastNoDeviceImported"));
         return;
       }
 
@@ -355,15 +362,15 @@ export function AdminDevices() {
       }
 
       const stockMsg = stockCreated > 0
-        ? ` · ${stockCreated} adicionados ao estoque intermediário`
+        ? i18n.t("adminDevices.addedToIntermediateStock", { count: stockCreated })
         : "";
-      toast.success(`Importação concluída: ${inserted} dispositivos${skipped > 0 ? ` (${skipped} com erro)` : ""}${stockMsg}`);
+      toast.success(i18n.t("adminDevices.toastImportComplete", { count: inserted, errSuffix: skipped > 0 ? i18n.t("adminDevices.errSuffix", { count: skipped }) : "", stockMsg }));
       setPage(0);
       fetchDevices(debouncedSearch, 0);
 
     } catch (err) {
       logger.error("Import error:", err);
-      toast.error("Erro ao processar arquivo.");
+      toast.error(i18n.t("adminDevices.toastImportProcessError"));
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -384,7 +391,7 @@ export function AdminDevices() {
       setTotalCount(count);
     } catch (err) {
       if (ctrl.signal.aborted) return;
-      toast.error("Erro ao carregar dispositivos");
+      toast.error(i18n.t("adminDevices.toastLoadDevicesError"));
     } finally {
       if (!ctrl.signal.aborted) setLoading(false);
     }
@@ -406,10 +413,10 @@ export function AdminDevices() {
   const handleSave = async () => {
     if (!editDevice) return;
 
-    const parseResult = deviceSchema.safeParse(editDevice);
+    const parseResult = buildDeviceSchema().safeParse(editDevice);
     if (!parseResult.success) {
       const firstError = parseResult.error.errors[0];
-      toast.error(firstError?.message ?? "Dados inválidos no formulário");
+      toast.error(firstError?.message ?? i18n.t("adminDevices.toastInvalidFormData"));
       return;
     }
 
@@ -421,7 +428,7 @@ export function AdminDevices() {
           .insert(parseResult.data as TablesInsert<"devices">)
           .select("id")
           .single();
-        if (error) { logger.error("Device insert error:", error); toast.error("Erro ao criar o dispositivo."); }
+        if (error) { logger.error("Device insert error:", error); toast.error(i18n.t("adminDevices.toastCreateDeviceError")); }
         else {
           // Adiciona automaticamente ao controle de estoque com quantidade 0
           if (newDevice?.id) {
@@ -434,7 +441,7 @@ export function AdminDevices() {
               if (sErr) logger.warn("Auto stock insert warning:", sErr.message);
             });
           }
-          toast.success("Dispositivo criado e adicionado ao estoque intermediário");
+          toast.success(i18n.t("adminDevices.toastDeviceCreated"));
           setEditDevice(null);
           fetchDevices(debouncedSearch, page);
         }
@@ -442,8 +449,8 @@ export function AdminDevices() {
         const { id } = editDevice as Device;
         const { id: _omittedId, ...updates } = parseResult.data as TablesInsert<"devices"> & { id?: string };
         const { error } = await supabase.from("devices").update(updates).eq("id", id!);
-        if (error) { logger.error("Device update error:", error); toast.error("Erro ao atualizar o dispositivo."); }
-        else { toast.success("Dispositivo atualizado"); setEditDevice(null); fetchDevices(debouncedSearch, page); }
+        if (error) { logger.error("Device update error:", error); toast.error(i18n.t("adminDevices.toastUpdateDeviceError")); }
+        else { toast.success(i18n.t("adminDevices.toastDeviceUpdated")); setEditDevice(null); fetchDevices(debouncedSearch, page); }
       }
     } finally {
       setSaving(false);
@@ -468,7 +475,7 @@ export function AdminDevices() {
           .from(table as "stock_items")
           .delete()
           .neq("id", "00000000-0000-0000-0000-000000000000");
-        if (depErr) throw new Error(`Erro ao limpar ${table}: ${depErr.message}`);
+        if (depErr) throw new Error(i18n.t("adminDevices.toastDeleteDepsError", { table, msg: depErr.message }));
       }
 
       // 2. Apaga os devices em lotes
@@ -494,16 +501,16 @@ export function AdminDevices() {
       }
 
       if (iterations >= MAX_ITERATIONS) {
-        toast.warning(`Limite de iterações atingido. ${deleted.toLocaleString("pt-BR")} peças excluídas. Recarregue a página e repita se necessário.`);
+        toast.warning(i18n.t("adminDevices.toastIterationLimit", { count: deleted.toLocaleString(i18n.t("adminDevices.localeCode")) }));
       } else {
-        toast.success(`${deleted.toLocaleString("pt-BR")} peças excluídas com sucesso`);
+        toast.success(i18n.t("adminDevices.toastDeletedSuccess", { count: deleted.toLocaleString(i18n.t("adminDevices.localeCode")) }));
       }
       setPage(0);
       fetchDevices("", 0);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : (err as {message?:string})?.message ?? "Erro desconhecido";
+      const msg = err instanceof Error ? err.message : (err as {message?:string})?.message ?? i18n.t("adminDevices.toastUnknownError");
       logger.error("deleteAll error:", msg);
-      toast.error(`Erro ao excluir: ${msg}`);
+      toast.error(i18n.t("adminDevices.toastDeleteError", { msg }));
     } finally {
       setDeletingAll(false);
       setDeleteAllConfirm(false);
@@ -513,8 +520,8 @@ export function AdminDevices() {
   const handleDeleteConfirm = async () => {
     if (!deleteConfirmId) return;
     const { error } = await supabase.from("devices").delete().eq("id", deleteConfirmId);
-    if (error) toast.error("Erro ao excluir");
-    else { toast.success("Excluído"); fetchDevices(debouncedSearch, page); }
+    if (error) toast.error(i18n.t("adminDevices.toastDeleteSingleError"));
+    else { toast.success(i18n.t("adminDevices.toastDeletedSingle")); fetchDevices(debouncedSearch, page); }
     setDeleteConfirmId(null);
   };
 
@@ -531,7 +538,7 @@ export function AdminDevices() {
             value={search}
             onChange={handleSearchChange}
             onSearch={handleSearchChange}
-            placeholder="Bipe o código ou busque dispositivos..."
+            placeholder={t("adminDevices.searchPlaceholder")}
             height="h-9"
           />
         </div>
@@ -540,7 +547,7 @@ export function AdminDevices() {
           <input type="file" accept=".json,.csv" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
           <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
             {importing ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
-            {importing ? "Importando..." : "Importar"}
+            {importing ? t("adminDevices.importing") : t("adminDevices.import")}
           </Button>
           <Button
             variant="outline"
@@ -548,7 +555,7 @@ export function AdminDevices() {
             onClick={() => setImgUploaderOpen(true)}
           >
             <FileImage className="h-4 w-4" />
-            Imagens
+            {t("adminDevices.images")}
           </Button>
           <Button
             variant="outline"
@@ -556,25 +563,25 @@ export function AdminDevices() {
             onClick={() => setDesenhoUploaderOpen(true)}
           >
             <FileText className="h-4 w-4" />
-            Desenhos
+            {t("adminDevices.drawings")}
           </Button>
           <Button
             variant="outline"
             className="text-destructive border-destructive/40 hover:bg-destructive/10"
             onClick={() => setDeleteAllConfirm(true)}
             disabled={deletingAll || totalCount === 0}
-            title="Excluir todas as peças do catálogo"
+            title={t("adminDevices.deleteAllTitle")}
           >
             <ShieldAlert className="h-4 w-4 mr-1" />
-            Excluir Tudo
+            {t("adminDevices.deleteAll")}
           </Button>
           <Button onClick={() => { setEditDevice({ ...emptyDevice }); setIsNew(true); }}>
-            <Plus className="h-4 w-4 mr-1" /> Novo
+            <Plus className="h-4 w-4 mr-1" /> {t("adminDevices.new")}
           </Button>
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{totalCount.toLocaleString("pt-BR")} dispositivos cadastrados</p>
+      <p className="text-xs text-muted-foreground">{t("adminDevices.devicesRegistered", { count: totalCount.toLocaleString(t("adminDevices.localeCode")) })}</p>
 
       {loading ? (
         <div className="flex justify-center py-10"><div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" /></div>
@@ -583,12 +590,12 @@ export function AdminDevices() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Modelo</TableHead>
-                <TableHead>Referência</TableHead>
+                <TableHead>{t("adminDevices.colModel")}</TableHead>
+                <TableHead>{t("adminDevices.colReference")}</TableHead>
                 <TableHead>UDI-DI</TableHead>
-                <TableHead>Material</TableHead>
-                <TableHead>Classe</TableHead>
-                <TableHead className="w-[100px]">Ações</TableHead>
+                <TableHead>{t("adminDevices.colMaterial")}</TableHead>
+                <TableHead>{t("adminDevices.colClass")}</TableHead>
+                <TableHead className="w-[100px]">{t("adminDevices.colActions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -615,10 +622,10 @@ export function AdminDevices() {
           </Table>
           {totalCount > PAGE_SIZE && (
             <div className="flex items-center justify-between px-4 py-2 border-t text-sm text-muted-foreground">
-              <span>Página {page + 1} de {Math.ceil(totalCount / PAGE_SIZE)} ({totalCount.toLocaleString("pt-BR")} total)</span>
+              <span>{t("adminDevices.pageOf", { page: page + 1, total: Math.ceil(totalCount / PAGE_SIZE), count: totalCount.toLocaleString(t("adminDevices.localeCode")) })}</span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Anterior</Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount}>Próxima</Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>{t("adminDevices.previous")}</Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount}>{t("adminDevices.next")}</Button>
               </div>
             </div>
           )}
@@ -629,36 +636,35 @@ export function AdminDevices() {
       <AlertDialog open={deleteAllConfirm} onOpenChange={(open) => { setDeleteAllConfirm(open); if (!open) setDeleteAllTyped(""); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir TODAS as peças?</AlertDialogTitle>
+            <AlertDialogTitle>{t("adminDevices.deleteAllConfirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação é <strong>irreversível</strong>. Todos os{" "}
-              {totalCount.toLocaleString("pt-BR")} dispositivos serão removidos
-              permanentemente do catálogo.
+              {t("adminDevices.deleteAllConfirmDesc1")} <strong>{t("adminDevices.deleteAllConfirmDesc1Strong")}</strong>{t("adminDevices.deleteAllConfirmDesc1Mid")}{" "}
+              {totalCount.toLocaleString(t("adminDevices.localeCode"))} {t("adminDevices.deleteAllConfirmDesc1End")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {/* SAFETY: exige digitação da palavra "EXCLUIR" para confirmar operação destrutiva */}
           <div className="px-1 space-y-1.5">
             <p className="text-sm text-muted-foreground">
-              Digite <strong className="text-destructive font-mono">EXCLUIR</strong> para confirmar:
+              {t("adminDevices.typeToConfirm")} <strong className="text-destructive font-mono">{deleteAllConfirmWord}</strong> {t("adminDevices.typeToConfirmEnd")}
             </p>
             <Input
               value={deleteAllTyped}
               onChange={e => setDeleteAllTyped(e.target.value)}
-              placeholder="EXCLUIR"
+              placeholder={deleteAllConfirmWord}
               className="font-mono"
               disabled={deletingAll}
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>{t("adminDevices.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteAllDevices}
-              disabled={deletingAll || deleteAllTyped !== "EXCLUIR"}
+              disabled={deletingAll || deleteAllTyped !== deleteAllConfirmWord}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deletingAll
-                ? "Excluindo..."
-                : `Excluir tudo (${totalCount.toLocaleString("pt-BR")})`}
+                ? t("adminDevices.deleting")
+                : t("adminDevices.deleteAllAction", { count: totalCount.toLocaleString(t("adminDevices.localeCode")) })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -667,15 +673,15 @@ export function AdminDevices() {
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir dispositivo?</AlertDialogTitle>
+            <AlertDialogTitle>{t("adminDevices.deleteDeviceTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. O dispositivo será removido permanentemente do catálogo.
+              {t("adminDevices.deleteDeviceDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>{t("adminDevices.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Excluir
+              {t("adminDevices.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -684,22 +690,22 @@ export function AdminDevices() {
       <Dialog open={!!editDevice} onOpenChange={() => setEditDevice(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isNew ? "Novo Dispositivo" : "Editar Dispositivo"}</DialogTitle>
+            <DialogTitle>{isNew ? t("adminDevices.newDevice") : t("adminDevices.editDevice")}</DialogTitle>
           </DialogHeader>
           {editDevice && (
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-              <div className="space-y-1.5"><Label>Modelo *</Label><Input value={editDevice.model ?? ""} onChange={e => updateField("model", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Referência *</Label><Input value={editDevice.reference ?? ""} onChange={e => updateField("reference", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>UDI-DI *</Label><Input value={editDevice.udi_di ?? ""} onChange={e => updateField("udi_di", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Código Interno</Label><Input value={editDevice.internal_code ?? ""} onChange={e => updateField("internal_code", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Registro ANVISA</Label><Input value={editDevice.anvisa_registration ?? ""} onChange={e => updateField("anvisa_registration", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Marca</Label><Input value={editDevice.brand_name ?? ""} onChange={e => updateField("brand_name", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Material Principal</Label><Input value={editDevice.primary_material ?? ""} onChange={e => updateField("primary_material", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Material Secundário</Label><Input value={editDevice.secondary_material ?? ""} onChange={e => updateField("secondary_material", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Tratamento de Superfície</Label><Input value={editDevice.surface_treatment ?? ""} onChange={e => updateField("surface_treatment", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Código Classificação *</Label><Input value={editDevice.classification_code ?? ""} onChange={e => updateField("classification_code", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.model")}</Label><Input value={editDevice.model ?? ""} onChange={e => updateField("model", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.reference")}</Label><Input value={editDevice.reference ?? ""} onChange={e => updateField("reference", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.udiDi")}</Label><Input value={editDevice.udi_di ?? ""} onChange={e => updateField("udi_di", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.internalCode")}</Label><Input value={editDevice.internal_code ?? ""} onChange={e => updateField("internal_code", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.anvisaRegistration")}</Label><Input value={editDevice.anvisa_registration ?? ""} onChange={e => updateField("anvisa_registration", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.brand")}</Label><Input value={editDevice.brand_name ?? ""} onChange={e => updateField("brand_name", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.primaryMaterial")}</Label><Input value={editDevice.primary_material ?? ""} onChange={e => updateField("primary_material", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.secondaryMaterial")}</Label><Input value={editDevice.secondary_material ?? ""} onChange={e => updateField("secondary_material", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.surfaceTreatment")}</Label><Input value={editDevice.surface_treatment ?? ""} onChange={e => updateField("surface_treatment", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.classCode")}</Label><Input value={editDevice.classification_code ?? ""} onChange={e => updateField("classification_code", e.target.value)} /></div>
               <div className="space-y-1.5">
-                <Label>Classe de Risco *</Label>
+                <Label>{t("adminDevices.riskClass")}</Label>
                 <Select value={editDevice.risk_class ?? "III"} onValueChange={v => updateField("risk_class", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -708,22 +714,21 @@ export function AdminDevices() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5"><Label>Região do Corpo *</Label><Input value={editDevice.body_region ?? ""} onChange={e => updateField("body_region", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>País do Fabricante</Label><Input value={editDevice.manufacturer_country ?? ""} onChange={e => updateField("manufacturer_country", e.target.value)} /></div>
-              <div className="space-y-1.5"><Label>Compatibilidade Exocad</Label><Input value={editDevice.exocad_compatibility ?? ""} onChange={e => updateField("exocad_compatibility", e.target.value)} /></div>
-              <div className="sm:col-span-2 space-y-1.5"><Label>Uso Pretendido *</Label><Textarea value={editDevice.intended_use ?? ""} onChange={e => updateField("intended_use", e.target.value)} rows={2} /></div>
-              <div className="flex items-center gap-3"><Switch checked={!!editDevice.sterile} onCheckedChange={v => updateField("sterile", v)} /><Label>Estéril</Label></div>
-              <div className="flex items-center gap-3"><Switch checked={!!editDevice.single_use} onCheckedChange={v => updateField("single_use", v)} /><Label>Uso Único</Label></div>
-              <div className="flex items-center gap-3"><Switch checked={editDevice.implantable !== false} onCheckedChange={v => updateField("implantable", v)} /><Label>Implantável</Label></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.bodyRegion")}</Label><Input value={editDevice.body_region ?? ""} onChange={e => updateField("body_region", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.manufacturerCountry")}</Label><Input value={editDevice.manufacturer_country ?? ""} onChange={e => updateField("manufacturer_country", e.target.value)} /></div>
+              <div className="space-y-1.5"><Label>{t("adminDevices.exocadCompat")}</Label><Input value={editDevice.exocad_compatibility ?? ""} onChange={e => updateField("exocad_compatibility", e.target.value)} /></div>
+              <div className="sm:col-span-2 space-y-1.5"><Label>{t("adminDevices.intendedUse")}</Label><Textarea value={editDevice.intended_use ?? ""} onChange={e => updateField("intended_use", e.target.value)} rows={2} /></div>
+              <div className="flex items-center gap-3"><Switch checked={!!editDevice.sterile} onCheckedChange={v => updateField("sterile", v)} /><Label>{t("adminDevices.sterile")}</Label></div>
+              <div className="flex items-center gap-3"><Switch checked={!!editDevice.single_use} onCheckedChange={v => updateField("single_use", v)} /><Label>{t("adminDevices.singleUse")}</Label></div>
+              <div className="flex items-center gap-3"><Switch checked={editDevice.implantable !== false} onCheckedChange={v => updateField("implantable", v)} /><Label>{t("adminDevices.implantable")}</Label></div>
 
               {/* Campos fiscais: preenchidos automaticamente pelo banco */}
               <div className="sm:col-span-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3 space-y-2">
                 <p style={{fontSize:"11px",fontWeight:700,color:"#7c3aed",textTransform:"uppercase",letterSpacing:"0.05em"}}>
-                  🧾 Dados Fiscais — preenchidos automaticamente ao salvar
+                  {t("adminDevices.fiscalDataTitle")}
                 </p>
                 <p style={{fontSize:"10px",color:"var(--muted-foreground)",lineHeight:1.5}}>
-                  NCM e CFOP são calculados pelo banco com base na Classe de Risco, Implantável, Região do Corpo e Material.
-                  Para personalizar, use a aba <strong>Tabela de Preços</strong> no Financeiro.
+                  {t("adminDevices.fiscalDataDesc")} <strong>{t("adminDevices.priceTable")}</strong> {t("adminDevices.inFinance")}.
                 </p>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",fontSize:"11px"}}>
                   {(() => {
@@ -732,20 +737,20 @@ export function AdminDevices() {
                     const m = (editDevice.primary_material ?? "").toLowerCase();
                     const imp = editDevice.implantable !== false;
                     let ncm = "9021.39.90";
-                    let ncmDesc = "Prótese dentária";
+                    let ncmDesc = t("adminDevices.dentalProsthesis");
                     if (imp && (b.includes("oral") || b.includes("dent") || b.includes("buc"))) {
                       if (c.includes("implant") || c.includes("fixture") || c.includes("parafus") || m.includes("titani")) {
-                        ncm = "9021.29.10"; ncmDesc = "Implante intraósseo";
-                      } else { ncm = "9021.39.90"; ncmDesc = "Componente protético"; }
+                        ncm = "9021.29.10"; ncmDesc = t("adminDevices.intraosseousImplant");
+                      } else { ncm = "9021.39.90"; ncmDesc = t("adminDevices.prostheticComponent"); }
                     } else if (b.includes("oral") || b.includes("dent")) {
                       if (c.includes("instrumen") || c.includes("broca") || c.includes("fresa")) {
-                        ncm = "9018.49.90"; ncmDesc = "Instrumento odontológico";
+                        ncm = "9018.49.90"; ncmDesc = t("adminDevices.dentalInstrument");
                       }
                     }
                     return [
-                      { label: "NCM estimado", value: ncm, desc: ncmDesc },
-                      { label: "CFOP padrão",  value: "5102", desc: "Venda intra-estadual" },
-                      { label: "Unidade",       value: "UN",   desc: "Unidade padrão" },
+                      { label: t("adminDevices.estimatedNcm"), value: ncm, desc: ncmDesc },
+                      { label: t("adminDevices.defaultCfop"),  value: "5102", desc: t("adminDevices.intrastateSale") },
+                      { label: t("adminDevices.unit"),       value: "UN",   desc: t("adminDevices.standardUnit") },
                     ].map(f => (
                       <div key={f.label} style={{borderRadius:10,border:"1px solid hsl(var(--border))",background:"hsl(var(--background))",padding:"8px",textAlign:"center"}}>
                         <p style={{fontSize:"9px",color:"var(--muted-foreground)",textTransform:"uppercase",letterSpacing:"0.05em"}}>{f.label}</p>
@@ -758,8 +763,8 @@ export function AdminDevices() {
               </div>
 
               <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setEditDevice(null)}>Cancelar</Button>
-                <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+                <Button variant="outline" onClick={() => setEditDevice(null)}>{t("adminDevices.cancel")}</Button>
+                <Button onClick={handleSave} disabled={saving}>{saving ? t("adminDevices.saving") : t("adminDevices.save")}</Button>
               </div>
             </div>
           )}

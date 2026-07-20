@@ -206,7 +206,7 @@ BEGIN
     WHEN p_role IN ('admin','estoque','qualidade','comercial','financeiro','producao','processos') THEN p_role
     ELSE 'estoque'
   END;
-  v_email := v_clean_login || '@interno.conceptus';
+  v_email := v_clean_login || '@interno.zomini';
 
   INSERT INTO auth.users (
     id, instance_id, email, encrypted_password, email_confirmed_at,

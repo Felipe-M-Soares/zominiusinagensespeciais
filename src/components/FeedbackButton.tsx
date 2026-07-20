@@ -17,14 +17,9 @@ import { Bug, Lightbulb, MessageCircleQuestion, Loader2, CheckCircle2 } from "lu
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/appInfo";
+import { useTranslation } from "react-i18next";
 
 type TipoFeedback = "bug" | "sugestao" | "outro";
-
-const TIPOS: { value: TipoFeedback; label: string; icon: React.ElementType; desc: string }[] = [
-  { value: "bug",      label: "Reportar problema", icon: Bug,                   desc: "Algo não funcionou como esperado" },
-  { value: "sugestao", label: "Sugestão",           icon: Lightbulb,            desc: "Uma ideia para melhorar o sistema" },
-  { value: "outro",    label: "Outro",              icon: MessageCircleQuestion, desc: "Qualquer outro comentário" },
-];
 
 interface FeedbackButtonProps {
   /** Quando true, renderiza só o item de menu (sem trigger próprio) — para uso dentro de um dropdown/sidebar existente. */
@@ -33,6 +28,12 @@ interface FeedbackButtonProps {
 }
 
 export function FeedbackButton({ asMenuItem, className }: FeedbackButtonProps) {
+  const { t: tr } = useTranslation(); // alias: `t` já é usado como var de iteração de TIPOS abaixo
+  const TIPOS: { value: TipoFeedback; label: string; icon: React.ElementType; desc: string }[] = [
+    { value: "bug",      label: tr("feedback.typeBugLabel"),        icon: Bug,                   desc: tr("feedback.typeBugDesc") },
+    { value: "sugestao", label: tr("feedback.typeSuggestionLabel"), icon: Lightbulb,            desc: tr("feedback.typeSuggestionDesc") },
+    { value: "outro",    label: tr("feedback.typeOtherLabel"),      icon: MessageCircleQuestion, desc: tr("feedback.typeOtherDesc") },
+  ];
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [tipo, setTipo] = useState<TipoFeedback>("bug");
@@ -47,7 +48,7 @@ export function FeedbackButton({ asMenuItem, className }: FeedbackButtonProps) {
   async function handleSend() {
     const msg = mensagem.trim();
     if (msg.length < 5) {
-      toast.error("Escreva uma mensagem com pelo menos 5 caracteres.");
+      toast.error(tr("feedback.errMinLength"));
       return;
     }
     setSaving(true);
@@ -60,12 +61,12 @@ export function FeedbackButton({ asMenuItem, className }: FeedbackButtonProps) {
       });
       const result = data as { ok?: boolean; error?: string } | null;
       if (error || result?.ok === false) {
-        toast.error(result?.error ?? "Não foi possível enviar. Tente novamente.");
+        toast.error(result?.error ?? tr("feedback.errSendFailed"));
         return;
       }
       setSent(true);
     } catch {
-      toast.error("Erro ao enviar. Verifique sua conexão.");
+      toast.error(tr("feedback.errConnection"));
     } finally {
       setSaving(false);
     }
@@ -83,11 +84,11 @@ export function FeedbackButton({ asMenuItem, className }: FeedbackButtonProps) {
           )}
         >
           <Bug className="w-4 h-4 shrink-0" />
-          <span>Reportar problema</span>
+          <span>{tr("feedback.reportIssue")}</span>
         </button>
       ) : (
         <Button variant="outline" size="sm" className={cn("gap-1.5", className)} onClick={() => { reset(); setOpen(true); }}>
-          <Bug className="h-3.5 w-3.5" /> Reportar problema
+          <Bug className="h-3.5 w-3.5" /> {tr("feedback.reportIssue")}
         </Button>
       )}
 
@@ -99,15 +100,15 @@ export function FeedbackButton({ asMenuItem, className }: FeedbackButtonProps) {
                 <CheckCircle2 className="h-6 w-6 text-emerald-600" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Recebemos sua mensagem!</p>
-                <p className="text-[12px] text-muted-foreground mt-1">A equipe responsável vai analisar em breve.</p>
+                <p className="text-sm font-semibold">{tr("feedback.thanksTitle")}</p>
+                <p className="text-[12px] text-muted-foreground mt-1">{tr("feedback.thanksBody")}</p>
               </div>
-              <Button size="sm" onClick={() => setOpen(false)}>Fechar</Button>
+              <Button size="sm" onClick={() => setOpen(false)}>{tr("feedback.close")}</Button>
             </div>
           ) : (
             <>
               <DialogHeader>
-                <DialogTitle>Reportar problema ou sugestão</DialogTitle>
+                <DialogTitle>{tr("feedback.dialogTitle")}</DialogTitle>
               </DialogHeader>
 
               <div className="space-y-3">
@@ -135,8 +136,8 @@ export function FeedbackButton({ asMenuItem, className }: FeedbackButtonProps) {
                   value={mensagem}
                   onChange={e => setMensagem(e.target.value.slice(0, 4000))}
                   placeholder={tipo === "bug"
-                    ? "Descreva o que aconteceu, o que você esperava que acontecesse, e em qual tela."
-                    : "Conte sua ideia ou comentário com o máximo de detalhe que puder."}
+                    ? tr("feedback.placeholderBug")
+                    : tr("feedback.placeholderOther")}
                   rows={5}
                   maxLength={4000}
                   className="resize-none text-sm"
@@ -146,10 +147,10 @@ export function FeedbackButton({ asMenuItem, className }: FeedbackButtonProps) {
               </div>
 
               <DialogFooter>
-                <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+                <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={saving}>{tr("feedback.cancel")}</Button>
                 <Button size="sm" onClick={handleSend} disabled={saving || mensagem.trim().length < 5} className="gap-1.5">
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                  Enviar
+                  {tr("feedback.send")}
                 </Button>
               </DialogFooter>
             </>

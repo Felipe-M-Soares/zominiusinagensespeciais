@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { PageNav, type PageNavTab } from "@/components/PageNav";
 import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
+import { useTranslation } from "react-i18next";
 
 const DesempenhoPanel   = lazy(() => import("@/components/producao/DesempenhoPanel").then(m => ({ default: m.DesempenhoPanel })));
 const ControlePanel     = lazy(() => import("@/components/producao/ControlePanel").then(m => ({ default: m.ControlePanel })));
@@ -56,17 +57,18 @@ interface ProdModule {
   restrictedTo?: ("admin" | "producao")[];
 }
 
-const MODULES: ProdModule[] = [
-  { id:"desempenho",   label:"Desempenho",   Icon:LayoutDashboard, activeColor:"text-blue-600 dark:text-blue-400",     activeBg:"bg-blue-500/10",     activeBorder:"border-blue-500/40",     badgeBg:"bg-blue-500/15",     badgeText:"text-blue-600 dark:text-blue-400" },
-  { id:"controle",     label:"Controle",     Icon:ClipboardList,   activeColor:"text-green-600 dark:text-green-400",   activeBg:"bg-green-500/10",    activeBorder:"border-green-500/40",    badgeBg:"bg-green-500/15",    badgeText:"text-green-600 dark:text-green-400" },
-  { id:"planejamento", label:"Planejamento", Icon:CalendarClock,   activeColor:"text-amber-600 dark:text-amber-400",   activeBg:"bg-amber-500/10",    activeBorder:"border-amber-500/40",    badgeBg:"bg-amber-500/15",    badgeText:"text-amber-600 dark:text-amber-400" },
-  { id:"cadastros",    label:"Cadastros",    Icon:Settings2,       activeColor:"text-purple-600 dark:text-purple-400", activeBg:"bg-purple-500/10",   activeBorder:"border-purple-500/40",   badgeBg:"bg-purple-500/15",   badgeText:"text-purple-600 dark:text-purple-400", restrictedTo:["admin","producao"] },
-  { id:"paradas",      label:"Paradas",      Icon:OctagonPause,    activeColor:"text-red-600 dark:text-red-400",       activeBg:"bg-red-500/10",      activeBorder:"border-red-500/40",      badgeBg:"bg-red-500/15",      badgeText:"text-red-600 dark:text-red-400" },
-  { id:"qualidade",    label:"Refugo",       Icon:ShieldAlert,     activeColor:"text-orange-600 dark:text-orange-400", activeBg:"bg-orange-500/10",   activeBorder:"border-orange-500/40",   badgeBg:"bg-orange-500/15",   badgeText:"text-orange-600 dark:text-orange-400" },
-  { id:"materiaprima", label:"Mat.-Prima",   Icon:Boxes,           activeColor:"text-teal-600 dark:text-teal-400",     activeBg:"bg-teal-500/10",     activeBorder:"border-teal-500/40",     badgeBg:"bg-teal-500/15",     badgeText:"text-teal-600 dark:text-teal-400" },
-];
+function buildModules(t: (k: string) => string): ProdModule[] { return [
+  { id:"desempenho",   label:t("producao.modules.desempenho"),   Icon:LayoutDashboard, activeColor:"text-blue-600 dark:text-blue-400",     activeBg:"bg-blue-500/10",     activeBorder:"border-blue-500/40",     badgeBg:"bg-blue-500/15",     badgeText:"text-blue-600 dark:text-blue-400" },
+  { id:"controle",     label:t("producao.modules.controle"),     Icon:ClipboardList,   activeColor:"text-green-600 dark:text-green-400",   activeBg:"bg-green-500/10",    activeBorder:"border-green-500/40",    badgeBg:"bg-green-500/15",    badgeText:"text-green-600 dark:text-green-400" },
+  { id:"planejamento", label:t("producao.modules.planejamento"), Icon:CalendarClock,   activeColor:"text-amber-600 dark:text-amber-400",   activeBg:"bg-amber-500/10",    activeBorder:"border-amber-500/40",    badgeBg:"bg-amber-500/15",    badgeText:"text-amber-600 dark:text-amber-400" },
+  { id:"cadastros",    label:t("producao.modules.cadastros"),    Icon:Settings2,       activeColor:"text-purple-600 dark:text-purple-400", activeBg:"bg-purple-500/10",   activeBorder:"border-purple-500/40",   badgeBg:"bg-purple-500/15",   badgeText:"text-purple-600 dark:text-purple-400", restrictedTo:["admin","producao"] },
+  { id:"paradas",      label:t("producao.modules.paradas"),      Icon:OctagonPause,    activeColor:"text-red-600 dark:text-red-400",       activeBg:"bg-red-500/10",      activeBorder:"border-red-500/40",      badgeBg:"bg-red-500/15",      badgeText:"text-red-600 dark:text-red-400" },
+  { id:"qualidade",    label:t("producao.modules.qualidade"),    Icon:ShieldAlert,     activeColor:"text-orange-600 dark:text-orange-400", activeBg:"bg-orange-500/10",   activeBorder:"border-orange-500/40",   badgeBg:"bg-orange-500/15",   badgeText:"text-orange-600 dark:text-orange-400" },
+  { id:"materiaprima", label:t("producao.modules.materiaprima"),   Icon:Boxes,           activeColor:"text-teal-600 dark:text-teal-400",     activeBg:"bg-teal-500/10",     activeBorder:"border-teal-500/40",     badgeBg:"bg-teal-500/15",     badgeText:"text-teal-600 dark:text-teal-400" },
+]; }
 
 function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:boolean; onSync:()=>void }) {
+  const { t } = useTranslation();
   const offline = !navigator.onLine;
   if (!offline && pending === 0) return null;
   return (
@@ -75,13 +77,13 @@ function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:b
                : "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20")}>
       <WifiOff className="h-3.5 w-3.5 shrink-0" />
       {offline
-        ? "Modo offline — dados salvos localmente, serão sincronizados ao reconectar"
-        : `${pending} operaç${pending===1?"ão pendente":"ões pendentes"} de sincronização`}
+        ? t("producao.offlineBannerText")
+        : `${pending} ${pending===1?t("producao.pendingOpSingular"):t("producao.pendingOpPlural")} ${t("producao.ofSync")}`}
       {!offline && pending > 0 && (
         <button onClick={onSync} disabled={syncing}
           className="ml-auto flex items-center gap-1 hover:opacity-70 transition-opacity">
           <RefreshCw className={cn("h-3 w-3", syncing && "animate-spin")} />
-          {syncing ? "Sincronizando..." : "Sincronizar agora"}
+          {syncing ? t("producao.syncing") : t("producao.syncNow")}
         </button>
       )}
     </div>
@@ -89,6 +91,8 @@ function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:b
 }
 
 export default function Producao() {
+  const { t } = useTranslation();
+  const MODULES = buildModules(t);
   const { role } = useAuth();
   const { isOnline, pendingCount, syncing, syncQueue } = useOfflineSync();
   const isMobile = useIsMobile();
@@ -116,20 +120,20 @@ export default function Producao() {
         <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <Factory className="h-4 w-4 text-primary shrink-0" />
-            <h1 className="text-sm font-semibold">Produção</h1>
+            <h1 className="text-sm font-semibold">{t("producao.title")}</h1>
           </div>
           <div className="flex items-center gap-1.5">
             {isAdmin && (
               <ClearHistoryButton
                 rpc="admin_clear_producao"
-                confirmTitle="Apagar histórico de produção?"
-                confirmDescription="Apaga todos os apontamentos de produção. Máquinas e produtos continuam cadastrados."
+                confirmTitle={t("producao.clearHistoryConfirmTitle")}
+                confirmDescription={t("producao.clearHistoryConfirmDesc")}
               />
             )}
             {!isOnline && (
               <div className="flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
                 <WifiOff className="h-3 w-3" />
-                <span className="hidden sm:inline">Offline</span>
+                <span className="hidden sm:inline">{t("producao.offline")}</span>
               </div>
             )}
           </div>

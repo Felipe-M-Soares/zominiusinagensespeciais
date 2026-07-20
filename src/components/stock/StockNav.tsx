@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StockItem } from "@/hooks/useStock";
+import { useTranslation } from "react-i18next";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 export type ActiveView =
@@ -39,10 +40,11 @@ interface StockNavProps {
 }
 
 // ── Configuração das abas ──────────────────────────────────────────────────────
-const TABS = [
+function buildTabs(t: (key: string) => string) {
+  return [
   {
     id: "dashboard" as ActiveView,
-    label: "Dashboard",
+    label: t("stockNav.dashboard"),
     Icon: LayoutDashboard,
     activeColor: "text-primary",
     activeBg: "bg-primary/10",
@@ -53,7 +55,7 @@ const TABS = [
   },
   {
     id: "intermediaria" as ActiveView,
-    label: "Interm.",
+    label: t("stockNav.intermediate"),
     Icon: Package,
     activeColor: "text-primary",
     activeBg: "bg-primary/10",
@@ -64,7 +66,7 @@ const TABS = [
   },
   {
     id: "expedicao" as ActiveView,
-    label: "Expedição",
+    label: t("stockNav.shipping"),
     Icon: Truck,
     activeColor: "text-success",
     activeBg: "bg-success/10",
@@ -75,7 +77,7 @@ const TABS = [
   },
   {
     id: "retrabalho" as ActiveView,
-    label: "Retrab.",
+    label: t("stockNav.rework"),
     Icon: Wrench,
     activeColor: "text-orange-500",
     activeBg: "bg-orange-500/10",
@@ -86,7 +88,7 @@ const TABS = [
   },
   {
     id: "recebimento" as ActiveView,
-    label: "Recebim.",
+    label: t("stockNav.receiving"),
     Icon: Inbox,
     activeColor: "text-cyan-600 dark:text-cyan-400",
     activeBg: "bg-cyan-500/10",
@@ -97,7 +99,7 @@ const TABS = [
   },
   {
     id: "pedidos" as ActiveView,
-    label: "Pedidos",
+    label: t("stockNav.orders"),
     Icon: ShoppingBag,
     activeColor: "text-amber-600 dark:text-amber-400",
     activeBg: "bg-amber-500/10",
@@ -106,7 +108,8 @@ const TABS = [
     badgeText: "text-amber-600 dark:text-amber-400",
     animation: "animate-pop",
   },
-] as const;
+  ];
+}
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export function StockNav({
@@ -119,6 +122,8 @@ export function StockNav({
   pedidosPendentes = 0,
   qtyByFase,
 }: StockNavProps) {
+  const { t } = useTranslation();
+  const TABS = buildTabs(t);
   const [animating, setAnimating] = useState<ActiveView | null>(null);
   // Ref para evitar closure stale no handleClick (activeView pode ficar desatualizado
   // em taps rápidos mobile porque o useCallback não re-executa imediatamente).

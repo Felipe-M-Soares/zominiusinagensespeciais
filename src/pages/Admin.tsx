@@ -8,15 +8,17 @@ import { DashboardGeral } from "@/components/qualidade/DashboardGeral";
 import { PageNav } from "@/components/PageNav";
 import { Button } from "@/components/ui/button";
 import { Settings, Cpu, Users, LayoutDashboard, Shield, MessageSquare, DatabaseBackup } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const BackupPanel = lazy(() => import("@/components/stock/BackupPanel").then(m => ({ default: m.BackupPanel })));
 
 type AdminTab = "dashboard" | "devices" | "users" | "auditoria" | "feedback";
 
-const ADMIN_TABS = [
+function buildAdminTabs(t: (k: string) => string) {
+  return [
   {
     id: "dashboard" as AdminTab,
-    label: "Dashboard",
+    label: t("admin.tabs.dashboard"),
     Icon: LayoutDashboard,
     activeColor: "text-emerald-600 dark:text-emerald-400",
     activeBg: "bg-emerald-500/10",
@@ -26,7 +28,7 @@ const ADMIN_TABS = [
   },
   {
     id: "devices" as AdminTab,
-    label: "Dispositivos",
+    label: t("admin.tabs.devices"),
     Icon: Cpu,
     activeColor: "text-primary",
     activeBg: "bg-primary/10",
@@ -36,7 +38,7 @@ const ADMIN_TABS = [
   },
   {
     id: "users" as AdminTab,
-    label: "Usuários",
+    label: t("admin.tabs.users"),
     Icon: Users,
     activeColor: "text-violet-600 dark:text-violet-400",
     activeBg: "bg-violet-500/10",
@@ -46,7 +48,7 @@ const ADMIN_TABS = [
   },
   {
     id: "auditoria" as AdminTab,
-    label: "Auditoria",
+    label: t("admin.tabs.auditoria"),
     Icon: Shield,
     activeColor: "text-amber-600 dark:text-amber-400",
     activeBg: "bg-amber-500/10",
@@ -56,7 +58,7 @@ const ADMIN_TABS = [
   },
   {
     id: "feedback" as AdminTab,
-    label: "Feedback",
+    label: t("admin.tabs.feedback"),
     Icon: MessageSquare,
     activeColor: "text-rose-600 dark:text-rose-400",
     activeBg: "bg-rose-500/10",
@@ -64,9 +66,12 @@ const ADMIN_TABS = [
     badgeBg: "bg-rose-500/15",
     badgeText: "text-rose-600 dark:text-rose-400",
   },
-];
+  ];
+}
 
 export default function Admin() {
+  const { t } = useTranslation();
+  const ADMIN_TABS = buildAdminTabs(t);
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
   const [auditKey, setAuditKey] = useState(0);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -77,17 +82,17 @@ export default function Admin() {
         <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <Settings className="h-4 w-4 text-primary" />
-            <h1 className="text-sm font-semibold">Admin</h1>
+            <h1 className="text-sm font-semibold">{t("admin.title")}</h1>
           </div>
           <div className="flex items-center gap-1">
             <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
-              <DatabaseBackup className="h-3.5 w-3.5" /> Backup
+              <DatabaseBackup className="h-3.5 w-3.5" /> {t("admin.backup")}
             </Button>
             {activeTab === "auditoria" && (
               <ClearHistoryButton
                 rpc="admin_clear_audit_log"
-                confirmTitle="Apagar log de auditoria?"
-                confirmDescription="Apaga todo o histórico de ações administrativas registradas. Não afeta nenhum outro dado do sistema."
+                confirmTitle={t("admin.clearAuditTitle")}
+                confirmDescription={t("admin.clearAuditDesc")}
                 onCleared={() => setAuditKey(k => k + 1)}
               />
             )}
@@ -102,7 +107,7 @@ export default function Admin() {
       <main className="flex-1 overflow-y-auto">
         <div className="px-3 sm:px-4 py-4 space-y-4 h-full flex flex-col">
           <div className="rounded-xl border bg-primary/5 border-primary/20 text-primary/80 px-4 py-3 text-[12px]">
-            Gerencie dispositivos cadastrados no sistema e controle o acesso dos usuários.
+            {t("admin.banner")}
           </div>
 
           <PageNav

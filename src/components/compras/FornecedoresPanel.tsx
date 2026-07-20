@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 
 interface Fornecedor {
   id:string; razao_social:string; nome_fantasia:string|null; cnpj:string|null;
@@ -15,6 +16,8 @@ interface Fornecedor {
 const CATS = ["materia_prima","servico","embalagem","ferramental","outros"];
 
 function FornModal({item,onClose,onSaved}:{item:Fornecedor|null;onClose:()=>void;onSaved:()=>void}) {
+  const { t } = useTranslation();
+  const CAT_LABEL: Record<string,string> = { materia_prima: t("fornecedoresPanel.categories.materia_prima"), servico: t("fornecedoresPanel.categories.servico"), embalagem: t("fornecedoresPanel.categories.embalagem"), ferramental: t("fornecedoresPanel.categories.ferramental"), outros: t("fornecedoresPanel.categories.outros") };
   const [form,setForm] = useState({
     razao_social:item?.razao_social||"", nome_fantasia:item?.nome_fantasia||"",
     cnpj:item?.cnpj||"", telefone:item?.telefone||"", email:item?.email||"",
@@ -24,7 +27,7 @@ function FornModal({item,onClose,onSaved}:{item:Fornecedor|null;onClose:()=>void
   const [saving,setSaving] = useState(false);
 
   async function save() {
-    if(!form.razao_social){toast.error("Razão social obrigatória");return;}
+    if(!form.razao_social){toast.error(t("fornecedoresPanel.toastCompanyNameRequired"));return;}
     setSaving(true);
     const payload = {...form, prazo_entrega_dias:parseInt(form.prazo_entrega_dias)||0};
     const{error}=item
@@ -32,7 +35,7 @@ function FornModal({item,onClose,onSaved}:{item:Fornecedor|null;onClose:()=>void
       : await supabase.from("fornecedores").insert(payload);
     setSaving(false);
     if(error){toast.error(error.message);return;}
-    toast.success(item?"Fornecedor atualizado!":"Fornecedor cadastrado!");
+    toast.success(item?t("fornecedoresPanel.toastUpdated"):t("fornecedoresPanel.toastCreated"));
     onSaved(); onClose();
   }
 
@@ -44,36 +47,36 @@ function FornModal({item,onClose,onSaved}:{item:Fornecedor|null;onClose:()=>void
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
       <div className="w-full max-w-lg bg-card rounded-t-2xl sm:rounded-2xl border border-border/40 shadow-2xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
-          <h3 className="font-semibold text-sm">{item?"Editar":"Novo"} Fornecedor</h3>
+          <h3 className="font-semibold text-sm">{item?t("fornecedoresPanel.editSupplier"):t("fornecedoresPanel.newSupplier")} {t("fornecedoresPanel.supplierWord")}</h3>
           <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40"><X className="h-4 w-4"/></button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-          <div><label className={lbl}>Razão Social *</label><Input {...f("razao_social")} className="h-9"/></div>
+          <div><label className={lbl}>{t("fornecedoresPanel.companyName")}</label><Input {...f("razao_social")} className="h-9"/></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={lbl}>Nome Fantasia</label><Input {...f("nome_fantasia")} className="h-9"/></div>
-            <div><label className={lbl}>CNPJ</label><Input {...f("cnpj")} placeholder="00.000.000/0001-00" className="h-9"/></div>
+            <div><label className={lbl}>{t("fornecedoresPanel.tradeName")}</label><Input {...f("nome_fantasia")} className="h-9"/></div>
+            <div><label className={lbl}>{t("fornecedoresPanel.taxId")}</label><Input {...f("cnpj")} placeholder="00.000.000/0001-00" className="h-9"/></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={lbl}>Telefone</label><Input {...f("telefone")} className="h-9"/></div>
-            <div><label className={lbl}>Email</label><Input {...f("email")} type="email" className="h-9"/></div>
+            <div><label className={lbl}>{t("fornecedoresPanel.phone")}</label><Input {...f("telefone")} className="h-9"/></div>
+            <div><label className={lbl}>{t("fornecedoresPanel.email")}</label><Input {...f("email")} type="email" className="h-9"/></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={lbl}>Contato</label><Input {...f("contato")} className="h-9"/></div>
-            <div><label className={lbl}>Categoria</label>
+            <div><label className={lbl}>{t("fornecedoresPanel.contact")}</label><Input {...f("contato")} className="h-9"/></div>
+            <div><label className={lbl}>{t("fornecedoresPanel.category")}</label>
               <select value={form.categoria} onChange={e=>setForm(p=>({...p,categoria:e.target.value}))} className={sel}>
-                {CATS.map(c=><option key={c} value={c}>{c.replace("_"," ")}</option>)}
+                {CATS.map(c=><option key={c} value={c}>{CAT_LABEL[c]}</option>)}
               </select>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2"><label className={lbl}>Cidade</label><Input {...f("cidade")} className="h-9"/></div>
-            <div><label className={lbl}>UF</label><Input {...f("uf")} maxLength={2} className="h-9"/></div>
+            <div className="col-span-2"><label className={lbl}>{t("fornecedoresPanel.city")}</label><Input {...f("cidade")} className="h-9"/></div>
+            <div><label className={lbl}>{t("fornecedoresPanel.state")}</label><Input {...f("uf")} maxLength={2} className="h-9"/></div>
           </div>
-          <div><label className={lbl}>Prazo de Entrega (dias)</label><Input type="number" min="0" {...f("prazo_entrega_dias")} className="h-9"/></div>
+          <div><label className={lbl}>{t("fornecedoresPanel.deliveryTime")}</label><Input type="number" min="0" {...f("prazo_entrega_dias")} className="h-9"/></div>
         </div>
         <div className="flex gap-3 px-5 py-4 border-t border-border/30 shrink-0">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Salvar"}</Button>
+          <Button variant="outline" className="flex-1" onClick={onClose}>{t("fornecedoresPanel.cancel")}</Button>
+          <Button className="flex-1" onClick={save} disabled={saving}>{saving?t("fornecedoresPanel.saving"):t("fornecedoresPanel.save")}</Button>
         </div>
       </div>
     </div>
@@ -81,6 +84,8 @@ function FornModal({item,onClose,onSaved}:{item:Fornecedor|null;onClose:()=>void
 }
 
 export function FornecedoresPanel() {
+  const { t } = useTranslation();
+  const CAT_LABEL: Record<string,string> = { materia_prima: t("fornecedoresPanel.categories.materia_prima"), servico: t("fornecedoresPanel.categories.servico"), embalagem: t("fornecedoresPanel.categories.embalagem"), ferramental: t("fornecedoresPanel.categories.ferramental"), outros: t("fornecedoresPanel.categories.outros") };
   const [items,setItems] = useState<Fornecedor[]>([]);
   const [loading,setLoading] = useState(true);
   const [search,setSearch] = useState("");
@@ -102,7 +107,7 @@ export function FornecedoresPanel() {
   async function excluir(id:string) {
     await supabase.from("fornecedores").update({ativo:false}).eq("id",id);
     load();
-    toast.success("Fornecedor removido");
+    toast.success(t("fornecedoresPanel.toastRemoved"));
   }
 
   const catColor = (c:string) => c==="materia_prima"?"text-blue-600 bg-blue-500/10":c==="ferramental"?"text-orange-600 bg-orange-500/10":c==="servico"?"text-purple-600 bg-purple-500/10":"text-muted-foreground bg-muted/20";
@@ -112,16 +117,16 @@ export function FornecedoresPanel() {
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/>
-          <Input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar fornecedor..." className="pl-9 h-9"/>
+          <Input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t("fornecedoresPanel.searchPlaceholder")} className="pl-9 h-9"/>
         </div>
-        <Button size="sm" className="h-9 gap-1" onClick={()=>setModal("novo")}><Plus className="h-4 w-4"/>Novo</Button>
+        <Button size="sm" className="h-9 gap-1" onClick={()=>setModal("novo")}><Plus className="h-4 w-4"/>{t("fornecedoresPanel.new")}</Button>
         <button onClick={load} className="h-9 w-9 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40"><RefreshCw className={cn("h-4 w-4 text-muted-foreground",loading&&"animate-spin")}/></button>
       </div>
 
       {loading&&items.length===0?(
-        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
+        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>{t("fornecedoresPanel.loading")}</div>
       ):filtered.length===0?(
-        <div className="text-center py-12 text-muted-foreground text-sm"><Building2 className="h-8 w-8 mx-auto opacity-20 mb-2"/><p>Nenhum fornecedor encontrado</p></div>
+        <div className="text-center py-12 text-muted-foreground text-sm"><Building2 className="h-8 w-8 mx-auto opacity-20 mb-2"/><p>{t("fornecedoresPanel.noSupplierFound")}</p></div>
       ):(
         <div className="space-y-2">
           {filtered.map(f=>(
@@ -136,8 +141,8 @@ export function FornecedoresPanel() {
                   {f.cnpj&&<span>{f.cnpj}</span>}
                   {f.telefone&&<span>{f.telefone}</span>}
                   {f.cidade&&<span>{f.cidade}/{f.uf}</span>}
-                  {f.prazo_entrega_dias>0&&<span>{f.prazo_entrega_dias}d prazo</span>}
-                  <span className={cn("px-1.5 py-0.5 rounded-full font-medium",catColor(f.categoria))}>{f.categoria.replace("_"," ")}</span>
+                  {f.prazo_entrega_dias>0&&<span>{t("fornecedoresPanel.daysDeadline", { count: f.prazo_entrega_dias })}</span>}
+                  <span className={cn("px-1.5 py-0.5 rounded-full font-medium",catColor(f.categoria))}>{CAT_LABEL[f.categoria] ?? f.categoria}</span>
                 </div>
               </div>
               <div className="flex gap-1 shrink-0">

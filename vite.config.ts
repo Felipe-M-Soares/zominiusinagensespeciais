@@ -101,8 +101,8 @@ export default defineConfig(({ mode }) => ({
         "android-chrome-512x512.png",
       ],
       manifest: {
-        name: "Concept Usinagens Especiais",
-        short_name: "Concept",
+        name: "Zomini Usinagens Especiais",
+        short_name: "Zomini",
         description: "Base de dados de dispositivos médicos - Conformidade ANVISA",
         theme_color: "#0a0a0a",
         background_color: "#0a0a0a",
