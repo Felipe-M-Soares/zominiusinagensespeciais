@@ -19,8 +19,6 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils";
 import type { StockFase } from "@/hooks/useStock";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { useTranslation } from "react-i18next";
-import i18n from "@/i18n";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 
@@ -58,31 +56,29 @@ interface Suggestion {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function buildFaseConfig(t: (k: string) => string): Record<StockFase, { label: string; Icon: React.ElementType; color: string; bg: string; border: string }> {
-  return {
+const FASE_CONFIG: Record<StockFase, { label: string; Icon: React.ElementType; color: string; bg: string; border: string }> = {
   intermediaria: {
-    label: t("stockGlobalSearch.intermediate"),
+    label: "Intermediário",
     Icon: Package,
     color: "text-primary",
     bg: "bg-primary/10",
     border: "border-primary/30",
   },
   expedicao: {
-    label: t("stockGlobalSearch.shipping"),
+    label: "Expedição",
     Icon: Truck,
     color: "text-green-500",
     bg: "bg-green-500/10",
     border: "border-green-500/30",
   },
   retrabalho: {
-    label: t("stockGlobalSearch.rework"),
+    label: "Retrabalho",
     Icon: Wrench,
     color: "text-amber-500",
     bg: "bg-amber-500/10",
     border: "border-amber-500/30",
   },
-  };
-}
+};
 
 // ─── Helpers de busca ────────────────────────────────────────────────────────
 
@@ -259,8 +255,7 @@ function LoteRow({ lote }: { lote: LoteInfo }) {
 
 // Linha compacta de fase — lotes ficam inline abaixo se tiver
 function FaseRow({ fase }: { fase: FaseInfo }) {
-  const { t } = useTranslation();
-  const cfg = buildFaseConfig(t)[fase.fase];
+  const cfg = FASE_CONFIG[fase.fase];
   return (
     <div className={cn("rounded-lg border overflow-hidden", cfg.border)}>
       <div className={cn("flex items-center gap-1.5 px-2 py-1.5", cfg.bg)}>
@@ -283,8 +278,8 @@ function FaseRow({ fase }: { fase: FaseInfo }) {
           {fase.quantity_reserved > 0 && (
             <span className="text-[10px] font-semibold tabular-nums text-blue-500">{fase.quantity_reserved}r</span>
           )}
-          <span className={cn("text-[12px] font-bold tabular-nums", cfg.color)}>{fase.quantity.toLocaleString(t("stockGlobalSearch.localeCode"))}</span>
-          <span className="text-[9px] text-muted-foreground/50">{t("stockGlobalSearch.units")}</span>
+          <span className={cn("text-[12px] font-bold tabular-nums", cfg.color)}>{fase.quantity.toLocaleString("pt-BR")}</span>
+          <span className="text-[9px] text-muted-foreground/50">un.</span>
         </div>
       </div>
     </div>
@@ -293,7 +288,6 @@ function FaseRow({ fase }: { fase: FaseInfo }) {
 
 // Card no mesmo tamanho e estilo dos cards de componentes
 function PecaCard({ peca }: { peca: PecaResult }) {
-  const { t } = useTranslation();
   const totalQty = peca.fases.reduce((s, f) => s + f.quantity, 0);
   return (
     <div className="rounded-xl border border-border/40 bg-card overflow-hidden hover:border-border/70 transition-colors">
@@ -304,19 +298,19 @@ function PecaCard({ peca }: { peca: PecaResult }) {
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className="text-[10px] text-muted-foreground/60 font-mono">{peca.reference}</span>
             {peca.em_retrabalho && (
-              <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">{t("stockGlobalSearch.reworkBadge")}</span>
+              <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">Retrab.</span>
             )}
             {peca.tem_reservas && (
-              <span className="text-[9px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">{t("stockGlobalSearch.reservedBadge")}</span>
+              <span className="text-[9px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">Reserv.</span>
             )}
           </div>
         </div>
-        <span className="text-[13px] font-bold tabular-nums text-foreground shrink-0">{totalQty.toLocaleString(t("stockGlobalSearch.localeCode"))}<span className="text-[9px] font-normal text-muted-foreground/60 ml-0.5">{t("stockGlobalSearch.units")}</span></span>
+        <span className="text-[13px] font-bold tabular-nums text-foreground shrink-0">{totalQty.toLocaleString("pt-BR")}<span className="text-[9px] font-normal text-muted-foreground/60 ml-0.5">un.</span></span>
       </div>
       {/* Fases compactas */}
       <div className="px-2 py-1.5 space-y-1">
         {peca.fases.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground/40 text-center py-1.5">{t("stockGlobalSearch.noActiveStock")}</p>
+          <p className="text-[10px] text-muted-foreground/40 text-center py-1.5">Sem estoque ativo</p>
         ) : (
           peca.fases.map(fase => (
             <FaseRow key={`${fase.fase}-${fase.stock_item_id}`} fase={fase} />
@@ -334,7 +328,6 @@ interface StockGlobalSearchProps {
 }
 
 export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: StockGlobalSearchProps) {
-  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PecaResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -349,7 +342,7 @@ export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: 
     try {
       const { results: res } = await searchPecas(trimmed);
       setResults(res); setSearched(true);
-    } catch { setError(i18n.t("stockGlobalSearch.searchError")); }
+    } catch { setError("Erro ao pesquisar. Tente novamente."); }
     finally { setLoading(false); }
   }, 400);
 
@@ -367,7 +360,7 @@ export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: 
           value={query}
           onChange={v => handleChange(v)}
           onSearch={v => { setQuery(v); debouncedSearch(v); }}
-          placeholder={t("stockGlobalSearch.searchPlaceholder")}
+          placeholder="Modelo, referência, lote (ex: 010125-01) ou código..."
           height="h-10 sm:h-11"
         />
         {loading && (
@@ -389,13 +382,13 @@ export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: 
           <div className="rounded-2xl border border-border/30 bg-muted/10 py-10 text-center">
             <Package className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
             <p className="text-[13px] text-muted-foreground/60">
-              {t("stockGlobalSearch.noPieceFoundFor")} <span className="font-medium text-foreground/60">"{query}"</span>
+              Nenhuma peça encontrada para <span className="font-medium text-foreground/60">"{query}"</span>
             </p>
           </div>
         ) : (
           <div className="space-y-2">
             <p className="text-[10px] text-muted-foreground/50 px-0.5">
-              {results.length} {results.length === 1 ? t("stockGlobalSearch.resultSingular") : t("stockGlobalSearch.resultPlural")} {t("stockGlobalSearch.resultsFor")}{" "}
+              {results.length} {results.length === 1 ? "resultado" : "resultados"} para{" "}
               <span className="font-medium text-foreground/60">"{query}"</span>
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -409,7 +402,7 @@ export const StockGlobalSearch = memo(function StockGlobalSearch({ className }: 
 
       {!searched && !loading && !query && (
         <p className="text-[11px] text-muted-foreground/50 text-center py-1">
-          {t("stockGlobalSearch.typeToSearchHint")}
+          Digite o nome, referência, lote ou código da peça
         </p>
       )}
     </div>

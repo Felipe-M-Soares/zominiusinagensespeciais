@@ -18,7 +18,6 @@ import {
   XCircle, AlertCircle, ChevronDown, ChevronUp, Search,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useTranslation } from "react-i18next";
 
 interface Conta {
   id: string;
@@ -41,6 +40,8 @@ interface Conta {
 
 const BRL = formatBRL;
 
+const MESES_LABEL = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
 function getMes(iso: string) {
   const d = new Date(iso + "T12:00:00");
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -55,8 +56,6 @@ type Vis = "fluxo" | "clientes" | "aging" | "projecao";
 
 // ── Fluxo de caixa mensal ─────────────────────────────────────────────────────
 function FluxoCaixa({ contas }: { contas: Conta[] }) {
-  const { t } = useTranslation();
-  const MESES_LABEL = t("fluxoCaixaPanel.months", { returnObjects: true }) as string[];
   const meses = useMemo(() => {
     const now = new Date();
     return Array.from({ length: 6 }, (_, i) => {
@@ -66,7 +65,7 @@ function FluxoCaixa({ contas }: { contas: Conta[] }) {
         label: `${MESES_LABEL[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`,
       };
     });
-  }, [MESES_LABEL]);
+  }, []);
 
   const data = useMemo(() =>
     meses.map(({ key, label }) => {
@@ -82,17 +81,17 @@ function FluxoCaixa({ contas }: { contas: Conta[] }) {
     <div className="rounded-2xl border border-border/40 bg-card p-4 space-y-4">
       <div className="flex items-center gap-2">
         <BarChart3 className="h-4 w-4 text-primary" />
-        <p className="text-sm font-bold">{t("fluxoCaixaPanel.cashFlow6Months")}</p>
+        <p className="text-sm font-bold">Fluxo de Caixa — últimos 6 meses</p>
       </div>
       <div className="flex items-end gap-2 h-36">
         {data.map((d) => (
           <div key={d.key} className="flex-1 flex flex-col items-center gap-1">
             <div className="w-full flex gap-0.5 items-end h-28">
-              <div className="flex-1 flex flex-col justify-end" title={`${t("fluxoCaixaPanel.entriesLabel")} ${BRL(d.entradas)}`}>
+              <div className="flex-1 flex flex-col justify-end" title={`Entradas: ${BRL(d.entradas)}`}>
                 <div className="rounded-t-sm bg-emerald-500/80 transition-all duration-500"
                   style={{ height: `${Math.max(2, (d.entradas / maxVal) * 100)}%` }} />
               </div>
-              <div className="flex-1 flex flex-col justify-end" title={`${t("fluxoCaixaPanel.exitsLabel")} ${BRL(d.saidas)}`}>
+              <div className="flex-1 flex flex-col justify-end" title={`Saídas: ${BRL(d.saidas)}`}>
                 <div className="rounded-t-sm bg-red-400/80 transition-all duration-500"
                   style={{ height: `${Math.max(2, (d.saidas / maxVal) * 100)}%` }} />
               </div>
@@ -105,8 +104,8 @@ function FluxoCaixa({ contas }: { contas: Conta[] }) {
         ))}
       </div>
       <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-500/80 inline-block"/>{t("fluxoCaixaPanel.received")}</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-red-400/80 inline-block"/>{t("fluxoCaixaPanel.paid")}</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-500/80 inline-block"/>Recebido</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-red-400/80 inline-block"/>Pago</span>
       </div>
     </div>
   );
@@ -125,7 +124,6 @@ interface ClienteResumo {
 }
 
 function ControlePagamentos({ contas }: { contas: Conta[] }) {
-  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [filtro, setFiltro] = useState<"todos" | "devedores" | "quitados" | "vencidos">("todos");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -182,7 +180,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
       .eq("id", contaId);
     setBaixando(null);
     if (error) { toast.error(error.message); return; }
-    toast.success(t("fluxoCaixaPanel.toastPaymentRegistered", { name: clienteNome }));
+    toast.success(`Baixa registrada para ${clienteNome}`);
   }
 
   function statusIcon(c: Conta) {
@@ -196,24 +194,24 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
       {/* KPIs clientes */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
-          <p className="text-[10px] text-muted-foreground">{t("fluxoCaixaPanel.customersWithDebt")}</p>
+          <p className="text-[10px] text-muted-foreground">Clientes com Dívida</p>
           <p className="text-xl font-black text-red-600">{totais.devedores}</p>
-          <p className="text-[10px] text-muted-foreground">{BRL(totais.totalAberto)} {t("fluxoCaixaPanel.openSuffix")}</p>
+          <p className="text-[10px] text-muted-foreground">{BRL(totais.totalAberto)} em aberto</p>
         </div>
         <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3">
-          <p className="text-[10px] text-muted-foreground">{t("fluxoCaixaPanel.overdue")}</p>
+          <p className="text-[10px] text-muted-foreground">Vencidos</p>
           <p className="text-xl font-black text-destructive">{totais.vencidos}</p>
-          <p className="text-[10px] text-muted-foreground">{BRL(totais.totalVencido)} {t("fluxoCaixaPanel.overdueSuffix")}</p>
+          <p className="text-[10px] text-muted-foreground">{BRL(totais.totalVencido)} vencido</p>
         </div>
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-          <p className="text-[10px] text-muted-foreground">{t("fluxoCaixaPanel.customersSettled")}</p>
+          <p className="text-[10px] text-muted-foreground">Clientes Quitados</p>
           <p className="text-xl font-black text-emerald-600">{totais.quitados}</p>
-          <p className="text-[10px] text-muted-foreground">{t("fluxoCaixaPanel.noOutstanding")}</p>
+          <p className="text-[10px] text-muted-foreground">sem pendências</p>
         </div>
         <div className="rounded-xl border border-border/40 bg-card p-3">
-          <p className="text-[10px] text-muted-foreground">{t("fluxoCaixaPanel.totalCustomers")}</p>
+          <p className="text-[10px] text-muted-foreground">Total Clientes</p>
           <p className="text-xl font-black text-foreground">{clientes.length}</p>
-          <p className="text-[10px] text-muted-foreground">{t("fluxoCaixaPanel.withActivity")}</p>
+          <p className="text-[10px] text-muted-foreground">com movimentação</p>
         </div>
       </div>
 
@@ -222,14 +220,14 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
         <div className="relative flex-1 min-w-[140px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder={t("fluxoCaixaPanel.searchCustomerPlaceholder")}
+            placeholder="Buscar cliente..."
             className="w-full pl-8 pr-3 h-8 text-[12px] rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
         </div>
         {(["todos","devedores","vencidos","quitados"] as const).map(f => (
           <button key={f} onClick={() => setFiltro(f)}
             className={cn("h-8 px-3 rounded-lg text-[12px] font-medium border transition-colors",
               filtro === f ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted/40")}>
-            {f === "todos" ? t("fluxoCaixaPanel.all") : f === "devedores" ? t("fluxoCaixaPanel.withDebt") : f === "vencidos" ? t("fluxoCaixaPanel.overdueLabel") : t("fluxoCaixaPanel.settled")}
+            {f === "todos" ? "Todos" : f === "devedores" ? "Com dívida" : f === "vencidos" ? "Vencidos" : "Quitados"}
           </button>
         ))}
       </div>
@@ -239,7 +237,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
         {filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground">
             <User className="h-8 w-8 opacity-20" />
-            <p className="text-sm">{t("fluxoCaixaPanel.noCustomerFound")}</p>
+            <p className="text-sm">Nenhum cliente encontrado</p>
           </div>
         )}
         {filtered.map(cl => {
@@ -269,17 +267,17 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
                   <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground flex-wrap">
                     {cl.quantVencido > 0 && (
                       <span className="text-destructive font-medium flex items-center gap-0.5">
-                        <XCircle className="h-3 w-3" /> {cl.quantVencido} {t("fluxoCaixaPanel.overdueUnit", { plural: cl.quantVencido > 1 ? "s" : "" })} · {BRL(cl.totalVencido)}
+                        <XCircle className="h-3 w-3" /> {cl.quantVencido} vencida{cl.quantVencido > 1 ? "s" : ""} · {BRL(cl.totalVencido)}
                       </span>
                     )}
                     {cl.quantAberto > 0 && (
                       <span className="text-amber-600 font-medium flex items-center gap-0.5">
-                        <AlertCircle className="h-3 w-3" /> {cl.quantAberto} {t("fluxoCaixaPanel.openUnit")} · {BRL(cl.totalReceber - cl.totalVencido)}
+                        <AlertCircle className="h-3 w-3" /> {cl.quantAberto} em aberto · {BRL(cl.totalReceber - cl.totalVencido)}
                       </span>
                     )}
                     {cl.quantPago > 0 && (
                       <span className="text-emerald-600 flex items-center gap-0.5">
-                        <CheckCircle2 className="h-3 w-3" /> {cl.quantPago} {t("fluxoCaixaPanel.paidUnit", { plural: cl.quantPago > 1 ? "s" : "" })} · {BRL(cl.totalPago)}
+                        <CheckCircle2 className="h-3 w-3" /> {cl.quantPago} paga{cl.quantPago > 1 ? "s" : ""} · {BRL(cl.totalPago)}
                       </span>
                     )}
                   </div>
@@ -290,7 +288,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
                       {BRL(cl.totalReceber)}
                     </p>
                   ) : (
-                    <p className="text-sm font-bold text-emerald-600">{t("fluxoCaixaPanel.settledLabel")}</p>
+                    <p className="text-sm font-bold text-emerald-600">Quitado</p>
                   )}
                   {isExp ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground ml-auto mt-0.5" />
                           : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto mt-0.5" />}
@@ -309,14 +307,14 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
                       <div className="flex-1 min-w-0">
                         <p className="text-[11px] font-medium truncate">{c.descricao}</p>
                         <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
-                          <span>{t("fluxoCaixaPanel.dueLabel")} {new Date(c.data_vencimento + "T12:00:00").toLocaleDateString(t("fluxoCaixaPanel.localeCode"))}</span>
+                          <span>Venc: {new Date(c.data_vencimento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
                           {c.status === "vencido" && (
-                            <span className="text-destructive font-medium">{t("fluxoCaixaPanel.daysOverdue", { count: diasAtraso(c.data_vencimento) })}</span>
+                            <span className="text-destructive font-medium">{diasAtraso(c.data_vencimento)}d em atraso</span>
                           )}
                           {c.data_pagamento && (
-                            <span className="text-emerald-600">{t("fluxoCaixaPanel.paidOn")} {new Date(c.data_pagamento + "T12:00:00").toLocaleDateString(t("fluxoCaixaPanel.localeCode"))}</span>
+                            <span className="text-emerald-600">Pago em: {new Date(c.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
                           )}
-                          {c.nota_fiscal && <span>{t("fluxoCaixaPanel.invoiceLabel")} {c.nota_fiscal}</span>}
+                          {c.nota_fiscal && <span>NF: {c.nota_fiscal}</span>}
                         </div>
                       </div>
                       <p className={cn("text-[12px] font-bold shrink-0",
@@ -328,7 +326,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
                         <button
                           onClick={() => registrarBaixa(c.id, cl.nome)}
                           disabled={baixando === c.id}
-                          title={t("fluxoCaixaPanel.registerPaymentTitle")}
+                          title="Registrar baixa (pagamento recebido)"
                           className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 transition-colors disabled:opacity-50 shrink-0"
                         >
                           {baixando === c.id
@@ -350,7 +348,6 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
 
 // ── Aging report ──────────────────────────────────────────────────────────────
 function AgingReport({ contas }: { contas: Conta[] }) {
-  const { t } = useTranslation();
   const today = new Date();
   const brackets = useMemo(() => {
     const vencidas = contas.filter(c => c.status === "vencido" && c.tipo === "receber");
@@ -358,24 +355,24 @@ function AgingReport({ contas }: { contas: Conta[] }) {
       return Math.floor((today.getTime() - new Date(c.data_vencimento + "T12:00:00").getTime()) / 86400000);
     }
     return [
-      { label: t("fluxoCaixaPanel.days1_30"),  color: "bg-amber-500",  filter: (c: Conta) => { const d = dias(c); return d >= 1  && d <= 30;  } },
-      { label: t("fluxoCaixaPanel.days31_60"), color: "bg-orange-500", filter: (c: Conta) => { const d = dias(c); return d >= 31 && d <= 60;  } },
-      { label: t("fluxoCaixaPanel.days61_90"), color: "bg-red-500",    filter: (c: Conta) => { const d = dias(c); return d >= 61 && d <= 90;  } },
-      { label: t("fluxoCaixaPanel.days91plus"),   color: "bg-red-700",    filter: (c: Conta) => dias(c) > 90 },
+      { label: "1–30 dias",  color: "bg-amber-500",  filter: (c: Conta) => { const d = dias(c); return d >= 1  && d <= 30;  } },
+      { label: "31–60 dias", color: "bg-orange-500", filter: (c: Conta) => { const d = dias(c); return d >= 31 && d <= 60;  } },
+      { label: "61–90 dias", color: "bg-red-500",    filter: (c: Conta) => { const d = dias(c); return d >= 61 && d <= 90;  } },
+      { label: "91+ dias",   color: "bg-red-700",    filter: (c: Conta) => dias(c) > 90 },
     ].map(b => ({
       label: b.label, color: b.color,
       itens: vencidas.filter(b.filter),
       total: vencidas.filter(b.filter).reduce((s, c) => s + c.valor, 0),
     }));
-  }, [contas, today, t]);
+  }, [contas, today]);
 
   const totalVencido = brackets.reduce((s, b) => s + b.total, 0);
 
   if (totalVencido === 0) return (
     <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-6 flex flex-col items-center gap-2">
       <TrendingUp className="h-8 w-8 text-emerald-500 opacity-50" />
-      <p className="text-sm font-medium text-emerald-600">{t("fluxoCaixaPanel.noDelinquency")}</p>
-      <p className="text-[11px] text-muted-foreground">{t("fluxoCaixaPanel.allAccountsUpToDate")}</p>
+      <p className="text-sm font-medium text-emerald-600">Sem inadimplência</p>
+      <p className="text-[11px] text-muted-foreground">Todas as contas a receber estão em dia</p>
     </div>
   );
 
@@ -384,7 +381,7 @@ function AgingReport({ contas }: { contas: Conta[] }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Clock className="h-4 w-4 text-destructive" />
-          <p className="text-sm font-bold">{t("fluxoCaixaPanel.agingTitle")}</p>
+          <p className="text-sm font-bold">Aging — Inadimplência a Receber</p>
         </div>
         <p className="text-sm font-bold text-destructive">{BRL(totalVencido)}</p>
       </div>
@@ -395,7 +392,7 @@ function AgingReport({ contas }: { contas: Conta[] }) {
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-muted-foreground">{b.label}</span>
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">{b.itens.length} {t("fluxoCaixaPanel.accountsUnit", { plural: b.itens.length !== 1 ? "s" : "" })}</span>
+                <span className="text-muted-foreground">{b.itens.length} conta{b.itens.length !== 1 ? "s" : ""}</span>
                 <span className="font-bold font-mono">{BRL(b.total)}</span>
                 <span className="text-muted-foreground/60">{pct.toFixed(0)}%</span>
               </div>
@@ -412,7 +409,6 @@ function AgingReport({ contas }: { contas: Conta[] }) {
 
 // ── Projeção 30 dias ──────────────────────────────────────────────────────────
 function ProjecaoSaldo({ contas }: { contas: Conta[] }) {
-  const { t } = useTranslation();
   const em30 = new Date(Date.now() + 30 * 86400000);
   const abertas = contas.filter(c => c.status === "aberto" && new Date(c.data_vencimento + "T12:00:00") <= em30);
   const receber30 = abertas.filter(c => c.tipo === "receber").reduce((s, c) => s + c.valor, 0);
@@ -422,23 +418,23 @@ function ProjecaoSaldo({ contas }: { contas: Conta[] }) {
     <div className="rounded-2xl border border-border/40 bg-card p-4 space-y-3">
       <div className="flex items-center gap-2">
         <DollarSign className="h-4 w-4 text-primary" />
-        <p className="text-sm font-bold">{t("fluxoCaixaPanel.projection30d")}</p>
+        <p className="text-sm font-bold">Projeção — próximos 30 dias</p>
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-2.5 text-center">
-          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">{t("fluxoCaixaPanel.toReceive")}</p>
+          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">A Receber</p>
           <p className="text-sm font-bold text-emerald-600">{BRL(receber30)}</p>
-          <p className="text-[9px] text-muted-foreground">{abertas.filter(c => c.tipo === "receber").length} {t("fluxoCaixaPanel.accountsSuffix")}</p>
+          <p className="text-[9px] text-muted-foreground">{abertas.filter(c => c.tipo === "receber").length} contas</p>
         </div>
         <div className="rounded-xl bg-red-500/5 border border-red-500/20 p-2.5 text-center">
-          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">{t("fluxoCaixaPanel.toPay")}</p>
+          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">A Pagar</p>
           <p className="text-sm font-bold text-red-600">{BRL(pagar30)}</p>
-          <p className="text-[9px] text-muted-foreground">{abertas.filter(c => c.tipo === "pagar").length} {t("fluxoCaixaPanel.accountsSuffix")}</p>
+          <p className="text-[9px] text-muted-foreground">{abertas.filter(c => c.tipo === "pagar").length} contas</p>
         </div>
         <div className={cn("rounded-xl border p-2.5 text-center", saldo30 >= 0 ? "bg-primary/5 border-primary/20" : "bg-orange-500/5 border-orange-500/20")}>
-          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">{t("fluxoCaixaPanel.balance")}</p>
+          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Saldo</p>
           <p className={cn("text-sm font-bold", saldo30 >= 0 ? "text-primary" : "text-orange-600")}>{BRL(saldo30)}</p>
-          <p className="text-[9px] text-muted-foreground">{saldo30 >= 0 ? t("fluxoCaixaPanel.positive") : t("fluxoCaixaPanel.negative")}</p>
+          <p className="text-[9px] text-muted-foreground">{saldo30 >= 0 ? "positivo" : "negativo"}</p>
         </div>
       </div>
     </div>
@@ -447,7 +443,6 @@ function ProjecaoSaldo({ contas }: { contas: Conta[] }) {
 
 // ── Painel principal ──────────────────────────────────────────────────────────
 export function FluxoCaixaPanel() {
-  const { t } = useTranslation();
   const [contas, setContas]   = useState<Conta[]>([]);
   const [loading, setLoading] = useState(true);
   const [vis, setVis]         = useState<Vis>("clientes");
@@ -505,10 +500,10 @@ export function FluxoCaixaPanel() {
   }
 
   const TABS: { id: Vis; label: string; Icon: typeof BarChart3 }[] = [
-    { id: "clientes", label: t("fluxoCaixaPanel.tabCustomers"),    Icon: User       },
-    { id: "fluxo",    label: t("fluxoCaixaPanel.tabMonthlyFlow"),Icon: BarChart3  },
-    { id: "aging",    label: t("fluxoCaixaPanel.tabDelinquency"),Icon: Clock     },
-    { id: "projecao", label: t("fluxoCaixaPanel.tabProjection30d"), Icon: TrendingUp},
+    { id: "clientes", label: "Clientes",    Icon: User       },
+    { id: "fluxo",    label: "Fluxo Mensal",Icon: BarChart3  },
+    { id: "aging",    label: "Inadimplência",Icon: Clock     },
+    { id: "projecao", label: "Projeção 30d", Icon: TrendingUp},
   ];
 
   if (loading) return (
@@ -533,7 +528,7 @@ export function FluxoCaixaPanel() {
             <RefreshCw className={cn("h-3.5 w-3.5 text-muted-foreground", loading && "animate-spin")} />
           </button>
           <button onClick={exportCSV} className="h-8 px-3 rounded-lg border border-input text-[12px] flex items-center gap-1.5 hover:bg-muted/40">
-            <Download className="h-3.5 w-3.5" /> {t("fluxoCaixaPanel.csv")}
+            <Download className="h-3.5 w-3.5" /> CSV
           </button>
         </div>
       </div>

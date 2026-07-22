@@ -46,8 +46,6 @@ import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { PrintButton } from "@/components/PrintButton";
 import { escHtml } from "@/lib/escHtml";
-import i18n from "@/i18n";
-import { useTranslation } from "react-i18next";
 import { detectarUF, adaptarCFOP as adaptarCFOPShared } from "@/lib/cfop";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
@@ -103,12 +101,12 @@ interface Pedido {
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString(i18n.t("pedidosEstoquePanel.print.localeCode"), { day: "2-digit", month: "2-digit", year: "2-digit" });
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
 function fmtTime(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleTimeString(i18n.t("pedidosEstoquePanel.print.localeCode"), { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function statusColor(status: string) {
@@ -123,13 +121,13 @@ function statusColor(status: string) {
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
-    pendente: i18n.t("pedidosEstoquePanel.status.pendente"),
-    separando: i18n.t("pedidosEstoquePanel.status.separando"),
-    pronto: i18n.t("pedidosEstoquePanel.status.pronto"),
-    faturado: i18n.t("pedidosEstoquePanel.status.faturado"),
-    enviado: i18n.t("pedidosEstoquePanel.status.enviado"),
-    cancelado: i18n.t("pedidosEstoquePanel.status.cancelado"),
-    retorno: i18n.t("pedidosEstoquePanel.status.retorno"),
+    pendente: "Pendente",
+    separando: "Separando",
+    pronto: "Pronto",
+    faturado: "Faturado",
+    enviado: "Enviado",
+    cancelado: "Cancelado",
+    retorno: "Retorno",
   };
   return map[status] ?? status;
 }
@@ -165,7 +163,6 @@ interface PedidoCardProps {
 }
 
 function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSeparacao, onMarcarPronto, onCancelar, onEditarItem, onRetornar, onRemoverItem, onEditarEndereco, isAdmin }: PedidoCardProps) {
-  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
   // Notifica o painel pai quando o card expande/recolhe
@@ -426,13 +423,13 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
         .from("pedidos_comerciais")
         .update({ lotes_separados: snapshot })
         .eq("id", pedido.id);
-      if (error) { toast.error(t("pedidosEstoquePanel.toastConfirmItemError")); return; }
+      if (error) { toast.error("Erro ao confirmar peça."); return; }
       // Atualiza ref PRIMEIRO (sobrevive ao reset do Realtime) depois o state
       confirmedItemsRef.current = new Set([...confirmedItemsRef.current, item.stock_item_id]);
       setConfirmedItems(new Set(confirmedItemsRef.current));
-      toast.success(t("pedidosEstoquePanel.toastItemConfirmed", { model: item.device_model }));
+      toast.success(`${item.device_model} confirmada!`);
     } catch (_e) {
-      toast.error(t("pedidosEstoquePanel.toastConfirmItemError"));
+      toast.error("Erro ao confirmar peça.");
     } finally {
       setSavingItem(null);
     }
@@ -440,7 +437,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
 
   // ── Print ──────────────────────────────────────────────────────────────────
   async function handleImprimir() {
-    const now = new Date().toLocaleDateString(t("pedidosEstoquePanel.print.localeCode"), { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+    const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
     const LOTE_PH = new Set(["a-definir","a definir","sem lote",""]);
     const printRows: { model?: string; reference?: string; lote: string; quantidade: number; stock_item_id?: string }[] = [];
 
@@ -550,12 +547,12 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
       : (ex?.endereco_entrega ?? endFormatado);
 
     const fmtPagamento: Record<string, string> = {
-      dinheiro: t("pedidosEstoquePanel.print.cash"), pix: t("pedidosEstoquePanel.print.pix"), boleto: t("pedidosEstoquePanel.print.boleto"),
-      cartao_debito: t("pedidosEstoquePanel.print.debitCard"), cartao_credito: t("pedidosEstoquePanel.print.creditCard"),
+      dinheiro: "A VISTA — Dinheiro", pix: "A VISTA — PIX", boleto: "Boleto",
+      cartao_debito: "Cartão de Débito", cartao_credito: "Cartão de Crédito",
     };
     const pagamentoLabel = ex?.forma_pagamento
       ? fmtPagamento[ex.forma_pagamento] ?? ex.forma_pagamento
-      : t("pedidosEstoquePanel.print.cashDefault");
+      : "A VISTA";
     // Parcelas em linha separada, sem traço
     const parcelasLabel = ["cartao_credito", "boleto"].includes(ex?.forma_pagamento ?? "") && (ex?.parcelas ?? 1) > 1
       ? `<br><span style="font-weight:400;font-size:10px">${ex?.parcelas}x</span>` : "";
@@ -702,67 +699,67 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
   <!-- Info do pedido -->
   <div class="pedido-info">
     <div class="pedido-info-col">
-      <div class="pedido-info-label">${t("pedidosEstoquePanel.print.orderNumber")}</div>
+      <div class="pedido-info-label">NRO. Pedido</div>
       <div class="pedido-info-val">${pedido.id.slice(0,8).toUpperCase()}</div>
     </div>
     <div class="pedido-info-col">
-      <div class="pedido-info-label">${t("pedidosEstoquePanel.print.type")}</div>
-      <div class="pedido-info-val">${t("pedidosEstoquePanel.print.commerceType")}</div>
+      <div class="pedido-info-label">Tipo</div>
+      <div class="pedido-info-val">COMÉRCIO</div>
     </div>
     <div class="pedido-info-col">
-      <div class="pedido-info-label">${t("pedidosEstoquePanel.print.status")}</div>
+      <div class="pedido-info-label">Status</div>
       <div class="pedido-info-val">${pedido.status.toUpperCase()}</div>
     </div>
     <div class="pedido-info-col">
-      <div class="pedido-info-label">${t("pedidosEstoquePanel.print.date")}</div>
+      <div class="pedido-info-label">Data</div>
       <div class="pedido-info-val">${now}</div>
     </div>
     <div class="pedido-info-col">
-      <div class="pedido-info-label">${t("pedidosEstoquePanel.print.payment")}</div>
+      <div class="pedido-info-label">PGTO.</div>
       <div class="pedido-info-val">${pagamentoLabel}${parcelasLabel}</div>
     </div>
     ${desconto > 0 ? `<div class="pedido-info-col">
-      <div class="pedido-info-label">${t("pedidosEstoquePanel.print.discount")}</div>
+      <div class="pedido-info-label">Desconto</div>
       <div class="pedido-info-val">${desconto}%</div>
     </div>` : ""}
   </div>
 
   <!-- Vendedora -->
   <div style="font-size:10px; margin-bottom:4px; color:#555;">
-    ${t("pedidosEstoquePanel.print.seller")} <strong style="color:#111">${escHtml(pedido.vendedora_nome ?? "—")}</strong>
-    ${ufCliente ? ` &nbsp;|&nbsp; CFOP: <strong style="color:#111">${isInterestadual ? "6xxx (" + t("pedidosEstoquePanel.print.interstateShort") + " — " + ufCliente + ")" : "5xxx (" + t("pedidosEstoquePanel.print.intrastateShort") + " — SP)"}</strong>` : ""}
-    ${pedido.prazo_entrega ? ` &nbsp;|&nbsp; ${t("pedidosEstoquePanel.print.deliveryDeadline")} <strong style="color:#111">${new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString(t("pedidosEstoquePanel.print.localeCode"))}</strong>` : ""}
+    Vendedora: <strong style="color:#111">${escHtml(pedido.vendedora_nome ?? "—")}</strong>
+    ${ufCliente ? ` &nbsp;|&nbsp; CFOP: <strong style="color:#111">${isInterestadual ? "6xxx (Interestadual — " + ufCliente + ")" : "5xxx (Intraestadual — SP)"}</strong>` : ""}
+    ${pedido.prazo_entrega ? ` &nbsp;|&nbsp; Prazo de entrega: <strong style="color:#111">${new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR")}</strong>` : ""}
   </div>
 
   <!-- Dados do cliente -->
   <div class="cliente-box">
-    <div class="cliente-title">${t("pedidosEstoquePanel.print.recipient")}</div>
+    <div class="cliente-title">Destinatário</div>
     <div class="cliente-grid">
       <div>
         <strong style="font-size:11px">${escHtml(pedido.cliente_nome)}</strong><br>
-        ${cl?.documento ? `${t("pedidosEstoquePanel.print.docLabel")} ${escHtml(cl.documento)}<br>` : ""}
-        ${cl?.ie ? `${t("pedidosEstoquePanel.print.ieLabel")} ${escHtml(cl.ie)}<br>` : ""}
-        ${cl?.c_mun ? `${t("pedidosEstoquePanel.print.cityCode")} ${escHtml(cl.c_mun)}<br>` : ""}
-        ${enderecoEntrega ? `${t("pedidosEstoquePanel.print.address")} ${escHtml(enderecoEntrega)}` : ""}
+        ${cl?.documento ? `CPF/CNPJ: ${escHtml(cl.documento)}<br>` : ""}
+        ${cl?.ie ? `IE: ${escHtml(cl.ie)}<br>` : ""}
+        ${cl?.c_mun ? `Cód. Município: ${escHtml(cl.c_mun)}<br>` : ""}
+        ${enderecoEntrega ? `End.: ${escHtml(enderecoEntrega)}` : ""}
       </div>
       <div>
-        ${cl?.telefone ? `${t("pedidosEstoquePanel.print.phone")} ${escHtml(cl.telefone)}<br>` : ""}
-        ${cl?.email ? `${t("pedidosEstoquePanel.print.email")} ${escHtml(cl.email)}<br>` : ""}
+        ${cl?.telefone ? `Telefone: ${escHtml(cl.telefone)}<br>` : ""}
+        ${cl?.email ? `E-mail: ${escHtml(cl.email)}<br>` : ""}
       </div>
     </div>
   </div>
 
-  ${pedido.observacoes ? `<div class="obs-box"><strong>${t("pedidosEstoquePanel.print.notes")}</strong> ${escHtml(pedido.observacoes)}</div>` : ""}
+  ${pedido.observacoes ? `<div class="obs-box"><strong>Obs:</strong> ${escHtml(pedido.observacoes)}</div>` : ""}
 
   <!-- Tabela de itens -->
   <table>
     <thead>
       <tr>
-        <th class="col-num">${t("pedidosEstoquePanel.print.col_num")}</th>
-        <th class="col-model">${t("pedidosEstoquePanel.print.col_item")}</th>
-        <th class="col-preco" style="text-align:right">${t("pedidosEstoquePanel.print.col_unit")}</th>
-        <th class="col-qty" style="text-align:center">${t("pedidosEstoquePanel.print.col_qty")}</th>
-        <th class="col-total" style="text-align:right">${t("pedidosEstoquePanel.print.col_total")}</th>
+        <th class="col-num">#</th>
+        <th class="col-model">Descrição / Item</th>
+        <th class="col-preco" style="text-align:right">R$ Unit.</th>
+        <th class="col-qty" style="text-align:center">Qtd.</th>
+        <th class="col-total" style="text-align:right">Valor (R$)</th>
       </tr>
     </thead>
     <tbody>${tableBody}</tbody>
@@ -770,10 +767,10 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
 
   <!-- Totais -->
   <div class="totais-box">
-    ${frete > 0 ? `<div class="totais-row"><span class="totais-label">${t("pedidosEstoquePanel.print.subtotal")}</span><span class="totais-val">${fmtVal(subtotalGeral)}</span></div>
-    <div class="totais-row"><span class="totais-label">${t("pedidosEstoquePanel.print.shipping")}</span><span class="totais-val">${fmtVal(frete)}</span></div>` : ""}
+    ${frete > 0 ? `<div class="totais-row"><span class="totais-label">Subtotal dos itens</span><span class="totais-val">${fmtVal(subtotalGeral)}</span></div>
+    <div class="totais-row"><span class="totais-label">Frete</span><span class="totais-val">${fmtVal(frete)}</span></div>` : ""}
     <div class="totais-row">
-      <span class="totais-label">${t("pedidosEstoquePanel.print.totalItemsShipping")}${frete > 0 ? t("pedidosEstoquePanel.print.plusShipping") : ""}</span>
+      <span class="totais-label">VALOR TOTAL DOS ITENS${frete > 0 ? " + FRETE" : ""}</span>
       <span class="totais-val">${fmtVal(totalComFrete)}</span>
     </div>
   </div>
@@ -856,10 +853,10 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
               </span>
             )}
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Package className="h-2.5 w-2.5" />{totalItens} {t("pedidosEstoquePanel.units")}
+              <Package className="h-2.5 w-2.5" />{totalItens} un.
             </span>
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
-              <Clock className="h-2.5 w-2.5" />{fmtDate(pedido.created_at)} {t("pedidosEstoquePanel.at")} {fmtTime(pedido.created_at)}
+              <Clock className="h-2.5 w-2.5" />{fmtDate(pedido.created_at)} às {fmtTime(pedido.created_at)}
             </span>
           </div>
           {/* Linha 3: local de entrega + prazo + observações */}
@@ -929,7 +926,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                             type="button"
                             onClick={() => onRemoverItem(pedido, firstItem)}
                             className="h-6 w-6 flex items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive transition-colors"
-                            title={t("pedidosEstoquePanel.removeItemTitle")}
+                            title="Remover peça do pedido"
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>
@@ -964,7 +961,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                                   {isPendente && (
                                     <button
                                       type="button"
-                                      title={t("pedidosEstoquePanel.editQtyTitle")}
+                                      title="Editar quantidade"
                                       onClick={(e) => { e.stopPropagation(); onEditarItem(pedido, item); }}
                                       className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors"
                                     >
@@ -980,7 +977,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                               <div className="flex justify-end -mt-1">
                                 <button
                                   type="button"
-                                  title={t("pedidosEstoquePanel.editQtyTitle")}
+                                  title="Editar quantidade"
                                   onClick={(e) => { e.stopPropagation(); onEditarItem(pedido, item); }}
                                   className="h-6 w-6 flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors"
                                 >
@@ -994,17 +991,17 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                               lotes.length === 0 ? (
                                 <div className="flex items-center gap-1.5 text-[11px] text-destructive">
                                   <AlertTriangle className="h-3 w-3" />
-                                  {t("pedidosEstoquePanel.noStockAvailable")}
+                                  Sem estoque disponível na expedição
                                 </div>
                               ) : (
                                 <div className="space-y-1.5">
                                   <div className="flex items-center gap-1.5">
                                     <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
-                                      {t("pedidosEstoquePanel.lotesChooseSent")}
+                                      Lotes — escolha o que será enviado
                                     </p>
                                     <span className={cn("ml-auto text-[10px] font-bold",
                                       itemOk ? "text-emerald-500" : selTotal > 0 ? "text-amber-500" : "text-muted-foreground")}>
-                                      {selTotal}/{item.quantidade} {t("pedidosEstoquePanel.selected")}
+                                      {selTotal}/{item.quantidade} selecionados
                                     </span>
                                   </div>
                                   {lotes.map((l) => {
@@ -1028,7 +1025,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                                         </button>
                                         <div className="flex-1 min-w-0">
                                           <p className="text-[11px] font-mono font-semibold">{l.lote}</p>
-                                          <p className="text-[10px] text-muted-foreground">{l.quantity} {t("separarLotesModal.available")}</p>
+                                          <p className="text-[10px] text-muted-foreground">{l.quantity} disponíveis</p>
                                         </div>
                                         {isSel && (
                                           <div className="flex items-center gap-1 shrink-0">
@@ -1072,8 +1069,8 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                                     <p className="text-[11px] text-amber-600 flex items-center gap-1">
                                       <AlertTriangle className="h-3 w-3" />
                                       {selTotal < item.quantidade
-                                        ? t("pedidosEstoquePanel.missingUnits", { count: item.quantidade - selTotal })
-                                        : t("pedidosEstoquePanel.excessUnits", { count: selTotal - item.quantidade })}
+                                        ? `Faltam ${item.quantidade - selTotal} un.`
+                                        : `Excesso de ${selTotal - item.quantidade} un.`}
                                     </p>
                                   )}
                                 </div>
@@ -1089,7 +1086,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                                 return (
                                   <div className="flex items-center gap-2 mt-1 px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
                                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                                    <span className="text-[11px] font-semibold text-emerald-600">{t("pedidosEstoquePanel.itemConfirmedInSeparation")}</span>
+                                    <span className="text-[11px] font-semibold text-emerald-600">Peça confirmada na separação</span>
                                   </div>
                                 );
                               }
@@ -1102,8 +1099,8 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                                       : "bg-destructive/8 border-destructive/25 text-destructive"
                                   )}>
                                     {isItemOk
-                                      ? <><Package className="h-3 w-3 shrink-0" /> {t("pedidosEstoquePanel.lotesChosenConfirmBelow")}</>
-                                      : <><AlertTriangle className="h-3 w-3 shrink-0" /> {t("pedidosEstoquePanel.lotesNotSeparatedYet")}</>
+                                      ? <><Package className="h-3 w-3 shrink-0" /> Lotes escolhidos — confirme abaixo</>
+                                      : <><AlertTriangle className="h-3 w-3 shrink-0" /> Lotes não separados ainda</>
                                     }
                                   </div>
                                   {isItemOk && (
@@ -1117,7 +1114,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                                         ? <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                         : <CheckCircle2 className="h-3 w-3" />
                                       }
-                                      {t("pedidosEstoquePanel.confirm")}
+                                      Confirmar
                                     </button>
                                   )}
                                 </div>
@@ -1140,7 +1137,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                                     <div key={lote} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40">
                                       <Tag className="h-2.5 w-2.5 text-emerald-500 shrink-0" />
                                       <span className="text-[11px] font-mono font-bold text-emerald-600 tracking-wider">{lote}</span>
-                                      <span className="text-[10px] text-emerald-600/70 font-medium">{qty} {t("pedidosEstoquePanel.units")}</span>
+                                      <span className="text-[10px] text-emerald-600/70 font-medium">{qty} un.</span>
                                     </div>
                                   ))}
                                 </div>
@@ -1164,7 +1161,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={handleImprimir}
               className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground flex items-center justify-center transition-colors shrink-0"
-              title={t("pedidosEstoquePanel.printOrder")}>
+              title="Imprimir pedido">
               <Printer className="h-3.5 w-3.5" />
             </button>
 
@@ -1176,10 +1173,10 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
               });
               const itensSemEstoque = pedido.itens.filter(item => (lotesDisp[item.id] ?? []).length === 0);
               const btnLabel = itensSemEstoque.length > 0
-                ? t("pedidosEstoquePanel.noStockShort", { count: itensSemEstoque.length, noun: itensSemEstoque.length > 1 ? t("pedidosEstoquePanel.itemsPlural") : t("pedidosEstoquePanel.itemSingular") })
+                ? `Sem estoque (${itensSemEstoque.length} ${itensSemEstoque.length > 1 ? "itens" : "item"})`
                 : itensFaltando.length > 0
-                ? t("pedidosEstoquePanel.selectPiecesLabel", { count: itensFaltando.length, plural: itensFaltando.length > 1 ? "s" : "" })
-                : t("pedidosEstoquePanel.startSeparation");
+                ? `Selecione as peças (${itensFaltando.length} pendente${itensFaltando.length > 1 ? "s" : ""})`
+                : "Iniciar Separação";
               return (
               <button type="button"
                 onClick={() => {
@@ -1208,7 +1205,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                   {multiPecas && (
                     <div className="flex items-center justify-between px-2">
                       <span className="text-[10px] text-muted-foreground">
-                        {t("pedidosEstoquePanel.piecesConfirmed", { confirmed: totalConfirmed, total: totalPecasTipos })}
+                        {totalConfirmed}/{totalPecasTipos} peças confirmadas
                       </span>
                       <div className="flex gap-1">
                         {pedido.itens.map(it => (
@@ -1243,9 +1240,9 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
                     }
                     {!canMarcarPronto
                       ? pedido.itens.length > 1
-                        ? t("pedidosEstoquePanel.confirmAllPieces", { confirmed: totalConfirmed, total: totalPecasTipos })
-                        : t("pedidosEstoquePanel.selectLotesBeforeConfirm")
-                      : t("pedidosEstoquePanel.markAsReady")
+                        ? `Confirme todas as peças (${totalConfirmed}/${totalPecasTipos})`
+                        : "Selecione os lotes antes de confirmar"
+                      : "Marcar como Pronto"
                     }
                   </button>
                 </div>
@@ -1255,14 +1252,14 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
             {pedido.status === "pronto" && (
               <div className="flex-1 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-600 text-[12px] font-semibold flex items-center justify-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                {t("pedidosEstoquePanel.awaitingInvoice")}
+                Aguardando Nota Fiscal
               </div>
             )}
 
             {pedido.status === "enviado" && (
               <div className="flex-1 h-9 rounded-xl bg-sky-500/15 border border-sky-500/40 text-sky-600 text-[12px] font-semibold flex items-center justify-center gap-1.5">
                 <Truck className="h-3.5 w-3.5 text-sky-500" />
-                {t("pedidosEstoquePanel.invoiceIssuedSent")}
+                NF emitida — Pedido enviado
               </div>
             )}
 
@@ -1270,7 +1267,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
             {isSeparando && (
               <button type="button" onClick={() => onRetornar(pedido)}
                 className="h-9 w-9 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 text-orange-600 border border-orange-500/30 flex items-center justify-center transition-colors shrink-0"
-                title={t("pedidosEstoquePanel.returnOrderTitle")}>
+                title="Retornar pedido ao comercial">
                 <RotateCcw className="h-3.5 w-3.5" />
               </button>
             )}
@@ -1279,7 +1276,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
             {(isPendente || isSeparando) && (
               <button type="button" onClick={() => onEditarEndereco(pedido)}
                 className="h-9 w-9 rounded-xl bg-muted/30 hover:bg-muted/60 text-muted-foreground flex items-center justify-center transition-colors shrink-0"
-                title={t("pedidosEstoquePanel.editAddressTitle")}>
+                title="Editar endereço de entrega">
                 <MapPin className="h-3.5 w-3.5" />
               </button>
             )}
@@ -1287,7 +1284,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
             {(isPendente || isSeparando) && isAdmin && (
               <button type="button" onClick={() => onCancelar(pedido)}
                 className="h-9 w-9 rounded-xl bg-destructive/5 hover:bg-destructive/15 text-destructive flex items-center justify-center transition-colors"
-                title={t("pedidosEstoquePanel.cancelOrderTitle")}>
+                title="Cancelar pedido">
                 <Ban className="h-3.5 w-3.5" />
               </button>
             )}
@@ -1308,7 +1305,6 @@ interface SepararLotesModalProps {
 }
 
 function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProps) {
-  const { t } = useTranslation();
   const { user } = useAuth();
 
   const [lotesSelecionados, setLotesSelecionados] = useState<Record<string, Record<string, number>>>({});
@@ -1474,12 +1470,12 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
       })
       .eq("id", pedido.id);
 
-    if (error) { submittingRef.current = false; setSaving(false); toast.error(t("separarLotesModal.loadError")); return; }
+    if (error) { submittingRef.current = false; setSaving(false); toast.error("Erro ao iniciar separação."); return; }
 
     setSaving(false);
     submittingRef.current = false;
     setSaved(true);
-    toast.success(t("separarLotesModal.startedSuccess"));
+    toast.success("Separação iniciada! Peças reservadas.");
     onClose();
     onSuccess();
   }
@@ -1500,7 +1496,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
             <div>
               <div className="flex items-center gap-2">
                 <PackageCheck className="h-4 w-4 text-blue-500" />
-                <p className="text-sm font-semibold">{t("separarLotesModal.title")}</p>
+                <p className="text-sm font-semibold">Separar Lotes</p>
               </div>
               <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
             </div>
@@ -1540,18 +1536,18 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
                     <span className={cn("text-[12px] font-bold", ok ? "text-success" : total > 0 ? "text-amber-500" : "text-muted-foreground")}>
                       {total}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">/ {item.quantidade} {t("separarLotesModal.units")}</span>
+                    <span className="text-[10px] text-muted-foreground">/ {item.quantidade} un.</span>
                   </div>
                 </div>
 
                 {semEstoque ? (
                   <div className="flex items-center gap-1.5 text-[11px] text-destructive">
                     <AlertTriangle className="h-3 w-3" />
-                    {t("separarLotesModal.noStockAvailable")}
+                    Sem estoque disponível na expedição
                   </div>
                 ) : (
                   <div className="space-y-1.5">
-                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">{t("separarLotesModal.availableLotes")}</p>
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Lotes disponíveis</p>
                     {disponiveis.map(l => {
                       const isSelected = !!sel[l.lote];
                       const qtySelected = sel[l.lote] ?? 0;
@@ -1575,7 +1571,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
                           {/* Nome do lote + saldo */}
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-mono font-semibold text-foreground">{l.lote}</p>
-                            <p className="text-[10px] text-muted-foreground">{l.quantity} {t("separarLotesModal.available")}</p>
+                            <p className="text-[10px] text-muted-foreground">{l.quantity} disponíveis</p>
                           </div>
 
                           {/* Input de quantidade */}
@@ -1624,8 +1620,8 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
                       <p className="text-[11px] text-amber-600 flex items-center gap-1">
                         <AlertTriangle className="h-3 w-3" />
                         {total < item.quantidade
-                          ? t("separarLotesModal.missingToComplete", { count: item.quantidade - total })
-                          : t("separarLotesModal.excessUnits", { count: total - item.quantidade })}
+                          ? `Faltam ${item.quantidade - total} un. para completar o pedido`
+                          : `Excesso de ${total - item.quantidade} un.`}
                       </p>
                     )}
                   </div>
@@ -1646,7 +1642,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
               <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 space-y-0.5">
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-destructive">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                  {t("separarLotesModal.cannotConfirmIncomplete")}
+                  Não é possível confirmar — itens incompletos:
                 </div>
                 {faltando.map(item => {
                   const sel = totalSelecionado(item.id);
@@ -1654,8 +1650,8 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
                   return (
                     <p key={item.id} className="text-[11px] text-destructive/80 pl-5">
                       • {item.device_model}: {semEstoque
-                        ? t("separarLotesModal.noStockShipping")
-                        : t("separarLotesModal.missingUnits", { count: item.quantidade - sel })}
+                        ? "sem estoque na expedição"
+                        : `faltam ${item.quantidade - sel} un.`}
                     </p>
                   );
                 })}
@@ -1674,7 +1670,7 @@ function SepararLotesModal({ pedido, onClose, onSuccess }: SepararLotesModalProp
             )}
           >
             {saving ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : saved ? <CheckCircle2 className="h-4 w-4" /> : canConfirm ? <ArrowRight className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-            {saved ? t("separarLotesModal.confirmed") : canConfirm ? t("separarLotesModal.confirmAndReserve") : t("separarLotesModal.insufficientPieces")}
+            {saved ? "Confirmado!" : canConfirm ? "Confirmar e Reservar Peças" : "Peças insuficientes"}
           </button>
         </div>
       </div>
@@ -1692,7 +1688,6 @@ interface EditarItemModalProps {
 }
 
 function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalProps) {
-  const { t } = useTranslation();
   const [qtd, setQtd] = useState(1);
   const [saving, setSaving] = useState(false);
 
@@ -1715,8 +1710,8 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
       )
     );
     setSaving(false);
-    if (results.some(r => r.error)) { toast.error(t("editarItemModal.toastUpdateError")); return; }
-    toast.success(t("editarItemModal.toastUpdated"));
+    if (results.some(r => r.error)) { toast.error("Erro ao atualizar quantidade."); return; }
+    toast.success("Quantidade atualizada!");
     onSuccess();
     onClose();
   }
@@ -1730,7 +1725,7 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 text-amber-500" />
-            <p className="text-sm font-semibold">{t("editarItemModal.title")}</p>
+            <p className="text-sm font-semibold">Editar Quantidade</p>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
             <X className="h-4 w-4" />
@@ -1742,12 +1737,12 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
           <div className="rounded-xl bg-muted/20 border border-border/20 px-4 py-3">
             <p className="text-[13px] font-semibold">{item.device_model}</p>
             <p className="text-[11px] text-muted-foreground font-mono mt-0.5">{item.device_reference}</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-1">{t("editarItemModal.orderFrom", { name: pedido.cliente_nome })}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-1">Pedido de {pedido.cliente_nome}</p>
           </div>
 
           {/* Quantidade */}
           <div className="space-y-2">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t("editarItemModal.newQuantity")}</label>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Nova quantidade</label>
             <div className="flex items-center justify-center gap-4">
               <button
                 type="button"
@@ -1779,14 +1774,16 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
               </button>
             </div>
             {qtd !== item.quantidade && (
-              <p className="text-center text-[11px] text-muted-foreground" dangerouslySetInnerHTML={{ __html: t("editarItemModal.wasWillBe", { from: item.quantidade, to: qtd }) }} />
+              <p className="text-center text-[11px] text-muted-foreground">
+                Era <strong>{item.quantidade}</strong> → ficará <strong>{qtd}</strong> un.
+              </p>
             )}
           </div>
 
           {/* Botões */}
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={onClose} className="flex-1 h-10 rounded-xl border border-border/30 text-[12px] font-medium text-muted-foreground hover:bg-muted/30 transition-colors">
-              {t("editarItemModal.cancel")}
+              Cancelar
             </button>
             <button
               type="button"
@@ -1797,7 +1794,7 @@ function EditarItemModal({ pedido, item, onClose, onSuccess }: EditarItemModalPr
               {saving
                 ? <div className="h-3.5 w-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
                 : null}
-              {t("editarItemModal.save")}
+              Salvar
             </button>
           </div>
         </div>
@@ -1815,7 +1812,6 @@ interface RetornarPedidoModalProps {
 }
 
 function RetornarPedidoModal({ pedido, onClose, onSuccess }: RetornarPedidoModalProps) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const [motivo, setMotivo] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1841,16 +1837,16 @@ function RetornarPedidoModal({ pedido, onClose, onSuccess }: RetornarPedidoModal
           user_id: pedido.vendedora_id,
           pedido_id: pedido.id,
           tipo: "pedido_retornado",
-          titulo: t("retornarPedidoModal.notifTitle"),
-          mensagem: t("retornarPedidoModal.notifMessage", { client: pedido.cliente_nome, reason: motivo.trim() ? t("retornarPedidoModal.notifReasonSuffix", { reason: motivo.trim() }) : "" }),
+          titulo: "Pedido retornado ao comercial",
+          mensagem: `O pedido de ${pedido.cliente_nome} foi retornado pelo estoque para revisão.${motivo.trim() ? " Motivo: " + motivo.trim() : ""}`,
         });
       }
 
-      toast.success(t("retornarPedidoModal.toastSuccess"));
+      toast.success("Pedido retornado ao comercial. Reservas mantidas.");
       onSuccess();
       onClose();
     } catch (_e) {
-      toast.error(t("retornarPedidoModal.toastError"));
+      toast.error("Erro ao retornar pedido.");
     } finally {
       setSaving(false);
     }
@@ -1864,27 +1860,29 @@ function RetornarPedidoModal({ pedido, onClose, onSuccess }: RetornarPedidoModal
             <RotateCcw className="h-4 w-4 text-orange-500" />
           </div>
           <div>
-            <p className="text-sm font-semibold">{t("retornarPedidoModal.title")}</p>
+            <p className="text-sm font-semibold">Retornar ao Comercial?</p>
             <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
           </div>
         </div>
-        <div className="rounded-xl bg-orange-500/8 border border-orange-500/20 px-3 py-2.5 text-[12px] text-orange-700 dark:text-orange-400" dangerouslySetInnerHTML={{ __html: t("retornarPedidoModal.reservedNotice") }} />
+        <div className="rounded-xl bg-orange-500/8 border border-orange-500/20 px-3 py-2.5 text-[12px] text-orange-700 dark:text-orange-400">
+          As peças reservadas permanecem reservadas. O status ficará como <strong>Retorno</strong> até o comercial fazer as alterações.
+        </div>
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t("retornarPedidoModal.reasonOptional")}</label>
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Motivo (opcional)</label>
           <textarea
             value={motivo}
             onChange={e => setMotivo(e.target.value)}
-            placeholder={t("retornarPedidoModal.reasonPlaceholder")}
+            placeholder="Ex: Quantidade errada, peça indisponível no lote..."
             rows={3}
             maxLength={500}
             className="w-full rounded-xl border border-border/50 bg-background text-sm px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/30"
           />
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">{t("retornarPedidoModal.cancel")}</button>
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
           <button type="button" onClick={handleRetornar} disabled={saving} className="flex-1 h-9 rounded-xl bg-orange-500 hover:bg-orange-400 text-white text-sm font-semibold transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-            {t("retornarPedidoModal.returnAction")}
+            Retornar
           </button>
         </div>
       </div>
@@ -1902,7 +1900,6 @@ interface RemoverItemModalProps {
 }
 
 function RemoverItemModal({ pedido, item, onClose, onSuccess }: RemoverItemModalProps) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
 
@@ -1935,7 +1932,7 @@ function RemoverItemModal({ pedido, item, onClose, onSuccess }: RemoverItemModal
         return s + (i.quantidade * (i.preco_unitario ?? 0));
       }, 0);
 
-      const descontoLabel = (pedido.desconto_pct ?? 0) > 0 ? t("removerItemModal.notifDiscountSuffix", { pct: pedido.desconto_pct }) : "";
+      const descontoLabel = (pedido.desconto_pct ?? 0) > 0 ? ` (com ${pedido.desconto_pct}% desc.)` : "";
       const totalFmt = novoTotal > 0
         ? "R$ " + (novoTotal * (1 - (pedido.desconto_pct ?? 0) / 100)).toFixed(2).replace(".", ",")
         : null;
@@ -1946,16 +1943,16 @@ function RemoverItemModal({ pedido, item, onClose, onSuccess }: RemoverItemModal
           user_id: pedido.vendedora_id,
           pedido_id: pedido.id,
           tipo: "peca_removida",
-          titulo: t("removerItemModal.notifTitle"),
-          mensagem: t("removerItemModal.notifMessage", { model: item.device_model, qty: item.quantidade, client: pedido.cliente_nome, totalSuffix: totalFmt ? t("removerItemModal.notifTotalSuffix", { total: totalFmt, discount: descontoLabel }) : "" }),
+          titulo: "Peça removida do pedido pelo estoque",
+          mensagem: `A peça "${item.device_model}" (${item.quantidade} un.) foi removida do pedido de ${pedido.cliente_nome} pelo estoque.${totalFmt ? ` Novo valor do pedido: ${totalFmt}${descontoLabel}.` : ""}`,
         });
       }
 
-      toast.success(t("removerItemModal.toastSuccess", { model: item.device_model }));
+      toast.success(`${item.device_model} removida do pedido.`);
       onSuccess();
       onClose();
     } catch (_e) {
-      toast.error(t("removerItemModal.toastError"));
+      toast.error("Erro ao remover peça.");
     } finally {
       setSaving(false);
     }
@@ -1969,23 +1966,23 @@ function RemoverItemModal({ pedido, item, onClose, onSuccess }: RemoverItemModal
             <Trash2 className="h-4 w-4 text-destructive" />
           </div>
           <div>
-            <p className="text-sm font-semibold">{t("removerItemModal.title")}</p>
+            <p className="text-sm font-semibold">Remover peça do pedido?</p>
             <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
           </div>
         </div>
         <div className="rounded-xl bg-muted/20 border border-border/20 px-3 py-2.5 space-y-1">
           <p className="text-[12px] font-semibold">{item.device_model}</p>
           <p className="text-[11px] text-muted-foreground font-mono">{item.device_reference}</p>
-          <p className="text-[11px] text-muted-foreground">{t("removerItemModal.unitsWillBeReleased", { count: item.quantidade })}</p>
+          <p className="text-[11px] text-muted-foreground">{item.quantidade} un. serão liberadas da reserva</p>
         </div>
         <div className="rounded-xl bg-amber-500/8 border border-amber-500/20 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
-          {t("removerItemModal.notifiedAuto")}
+          O comercial será notificado automaticamente com o novo valor do pedido.
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">{t("removerItemModal.cancel")}</button>
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
           <button type="button" onClick={handleRemover} disabled={saving} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            {t("removerItemModal.removePiece")}
+            Remover peça
           </button>
         </div>
       </div>
@@ -2002,7 +1999,6 @@ interface EditarEnderecoModalProps {
 }
 
 function EditarEnderecoModal({ pedido, onClose, onSuccess }: EditarEnderecoModalProps) {
-  const { t } = useTranslation();
   const [endereco, setEndereco] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -2033,11 +2029,11 @@ function EditarEnderecoModal({ pedido, onClose, onSuccess }: EditarEnderecoModal
         })
         .eq("id", pedido.id);
       if (error) throw error;
-      toast.success(t("editarEnderecoModal.toastSuccess"));
+      toast.success("Endereço de entrega atualizado.");
       onSuccess();
       onClose();
     } catch (_e) {
-      toast.error(t("editarEnderecoModal.toastError"));
+      toast.error("Erro ao salvar endereço.");
     } finally {
       setSaving(false);
     }
@@ -2051,27 +2047,27 @@ function EditarEnderecoModal({ pedido, onClose, onSuccess }: EditarEnderecoModal
             <MapPin className="h-4 w-4 text-blue-500" />
           </div>
           <div>
-            <p className="text-sm font-semibold">{t("editarEnderecoModal.title")}</p>
+            <p className="text-sm font-semibold">Editar Endereço de Entrega</p>
             <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
           </div>
         </div>
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t("editarEnderecoModal.newAddress")}</label>
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Novo endereço</label>
           <textarea
             value={endereco}
             onChange={e => setEndereco(e.target.value)}
-            placeholder={t("editarEnderecoModal.addressPlaceholder")}
+            placeholder="Rua, número, bairro, cidade/UF, CEP..."
             rows={3}
             maxLength={400}
             className="w-full rounded-xl border border-border/50 bg-background text-sm px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/30"
           />
-          <p className="text-[10px] text-muted-foreground/60">{t("editarEnderecoModal.blankHint")}</p>
+          <p className="text-[10px] text-muted-foreground/60">Deixe em branco para usar o endereço cadastrado do cliente.</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">{t("editarEnderecoModal.cancel")}</button>
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
           <button type="button" onClick={handleSalvar} disabled={saving} className="flex-1 h-9 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <MapPin className="h-3.5 w-3.5" />}
-            {t("editarEnderecoModal.save")}
+            Salvar
           </button>
         </div>
       </div>
@@ -2088,11 +2084,10 @@ interface SearchBarPedidosProps {
 }
 
 const SearchBarPedidos = memo(function SearchBarPedidos({ onSearch, onClear }: SearchBarPedidosProps) {
-  const { t } = useTranslation();
   return (
     <div className="relative flex-1">
       <SearchInputWithBarcode
-        placeholder={t("searchBarPedidos.placeholder")}
+        placeholder="Bipe o código ou busque por cliente/vendedora..."
         onChange={(v) => onSearch(v.trim())}
         onSearch={(v) => onSearch(v.trim())}
         height="h-9"
@@ -2108,7 +2103,6 @@ interface PedidosEstoquePanelProps {
 }
 
 export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2164,11 +2158,11 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           separado_em: new Date().toISOString(),
         })
         .eq("id", pedido.id);
-      if (error) { toast.error(t("separarLotesModal.loadError")); return; }
-      toast.success(t("separarLotesModal.startedSuccess"));
+      if (error) { toast.error("Erro ao iniciar separação."); return; }
+      toast.success("Separação iniciada! Peças reservadas.");
       loadPedidos();
     } catch (err) {
-      toast.error(t("pedidosEstoquePanel.toastStartSepError"));
+      toast.error("Erro inesperado ao iniciar separação.");
       logger.error("handleIniciarSeparacao:", err);
     }
   }
@@ -2254,7 +2248,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       setPedidos(mapped);
     } catch (err) {
       logger.error("loadPedidos:", err);
-      toast.error(t("pedidosEstoquePanel.toastLoadOrdersError"));
+      toast.error("Erro ao carregar pedidos. Tente atualizar a página.");
     } finally {
       setLoading(false);
     }
@@ -2345,17 +2339,17 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         updates.map(u => supabase.from("pedido_itens").update({ lote: u.lote }).eq("id", u.id))
       );
       const hasError = results.some(r => r.error);
-      if (hasError) { toast.error(t("pedidosEstoquePanel.toastSaveLotesError")); return; }
+      if (hasError) { toast.error("Erro ao salvar alguns lotes."); return; }
 
       const { error } = await supabase
         .from("pedidos_comerciais")
         .update({ lotes_separados: snapshot })
         .eq("id", pedido.id);
-      if (error) { toast.error(t("pedidosEstoquePanel.toastSaveLotesGenericError")); return; }
-      toast.success(t("pedidosEstoquePanel.toastSaveLotesSuccess"));
+      if (error) { toast.error("Erro ao salvar lotes."); return; }
+      toast.success("Lotes da separação salvos!");
       loadPedidos();
     } catch (err) {
-      toast.error(t("pedidosEstoquePanel.toastSaveLotesUnexpected"));
+      toast.error("Erro inesperado ao salvar lotes. Tente novamente.");
       logger.error("handleSalvarSeparacao:", err);
     }
   }
@@ -2409,7 +2403,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           .update({ lotes_separados: snapshot })
           .eq("id", pedido.id);
         if (snapErr) {
-          toast.error(t("pedidosEstoquePanel.toastSaveDistribError"));
+          toast.error("Erro ao salvar distribuição de lotes antes de concluir.");
           return;
         }
       }
@@ -2421,14 +2415,14 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       });
 
       if (error || (result as { error?: string })?.error) {
-        toast.error(t("pedidosEstoquePanel.toastMarkReadyError") + (error?.message ?? (result as { error?: string })?.error));
+        toast.error("Erro ao marcar como pronto: " + (error?.message ?? (result as { error?: string })?.error));
         return;
       }
 
-      toast.success(t("pedidosEstoquePanel.toastMarkReadySuccess"));
+      toast.success("Pedido marcado como pronto! Peças retiradas por lote da expedição.");
       loadPedidos();
     } catch (err) {
-      toast.error(t("pedidosEstoquePanel.toastMarkReadyUnexpected"));
+      toast.error("Erro inesperado ao marcar pedido como pronto. Tente novamente.");
       logger.error("handleMarcarPronto:", err);
     }
   }
@@ -2439,12 +2433,12 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     try {
       // Use atomic RPC — cancels pedido + releases all reservations in one transaction
       const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
-      if (error) { toast.error(t("pedidosEstoquePanel.toastCancelError")); return; }
-      toast.success(t("pedidosEstoquePanel.toastCancelSuccess"));
+      if (error) { toast.error("Erro ao cancelar."); return; }
+      toast.success("Pedido cancelado. Reservas liberadas.");
       setCancelarPedido(null);
       loadPedidos();
     } catch (err) {
-      toast.error(t("pedidosEstoquePanel.toastCancelUnexpected"));
+      toast.error("Erro inesperado ao cancelar pedido. Tente novamente.");
       logger.error("handleCancelar:", err);
     } finally {
       setCancelando(false);
@@ -2454,8 +2448,8 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   // ── Imprimir todos os pedidos do mês ──────────────────────────────────────
   async function handleImprimirTodos() {
     const now = new Date();
-    const nowStr = now.toLocaleDateString(t("pedidosEstoquePanel.monthlyPrint.localeCode"), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-    const mesAtual = now.toLocaleDateString(t("pedidosEstoquePanel.monthlyPrint.localeCode"), { month: "long", year: "numeric" });
+    const nowStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const mesAtual = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
     const LOTE_PH = new Set(["a-definir", "a definir", "sem lote", ""]);
 
     function escH(s?: string | null) {
@@ -2507,8 +2501,8 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     }
 
     const fmtPgto: Record<string, string> = {
-      dinheiro: t("pedidosEstoquePanel.monthlyPrint.cash"), pix: t("pedidosEstoquePanel.monthlyPrint.pix"), boleto: t("pedidosEstoquePanel.monthlyPrint.boleto"),
-      cartao_debito: t("pedidosEstoquePanel.monthlyPrint.debitCard"), cartao_credito: t("pedidosEstoquePanel.monthlyPrint.creditCard"),
+      dinheiro: "Dinheiro", pix: "PIX", boleto: "Boleto",
+      cartao_debito: "Cartão Débito", cartao_credito: "Cartão Crédito",
     };
 
     let sections = "";
@@ -2571,10 +2565,10 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
         grouped.get(key)!.push(row);
       }
 
-      const statusLabel = pedido.status === "pronto" ? t("pedidosEstoquePanel.monthlyPrint.statusReady") : pedido.status === "separando" ? t("pedidosEstoquePanel.monthlyPrint.statusSeparating") : pedido.status === "enviado" ? t("pedidosEstoquePanel.monthlyPrint.statusShipped") : t("pedidosEstoquePanel.monthlyPrint.statusPending");
+      const statusLabel = pedido.status === "pronto" ? "Pronto" : pedido.status === "separando" ? "Separando" : pedido.status === "enviado" ? "Enviado" : "Pendente";
       const statusColor = pedido.status === "pronto" ? "#166534" : pedido.status === "separando" ? "#1e40af" : pedido.status === "enviado" ? "#0369a1" : "#92400e";
       const statusBg = pedido.status === "pronto" ? "#dcfce7" : pedido.status === "separando" ? "#dbeafe" : pedido.status === "enviado" ? "#e0f2fe" : "#fef3c7";
-      const dataPedido = new Date(pedido.created_at).toLocaleDateString(t("pedidosEstoquePanel.monthlyPrint.localeCode"), { day: "2-digit", month: "2-digit", year: "numeric" });
+      const dataPedido = new Date(pedido.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
       let subtotal = 0;
       let tableRows = "";
@@ -2615,10 +2609,10 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
       const totaisHtml = `
         <div class="totais-bloco">
-          ${desconto > 0 ? `<div class="totais-row"><span class="totais-lbl">${t("pedidosEstoquePanel.monthlyPrint.discountApplied")}</span><span class="totais-val desc">${desconto}${t("pedidosEstoquePanel.monthlyPrint.perPiece")}</span></div>` : ""}
-          ${frete > 0 ? `<div class="totais-row"><span class="totais-lbl">${t("pedidosEstoquePanel.monthlyPrint.subtotal")}</span><span class="totais-val">${fmtBRL(subtotal)}</span></div>
-          <div class="totais-row"><span class="totais-lbl">${t("pedidosEstoquePanel.monthlyPrint.shipping")}</span><span class="totais-val">${fmtBRL(frete)}</span></div>` : ""}
-          <div class="totais-row total-final"><span class="totais-lbl">${t("pedidosEstoquePanel.monthlyPrint.orderTotal")}</span><span class="totais-val">${fmtBRL(totalComFrete)}</span></div>
+          ${desconto > 0 ? `<div class="totais-row"><span class="totais-lbl">Desconto aplicado</span><span class="totais-val desc">${desconto}% por peça</span></div>` : ""}
+          ${frete > 0 ? `<div class="totais-row"><span class="totais-lbl">Subtotal</span><span class="totais-val">${fmtBRL(subtotal)}</span></div>
+          <div class="totais-row"><span class="totais-lbl">Frete</span><span class="totais-val">${fmtBRL(frete)}</span></div>` : ""}
+          <div class="totais-row total-final"><span class="totais-lbl">TOTAL DO PEDIDO</span><span class="totais-val">${fmtBRL(totalComFrete)}</span></div>
         </div>`;
 
       sections += `
@@ -2627,16 +2621,16 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
             <div class="pedido-header-left">
               <div class="pedido-client">${escH(pedido.cliente_nome)}</div>
               <div class="pedido-meta">
-                ${cl?.documento ? `<span>${t("pedidosEstoquePanel.monthlyPrint.taxId")} <strong>${escH(cl.documento)}</strong></span> &nbsp;·&nbsp;` : ""}
-                ${cl?.telefone ? `<span>${t("pedidosEstoquePanel.monthlyPrint.phone")} <strong>${escH(cl.telefone)}</strong></span> &nbsp;·&nbsp;` : ""}
-                ${cl?.email ? `<span>${t("pedidosEstoquePanel.monthlyPrint.email")} <strong>${escH(cl.email)}</strong></span>` : ""}
+                ${cl?.documento ? `<span>CPF/CNPJ: <strong>${escH(cl.documento)}</strong></span> &nbsp;·&nbsp;` : ""}
+                ${cl?.telefone ? `<span>Tel: <strong>${escH(cl.telefone)}</strong></span> &nbsp;·&nbsp;` : ""}
+                ${cl?.email ? `<span>Email: <strong>${escH(cl.email)}</strong></span>` : ""}
               </div>
               ${enderecoEntrega ? `<div class="pedido-meta" style="margin-top:2px">📍 ${escH(enderecoEntrega)}</div>` : ""}
               <div class="pedido-meta" style="margin-top:2px">
-                ${t("pedidosEstoquePanel.monthlyPrint.seller")} <strong>${escH(pedido.vendedora_nome ?? "—")}</strong>
-                &nbsp;·&nbsp; ${t("pedidosEstoquePanel.monthlyPrint.date")} <strong>${dataPedido}</strong>
+                Vendedora: <strong>${escH(pedido.vendedora_nome ?? "—")}</strong>
+                &nbsp;·&nbsp; Data: <strong>${dataPedido}</strong>
                 &nbsp;·&nbsp; ${escH(pgtoLabel)}${parcelasLabel ? " · " + parcelasLabel : ""}
-                ${pedido.observacoes ? `&nbsp;·&nbsp; ${t("pedidosEstoquePanel.monthlyPrint.notes")} ${escH(pedido.observacoes)}` : ""}
+                ${pedido.observacoes ? `&nbsp;·&nbsp; Obs: ${escH(pedido.observacoes)}` : ""}
               </div>
             </div>
             <span class="status-badge" style="background:${statusBg};color:${statusColor};border-color:${statusColor}40">${statusLabel}</span>
@@ -2644,19 +2638,19 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           <table>
             <thead>
               <tr>
-                <th class="col-num">${t("pedidosEstoquePanel.monthlyPrint.col_num")}</th>
-                <th class="col-model">${t("pedidosEstoquePanel.monthlyPrint.col_piece")}</th>
-                <th class="col-lotes">${t("pedidosEstoquePanel.monthlyPrint.col_lotes")}</th>
-                <th class="col-preco" style="text-align:right">${t("pedidosEstoquePanel.monthlyPrint.col_unit_disc")}</th>
-                <th class="col-qty-n" style="text-align:right">${t("pedidosEstoquePanel.monthlyPrint.col_qty")}</th>
-                <th class="col-total" style="text-align:right">${t("pedidosEstoquePanel.monthlyPrint.col_total")}</th>
+                <th class="col-num">#</th>
+                <th class="col-model">Peça</th>
+                <th class="col-lotes">Lotes</th>
+                <th class="col-preco" style="text-align:right">Unit. c/ desc.</th>
+                <th class="col-qty-n" style="text-align:right">Qtd.</th>
+                <th class="col-total" style="text-align:right">Total</th>
               </tr>
             </thead>
             <tbody>${tableRows}</tbody>
           </table>
           ${totaisHtml}
           <div class="pedido-footer">
-            ${t("pedidosEstoquePanel.monthlyPrint.piecesTypes", { count: totalPecas, plural1: totalPecas !== 1 ? "s" : "", typesCount: totalTipos, plural2: totalTipos !== 1 ? "s" : "" })}
+            ${totalPecas} peça${totalPecas !== 1 ? "s" : ""} · ${totalTipos} tipo${totalTipos !== 1 ? "s" : ""}
           </div>
         </div>`;
     }
@@ -2665,7 +2659,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${t("pedidosEstoquePanel.monthlyPrint.reportTitle")} ${mesAtual}</title>
+  <title>Pedidos — ${mesAtual}</title>
   <style>
     @page { size: A4 portrait; margin: 14mm 14mm 14mm 14mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2732,11 +2726,11 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
   <div class="company-header">
     <div>
       <div class="company-name">Zomini Usinagens Especiais Ltda. ME</div>
-      <div class="company-sub">${t("pedidosEstoquePanel.monthlyPrint.companySubtitle")}</div>
-      <div class="company-sub">${t("pedidosEstoquePanel.monthlyPrint.companyAddress")}</div>
+      <div class="company-sub">CNPJ: 00.000.000/0000-00 &nbsp;|&nbsp; IE: 000.000.000.000</div>
+      <div class="company-sub">Av. Fictícia, 1000 — Jardim Exemplo — Indaiatuba/SP — CEP 13.000-000</div>
     </div>
     <div class="company-contact">
-      <strong>${t("pedidosEstoquePanel.monthlyPrint.contact")}</strong>
+      <strong>Contato:</strong>
       contato@zomini.com.br<br>
       www.zomini.com.br<br>
       (19) 00000-0000
@@ -2745,16 +2739,16 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
 
   <!-- Barra de resumo do relatório -->
   <div class="report-bar">
-    <div class="report-bar-item"><strong>${pedidosParaImprimir.length}</strong>${t("pedidosEstoquePanel.monthlyPrint.orders", { plural: pedidosParaImprimir.length !== 1 ? "s" : "" })}</div>
-    <div class="report-bar-item"><strong>${totalGeralPecas}</strong>${t("pedidosEstoquePanel.monthlyPrint.piecesTotal")}</div>
-    <div class="report-bar-item"><strong>${mesAtual}</strong>${t("pedidosEstoquePanel.monthlyPrint.period")}</div>
-    <div class="report-bar-item" style="margin-left:auto">${t("pedidosEstoquePanel.monthlyPrint.generatedOn")} ${nowStr}</div>
+    <div class="report-bar-item"><strong>${pedidosParaImprimir.length}</strong>pedido${pedidosParaImprimir.length !== 1 ? "s" : ""}</div>
+    <div class="report-bar-item"><strong>${totalGeralPecas}</strong>peças no total</div>
+    <div class="report-bar-item"><strong>${mesAtual}</strong>período</div>
+    <div class="report-bar-item" style="margin-left:auto">Gerado em: ${nowStr}</div>
   </div>
 
   ${sections}
 
   <div class="page-footer">
-    <span>${t("pedidosEstoquePanel.monthlyPrint.totalLabel")} <strong>${totalGeralPecas} ${t("pedidosEstoquePanel.monthlyPrint.piecesLabel")}</strong> ${t("pedidosEstoquePanel.monthlyPrint.inLabel")} <strong>${pedidosParaImprimir.length} ${t("pedidosEstoquePanel.monthlyPrint.orders", { plural: pedidosParaImprimir.length !== 1 ? "s" : "" })}</strong> &nbsp;·&nbsp; ${t("pedidosEstoquePanel.monthlyPrint.totalValue")} <strong>${fmtBRL(totalGeralValor)}</strong></span>
+    <span>Total: <strong>${totalGeralPecas} peças</strong> em <strong>${pedidosParaImprimir.length} pedido${pedidosParaImprimir.length !== 1 ? "s" : ""}</strong> &nbsp;·&nbsp; Valor total: <strong>${fmtBRL(totalGeralValor)}</strong></span>
     <span>Zomini Usinagens Especiais Ltda. ME</span>
   </div>
 
@@ -2781,7 +2775,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           type="button"
           onClick={loadPedidos}
           className="h-9 w-9 flex items-center justify-center rounded-full bg-muted/30 border border-border/40 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0"
-          title={t("pedidosEstoquePanel.refresh")}
+          title="Atualizar"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
         </button>
@@ -2789,10 +2783,10 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
           type="button"
           onClick={handleImprimirTodos}
           className="h-9 px-3 flex items-center gap-1.5 rounded-xl border border-border/40 bg-muted/30 text-muted-foreground hover:bg-muted/60 transition-colors shrink-0 text-sm no-print"
-          title={t("pedidosEstoquePanel.printAllOrdersMonth")}
+          title="Imprimir todos os pedidos do mês"
         >
           <Printer className="h-3.5 w-3.5" />
-          {t("pedidosEstoquePanel.print")}
+          Imprimir
         </button>
       </div>
 
@@ -2816,7 +2810,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       ) : filtrados.length === 0 ? (
         <div className="text-center py-16 space-y-2">
           <ShoppingBag className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-          <p className="text-sm text-muted-foreground">{t("pedidosEstoquePanel.noOrderFound")}</p>
+          <p className="text-sm text-muted-foreground">Nenhum pedido encontrado</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -2881,16 +2875,16 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
                 <Ban className="h-4 w-4 text-destructive" />
               </div>
               <div>
-                <p className="text-sm font-semibold">{t("pedidosEstoquePanel.cancelOrderTitle")}</p>
+                <p className="text-sm font-semibold">Cancelar pedido?</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5">{cancelarPedido.cliente_nome}</p>
               </div>
             </div>
-            <p className="text-[12px] text-muted-foreground">{t("pedidosEstoquePanel.reservedWillReturn")}</p>
+            <p className="text-[12px] text-muted-foreground">As peças reservadas serão devolvidas ao estoque da expedição.</p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => setCancelarPedido(null)} disabled={cancelando} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">{t("pedidosEstoquePanel.back")}</button>
+              <button type="button" onClick={() => setCancelarPedido(null)} disabled={cancelando} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Voltar</button>
               <button type="button" onClick={handleCancelar} disabled={cancelando} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
                 {cancelando ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
-                {t("pedidosEstoquePanel.cancelOrderAction")}
+                Cancelar pedido
               </button>
             </div>
           </div>

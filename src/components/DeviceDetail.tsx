@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Shield, FlaskConical, Package, Barcode, FileText, Hash, Cpu, Activity, Layers, Copy, Check } from "lucide-react";
 import { countryFlag } from "@/components/DeviceCard";
-import { useTranslation } from "react-i18next";
 
 interface Props {
 device: Device | null;
@@ -19,7 +18,6 @@ onClose: () => void;
 }
 
 function InfoRow({ icon: Icon, label, value, copyable }: { icon: React.ElementType; label: string; value: string; copyable?: boolean }) {
-  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   if (!value) return null;
 
@@ -43,7 +41,7 @@ function InfoRow({ icon: Icon, label, value, copyable }: { icon: React.ElementTy
           <button
             type="button"
             onClick={handleCopy}
-            title={t("deviceDetail.copy")}
+            title="Copiar"
             className="shrink-0 text-muted-foreground/40 hover:text-primary transition-colors"
           >
             {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
@@ -56,7 +54,6 @@ function InfoRow({ icon: Icon, label, value, copyable }: { icon: React.ElementTy
 }
 
 function CountryRow({ country }: { country: string }) {
-  const { t } = useTranslation();
   if (!country) return null;
   const flag = countryFlag(country);
   return (
@@ -65,7 +62,7 @@ function CountryRow({ country }: { country: string }) {
         <span className="text-base">{flag}</span>
       </div>
       <div className="min-w-0 pt-0.5">
-        <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium">{t("deviceDetail.manufacturerCountry")}</p>
+        <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium">País do Fabricante</p>
         <p className="text-sm text-foreground leading-snug">{country}</p>
       </div>
     </div>
@@ -73,7 +70,6 @@ function CountryRow({ country }: { country: string }) {
 }
 
 export function DeviceDetail({ device, open, onClose }: Props) {
-const { t } = useTranslation();
 if (!device) return null;
 
 return (
@@ -92,23 +88,23 @@ return (
 
           <div className="flex flex-wrap gap-1.5 mt-3">
             <Badge variant="outline" className="border-primary/20 text-primary/80 font-mono text-[11px] rounded-lg">
-              {t("deviceCard.class")} {device.classification_code}
+              Classe {device.classification_code}
             </Badge>
             {device.sterile ? (
               <Badge className="bg-success/10 text-success border-0 text-[11px] rounded-lg">
-                <Shield className="h-3 w-3 mr-1" /> {t("deviceCard.sterile")}
+                <Shield className="h-3 w-3 mr-1" /> Estéril
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-[11px] rounded-lg border-muted-foreground/30 text-muted-foreground bg-muted/20">{t("deviceDetail.notSterile")}</Badge>
+              <Badge variant="outline" className="text-[11px] rounded-lg border-muted-foreground/30 text-muted-foreground bg-muted/20">Não Estéril</Badge>
             )}
             {device.single_use && (
               <Badge className="bg-orange-500/10 text-orange-500 border-0 text-[11px] rounded-lg">
-                <Package className="h-3 w-3 mr-1" /> {t("deviceDetail.singleUseBadge")}
+                <Package className="h-3 w-3 mr-1" /> Uso Único
               </Badge>
             )}
             {device.implantable && (
               <Badge className="bg-primary/10 text-primary border-0 text-[11px] rounded-lg">
-                <Activity className="h-3 w-3 mr-1" /> {t("deviceCard.implantable")}
+                <Activity className="h-3 w-3 mr-1" /> Implantável
               </Badge>
             )}
           </div>
@@ -118,20 +114,20 @@ return (
       <Separator className="opacity-30" />
 
       <div className="px-5 pb-6 pt-2 space-y-0.5">
-        <InfoRow icon={Barcode} label={t("deviceDetail.udiDi")} value={device.udi_di} copyable />
-        <InfoRow icon={Hash} label={t("deviceDetail.internalCode")} value={device.internal_code} copyable />
-        <InfoRow icon={FileText} label={t("deviceDetail.anvisaRegistration")} value={device.anvisa_registration} copyable />
+        <InfoRow icon={Barcode} label="UDI-DI" value={device.udi_di} copyable />
+        <InfoRow icon={Hash} label="Código Interno" value={device.internal_code} copyable />
+        <InfoRow icon={FileText} label="Registro ANVISA" value={device.anvisa_registration} copyable />
         <CountryRow country={device.manufacturer_country} />
-        <InfoRow icon={FlaskConical} label={t("deviceDetail.primaryMaterial")} value={device.primary_material} />
-        <InfoRow icon={Layers} label={t("deviceDetail.secondaryMaterial")} value={device.secondary_material ?? ""} />
-        <InfoRow icon={Layers} label={t("deviceDetail.surfaceTreatment")} value={device.surface_treatment ?? ""} />
-        <InfoRow icon={Cpu} label={t("deviceDetail.exocadCompatibility")} value={device.exocad_compatibility} />
+        <InfoRow icon={FlaskConical} label="Material Principal" value={device.primary_material} />
+        <InfoRow icon={Layers} label="Material Secundário" value={device.secondary_material ?? ""} />
+        <InfoRow icon={Layers} label="Tratamento de Superfície" value={device.surface_treatment ?? ""} />
+        <InfoRow icon={Cpu} label="Compatibilidade Exocad" value={device.exocad_compatibility} />
 
         {device.intended_use && (
           <>
             <Separator className="my-3 opacity-20" />
             <div className="px-2">
-              <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium mb-1">{t("deviceDetail.intendedUse")}</p>
+              <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-medium mb-1">Uso Pretendido</p>
               <p className="text-sm text-foreground leading-relaxed">{device.intended_use}</p>
             </div>
           </>
@@ -141,7 +137,7 @@ return (
           <>
             <Separator className="my-3 opacity-20" />
             <div className="px-2 text-xs text-muted-foreground/60">
-              {t("deviceDetail.brand")}: <span className="text-foreground font-medium">{device.brand_name}</span>
+              Marca: <span className="text-foreground font-medium">{device.brand_name}</span>
             </div>
           </>
         )}

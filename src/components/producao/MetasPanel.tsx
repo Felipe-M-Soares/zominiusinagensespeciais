@@ -5,14 +5,13 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useTranslation } from "react-i18next";
 
 interface Meta { id:string; mes:number; ano:number; maquina_codigo:string|null; meta_pecas:number; meta_oee_pct:number; meta_disponibilidade_pct:number; meta_qualidade_pct:number; }
 interface OEEReal { oee:number; disponibilidade:number; performance:number; qualidade:number; qtde_produzida:number; }
 
+const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
 export function MetasPanel() {
-  const { t } = useTranslation();
-  const MESES = t("metasPanel.months", { returnObjects: true }) as string[];
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth()+1);
   const [ano, setAno] = useState(now.getFullYear());
@@ -50,7 +49,7 @@ export function MetasPanel() {
       meta_qualidade_pct: parseFloat(form.meta_qualidade_pct)||98,
     },{onConflict:"mes,ano,maquina_codigo"});
     if(error){toast.error(error.message);return;}
-    toast.success(t("metasPanel.toastGoalSaved"));
+    toast.success("Meta salva!");
     setModal(false); load();
   }
 
@@ -74,17 +73,17 @@ export function MetasPanel() {
           {[2024,2025,2026,2027].map(y=><option key={y}>{y}</option>)}
         </select>
         <button onClick={load} className="h-9 w-9 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40"><RefreshCw className={cn("h-4 w-4 text-muted-foreground",loading&&"animate-spin")}/></button>
-        <Button size="sm" className="h-9 gap-1 ml-auto" onClick={()=>setModal(true)}><Plus className="h-4 w-4"/>{t("metasPanel.defineGoal")}</Button>
+        <Button size="sm" className="h-9 gap-1 ml-auto" onClick={()=>setModal(true)}><Plus className="h-4 w-4"/>Definir Meta</Button>
       </div>
 
       {/* Comparativo geral */}
       {oeeReal && metaGeral && (
         <div className="rounded-2xl border border-border/40 bg-card p-4 space-y-4">
-          <h3 className="text-sm font-semibold flex items-center gap-2"><Target className="h-4 w-4 text-primary"/>{t("metasPanel.actualVsGoal")} {MESES[mes-1]}/{ano}</h3>
+          <h3 className="text-sm font-semibold flex items-center gap-2"><Target className="h-4 w-4 text-primary"/>Realizado vs Meta — {MESES[mes-1]}/{ano}</h3>
           {[
-            {label:t("metasPanel.oee"),real:oeeReal.oee,meta:metaGeral.meta_oee_pct},
-            {label:t("metasPanel.availability"),real:oeeReal.disponibilidade,meta:metaGeral.meta_disponibilidade_pct},
-            {label:t("metasPanel.quality"),real:oeeReal.qualidade,meta:metaGeral.meta_qualidade_pct},
+            {label:"OEE",real:oeeReal.oee,meta:metaGeral.meta_oee_pct},
+            {label:"Disponibilidade",real:oeeReal.disponibilidade,meta:metaGeral.meta_disponibilidade_pct},
+            {label:"Qualidade",real:oeeReal.qualidade,meta:metaGeral.meta_qualidade_pct},
           ].map(({label,real,meta})=>{
             const g=gauge(real,meta);
             return (
@@ -93,7 +92,7 @@ export function MetasPanel() {
                   <span>{label}</span>
                   <div className="flex items-center gap-1.5">
                     <span className={g.ok?"text-green-600 font-bold":"text-red-600 font-bold"}>{real.toFixed(1)}%</span>
-                    <span className="text-muted-foreground text-[10px]">{t("metasPanel.goalPrefix")} {meta}%</span>
+                    <span className="text-muted-foreground text-[10px]">/ meta {meta}%</span>
                     {g.ok ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600"/> : <AlertTriangle className="h-3.5 w-3.5 text-red-500"/>}
                   </div>
                 </div>
@@ -106,9 +105,9 @@ export function MetasPanel() {
           {metaGeral.meta_pecas>0&&(
             <div className="space-y-1">
               <div className="flex justify-between text-[12px]">
-                <span>{t("metasPanel.piecesProduced")}</span>
+                <span>Peças Produzidas</span>
                 <span className={oeeReal.qtde_produzida>=metaGeral.meta_pecas?"text-green-600 font-bold":"text-red-600 font-bold"}>
-                  {oeeReal.qtde_produzida.toLocaleString(t("metasPanel.localeCode"))} / {metaGeral.meta_pecas.toLocaleString(t("metasPanel.localeCode"))}
+                  {oeeReal.qtde_produzida.toLocaleString("pt-BR")} / {metaGeral.meta_pecas.toLocaleString("pt-BR")}
                 </span>
               </div>
               <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -121,16 +120,16 @@ export function MetasPanel() {
 
       {/* Lista de metas */}
       {metas.length===0 && !loading && (
-        <div className="text-center py-10 text-muted-foreground text-sm"><Target className="h-8 w-8 mx-auto opacity-20 mb-2"/><p>{t("metasPanel.noGoalDefined")} {MESES[mes-1]}/{ano}</p></div>
+        <div className="text-center py-10 text-muted-foreground text-sm"><Target className="h-8 w-8 mx-auto opacity-20 mb-2"/><p>Nenhuma meta definida para {MESES[mes-1]}/{ano}</p></div>
       )}
       {metas.map(m=>(
         <div key={m.id} className="rounded-2xl border border-border/40 bg-card px-4 py-3">
-          <p className="text-sm font-medium">{m.maquina_codigo?`${t("metasPanel.machinePrefix")} ${m.maquina_codigo}`:t("metasPanel.general")}</p>
+          <p className="text-sm font-medium">{m.maquina_codigo?`Máquina ${m.maquina_codigo}`:"Geral"}</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-[11px]">
-            <div><p className="text-muted-foreground">{t("metasPanel.goalOee")}</p><p className="font-bold">{m.meta_oee_pct}%</p></div>
-            <div><p className="text-muted-foreground">{t("metasPanel.availabilityAbbrev")}</p><p className="font-bold">{m.meta_disponibilidade_pct}%</p></div>
-            <div><p className="text-muted-foreground">{t("metasPanel.quality")}</p><p className="font-bold">{m.meta_qualidade_pct}%</p></div>
-            <div><p className="text-muted-foreground">{t("metasPanel.pieces")}</p><p className="font-bold">{m.meta_pecas.toLocaleString(t("metasPanel.localeCode"))}</p></div>
+            <div><p className="text-muted-foreground">Meta OEE</p><p className="font-bold">{m.meta_oee_pct}%</p></div>
+            <div><p className="text-muted-foreground">Disponib.</p><p className="font-bold">{m.meta_disponibilidade_pct}%</p></div>
+            <div><p className="text-muted-foreground">Qualidade</p><p className="font-bold">{m.meta_qualidade_pct}%</p></div>
+            <div><p className="text-muted-foreground">Peças</p><p className="font-bold">{m.meta_pecas.toLocaleString("pt-BR")}</p></div>
           </div>
         </div>
       ))}
@@ -139,26 +138,26 @@ export function MetasPanel() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
           <div className="w-full max-w-sm bg-card rounded-t-2xl sm:rounded-2xl border border-border/40 shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
-              <h3 className="font-semibold text-sm">{t("metasPanel.defineGoal")} — {MESES[mes-1]}/{ano}</h3>
+              <h3 className="font-semibold text-sm">Definir Meta — {MESES[mes-1]}/{ano}</h3>
               <button onClick={()=>setModal(false)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40"><X className="h-4 w-4"/></button>
             </div>
             <div className="px-5 py-4 space-y-3">
-              <div><label className={lbl}>{t("metasPanel.machineEmptyGeneral")}</label>
+              <div><label className={lbl}>Máquina (vazio = geral)</label>
                 <select value={form.maquina_codigo} onChange={e=>setForm(f=>({...f,maquina_codigo:e.target.value}))} className={sel}>
-                  <option value="">{t("metasPanel.generalAllMachines")}</option>
+                  <option value="">Geral (todas as máquinas)</option>
                   {maquinas.map(m=><option key={m.codigo} value={m.codigo}>{m.codigo}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={lbl}>{t("metasPanel.goalOeePct")}</label><Input type="number" min="0" max="100" step="0.1" value={form.meta_oee_pct} onChange={e=>setForm(f=>({...f,meta_oee_pct:e.target.value}))} className="h-9"/></div>
-                <div><label className={lbl}>{t("metasPanel.availabilityPct")}</label><Input type="number" min="0" max="100" step="0.1" value={form.meta_disponibilidade_pct} onChange={e=>setForm(f=>({...f,meta_disponibilidade_pct:e.target.value}))} className="h-9"/></div>
-                <div><label className={lbl}>{t("metasPanel.qualityPct")}</label><Input type="number" min="0" max="100" step="0.1" value={form.meta_qualidade_pct} onChange={e=>setForm(f=>({...f,meta_qualidade_pct:e.target.value}))} className="h-9"/></div>
-                <div><label className={lbl}>{t("metasPanel.goalPieces")}</label><Input type="number" min="0" value={form.meta_pecas} onChange={e=>setForm(f=>({...f,meta_pecas:e.target.value}))} className="h-9"/></div>
+                <div><label className={lbl}>Meta OEE %</label><Input type="number" min="0" max="100" step="0.1" value={form.meta_oee_pct} onChange={e=>setForm(f=>({...f,meta_oee_pct:e.target.value}))} className="h-9"/></div>
+                <div><label className={lbl}>Disponib. %</label><Input type="number" min="0" max="100" step="0.1" value={form.meta_disponibilidade_pct} onChange={e=>setForm(f=>({...f,meta_disponibilidade_pct:e.target.value}))} className="h-9"/></div>
+                <div><label className={lbl}>Qualidade %</label><Input type="number" min="0" max="100" step="0.1" value={form.meta_qualidade_pct} onChange={e=>setForm(f=>({...f,meta_qualidade_pct:e.target.value}))} className="h-9"/></div>
+                <div><label className={lbl}>Meta Peças</label><Input type="number" min="0" value={form.meta_pecas} onChange={e=>setForm(f=>({...f,meta_pecas:e.target.value}))} className="h-9"/></div>
               </div>
             </div>
             <div className="flex gap-3 px-5 py-4 border-t border-border/30">
-              <Button variant="outline" className="flex-1" onClick={()=>setModal(false)}>{t("metasPanel.cancel")}</Button>
-              <Button className="flex-1" onClick={save}>{t("metasPanel.saveGoal")}</Button>
+              <Button variant="outline" className="flex-1" onClick={()=>setModal(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={save}>Salvar Meta</Button>
             </div>
           </div>
         </div>

@@ -12,7 +12,6 @@ import {
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
 import { ClienteModal } from "@/components/comercial/ClienteModal";
 import type { Cliente, PedidoItem, PedidoCompleto } from "@/types/comercial";
-import { useTranslation } from "react-i18next";
 
 interface NovoPedidoModalProps {
   open: boolean;
@@ -25,9 +24,7 @@ interface NovoPedidoModalProps {
 }
 
 export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems, duplicarDe, editarPedido }: NovoPedidoModalProps) {
-  const { t, i18n } = useTranslation();
   const { user } = useAuth();
-  const isBrazilMarket = i18n.language.split("-")[0] === "pt"; // PIX/Boleto só fazem sentido no Brasil
 
   // Cliente
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -174,7 +171,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
         .select("id, preco_venda")
         .range(from, from + PAGE - 1);
       if (error) {
-        toast.error(t("novoPedidoModal.toastPriceLoadError"));
+        toast.error("Não foi possível carregar os preços das peças.");
         return;
       }
       (data as { id: string; preco_venda: number | null }[] ?? []).forEach(r => {
@@ -265,7 +262,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
   function addItem() {
     if (!selectedPeca) return;
-    if (qtd < 1) { toast.error(t("novoPedidoModal.toastInvalidQty")); return; }
+    if (qtd < 1) { toast.error("Quantidade inválida"); return; }
     if (qtd > maxDisponivel) {
       toast.error(`Disponível na expedição: ${maxDisponivel} un.`);
       return;
@@ -316,9 +313,9 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
   }
 
   async function handleSave() {
-    if (!clienteId) { toast.error(t("novoPedidoModal.toastSelectClient")); return; }
-    if (itens.length === 0) { toast.error(t("novoPedidoModal.toastAddAtLeastOne")); return; }
-    if (!user?.id) { toast.error(t("novoPedidoModal.toastSessionExpired")); return; }
+    if (!clienteId) { toast.error("Selecione um cliente"); return; }
+    if (itens.length === 0) { toast.error("Adicione ao menos uma peça"); return; }
+    if (!user?.id) { toast.error("Sessão expirada. Faça login novamente."); return; }
     setSaving(true);
     try {
       const clienteSelecionado = clientes.find(c => c.id === clienteId);
@@ -385,7 +382,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
         }).eq("id", editarPedido.id);
         if (updErr) throw updErr;
 
-        toast.success(t("novoPedidoModal.toastUpdated"));
+        toast.success("Pedido atualizado e reenviado ao estoque!");
         onSuccess();
         return;
       }
@@ -420,10 +417,10 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
         return;
       }
 
-      toast.success(t("novoPedidoModal.toastCreated"));
+      toast.success("Pedido criado! O estoque irá separar os lotes.");
       onSuccess();
     } catch (_e) {
-      toast.error(t("novoPedidoModal.toastSaveError"));
+      toast.error("Erro ao salvar pedido.");
     } finally {
       setSaving(false);
     }
@@ -464,7 +461,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
           {/* ── Cliente ── */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t("novoPedidoModal.client")}</label>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Cliente *</label>
             <div className="relative" ref={clienteDropRef}>
               <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <input
@@ -472,7 +469,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
                 value={clienteSearch}
                 onChange={e => { setClienteSearch(e.target.value); setClienteId(""); setShowClienteDrop(true); }}
                 onFocus={() => setShowClienteDrop(true)}
-                placeholder={t("novoPedidoModal.searchClientPlaceholder")}
+                placeholder="Buscar cliente..."
                 className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
               />
               {showClienteDrop && (clientesFiltrados.length > 0 || clientes.length > 0) && (
@@ -493,7 +490,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
           {/* ── Adicionar Peça ── */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t("novoPedidoModal.addPiece")}</label>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Adicionar Peça</label>
             <div className="relative" ref={pecaDropRef}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <input
@@ -502,15 +499,15 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
                 value={pecaSearch}
                 onChange={e => handlePecaInput(e.target.value)}
                 onFocus={handlePecaFocus}
-                placeholder={t("novoPedidoModal.searchPiecePlaceholder")}
+                placeholder="Buscar por nome da peça..."
                 className="w-full h-10 pl-9 pr-4 rounded-xl border border-border/50 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
               />
               {showAutocomp && (
                 <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden max-h-60 overflow-y-auto">
                   {autocomplete.length === 0 ? (
                     <div className="px-4 py-3 text-center">
-                      <p className="text-[12px] font-semibold text-muted-foreground">{t("novoPedidoModal.noPieceFound")}</p>
-                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">{t("novoPedidoModal.checkNameOrStock")}</p>
+                      <p className="text-[12px] font-semibold text-muted-foreground">Nenhuma peça encontrada</p>
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">Verifique o nome ou o estoque disponível</p>
                     </div>
                   ) : autocomplete.map(i => {
                     const precoRef = precoMap[i.device_id] ?? 0;
@@ -567,7 +564,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground">{t("novoPedidoModal.qty")}</label>
+                    <label className="text-[10px] font-medium text-muted-foreground">Qtd.</label>
                     <input
                       type="number"
                       inputMode="numeric"
@@ -588,7 +585,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground">{t("novoPedidoModal.unitPrice")}</label>
+                    <label className="text-[10px] font-medium text-muted-foreground">Preço un.</label>
                     <div className={cn(
                       "h-9 rounded-lg border flex items-center justify-center text-[13px] font-bold",
                       (precoMap[selectedPeca.device_id] ?? 0) > 0
@@ -601,7 +598,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground">{t("novoPedidoModal.discountPct")}</label>
+                    <label className="text-[10px] font-medium text-muted-foreground">Desconto %</label>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -697,22 +694,22 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
           {/* ── Forma de Pagamento ── */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t("novoPedidoModal.paymentMethod")}</label>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Forma de Pagamento</label>
             <select
               value={formaPagamento}
               onChange={e => { setFormaPagamento(e.target.value); setParcelas(1); }}
               className="w-full h-10 rounded-xl border border-border bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-500/30"
             >
-              <option value="">{t("novoPedidoModal.notInformed")}</option>
-              <option value="dinheiro">{t("novoPedidoModal.cash")}</option>
-              {isBrazilMarket && <option value="pix">PIX</option>}
-              {isBrazilMarket && <option value="boleto">{t("novoPedidoModal.bankSlip")}</option>}
-              <option value="cartao_debito">{t("novoPedidoModal.debitCard")}</option>
-              <option value="cartao_credito">{t("novoPedidoModal.creditCard")}</option>
+              <option value="">Não informado</option>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="pix">PIX</option>
+              <option value="boleto">Boleto</option>
+              <option value="cartao_debito">Cartão de Débito</option>
+              <option value="cartao_credito">Cartão de Crédito</option>
             </select>
             {["cartao_credito", "boleto"].includes(formaPagamento) && (
               <div className="flex items-center gap-2 mt-2">
-                <label className="text-[11px] text-muted-foreground shrink-0">{t("novoPedidoModal.installments")}</label>
+                <label className="text-[11px] text-muted-foreground shrink-0">Parcelas:</label>
                 <select
                   value={parcelas}
                   onChange={e => setParcelas(Number(e.target.value))}
@@ -728,7 +725,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
           {/* ── Endereço de Entrega ── */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t("novoPedidoModal.deliveryAddress")}</label>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Endereço de Entrega</label>
             <div className="flex items-center gap-2 mb-2">
               <button
                 type="button"
@@ -754,7 +751,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
                 type="text"
                 value={enderecoEntrega}
                 onChange={e => setEnderecoEntrega(e.target.value)}
-                placeholder={t("novoPedidoModal.addressPlaceholder")}
+                placeholder="Rua, número, cidade..."
                 maxLength={300}
                 className="w-full h-10 rounded-xl border border-border/50 bg-background text-sm px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
               />
@@ -763,7 +760,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
           {/* ── Frete ── */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t("novoPedidoModal.shipping")}</label>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Frete (R$)</label>
             <div className="relative flex items-center">
               <span className="absolute left-3 text-[13px] font-medium text-muted-foreground pointer-events-none">R$</span>
               <input
@@ -782,18 +779,18 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
             {frete > 0 && (
               <p className="text-[11px] text-violet-600 dark:text-violet-400 flex items-center gap-1.5 px-1">
                 <Truck className="h-3.5 w-3.5 shrink-0" />
-                {t("novoPedidoModal.shippingNote", { value: `R$ ${frete.toFixed(2).replace(".", ",")}` })}
+                Frete de R$ {frete.toFixed(2).replace(".", ",")} será adicionado ao pedido
               </p>
             )}
           </div>
 
           {/* ── Observações ── */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{t("novoPedidoModal.notes")}</label>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Observações</label>
             <textarea
               value={obs}
               onChange={e => setObs(e.target.value)}
-              placeholder={t("novoPedidoModal.notesPlaceholder")}
+              placeholder="Informações adicionais para o estoque..."
               rows={2}
               className="w-full rounded-xl border border-border/50 bg-background text-sm px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
             />
@@ -801,13 +798,13 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
         </div>
 
         <div className="flex gap-2 p-5 border-t border-border/30 shrink-0">
-          <button type="button" onClick={onClose} disabled={saving} className="h-9 px-3 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">{t("novoPedidoModal.cancel")}</button>
+          <button type="button" onClick={onClose} disabled={saving} className="h-9 px-3 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
           {itens.length > 0 && (
             <button
               type="button"
               onClick={() => setResumoOpen(true)}
               className="h-9 px-3 rounded-xl border border-violet-500/40 text-violet-600 dark:text-violet-400 bg-violet-500/8 hover:bg-violet-500/15 text-sm font-semibold transition-colors flex items-center gap-1.5 shrink-0"
-              title={t("novoPedidoModal.viewOrderTotal")}
+              title="Ver o total do pedido"
             >
               <Receipt className="h-3.5 w-3.5" />
               <span className="tabular-nums">R$ {totalGeral.toFixed(2).replace(".", ",")}</span>
@@ -827,7 +824,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/30 bg-gradient-to-r from-violet-500/8 to-transparent">
               <div className="flex items-center gap-2">
                 <Receipt className="h-4 w-4 text-violet-500" />
-                <p className="text-[13px] font-bold">{t("novoPedidoModal.orderSummary")}</p>
+                <p className="text-[13px] font-bold">Resumo do Pedido</p>
               </div>
               <button type="button" onClick={() => setResumoOpen(false)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
                 <X className="h-4 w-4" />
@@ -836,7 +833,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
             <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
               {itens.length === 0 ? (
-                <p className="text-[12px] text-muted-foreground text-center py-4">{t("novoPedidoModal.noPieceAddedYet")}</p>
+                <p className="text-[12px] text-muted-foreground text-center py-4">Nenhuma peça adicionada ainda.</p>
               ) : (
                 <div className="space-y-2">
                   {itens.map((item, idx) => {
@@ -859,23 +856,23 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
               <div className="border-t border-border/30 pt-3 space-y-1.5">
                 <div className="flex items-center justify-between text-[12px] text-muted-foreground">
-                  <span>{t("novoPedidoModal.subtotal")}</span>
+                  <span>Subtotal (preço de tabela)</span>
                   <span className="tabular-nums">R$ {subtotalBruto.toFixed(2).replace(".", ",")}</span>
                 </div>
                 {totalDescontoValor > 0 && (
                   <div className="flex items-center justify-between text-[12px] text-emerald-600 dark:text-emerald-400">
-                    <span>{t("novoPedidoModal.discountsApplied")}</span>
+                    <span>Descontos aplicados</span>
                     <span className="tabular-nums">- R$ {totalDescontoValor.toFixed(2).replace(".", ",")}</span>
                   </div>
                 )}
                 {frete > 0 && (
                   <div className="flex items-center justify-between text-[12px] text-violet-600 dark:text-violet-400">
-                    <span>{t("novoPedidoModal.shippingLabel")}</span>
+                    <span>Frete</span>
                     <span className="tabular-nums">+ R$ {frete.toFixed(2).replace(".", ",")}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-2 border-t border-border/30">
-                  <span className="text-[13px] font-bold">{t("novoPedidoModal.totalToCharge")}</span>
+                  <span className="text-[13px] font-bold">Total a cobrar</span>
                   <span className="text-[20px] font-black text-violet-600 dark:text-violet-400 tabular-nums">
                     R$ {totalGeral.toFixed(2).replace(".", ",")}
                   </span>

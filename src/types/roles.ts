@@ -40,19 +40,6 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   processos:  "Processos",
 };
 
-/** Versão traduzida de ROLE_LABELS — usar esta em telas com i18n (login/AppShell/AdminUsers). */
-export function buildRoleLabels(t: (k: string) => string): Record<AppRole, string> {
-  return {
-    admin: t("roles.admin"),
-    estoque: t("roles.estoque"),
-    qualidade: t("roles.qualidade"),
-    comercial: t("roles.comercial"),
-    financeiro: t("roles.financeiro"),
-    producao: t("roles.producao"),
-    processos: t("roles.processos"),
-  };
-}
-
 /** Rotas acessíveis por role (além do admin que acessa tudo) */
 export const ROLE_ROUTES: Record<AppRole, string[]> = {
   admin:      ["/", "/estoque", "/qualidade", "/comercial", "/financeiro", "/producao", "/processos", "/admin"],

@@ -21,7 +21,6 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
-import { useTranslation } from "react-i18next";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface ImportRow {
@@ -87,7 +86,6 @@ function looksCorrupted(s: string) {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 export function StockCsvImport({ open, onClose, onSuccess }: Props) {
-  const { t } = useTranslation();
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
@@ -134,12 +132,12 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
 const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/vnd.ms-excel", ""];
     if (!file.name.toLowerCase().endsWith(".csv") ||
         (file.type && !ALLOWED_MIME.includes(file.type))) {
-      toast.error(t("stockCsvImport.toastCsvOnly"));
+      toast.error("Apenas arquivos .csv são aceitos.");
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error(t("stockCsvImport.toastFileTooLarge"));
+      toast.error("Arquivo muito grande. Máximo: 5 MB.");
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
@@ -158,7 +156,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
 
       const lines = text.split(/\r?\n/).filter((l) => l.trim());
       if (lines.length < 2) {
-        toast.error(t("stockCsvImport.toastCsvEmpty"));
+        toast.error("CSV vazio ou sem dados após o cabeçalho.");
         return;
       }
 
@@ -189,8 +187,8 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
       const hasRef  = idx.reference !== undefined;
       if (!hasUdi && !hasRef) {
         toast.error(
-          t("stockCsvImport.toastMissingColumns") + "\n" +
-          headers.slice(0, 8).join(", ")
+          "CSV precisa ter pelo menos uma das colunas: udi_di, reference.\n" +
+          `Detectado: ${headers.slice(0, 8).join(", ")}`
         );
         return;
       }
@@ -219,7 +217,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
       }
 
       if (rows.length === 0) {
-        toast.error(t("stockCsvImport.toastNoRowsFound"));
+        toast.error("Nenhuma linha de dado encontrada no CSV.");
         return;
       }
 
@@ -292,7 +290,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
               model: row.model ?? row.reference ?? row.udi_di ?? "?",
               reference: row.reference ?? row.udi_di ?? "?",
               status: "notfound",
-              message: t("stockCsvImport.deviceNotFound"),
+              message: "Dispositivo não encontrado no catálogo",
               quantity: row.quantity ?? 0,
             });
             continue;
@@ -373,14 +371,14 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
       const err = res.filter((r) => r.status !== "ok").length;
 
       if (ok > 0) {
-        toast.success(t("stockCsvImport.toastImportedSummary", { count: ok, plural: ok > 1 ? "s" : "", errSuffix: err > 0 ? t("stockCsvImport.errSuffixPart", { err }) : "" }));
+        toast.success(`${ok} peça${ok > 1 ? "s" : ""} importada${ok > 1 ? "s" : ""}${err > 0 ? ` · ${err} com problema` : ""}`);
         onSuccess();
       } else {
-        toast.error(t("stockCsvImport.toastNoneImported"));
+        toast.error("Nenhuma peça foi importada. Verifique os erros.");
       }
     } catch (err) {
       logger.error(err);
-      toast.error(t("stockCsvImport.toastProcessError"));
+      toast.error("Erro ao processar o arquivo.");
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -400,11 +398,11 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                 <FileSpreadsheet className="h-4 w-4 text-primary" />
-                {t("stockCsvImport.title")}
+                Importar Estoque via CSV
               </DialogTitle>
             </DialogHeader>
             <p className="text-[12px] text-muted-foreground mt-0.5">
-              {t("stockCsvImport.subtitle")}
+              Adiciona ou atualiza peças usando um arquivo CSV
             </p>
           </div>
         </div>
@@ -413,15 +411,15 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
           {/* Colunas aceitas */}
           {!done && (
             <div className="rounded-xl bg-muted/20 border border-border/30 p-3 space-y-2">
-              <p className="text-[11px] font-semibold text-foreground">{t("stockCsvImport.acceptedColumns")}</p>
+              <p className="text-[11px] font-semibold text-foreground">Colunas aceitas no CSV:</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {[
-                  ["udi_di / udi",          t("stockCsvImport.colUdi")],
-                  ["reference / ref",        t("stockCsvImport.colRef")],
-                  ["quantity / quantidade",  t("stockCsvImport.colQty")],
-                  ["min_quantity / minimo",  t("stockCsvImport.colMin")],
-                  ["location / local",       t("stockCsvImport.colLocation")],
-                  ["notes / obs",            t("stockCsvImport.colNotes")],
+                  ["udi_di / udi",          "Identificador UDI *"],
+                  ["reference / ref",        "Referência *"],
+                  ["quantity / quantidade",  "Quantidade inicial"],
+                  ["min_quantity / minimo",  "Estoque mínimo"],
+                  ["location / local",       "Localização"],
+                  ["notes / obs",            "Observações"],
                 ].map(([col, desc]) => (
                   <div key={col} className="flex flex-col">
                     <span className="text-[10px] font-mono text-primary/80">{col}</span>
@@ -430,7 +428,8 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
                 ))}
               </div>
               <p className="text-[10px] text-muted-foreground/60 pt-1">
-                {t("stockCsvImport.atLeastOneRequired")}
+                * Pelo menos um obrigatório para identificar a peça no catálogo.
+                Se a peça já está no estoque, os campos fornecidos são atualizados.
               </p>
             </div>
           )}
@@ -441,7 +440,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
               {/* Resumo */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-xl bg-success/8 border border-success/25 px-3 py-2.5 text-center">
-                  <p className="text-[10px] text-success/70 font-medium">{t("stockCsvImport.imported")}</p>
+                  <p className="text-[10px] text-success/70 font-medium">Importadas</p>
                   <p className="text-[20px] font-bold text-success">{okCount}</p>
                 </div>
                 <div className={cn(
@@ -449,7 +448,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
                   errCount > 0 ? "bg-destructive/8 border-destructive/25" : "bg-muted/20 border-border/30"
                 )}>
                   <p className={cn("text-[10px] font-medium", errCount > 0 ? "text-destructive/70" : "text-muted-foreground")}>
-                    {t("stockCsvImport.withProblem")}
+                    Com problema
                   </p>
                   <p className={cn("text-[20px] font-bold", errCount > 0 ? "text-destructive" : "text-muted-foreground")}>
                     {errCount}
@@ -465,7 +464,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
                   className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors w-full"
                 >
                   {showDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  {showDetails ? t("stockCsvImport.hide") : t("stockCsvImport.view")} {t("stockCsvImport.detailsLines", { count: results.length })}
+                  {showDetails ? "Ocultar" : "Ver"} detalhes ({results.length} linhas)
                 </button>
               )}
 
@@ -487,7 +486,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
                         <span className="font-medium text-foreground line-clamp-1">{r.model}</span>
                         <span className="text-muted-foreground/60 ml-1 font-mono">{r.reference}</span>
                         {r.status === "ok" && (
-                          <span className="text-success/70 ml-1">· {r.quantity} {t("stockCsvImport.units")}</span>
+                          <span className="text-success/70 ml-1">· {r.quantity} un.</span>
                         )}
                         {r.message && (
                           <p className="text-[10px] text-muted-foreground/70 mt-0.5">{r.message}</p>
@@ -505,7 +504,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
           {importing && importProgress && importProgress.total > 100 && (
             <div className="space-y-1.5">
               <div className="flex justify-between text-[11px] text-muted-foreground">
-                <span>{t("stockCsvImport.processingLines")}</span>
+                <span>Processando linhas...</span>
                 <span>{Math.round((importProgress.current / importProgress.total) * 100)}%</span>
               </div>
               <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
@@ -515,7 +514,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
                 />
               </div>
               <p className="text-[10px] text-muted-foreground/60">
-                {t("stockCsvImport.linesProcessed", { current: importProgress.current, total: importProgress.total })}
+                {importProgress.current} de {importProgress.total} linhas processadas
               </p>
             </div>
           )}
@@ -529,7 +528,7 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
               onClick={downloadTemplate}
             >
               <Download className="h-3.5 w-3.5" />
-              {t("stockCsvImport.downloadTemplate")}
+              Baixar modelo
             </Button>
 
             {!done ? (
@@ -545,9 +544,9 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
                 )}
                 {importing
                   ? importProgress
-                    ? t("stockCsvImport.importing", { current: importProgress.current, total: importProgress.total })
-                    : t("stockCsvImport.preparing")
-                  : t("stockCsvImport.selectCsv")}
+                    ? `Importando... ${importProgress.current}/${importProgress.total}`
+                    : "Preparando..."
+                  : "Selecionar CSV"}
               </Button>
             ) : (
               <>
@@ -557,13 +556,13 @@ const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/
                   onClick={reset}
                 >
                   <Upload className="h-3.5 w-3.5" />
-                  {t("stockCsvImport.importAnother")}
+                  Importar outro
                 </Button>
                 <Button
                   className="flex-1 h-9 rounded-xl text-xs"
                   onClick={handleClose}
                 >
-                  {t("stockCsvImport.close")}
+                  Fechar
                 </Button>
               </>
             )}

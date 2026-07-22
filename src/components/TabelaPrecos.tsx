@@ -15,7 +15,6 @@ import { formatBRL } from "@/lib/format";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import { Edit3, Tag, TrendingDown, Percent, AlertTriangle, X, RefreshCw, FileSpreadsheet, Printer, ChevronDown, ChevronUp, Package, Trash2, Loader2, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useTranslation } from "react-i18next";
 
 // ─── PainelTabelaPrecos ───────────────────────────────────────────────────────
 
@@ -41,7 +40,6 @@ function fmtCurrency(v: number) {
 }
 
 export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean; canEdit?: boolean }) {
-  const { t } = useTranslation();
   const { isAdmin } = useAuth();
   const [devices,    setDevices]    = useState<DevicePreco[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -78,15 +76,15 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
   useEffect(() => { load(); }, [load]);
 
   async function limparPrecos() {
-    if (!window.confirm(t("tabelaPrecosStandalone.confirmClearPrices"))) return;
+    if (!window.confirm("Zerar TODOS os preços de custo e venda? Esta ação não pode ser desfeita.")) return;
     const { error } = await supabase.from("devices").update({ preco_custo: 0, preco_venda: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
-    if (error) { toast.error(t("tabelaPrecosStandalone.toastClearPricesError")); return; }
-    toast.success(t("tabelaPrecosStandalone.toastPricesCleared"));
+    if (error) { toast.error("Erro ao limpar preços."); return; }
+    toast.success("Todos os preços foram zerados.");
     load();
   }
 
   async function preencherPrecosTeste() {
-    if (!window.confirm(t("tabelaPrecosStandalone.confirmTestPrices"))) return;
+    if (!window.confirm("Preencher preços fictícios para teste em TODAS as peças (sobrescreve preços existentes)?")) return;
     // Um único UPDATE com valor fixo para todas as peças — sem loop, sem timeout
     const custo = 45.00;
     const venda = 120.00;
@@ -94,14 +92,19 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
       .from("devices")
       .update({ preco_custo: custo, preco_venda: venda })
       .neq("id", "00000000-0000-0000-0000-000000000000");
-    if (error) { toast.error(t("tabelaPrecosStandalone.toastFillPricesError") + error.message); return; }
-    toast.success(t("tabelaPrecosStandalone.toastTestPricesFilled"));
+    if (error) { toast.error("Erro ao preencher preços: " + error.message); return; }
+    toast.success("Todas as peças receberam custo R$45,00 e venda R$120,00 para teste.");
     load();
   }
 
   function exportExcel() {
     // Gera CSV detalhado e dispara download (funciona sem lib externa)
-    const headers = t("tabelaPrecosStandalone.xlsxHeaders", { returnObjects: true }) as string[];
+    const headers = [
+      "Modelo", "Referência", "Cód. Interno", "NCM", "CFOP",
+      "Unidade", "Preço Custo (R$)", "Preço Venda (R$)",
+      "Margem Real (%)", "Desconto Máx (%)", "Margem Mín (%)",
+      "Ativo", "Observações"
+    ];
     const BOM = "\uFEFF"; // UTF-8 BOM para Excel reconhecer acentos
     const rows = filtered.map(d => {
       const margem = d.preco_venda > 0
@@ -115,7 +118,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
         margem.replace(".", ","),
         String(d.desconto_max_pct),
         String(d.margem_minima_pct),
-        d.ativo ? t("tabelaPrecosStandalone.yes") : t("tabelaPrecosStandalone.no"),
+        d.ativo ? "Sim" : "Não",
         d.observacoes_preco ?? "",
       ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(";");
     });
@@ -127,7 +130,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
     a.download = `tabela-precos-zomini-${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(t("tabelaPrecosStandalone.toastExported", { count: filtered.length }));
+    toast.success(`Planilha exportada! ${filtered.length} peças.`);
   }
 
   function printTabelaPrecos() {
@@ -144,11 +147,11 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
         <td style="text-align:right">R$ ${d.preco_venda.toFixed(2).replace(".",",")}</td>
         <td style="text-align:center">${margem}</td>
         <td style="text-align:center">${d.desconto_max_pct}%</td>
-        <td style="text-align:center">${d.ativo ? t("tabelaPrecosStandalone.active") : t("tabelaPrecosStandalone.inactive")}</td>
+        <td style="text-align:center">${d.ativo ? "Ativo" : "Inativo"}</td>
       </tr>`;
     }).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-    <title>${t("tabelaPrecosStandalone.printTitle")}</title>
+    <title>Tabela de Preços — Zomini</title>
     <style>
       body{font-family:Arial,sans-serif;font-size:11px;padding:16px;color:#111}
       h1{font-size:16px;font-weight:700;margin-bottom:4px}
@@ -160,17 +163,17 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
       @media print{body{padding:8px}button{display:none}}
     </style></head>
     <body>
-    <h1>${t("tabelaPrecosStandalone.printTitle")}</h1>
-    <p class="sub">${t("tabelaPrecosStandalone.printGeneratedOn", { date: new Date().toLocaleString(t("tabelaPrecosStandalone.localeCode")), count: filtered.length })}</p>
+    <h1>Tabela de Preços — Zomini Usinagens Especiais</h1>
+    <p class="sub">Gerado em ${new Date().toLocaleString("pt-BR")} · ${filtered.length} peças</p>
     <table><thead><tr>
-      <th>${t("tabelaPrecosStandalone.colModel")}</th><th>${t("tabelaPrecosStandalone.colReference")}</th><th>NCM</th>
-      <th style="text-align:right">${t("tabelaPrecosStandalone.colCost")}</th><th style="text-align:right">${t("tabelaPrecosStandalone.colSale")}</th>
-      <th style="text-align:center">${t("tabelaPrecosStandalone.colMargin")}</th><th style="text-align:center">${t("tabelaPrecosStandalone.colMaxDiscount")}</th><th style="text-align:center">${t("tabelaPrecosStandalone.colStatus")}</th>
+      <th>Modelo</th><th>Referência</th><th>NCM</th>
+      <th style="text-align:right">Custo</th><th style="text-align:right">Venda</th>
+      <th style="text-align:center">Margem</th><th style="text-align:center">Desc. Máx</th><th style="text-align:center">Status</th>
     </tr></thead><tbody>${rows}</tbody></table>
     <script>window.print();</script>
     </body></html>`;
     const w = window.open("", "_blank");
-    if (!w) { toast.error(t("tabelaPrecosStandalone.toastPopupBlocked")); return; }
+    if (!w) { toast.error("Popup bloqueado. Permita popups para imprimir."); return; }
     w.document.open(); w.document.write(html); w.document.close();
   }
 
@@ -201,7 +204,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
     const { error } = await supabase.from("devices").update(payload).eq("id", id);
     setSaving(null);
     if (error) { toast.error(friendlyError(error)); return; }
-    toast.success(t("tabelaPrecosStandalone.toastPriceUpdated"));
+    toast.success("Preço atualizado!");
     setEditRow(null);
     setDevices(prev => prev.map(d => d.id === id ? { ...d, ...payload } : d));
   }
@@ -259,10 +262,10 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: t("tabelaPrecosStandalone.kpiAvgSalePrice"), value: filtered.length > 0 ? fmtCurrency(totalVenda / filtered.length) : "—", icon: Tag,          color: "#7c3aed" },
-          { label: t("tabelaPrecosStandalone.kpiAvgCost"),       value: filtered.length > 0 ? fmtCurrency(totalCusto / filtered.length) : "—", icon: TrendingDown,  color: "#ef4444" },
-          { label: t("tabelaPrecosStandalone.kpiAvgMargin"),      value: `${margemMedia.toFixed(1)}%`,                                             icon: Percent,       color: margemMedia >= 20 ? "#10b981" : "#f97316" },
-          { label: t("tabelaPrecosStandalone.kpiNoPrice"),         value: String(semPreco),                                                          icon: AlertTriangle, color: semPreco > 0 ? "#d97706" : "#10b981" },
+          { label: "Preço Médio Venda", value: filtered.length > 0 ? fmtCurrency(totalVenda / filtered.length) : "—", icon: Tag,          color: "#7c3aed" },
+          { label: "Custo Médio",       value: filtered.length > 0 ? fmtCurrency(totalCusto / filtered.length) : "—", icon: TrendingDown,  color: "#ef4444" },
+          { label: "Margem Média",      value: `${margemMedia.toFixed(1)}%`,                                             icon: Percent,       color: margemMedia >= 20 ? "#10b981" : "#f97316" },
+          { label: "Sem Preço",         value: String(semPreco),                                                          icon: AlertTriangle, color: semPreco > 0 ? "#d97706" : "#10b981" },
         ].map(k => {
           const Icon = k.icon;
           return (
@@ -287,37 +290,37 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
           value={search}
           onChange={v => setSearch(v)}
           onSearch={v => setSearch(v)}
-          placeholder={t("tabelaPrecosStandalone.searchPlaceholder")}
+          placeholder="Buscar por modelo, referência, NCM ou bipe o código..."
           height="h-9"
           showSearchIcon
         />
         <button type="button" onClick={() => setShowInativ(v => !v)}
           className={cn("h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold border transition-all",
             showInativ ? "bg-violet-500/15 border-violet-500/40 text-violet-600" : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50")}>
-          <Package size={13} />{t("tabelaPrecosStandalone.inactiveBtn")}
+          <Package size={13} />Inativos
         </button>
         <button type="button" onClick={load} disabled={loading}
           className="h-9 w-9 flex items-center justify-center rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors">
           <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
         </button>
-        <span className="text-[11px] text-muted-foreground/70">{t("tabelaPrecosStandalone.piecesCount", { count: filtered.length })}</span>
+        <span className="text-[11px] text-muted-foreground/70">{filtered.length} peças</span>
         <button type="button" onClick={exportExcel} disabled={filtered.length === 0}
           className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/8 hover:bg-emerald-500/15 transition-colors disabled:opacity-40">
-          <FileSpreadsheet size={14} />{t("tabelaPrecosStandalone.exportExcel")}
+          <FileSpreadsheet size={14} />Exportar Excel
         </button>
         <button type="button" onClick={printTabelaPrecos} disabled={filtered.length === 0}
           className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-violet-500/40 text-violet-700 dark:text-violet-400 bg-violet-500/8 hover:bg-violet-500/15 transition-colors disabled:opacity-40">
-          <Printer size={14} />{t("tabelaPrecosStandalone.printPdf")}
+          <Printer size={14} />Imprimir PDF
         </button>
         {isAdmin && canEdit && (
           <>
             <button type="button" onClick={preencherPrecosTeste}
               className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/8 hover:bg-amber-500/15 transition-colors">
-              <Tag size={14} />{t("tabelaPrecosStandalone.testPrices")}
+              <Tag size={14} />Preços Teste
             </button>
             <button type="button" onClick={limparPrecos}
               className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-destructive/40 text-destructive bg-destructive/5 hover:bg-destructive/10 transition-colors">
-              <Trash2 size={14} />{t("tabelaPrecosStandalone.clearAll")}
+              <Trash2 size={14} />Zerar Tudo
             </button>
           </>
         )}
@@ -331,20 +334,20 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
       ) : filtered.length === 0 ? (
         <div className="text-center py-14 space-y-2">
           <Tag size={32} className="text-muted-foreground/20 mx-auto" />
-          <p className="text-sm text-muted-foreground">{t("tabelaPrecosStandalone.noPieceFound")}</p>
+          <p className="text-sm text-muted-foreground">Nenhuma peça encontrada</p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
           {/* Cabeçalho */}
           <div className="grid gap-2 px-4 py-2.5 bg-muted/30 border-b border-border/40"
             style={{ gridTemplateColumns: "1fr 100px 100px 70px 70px 50px 100px" }}>
-            <SortBtn col="model"       label={t("tabelaPrecosStandalone.colModelReference")} />
-            <SortBtn col="preco_custo" label={t("tabelaPrecosStandalone.colCostBrl")} />
-            <SortBtn col="preco_venda" label={t("tabelaPrecosStandalone.colSaleBrl")} />
-            <SortBtn col="ncm"         label={t("tabelaPrecosStandalone.colNcm")} />
-            <SortBtn col="cfop_padrao" label={t("tabelaPrecosStandalone.colCfop")} />
-            <SortBtn col="ativo"       label={t("tabelaPrecosStandalone.colActive")} />
-            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{t("tabelaPrecosStandalone.actions")}</span>
+            <SortBtn col="model"       label="Modelo / Referência" />
+            <SortBtn col="preco_custo" label="Custo (R$)" />
+            <SortBtn col="preco_venda" label="Venda (R$)" />
+            <SortBtn col="ncm"         label="NCM" />
+            <SortBtn col="cfop_padrao" label="CFOP" />
+            <SortBtn col="ativo"       label="Ativo" />
+            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ações</span>
           </div>
 
           {/* Linhas */}
@@ -372,7 +375,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                       <input type="text"
                         value={editData.observacoes_preco ?? ""}
                         onChange={e => setEditData(prev => ({ ...prev, observacoes_preco: e.target.value.slice(0,120) }))}
-                        placeholder={t("tabelaPrecosStandalone.observationPlaceholder")}
+                        placeholder="Observação (opcional)"
                         className="mt-1 w-full h-6 rounded-lg border border-border/50 bg-background text-foreground px-2 text-[10px] focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                       />
                     )}
@@ -459,7 +462,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                       d.ativo
                         ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
                         : "bg-muted/30 text-muted-foreground border-border/30")}>
-                      {d.ativo ? t("tabelaPrecosStandalone.yes") : t("tabelaPrecosStandalone.no")}
+                      {d.ativo ? "Sim" : "Não"}
                     </span>
                   )}
 
@@ -478,7 +481,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                   ) : canEdit ? (
                     <button type="button" onClick={() => startEdit(d)}
                       className="h-7 px-2.5 flex items-center gap-1 rounded-lg bg-muted/30 hover:bg-violet-500/10 hover:text-violet-600 text-muted-foreground text-[10px] font-semibold transition-colors">
-                      <Edit3 size={11} />{t("tabelaPrecosStandalone.edit")}
+                      <Edit3 size={11} />Editar
                     </button>
                   ) : null}
                 </div>
@@ -489,10 +492,10 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
           {/* Rodapé totais */}
           <div className="grid gap-2 px-4 py-2.5 bg-muted/20 border-t border-border/40 font-bold"
             style={{ gridTemplateColumns: "1fr 100px 100px 70px 70px 50px 100px" }}>
-            <p className="text-[11px] text-muted-foreground">{t("tabelaPrecosStandalone.piecesCount", { count: filtered.length })}</p>
+            <p className="text-[11px] text-muted-foreground">{filtered.length} peças</p>
             <p className="text-[11px] font-mono text-muted-foreground">{fmtCurrency(totalCusto / (filtered.length || 1))}</p>
             <p className="text-[11px] font-mono text-violet-600">{fmtCurrency(totalVenda / (filtered.length || 1))}</p>
-            <p className="text-[11px] text-muted-foreground col-span-4">{t("tabelaPrecosStandalone.avgPerPiece")}</p>
+            <p className="text-[11px] text-muted-foreground col-span-4">← médias por peça</p>
           </div>
         </div>
       )}
@@ -501,9 +504,9 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 flex items-start gap-2">
           <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
           <p className="text-[11px] text-muted-foreground">
-            {t("tabelaPrecosStandalone.priceReferenceNote")}
-            {t("tabelaPrecosStandalone.maxDiscountNote")} <strong className="text-foreground">{t("tabelaPrecosStandalone.individuallyPerItem")}</strong>{t("tabelaPrecosStandalone.notOnOrderTotal")}
-            {modoTeste && <span className="text-orange-500 font-semibold">{t("tabelaPrecosStandalone.homologationActive")}</span>}
+            Os preços e descontos definidos aqui são usados como referência na emissão de notas fiscais.
+            O desconto máx. por peça é aplicado <strong className="text-foreground">individualmente em cada item</strong>, não no total do pedido.
+            {modoTeste && <span className="text-orange-500 font-semibold"> · Modo Homologação ativo.</span>}
           </p>
         </div>
       )}

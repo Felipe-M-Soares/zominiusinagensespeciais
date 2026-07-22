@@ -20,7 +20,6 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
-import { useTranslation } from "react-i18next";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +59,7 @@ interface Apontamento {
   created_at: string;
 }
 
-function buildTurnos(t: (k: string, opts?: any) => any): string[] { return t("controlePanel.shifts", { returnObjects: true }) as string[]; }
+const TURNOS = ["1º Turno", "2º Turno", "3º Turno"];
 
 // Converte horas decimais para HH:MM (ex: 15.25 → "15:15")
 function horasParaHHMM(h: number): string {
@@ -100,8 +99,6 @@ function NovoApontamentoModal({
    * pendente (não sincronizado), identificado pelo id local (__pendingSync). */
   editandoLocalId?: string | null;
 }) {
-  const { t } = useTranslation();
-  const TURNOS = buildTurnos(t);
   const { user } = useAuth();
   const [step, setStep] = useState<1|2|3>(1);
   const [saving, setSaving] = useState(false);
@@ -109,7 +106,7 @@ function NovoApontamentoModal({
   // Step 1 — dados principais
   const [form, setForm] = useState({
     data: new Date().toISOString().split("T")[0],
-    turno: TURNOS[0],
+    turno: "1º Turno",
     maquina: "",
     produto: "",
     qtde_por_hora: "",
@@ -137,7 +134,7 @@ function NovoApontamentoModal({
       setStep(1);
       setForm({
         data: new Date().toISOString().split("T")[0],
-        turno: TURNOS[0], maquina: "", produto: "",
+        turno: "1º Turno", maquina: "", produto: "",
         qtde_por_hora: "", horas_planejadas: "", qtde_plan_disp: "",
         qtde_produzida: "", horario_inicio: "06:00", horario_fim: "15:00",
         operador: "", lote_mp: "", descricao_mp: "", comprimento_mm: "",
@@ -169,7 +166,7 @@ function NovoApontamentoModal({
       });
       if (d.__paradas) setParadas(d.__paradas);
       if (d.__refugos) setRefugos(d.__refugos);
-      toast.info(t("controlePanel.toastDraftRestored"), { duration: 4000 });
+      toast.info("Rascunho recuperado — continuando de onde você parou.", { duration: 4000 });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editandoLocalId]);
@@ -197,14 +194,14 @@ function NovoApontamentoModal({
     (async () => {
       const args = await getEditDataForPending(editandoLocalId);
       if (!args) {
-        toast.error(t("controlePanel.toastCannotLoadEdit"));
+        toast.error("Não foi possível carregar os dados deste apontamento para edição.");
         onClose();
         return;
       }
       const a = args as Record<string, unknown>;
       setForm({
         data: String(a.p_data ?? new Date().toISOString().split("T")[0]),
-        turno: String(a.p_turno ?? TURNOS[0]),
+        turno: String(a.p_turno ?? "1º Turno"),
         maquina: String(a.p_maquina ?? ""),
         produto: String(a.p_produto ?? ""),
         qtde_por_hora: a.p_qtde_por_hora != null ? String(a.p_qtde_por_hora) : "",
@@ -293,17 +290,17 @@ function NovoApontamentoModal({
 
   async function handleSave() {
     if (!form.maquina || !form.produto || !form.qtde_produzida || !form.operador) {
-      toast.error(t("controlePanel.toastRequiredFields"));
+      toast.error("Preencha: máquina, produto, quantidade produzida e operador");
       return;
     }
     // Impede data futura — apontamento deve ser de hoje ou passado
     if (form.data > new Date().toISOString().split("T")[0]) {
-      toast.error(t("controlePanel.toastNoFutureDate"));
+      toast.error("Data do apontamento não pode ser no futuro.");
       return;
     }
     // Impede quantidade negativa
     if (parseInt(form.qtde_produzida) < 0) {
-      toast.error(t("controlePanel.toastNoNegativeQty"));
+      toast.error("Quantidade produzida não pode ser negativa.");
       return;
     }
     setSaving(true);
@@ -352,7 +349,7 @@ function NovoApontamentoModal({
         quantidade: parseInt(form.qtde_produzida) || 0,
         horario_inicio: hhmmParaHoras(form.horario_inicio),
         horario_fim: hhmmParaHoras(form.horario_fim),
-        lote: form.lote || t("controlePanel.loteGeneratedOnSync"),
+        lote: form.lote || "(gerado ao sincronizar)",
         lote_mp: form.lote_mp,
         descricao_mp: form.descricao_mp,
         consumo_mp_metros: parseFloat(form.consumo_mp_metros) || undefined,
@@ -376,22 +373,22 @@ function NovoApontamentoModal({
           );
 
       if (!result.ok) {
-        toast.error(result.error ?? t("controlePanel.toastSaveError"));
+        toast.error(result.error ?? "Erro ao salvar apontamento.");
         return;
       }
 
       if (editandoLocalId) {
-        toast.success(t("controlePanel.toastPendingUpdated"));
+        toast.success("Apontamento pendente atualizado.");
       } else if ("savedOffline" in result && result.savedOffline) {
-        toast.warning(t("controlePanel.toastOfflineSaved"), { duration: 5000 });
+        toast.warning("Sem conexão — apontamento salvo localmente e será sincronizado ao reconectar.", { duration: 5000 });
       } else {
-        toast.success(t("controlePanel.toastRegistered"));
+        toast.success("Apontamento registrado!");
       }
       if (!editandoLocalId) await clearDraft();
       onSaved();
       onClose();
     } catch (e: unknown) {
-      toast.error(t("controlePanel.toastSaveErrorPrefix") + (e instanceof Error ? e.message : String(e)));
+      toast.error("Erro ao salvar: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setSaving(false);
     }
@@ -418,8 +415,8 @@ function NovoApontamentoModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
           <div>
-            <h3 className="font-semibold text-sm">{t("controlePanel.newEntry")}</h3>
-            <p className="text-[11px] text-muted-foreground">{t("controlePanel.equivalentToPPI51")}</p>
+            <h3 className="font-semibold text-sm">Novo Apontamento de Produção</h3>
+            <p className="text-[11px] text-muted-foreground">Equivalente ao formulário PPI-51</p>
           </div>
           <button onClick={handleFecharManual} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40">
             <X className="h-4 w-4" />
@@ -429,9 +426,9 @@ function NovoApontamentoModal({
         {/* Steps indicator */}
         <div className="flex items-center gap-0 px-5 py-3 border-b border-border/20 shrink-0 overflow-x-auto scrollbar-none">
           {[
-            { n: 1, label: t("controlePanel.stepProduction") },
-            { n: 2, label: t("controlePanel.stepStops") },
-            { n: 3, label: t("controlePanel.stepScrap") },
+            { n: 1, label: "Produção" },
+            { n: 2, label: "Paradas" },
+            { n: 3, label: "Refugos" },
           ].map(s => (
             <button
               key={s.n}
@@ -461,11 +458,11 @@ function NovoApontamentoModal({
               {/* Linha: Data + Turno */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelCls}>{t("controlePanel.date")}</label>
+                  <label className={labelCls}>Data *</label>
                   <input type="date" value={form.data} onChange={e => setF("data", e.target.value)} className={inputCls} />
                 </div>
                 <div>
-                  <label className={labelCls}>{t("controlePanel.shift")}</label>
+                  <label className={labelCls}>Turno *</label>
                   <select value={form.turno} onChange={e => setF("turno", e.target.value)} className={inputCls}>
                     {TURNOS.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
@@ -475,25 +472,25 @@ function NovoApontamentoModal({
               {/* Linha: Máquina + Operador */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelCls}>{t("controlePanel.machine")}</label>
+                  <label className={labelCls}>Máquina *</label>
                   <select value={form.maquina} onChange={e => setF("maquina", e.target.value)} className={inputCls}>
-                    <option value="">{t("controlePanel.select")}</option>
+                    <option value="">Selecione...</option>
                     {maquinas.map(m => (
                       <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nome}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>{t("controlePanel.operator")}</label>
-                  <Input value={form.operador} onChange={e => setF("operador", e.target.value)} placeholder={t("controlePanel.operatorPlaceholder")} className="h-9" />
+                  <label className={labelCls}>Operador *</label>
+                  <Input value={form.operador} onChange={e => setF("operador", e.target.value)} placeholder="Nome do operador" className="h-9" />
                 </div>
               </div>
 
               {/* Produto */}
               <div>
-                <label className={labelCls}>{t("controlePanel.product")}</label>
+                <label className={labelCls}>Produto *</label>
                 <select value={form.produto} onChange={e => setF("produto", e.target.value)} className={inputCls}>
-                  <option value="">{t("controlePanel.select")}</option>
+                  <option value="">Selecione...</option>
                   {produtos.map(p => (
                     <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>
                   ))}
@@ -503,17 +500,17 @@ function NovoApontamentoModal({
               {/* Linha: Qtde/Hora + Horas Planejadas + Qtde Prevista */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className={labelCls}>{t("controlePanel.qtyHour")}</label>
+                  <label className={labelCls}>Qtde/Hora</label>
                   <Input type="number" min="0" value={form.qtde_por_hora} onChange={e => setF("qtde_por_hora", e.target.value)} placeholder="Ex: 22" className="h-9" />
                 </div>
                 <div>
-                  <label className={labelCls}>{t("controlePanel.plannedHours")}</label>
+                  <label className={labelCls}>Horas Planejadas</label>
                   <Input type="number" min="0" step="0.25" value={form.horas_planejadas} onChange={e => setF("horas_planejadas", e.target.value)} placeholder="Ex: 9" className="h-9" />
                 </div>
                 <div>
-                  <label className={labelCls}>{t("controlePanel.expectedQty")}</label>
+                  <label className={labelCls}>Qtde Prevista</label>
                   <div className="h-9 rounded-lg border bg-muted/30 px-3 flex items-center text-sm font-medium text-muted-foreground">
-                    {qtdePrevista.toLocaleString(t("controlePanel.localeCode"))} {t("controlePanel.pieceAbbrev")}
+                    {qtdePrevista.toLocaleString("pt-BR")} pç
                   </div>
                 </div>
               </div>
@@ -521,11 +518,11 @@ function NovoApontamentoModal({
               {/* Linha: Qtde Plan Disp + Qtde Produzida */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelCls}>{t("controlePanel.availablePlanQty")}</label>
+                  <label className={labelCls}>Qtde Plan. Disponível</label>
                   <Input type="number" min="0" value={form.qtde_plan_disp} onChange={e => setF("qtde_plan_disp", e.target.value)} placeholder={String(qtdePrevista)} className="h-9" />
                 </div>
                 <div>
-                  <label className={labelCls}>{t("controlePanel.producedQty")}</label>
+                  <label className={labelCls}>Qtde Produzida *</label>
                   <Input type="number" min="0" value={form.qtde_produzida} onChange={e => setF("qtde_produzida", e.target.value)} placeholder="Ex: 188" className="h-9" />
                 </div>
               </div>
@@ -533,40 +530,40 @@ function NovoApontamentoModal({
               {/* Linha: Horário Início + Fim */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelCls}>{t("controlePanel.startTime")}</label>
+                  <label className={labelCls}>Horário Início</label>
                   <Input type="time" value={form.horario_inicio} onChange={e => setF("horario_inicio", e.target.value)} className="h-9" />
                 </div>
                 <div>
-                  <label className={labelCls}>{t("controlePanel.endTime")}</label>
+                  <label className={labelCls}>Horário Fim</label>
                   <Input type="time" value={form.horario_fim} onChange={e => setF("horario_fim", e.target.value)} className="h-9" />
                 </div>
               </div>
 
               {/* Separador MP */}
               <div className="border-t border-border/30 pt-3">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t("controlePanel.rawMaterial")}</p>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Matéria-Prima</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelCls}>{t("controlePanel.rawMaterial")}</label>
+                    <label className={labelCls}>Matéria-Prima</label>
                     <select value={form.descricao_mp} onChange={e => setF("descricao_mp", e.target.value)} className={inputCls}>
-                      <option value="">{t("controlePanel.select")}</option>
+                      <option value="">Selecione...</option>
                       {materiasPrimas.map(m => (
                         <option key={m.codigo} value={m.descricao}>{m.descricao}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className={labelCls}>{t("controlePanel.rawMaterialLot")}</label>
-                    <Input value={form.lote_mp} onChange={e => setF("lote_mp", e.target.value)} placeholder={t("controlePanel.lotPlaceholder")} className="h-9" />
+                    <label className={labelCls}>Lote MP</label>
+                    <Input value={form.lote_mp} onChange={e => setF("lote_mp", e.target.value)} placeholder="Ex: 160426-01" className="h-9" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   <div>
-                    <label className={labelCls}>{t("controlePanel.productLength")}</label>
+                    <label className={labelCls}>Comprimento do Produto (mm)</label>
                     <Input type="number" min="0" step="0.01" value={form.comprimento_mm} onChange={e => setF("comprimento_mm", e.target.value)} placeholder="Ex: 11.0" className="h-9" />
                   </div>
                   <div>
-                    <label className={labelCls}>{t("controlePanel.mpConsumption")}</label>
+                    <label className={labelCls}>Consumo MP (metros)</label>
                     <Input type="number" min="0" step="0.01" value={form.consumo_mp_metros} onChange={e => setF("consumo_mp_metros", e.target.value)} placeholder="Ex: 2068" className="h-9" />
                   </div>
                 </div>
@@ -579,23 +576,23 @@ function NovoApontamentoModal({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold">{t("controlePanel.stopHours")}</p>
+                  <p className="text-sm font-semibold">Horas de Parada</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {t("controlePanel.plannedHoursLabel")} {form.horas_planejadas || "—"} ·
-                    {t("controlePanel.totalStops")} {totalHrsParadas.toFixed(2)}h ·
-                    {t("controlePanel.available")} <span className="text-green-600 font-medium">{tempoDisponivel.toFixed(2)}h</span>
+                    Horas planejadas: {form.horas_planejadas || "—"} ·
+                    Total paradas: {totalHrsParadas.toFixed(2)}h ·
+                    Disponível: <span className="text-green-600 font-medium">{tempoDisponivel.toFixed(2)}h</span>
                   </p>
                 </div>
                 <Button size="sm" variant="outline" className="gap-1 h-8 text-xs" onClick={addParada}>
-                  <Plus className="h-3.5 w-3.5" /> {t("controlePanel.add")}
+                  <Plus className="h-3.5 w-3.5" /> Adicionar
                 </Button>
               </div>
 
               {paradas.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   <Clock className="h-8 w-8 mx-auto opacity-20 mb-2" />
-                  <p>{t("controlePanel.noStopRegistered")}</p>
-                  <p className="text-[11px]">{t("controlePanel.leaveBlankIfNoStops")}</p>
+                  <p>Nenhuma parada registrada</p>
+                  <p className="text-[11px]">Se não houve paradas, deixe em branco</p>
                 </div>
               )}
 
@@ -621,7 +618,7 @@ function NovoApontamentoModal({
                       type="number" min="0" step="0.25"
                       value={p.duracao_horas || ""}
                       onChange={e => updateParada(idx, "duracao_horas", parseFloat(e.target.value) || 0)}
-                      placeholder={t("controlePanel.hoursPlaceholder")}
+                      placeholder="Horas"
                       className="h-9"
                     />
                   </div>
@@ -639,24 +636,24 @@ function NovoApontamentoModal({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold">{t("controlePanel.scrapTitle")}</p>
+                  <p className="text-sm font-semibold">Refugos</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {t("controlePanel.producedQtyLabel")} {form.qtde_produzida || "—"} ·
-                    {t("controlePanel.totalScrap")} <span className="text-red-500 font-medium">{totalRefugos}</span>
+                    Qtde produzida: {form.qtde_produzida || "—"} ·
+                    Total refugo: <span className="text-red-500 font-medium">{totalRefugos}</span>
                     {form.qtde_produzida && totalRefugos > 0 &&
                       ` (${(totalRefugos / parseInt(form.qtde_produzida) * 100).toFixed(1)}%)`}
                   </p>
                 </div>
                 <Button size="sm" variant="outline" className="gap-1 h-8 text-xs" onClick={addRefugo}>
-                  <Plus className="h-3.5 w-3.5" /> {t("controlePanel.add")}
+                  <Plus className="h-3.5 w-3.5" /> Adicionar
                 </Button>
               </div>
 
               {refugos.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   <CheckCircle2 className="h-8 w-8 mx-auto opacity-20 mb-2 text-green-500" />
-                  <p>{t("controlePanel.noScrapRegistered")}</p>
-                  <p className="text-[11px]">{t("controlePanel.leaveBlankIfNoScrap")}</p>
+                  <p>Nenhum refugo registrado</p>
+                  <p className="text-[11px]">Se não houve refugo, deixe em branco</p>
                 </div>
               )}
 
@@ -677,7 +674,7 @@ function NovoApontamentoModal({
                     type="number" min="0"
                     value={r.quantidade || ""}
                     onChange={e => updateRefugo(idx, "quantidade", parseInt(e.target.value) || 0)}
-                    placeholder={t("controlePanel.qtyPlaceholder")}
+                    placeholder="Qtde"
                     className="h-9"
                   />
                   <button onClick={() => removeRefugo(idx)}
@@ -694,18 +691,18 @@ function NovoApontamentoModal({
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-border/30 shrink-0">
           <Button variant="outline" onClick={() => step > 1 ? setStep((step - 1) as 1|2|3) : handleFecharManual()} className="gap-1">
             {step > 1 ? <ChevronUp className="h-4 w-4" /> : <X className="h-4 w-4" />}
-            {step > 1 ? t("controlePanel.back") : t("controlePanel.cancel")}
+            {step > 1 ? "Voltar" : "Cancelar"}
           </Button>
           <div className="flex gap-2">
             {step < 3 && (
               <Button onClick={() => setStep((step + 1) as 1|2|3)} className="gap-1">
-                {t("controlePanel.next")} <ChevronDown className="h-4 w-4" />
+                Próximo <ChevronDown className="h-4 w-4" />
               </Button>
             )}
             {step === 3 && (
               <Button onClick={handleSave} disabled={saving} className="gap-1 bg-green-600 hover:bg-green-500">
                 <CheckCircle2 className="h-4 w-4" />
-                {saving ? t("controlePanel.saving") : t("controlePanel.registerEntry")}
+                {saving ? "Salvando..." : "Registrar Apontamento"}
               </Button>
             )}
           </div>
@@ -718,7 +715,6 @@ function NovoApontamentoModal({
 // ── Card de apontamento ────────────────────────────────────────────────────────
 
 function ApontamentoCard({ ap, onEditar, onCancelar }: { ap: Apontamento; onEditar: () => void; onCancelar: () => void }) {
-  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const eff = ap.qtde_plan_disp > 0
     ? Math.round(ap.quantidade / ap.qtde_plan_disp * 100)
@@ -746,7 +742,7 @@ function ApontamentoCard({ ap, onEditar, onCancelar }: { ap: Apontamento; onEdit
             <span className="text-sm font-semibold truncate">{ap.produto}</span>
             {ap.__pendingSync && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600">
-                {t("controlePanel.pendingSync")}
+                Pendente de sincronização
               </span>
             )}
             {eff !== null && (
@@ -761,9 +757,9 @@ function ApontamentoCard({ ap, onEditar, onCancelar }: { ap: Apontamento; onEdit
           <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
             <span>{ap.maquina_codigo}</span>
             <span>{ap.turno}</span>
-            <span>{new Date(ap.data_apontamento).toLocaleDateString(t("controlePanel.localeCode"))}</span>
+            <span>{new Date(ap.data_apontamento).toLocaleDateString("pt-BR")}</span>
             <span className="font-medium text-foreground">
-              {ap.quantidade.toLocaleString(t("controlePanel.localeCode"))} {t("controlePanel.piecesProduced")}
+              {ap.quantidade.toLocaleString("pt-BR")} pç produzidas
             </span>
           </div>
         </div>
@@ -773,22 +769,22 @@ function ApontamentoCard({ ap, onEditar, onCancelar }: { ap: Apontamento; onEdit
       {expanded && (
         <div className="px-4 pb-4 space-y-3 border-t border-border/20 pt-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
-            <div><p className="text-muted-foreground">{t("controlePanel.lot")}</p><p className="font-medium font-mono">{ap.lote}</p></div>
-            <div><p className="text-muted-foreground">{t("controlePanel.operator")}</p><p className="font-medium">{ap.operador}</p></div>
-            <div><p className="text-muted-foreground">{t("controlePanel.qtyHourAbbrev")}</p><p className="font-medium">{ap.qtde_por_hora}</p></div>
-            <div><p className="text-muted-foreground">{t("controlePanel.plannedHoursAbbrev")}</p><p className="font-medium">{ap.horas_planejadas}h</p></div>
-            <div><p className="text-muted-foreground">{t("controlePanel.expectedQty")}</p><p className="font-medium">{ap.qtde_prevista?.toLocaleString(t("controlePanel.localeCode"))} {t("controlePanel.pieceAbbrev")}</p></div>
-            <div><p className="text-muted-foreground">{t("controlePanel.planAvailAbbrev")}</p><p className="font-medium">{ap.qtde_plan_disp?.toLocaleString(t("controlePanel.localeCode"))} {t("controlePanel.pieceAbbrev")}</p></div>
-            <div><p className="text-muted-foreground">{t("controlePanel.start")}</p><p className="font-medium">{horasParaHHMM(ap.horario_inicio)}</p></div>
-            <div><p className="text-muted-foreground">{t("controlePanel.end")}</p><p className="font-medium">{horasParaHHMM(ap.horario_fim)}</p></div>
+            <div><p className="text-muted-foreground">Lote</p><p className="font-medium font-mono">{ap.lote}</p></div>
+            <div><p className="text-muted-foreground">Operador</p><p className="font-medium">{ap.operador}</p></div>
+            <div><p className="text-muted-foreground">Qtde/Hora</p><p className="font-medium">{ap.qtde_por_hora}</p></div>
+            <div><p className="text-muted-foreground">Horas Plan.</p><p className="font-medium">{ap.horas_planejadas}h</p></div>
+            <div><p className="text-muted-foreground">Qtde Prevista</p><p className="font-medium">{ap.qtde_prevista?.toLocaleString("pt-BR")} pç</p></div>
+            <div><p className="text-muted-foreground">Plan. Disp.</p><p className="font-medium">{ap.qtde_plan_disp?.toLocaleString("pt-BR")} pç</p></div>
+            <div><p className="text-muted-foreground">Início</p><p className="font-medium">{horasParaHHMM(ap.horario_inicio)}</p></div>
+            <div><p className="text-muted-foreground">Fim</p><p className="font-medium">{horasParaHHMM(ap.horario_fim)}</p></div>
           </div>
           {ap.descricao_mp && (
             <div className="rounded-lg bg-muted/20 px-3 py-2 text-[11px] space-y-1">
-              <p className="text-muted-foreground">{t("controlePanel.rawMaterial")}</p>
+              <p className="text-muted-foreground">Matéria-Prima</p>
               <p className="font-medium">{ap.descricao_mp}</p>
               <div className="flex gap-4 text-muted-foreground">
-                {ap.lote_mp && <span>{t("controlePanel.rawMaterialLot")} <span className="font-mono text-foreground">{ap.lote_mp}</span></span>}
-                {ap.consumo_mp_metros && <span>{t("controlePanel.consumption")} {ap.consumo_mp_metros.toLocaleString(t("controlePanel.localeCode"))} m</span>}
+                {ap.lote_mp && <span>Lote MP: <span className="font-mono text-foreground">{ap.lote_mp}</span></span>}
+                {ap.consumo_mp_metros && <span>Consumo: {ap.consumo_mp_metros.toLocaleString("pt-BR")} m</span>}
               </div>
             </div>
           )}
@@ -801,13 +797,13 @@ function ApontamentoCard({ ap, onEditar, onCancelar }: { ap: Apontamento; onEdit
                 onClick={onEditar}
                 className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 border border-amber-500/30 transition-colors"
               >
-                <Pencil className="h-3 w-3" /> {t("controlePanel.edit")}
+                <Pencil className="h-3 w-3" /> Editar
               </button>
               <button
                 onClick={onCancelar}
                 className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-red-700 dark:text-red-400 hover:bg-red-500/10 border border-red-500/30 transition-colors"
               >
-                <Trash2 className="h-3 w-3" /> {t("controlePanel.cancel")}
+                <Trash2 className="h-3 w-3" /> Cancelar
               </button>
             </div>
           )}
@@ -820,7 +816,6 @@ function ApontamentoCard({ ap, onEditar, onCancelar }: { ap: Apontamento; onEdit
 // ── Panel principal ────────────────────────────────────────────────────────────
 
 export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
-  const { t } = useTranslation();
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
   const [maquinas, setMaquinas]         = useState<Maquina[]>([]);
   const [produtos, setProdutos]         = useState<Produto[]>([]);
@@ -898,30 +893,30 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <span className="text-[11px] text-muted-foreground">
-          {apontamentos.length} {t("controlePanel.entriesSuffix")}
+          {apontamentos.length} apontamento(s)
         </span>
         {!isOnline && (
           <span className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full">
-            <WifiOff className="h-3 w-3" /> {t("controlePanel.offlineSavingLocally")}
+            <WifiOff className="h-3 w-3" /> Offline — salvando localmente
           </span>
         )}
         {isOnline && pendingCount > 0 && (
           <span className="flex items-center gap-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full">
             <RefreshCw className={cn("h-3 w-3", syncing && "animate-spin")} />
-            {syncing ? t("controlePanel.syncing") : t("controlePanel.pendingToSync", { count: pendingCount })}
+            {syncing ? "Sincronizando..." : `${pendingCount} pendente(s) de sincronizar`}
           </span>
         )}
         {oldestPendingDays !== null && oldestPendingDays >= 2 && (
           <span className="flex items-center gap-1.5 text-[11px] font-medium text-red-600 dark:text-red-400 bg-red-500/10 px-2.5 py-1 rounded-full">
             <AlertTriangle className="h-3 w-3" />
-            {t("controlePanel.daysNoSyncWarning", { count: oldestPendingDays, plural: oldestPendingDays > 1 ? "s" : "" })}
+            Há {oldestPendingDays} dia{oldestPendingDays > 1 ? "s" : ""} sem sincronizar — conecte à internet
           </span>
         )}
         {storageWarning?.isCritical && (
           <span className="flex items-center gap-1.5 text-[11px] font-medium text-red-600 dark:text-red-400 bg-red-500/10 px-2.5 py-1 rounded-full"
-            title={t("controlePanel.storageWarningTitle")}>
+            title="Armazenamento local quase cheio — sincronize os apontamentos pendentes em breve.">
             <AlertTriangle className="h-3 w-3" />
-            {t("controlePanel.storageWarningText", { pct: Math.round(storageWarning.usageRatio * 100) })}
+            Armazenamento do dispositivo quase cheio ({Math.round(storageWarning.usageRatio * 100)}%)
           </span>
         )}
         <div className="ml-auto flex gap-2">
@@ -930,11 +925,11 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
           </Button>
           {onImport && (
             <Button size="sm" variant="outline" className="gap-1 h-9 border-green-500/30 text-green-700 dark:text-green-400 hover:bg-green-500/10" onClick={onImport}>
-              <FileSpreadsheet className="h-4 w-4" /> {t("controlePanel.importExcel")}
+              <FileSpreadsheet className="h-4 w-4" /> Importar Excel
             </Button>
           )}
           <Button size="sm" className="gap-1 h-9" onClick={() => setModalOpen(true)}>
-            <Plus className="h-4 w-4" /> {t("controlePanel.newEntryBtn")}
+            <Plus className="h-4 w-4" /> Novo Apontamento
           </Button>
         </div>
       </div>
@@ -942,10 +937,10 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: t("controlePanel.kpiProduced"), value: kpis.totalProduzido.toLocaleString(t("controlePanel.localeCode")), color: "text-green-600", bg: "bg-green-500/5 border-green-500/20" },
-          { label: t("controlePanel.kpiExpected"), value: kpis.totalPrevisto.toLocaleString(t("controlePanel.localeCode")), color: "text-blue-600", bg: "bg-blue-500/5 border-blue-500/20" },
-          { label: t("controlePanel.kpiEfficiency"), value: eficiencia !== null ? `${eficiencia}%` : "—", color: eficiencia !== null ? (eficiencia >= 95 ? "text-green-600" : eficiencia >= 80 ? "text-amber-600" : "text-red-600") : "text-muted-foreground", bg: "bg-card border-border/40" },
-          { label: t("controlePanel.kpiActiveMachines"), value: String(kpis.maquinasAtivas), color: "text-purple-600", bg: "bg-purple-500/5 border-purple-500/20" },
+          { label: "Peças Produzidas", value: kpis.totalProduzido.toLocaleString("pt-BR"), color: "text-green-600", bg: "bg-green-500/5 border-green-500/20" },
+          { label: "Peças Previstas", value: kpis.totalPrevisto.toLocaleString("pt-BR"), color: "text-blue-600", bg: "bg-blue-500/5 border-blue-500/20" },
+          { label: "Eficiência", value: eficiencia !== null ? `${eficiencia}%` : "—", color: eficiencia !== null ? (eficiencia >= 95 ? "text-green-600" : eficiencia >= 80 ? "text-amber-600" : "text-red-600") : "text-muted-foreground", bg: "bg-card border-border/40" },
+          { label: "Máquinas Ativas", value: String(kpis.maquinasAtivas), color: "text-purple-600", bg: "bg-purple-500/5 border-purple-500/20" },
         ].map(k => (
           <div key={k.label} className={cn("rounded-2xl border p-3 space-y-1", k.bg)}>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{k.label}</p>
@@ -957,13 +952,13 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
       {/* Lista */}
       {loading ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <RefreshCw className="h-4 w-4 animate-spin" /> {t("controlePanel.loading")}
+          <RefreshCw className="h-4 w-4 animate-spin" /> Carregando...
         </div>
       ) : apontamentos.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
           <ClipboardList className="h-8 w-8 opacity-30" />
-          <p>{t("controlePanel.noEntryOnDate")}</p>
-          <p className="text-[11px]">{t("controlePanel.clickToRegister")}</p>
+          <p>Nenhum apontamento nesta data</p>
+          <p className="text-[11px]">Clique em "Novo Apontamento" para registrar</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -973,10 +968,10 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
               ap={ap}
               onEditar={() => { setEditandoLocalId(ap.id); setModalOpen(true); }}
               onCancelar={async () => {
-                if (!window.confirm(t("controlePanel.confirmCancelPending"))) return;
+                if (!window.confirm("Cancelar este apontamento pendente? Os dados digitados serão perdidos.")) return;
                 const r = await cancelPendingApontamento(ap.id, "apontamentos");
-                if (!r.ok) { toast.error(r.error ?? t("controlePanel.toastCancelError")); return; }
-                toast.success(t("controlePanel.toastCancelled"));
+                if (!r.ok) { toast.error(r.error ?? "Erro ao cancelar."); return; }
+                toast.success("Apontamento pendente cancelado.");
                 load();
               }}
             />

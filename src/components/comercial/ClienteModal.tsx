@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { User, X, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Cliente } from "@/types/comercial";
-import { useTranslation } from "react-i18next";
 
 interface ClienteModalProps {
   open: boolean;
@@ -15,7 +14,6 @@ interface ClienteModalProps {
 }
 
 export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const [nome, setNome] = useState("");
   const [documento, setDocumento] = useState("");
@@ -56,22 +54,22 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
     try {
       const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
       const data = await res.json();
-      if (data.erro) { toast.error(t("clienteModal.toastCepNotFound")); return; }
+      if (data.erro) { toast.error("CEP não encontrado."); return; }
       setLogradouro(data.logradouro ?? "");
       setBairro(data.bairro ?? "");
       setMunicipio(data.localidade ?? "");
       setUf(data.uf ?? "");
-    } catch { toast.error(t("clienteModal.toastCepError")); }
+    } catch { toast.error("Erro ao buscar CEP."); }
     finally { setBuscandoCep(false); }
   }
 
   if (!open) return null;
 
   async function handleSave() {
-    if (!nome.trim()) { toast.error(t("clienteModal.toastNameRequired")); return; }
+    if (!nome.trim()) { toast.error("Nome obrigatório"); return; }
     // FIX: validação de e-mail antes de persistir
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      toast.error(t("clienteModal.toastInvalidEmail")); return;
+      toast.error("E-mail inválido."); return;
     }
     setSaving(true);
     try {
@@ -104,10 +102,10 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
         if (error) throw error;
         data = d as Cliente;
       }
-      toast.success(inicial ? t("clienteModal.toastUpdated") : t("clienteModal.toastCreated"));
+      toast.success(inicial ? "Cliente atualizado!" : "Cliente cadastrado!");
       onSuccess(data!);
     } catch (_e) {
-      toast.error(t("clienteModal.toastSaveError"));
+      toast.error("Erro ao salvar cliente.");
     } finally {
       setSaving(false);
     }
@@ -119,7 +117,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2">
             <User className="h-4 w-4 text-violet-500" />
-            <p className="text-sm font-semibold">{inicial ? t("clienteModal.editTitle") : t("clienteModal.newTitle")}</p>
+            <p className="text-sm font-semibold">{inicial ? "Editar Cliente" : "Novo Cliente"}</p>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
             <X className="h-4 w-4" />
@@ -127,27 +125,27 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
         </div>
         <div className="p-5 space-y-3 max-h-[65vh] overflow-y-auto">
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.name")}</label>
-            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder={t("clienteModal.namePlaceholder")} className="h-9 text-sm" autoFocus maxLength={200} />
+            <label className="text-xs font-medium text-muted-foreground">Nome *</label>
+            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome completo ou razão social" className="h-9 text-sm" autoFocus maxLength={200} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.taxId")}</label>
-              <Input value={documento} onChange={e => setDocumento(e.target.value)} placeholder={t("clienteModal.taxIdPlaceholder")} className="h-9 text-sm" maxLength={20} />
+              <label className="text-xs font-medium text-muted-foreground">CPF / CNPJ</label>
+              <Input value={documento} onChange={e => setDocumento(e.target.value)} placeholder="000.000.000-00" className="h-9 text-sm" maxLength={20} />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.phone")}</label>
-              <Input value={telefone} onChange={e => setTelefone(e.target.value)} placeholder={t("clienteModal.phonePlaceholder")} className="h-9 text-sm" maxLength={20} />
+              <label className="text-xs font-medium text-muted-foreground">Telefone</label>
+              <Input value={telefone} onChange={e => setTelefone(e.target.value)} placeholder="(00) 00000-0000" className="h-9 text-sm" maxLength={20} />
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.email")}</label>
-            <Input value={email} onChange={e => setEmail(e.target.value)} placeholder={t("clienteModal.emailPlaceholder")} type="email" className="h-9 text-sm" maxLength={200} />
+            <label className="text-xs font-medium text-muted-foreground">E-mail</label>
+            <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="cliente@email.com" type="email" className="h-9 text-sm" maxLength={200} />
           </div>
           {/* CEP com busca automática */}
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.postalCode")}</label>
+              <label className="text-xs font-medium text-muted-foreground">CEP</label>
               <div className="relative">
                 <Input
                   value={cep}
@@ -157,7 +155,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
                     setCep(fmt);
                     if (v.length === 8) buscarCep(v);
                   }}
-                  placeholder={t("clienteModal.postalCodePlaceholder")}
+                  placeholder="00000-000"
                   className="h-9 text-sm pr-8"
                   maxLength={9}
                 />
@@ -167,37 +165,37 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.number")}</label>
-              <Input value={numero} onChange={e => setNumero(e.target.value)} placeholder={t("clienteModal.numberPlaceholder")} className="h-9 text-sm" maxLength={20} />
+              <label className="text-xs font-medium text-muted-foreground">Número</label>
+              <Input value={numero} onChange={e => setNumero(e.target.value)} placeholder="123" className="h-9 text-sm" maxLength={20} />
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.street")}</label>
-            <Input value={logradouro} onChange={e => setLogradouro(e.target.value)} placeholder={t("clienteModal.streetPlaceholder")} className="h-9 text-sm" maxLength={200} />
+            <label className="text-xs font-medium text-muted-foreground">Logradouro</label>
+            <Input value={logradouro} onChange={e => setLogradouro(e.target.value)} placeholder="Rua, Av..." className="h-9 text-sm" maxLength={200} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.neighborhood")}</label>
-              <Input value={bairro} onChange={e => setBairro(e.target.value)} placeholder={t("clienteModal.neighborhoodPlaceholder")} className="h-9 text-sm" maxLength={100} />
+              <label className="text-xs font-medium text-muted-foreground">Bairro</label>
+              <Input value={bairro} onChange={e => setBairro(e.target.value)} placeholder="Bairro" className="h-9 text-sm" maxLength={100} />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.city")}</label>
+              <label className="text-xs font-medium text-muted-foreground">Cidade / UF</label>
               <div className="flex gap-1.5">
-                <Input value={municipio} onChange={e => setMunicipio(e.target.value)} placeholder={t("clienteModal.cityPlaceholder")} className="h-9 text-sm flex-1" maxLength={100} />
-                <Input value={uf} onChange={e => setUf(e.target.value.toUpperCase().slice(0,2))} placeholder={t("clienteModal.statePlaceholder")} className="h-9 text-sm w-12 text-center" maxLength={2} />
+                <Input value={municipio} onChange={e => setMunicipio(e.target.value)} placeholder="Cidade" className="h-9 text-sm flex-1" maxLength={100} />
+                <Input value={uf} onChange={e => setUf(e.target.value.toUpperCase().slice(0,2))} placeholder="UF" className="h-9 text-sm w-12 text-center" maxLength={2} />
               </div>
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{t("clienteModal.notes")}</label>
-            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder={t("clienteModal.notesPlaceholder")} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[60px] focus:outline-none focus:ring-2 focus:ring-ring" maxLength={1000} />
+            <label className="text-xs font-medium text-muted-foreground">Observações</label>
+            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Informações adicionais..." className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[60px] focus:outline-none focus:ring-2 focus:ring-ring" maxLength={1000} />
           </div>
         </div>
         <div className="flex gap-2 p-5 pt-0">
-          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">{t("clienteModal.cancel")}</button>
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
           <button type="button" onClick={handleSave} disabled={saving || !nome.trim()} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-            {inicial ? t("clienteModal.save") : t("clienteModal.register")}
+            {inicial ? "Salvar" : "Cadastrar"}
           </button>
         </div>
       </div>

@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import ExcelJS from "exceljs";
-import { useTranslation } from "react-i18next";
 
 interface RowPPI51 {
   seq: number;
@@ -98,7 +97,6 @@ function parseRow(row: (string|number|Date|null|undefined)[]): RowPPI51 | null {
 interface ImportResult { total: number; importados: number; erros: number; detalhes: string[]; }
 
 export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation();
   const [file, setFile]         = useState<File | null>(null);
   const [preview, setPreview]   = useState<RowPPI51[]>([]);
   const [loading, setLoading]   = useState(false);
@@ -107,12 +105,12 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
   const handleFile = useCallback(async (f: File) => {
     // Valida tamanho máximo: 50MB (arquivo xlsm grande pode travar o browser)
     if (f.size > 50 * 1024 * 1024) {
-      toast.error(t("importadorPPI51.toastFileTooLarge"));
+      toast.error("Arquivo muito grande. Limite: 50MB.");
       return;
     }
     // Valida extensão
     if (!/\.(xlsm|xlsx|xls)$/i.test(f.name)) {
-      toast.error(t("importadorPPI51.toastInvalidFile"));
+      toast.error("Arquivo inválido. Use .xlsm, .xlsx ou .xls");
       return;
     }
     setFile(f);
@@ -125,7 +123,7 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
 
       // Tenta a aba Dados_Produção, senão usa a primeira aba com dados
       const ws = wb.getWorksheet("Dados_Produção") || wb.worksheets[0];
-      if (!ws) { toast.error(t("importadorPPI51.toastTabNotFound")); return; }
+      if (!ws) { toast.error("Aba 'Dados_Produção' não encontrada"); return; }
 
       const rows: RowPPI51[] = [];
       ws.eachRow((row, rowNum) => {
@@ -136,10 +134,10 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
       });
 
       setPreview(rows);
-      if (rows.length === 0) toast.error(t("importadorPPI51.toastNoValidRecords"));
-      else toast.success(t("importadorPPI51.toastRecordsFound", { count: rows.length }));
+      if (rows.length === 0) toast.error("Nenhum registro válido encontrado");
+      else toast.success(`${rows.length} registros encontrados`);
     } catch (e) {
-      toast.error(t("importadorPPI51.toastReadError") + (e instanceof Error ? e.message : String(e)));
+      toast.error("Erro ao ler arquivo: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setLoading(false);
     }
@@ -202,10 +200,10 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
     setResult(result);
     setLoading(false);
     if (result.importados > 0) {
-      toast.success(t("importadorPPI51.toastImportSuccess", { count: result.importados }));
+      toast.success(`${result.importados} apontamentos importados com sucesso!`);
     }
     if (result.erros > 0) {
-      toast.warning(t("importadorPPI51.toastImportErrors", { count: result.erros }));
+      toast.warning(`${result.erros} registros com erro`);
     }
   }
 
@@ -217,7 +215,7 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="h-4 w-4 text-green-600" />
-            <h3 className="font-semibold text-sm">{t("importadorPPI51.title")}</h3>
+            <h3 className="font-semibold text-sm">Importar PPI-51</h3>
           </div>
           <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40">
             <X className="h-4 w-4" />
@@ -230,8 +228,8 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
             <label className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/40 p-8 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-colors">
               <Upload className="h-8 w-8 text-muted-foreground/50" />
               <div className="text-center">
-                <p className="text-sm font-medium">{t("importadorPPI51.dragOrClick")}</p>
-                <p className="text-[11px] text-muted-foreground mt-1">{t("importadorPPI51.format")}</p>
+                <p className="text-sm font-medium">Arraste o arquivo PPI-51 ou clique para selecionar</p>
+                <p className="text-[11px] text-muted-foreground mt-1">Formato: .xlsm ou .xlsx</p>
               </div>
               <input
                 type="file"
@@ -248,11 +246,11 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
               <div className="flex items-center gap-2">
                 <FileSpreadsheet className="h-4 w-4 text-green-600" />
                 <span className="text-sm font-medium">{file.name}</span>
-                <span className="ml-auto text-[11px] text-muted-foreground">{preview.length} {t("importadorPPI51.records")}</span>
+                <span className="ml-auto text-[11px] text-muted-foreground">{preview.length} registros</span>
               </div>
               <div className="rounded-xl border border-border/40 overflow-hidden">
                 <div className="grid grid-cols-4 gap-2 px-3 py-2 bg-muted/30 text-[10px] font-semibold uppercase text-muted-foreground">
-                  <span>{t("importadorPPI51.colSeq")}</span><span>{t("importadorPPI51.colDate")}</span><span>{t("importadorPPI51.colMachineProduct")}</span><span>{t("importadorPPI51.colProduced")}</span>
+                  <span>Seq</span><span>Data</span><span>Máquina / Produto</span><span>Produzido</span>
                 </div>
                 <div className="max-h-52 overflow-y-auto divide-y divide-border/20">
                   {preview.slice(0, 50).map(r => (
@@ -260,12 +258,12 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
                       <span className="font-mono text-muted-foreground">#{r.seq}</span>
                       <span>{r.data}</span>
                       <span className="truncate">{r.maquina} · {r.produto}</span>
-                      <span className="font-medium">{r.qtde_produzida.toLocaleString(t("importadorPPI51.localeCode"))} {t("importadorPPI51.pieceAbbrev")}</span>
+                      <span className="font-medium">{r.qtde_produzida.toLocaleString("pt-BR")} pç</span>
                     </div>
                   ))}
                   {preview.length > 50 && (
                     <div className="px-3 py-2 text-[11px] text-muted-foreground text-center">
-                      + {preview.length - 50} {t("importadorPPI51.additionalRecords")}
+                      + {preview.length - 50} registros adicionais
                     </div>
                   )}
                 </div>
@@ -284,12 +282,12 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
                   {result.erros === 0
                     ? <CheckCircle2 className="h-5 w-5 text-green-600" />
                     : <AlertTriangle className="h-5 w-5 text-amber-600" />}
-                  <p className="font-semibold text-sm">{t("importadorPPI51.importComplete")}</p>
+                  <p className="font-semibold text-sm">Importação concluída</p>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-[11px]">
-                  <div><p className="text-muted-foreground">{t("importadorPPI51.total")}</p><p className="font-bold text-lg">{result.total}</p></div>
-                  <div><p className="text-muted-foreground">{t("importadorPPI51.imported")}</p><p className="font-bold text-lg text-green-600">{result.importados}</p></div>
-                  <div><p className="text-muted-foreground">{t("importadorPPI51.errors")}</p><p className="font-bold text-lg text-red-600">{result.erros}</p></div>
+                  <div><p className="text-muted-foreground">Total</p><p className="font-bold text-lg">{result.total}</p></div>
+                  <div><p className="text-muted-foreground">Importados</p><p className="font-bold text-lg text-green-600">{result.importados}</p></div>
+                  <div><p className="text-muted-foreground">Erros</p><p className="font-bold text-lg text-red-600">{result.erros}</p></div>
                 </div>
               </div>
               {result.detalhes.length > 0 && (
@@ -306,7 +304,7 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
         {/* Footer */}
         <div className="flex gap-3 px-5 py-4 border-t border-border/30 shrink-0">
           <Button variant="outline" className="flex-1" onClick={onClose}>
-            {result ? t("importadorPPI51.close") : t("importadorPPI51.cancel")}
+            {result ? "Fechar" : "Cancelar"}
           </Button>
           {preview.length > 0 && !result && (
             <Button
@@ -315,7 +313,7 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
               disabled={loading}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {loading ? t("importadorPPI51.importing") : t("importadorPPI51.importAction", { count: preview.length })}
+              {loading ? "Importando..." : `Importar ${preview.length} registros`}
             </Button>
           )}
         </div>

@@ -38,7 +38,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
   },
   global: {
     headers: {
-      'x-client-info': 'zomini-usinagens/1.0',
+      'x-client-info': 'concept-usinagens/1.0',
     },
     fetch: fetchWithRetry,
   },

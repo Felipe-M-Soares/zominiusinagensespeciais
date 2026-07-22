@@ -15,7 +15,6 @@ import { fetchLotesSummary, transferToExpedicao } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useTranslation } from "react-i18next";
 
 interface Props {
   item: StockItem | null;
@@ -25,7 +24,6 @@ interface Props {
 }
 
 export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Props) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const displayName: string | null =
     (user?.user_metadata?.display_name as string) ?? user?.email ?? null;
@@ -78,13 +76,13 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
   async function handleConfirm() {
     const safeQty = Math.trunc(resolvedQty);
     if (!item || safeQty < 1) return;
-    if (!lote) { toast.error(t("transferirExpedicaoModal.loteRequired") + " transferir."); return; }
+    if (!lote) { toast.error("Selecione o lote a transferir."); return; }
     const LOTE_INVALIDO = new Set(["sem lote", "a-definir", "a definir"]);
     if (LOTE_INVALIDO.has(lote.trim().toLowerCase())) {
-      toast.error(t("transferirExpedicaoModal.toastLoteInvalid"));
+      toast.error("Lote sem numeração não é permitido. Registre uma entrada com lote válido (ex: 0101261-01) antes de transferir.");
       return;
     }
-    if (afterIntermediariaQty < 0) { toast.error(t("transferirExpedicaoModal.qtyExceedsBalance")); return; }
+    if (afterIntermediariaQty < 0) { toast.error("Quantidade maior que o saldo disponível."); return; }
 
     setLoading(true);
     const result = await transferToExpedicao(
@@ -98,13 +96,13 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
     setLoading(false);
 
     if (result.ok) {
-      toast.success(t("transferirExpedicaoModal.toastSuccess", { qty: safeQty, plural: safeQty > 1 ? "s" : "" }), {
-        description: t("transferirExpedicaoModal.toastSuccessDesc", { model: d.model, lote }),
+      toast.success(`${safeQty} un. movida${safeQty > 1 ? "s" : ""} para Expedição`, {
+        description: `${d.model} · Lote ${lote}`,
       });
       onSuccess();
       onClose();
     } else {
-      toast.error(result.error ?? t("transferirExpedicaoModal.toastError"));
+      toast.error(result.error ?? "Erro ao transferir para expedição.");
     }
   }
 
@@ -118,7 +116,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                 <Truck className="h-4 w-4 text-blue-500" />
-                {t("transferirExpedicaoModal.title")}
+                Mover para Expedição
               </DialogTitle>
             </DialogHeader>
             {/* Info da peça */}
@@ -128,7 +126,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
               <div className="flex items-center gap-2 pt-0.5">
                 <Package className="h-3.5 w-3.5 text-primary" />
                 <span className="text-[12px] font-medium">
-                  {t("transferirExpedicaoModal.intermediateLabel")}{" "}
+                  Intermediário:{" "}
                   <span className={item.quantity === 0 ? "text-destructive" : ""}>
                     {item.quantity} un.
                   </span>
@@ -143,12 +141,12 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
           <div className="flex items-center justify-center gap-3 py-1">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/30 border border-border/30">
               <Package className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-[11px] font-medium text-muted-foreground">{t("transferirExpedicaoModal.intermediateBadge")}</span>
+              <span className="text-[11px] font-medium text-muted-foreground">Intermediário</span>
             </div>
             <ArrowRight className="h-4 w-4 text-blue-500" />
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30">
               <Truck className="h-3.5 w-3.5 text-blue-500" />
-              <span className="text-[11px] font-medium text-blue-500">{t("transferirExpedicaoModal.shippingBadge")}</span>
+              <span className="text-[11px] font-medium text-blue-500">Expedição</span>
             </div>
           </div>
 
@@ -156,7 +154,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Tag className="h-3 w-3" />
-              {t("transferirExpedicaoModal.selectLote")}
+              Selecionar Lote *
             </label>
 
             <div className="relative">
@@ -174,10 +172,10 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
                 <span className={lote ? "text-foreground font-semibold" : "text-muted-foreground text-xs font-sans tracking-normal"}>
                   {lote
                     || (lotesLoading
-                      ? t("transferirExpedicaoModal.loadingLotes")
+                      ? "Carregando lotes..."
                       : existingLotes.length === 0
-                        ? t("transferirExpedicaoModal.noLoteWithBalance")
-                        : t("transferirExpedicaoModal.selectLotePlaceholder"))}
+                        ? "Nenhum lote com saldo disponível"
+                        : "Selecione o lote...")}
                 </span>
                 <div className="flex items-center gap-1.5">
                   {lote && <CheckCircle2 className="h-3.5 w-3.5 text-blue-500" />}
@@ -193,7 +191,8 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
                     </div>
                   ) : existingLotes.length === 0 ? (
                     <div className="px-3 py-3 text-[12px] text-muted-foreground text-center">
-                      {t("transferirExpedicaoModal.noLoteInIntermediate")}
+                      Sem lote numerado no intermediário.
+Registre uma entrada com lote (DDMMYYS-NN ou DDMMYY-NN) antes de transferir.
                     </div>
                   ) : (
                     <div className="max-h-[180px] overflow-y-auto">
@@ -214,7 +213,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
                           </div>
                           <div className="flex items-center gap-1 text-blue-500">
                             <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
-                            <span className="text-[10px] opacity-70">{t("transferirExpedicaoModal.units")}</span>
+                            <span className="text-[10px] opacity-70">un.</span>
                           </div>
                         </button>
                       ))}
@@ -228,10 +227,10 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
           {/* Quantidade */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              {t("transferirExpedicaoModal.qtyToTransfer")}
+              Quantidade a transferir
               {selectedLote && (
                 <span className="ml-1.5 text-blue-500/70 normal-case">
-                  {t("transferirExpedicaoModal.quantityMax", { max: selectedLote.saldo })}
+                  (máx: {selectedLote.saldo} un.)
                 </span>
               )}
             </label>
@@ -273,26 +272,26 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
           {lote && resolvedQty > 0 && (
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 space-y-2">
               <p className="text-[11px] font-medium text-blue-500/70 uppercase tracking-wider">
-                {t("transferirExpedicaoModal.resultTitle")}
+                Resultado da transferência
               </p>
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <Package className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground text-[12px]">{t("transferirExpedicaoModal.intermediateWillHave")}</span>
+                  <span className="text-muted-foreground text-[12px]">Intermediário ficará com</span>
                 </div>
                 <span className={cn(
                   "font-bold text-[13px]",
                   afterIntermediariaQty < 0 ? "text-destructive" : "text-foreground"
                 )}>
-                  {afterIntermediariaQty < 0 ? t("transferirExpedicaoModal.insufficient") : `${afterIntermediariaQty} ${t("transferirExpedicaoModal.units")}`}
+                  {afterIntermediariaQty < 0 ? "Insuficiente" : `${afterIntermediariaQty} un.`}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <Truck className="h-3.5 w-3.5 text-blue-500" />
-                  <span className="text-muted-foreground text-[12px]">{t("transferirExpedicaoModal.shippingWillReceive")}</span>
+                  <span className="text-muted-foreground text-[12px]">Expedição receberá</span>
                 </div>
-                <span className="font-bold text-[13px] text-blue-500">+{resolvedQty} {t("transferirExpedicaoModal.units")}</span>
+                <span className="font-bold text-[13px] text-blue-500">+{resolvedQty} un.</span>
               </div>
             </div>
           )}
@@ -300,7 +299,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
           {/* Ações */}
           <div className="flex gap-2 pt-1">
             <Button variant="outline" className="flex-1 h-10 rounded-xl" onClick={onClose}>
-              {t("transferirExpedicaoModal.cancel")}
+              Cancelar
             </Button>
             <Button
               className="flex-1 h-10 rounded-xl gap-2 font-semibold bg-blue-500 hover:bg-blue-600 text-white"
@@ -310,7 +309,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
               {loading
                 ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <Truck className="h-4 w-4" />}
-              {t("transferirExpedicaoModal.submit")}
+              Mover para Expedição
             </Button>
           </div>
         </div>

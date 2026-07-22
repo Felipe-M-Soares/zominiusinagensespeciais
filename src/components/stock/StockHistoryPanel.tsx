@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { ArrowDownCircle, ArrowUpCircle, Clock, Trash2, AlertTriangle, User, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useTranslation } from "react-i18next";
 
 interface Props {
   item: StockItem | null;
@@ -23,7 +22,6 @@ interface Props {
 }
 
 export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
-  const { t } = useTranslation();
   const { movements, loading, refetch } = useStockMovements(open && item ? item.id : null, item?.fase);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -31,7 +29,7 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
   if (!item) return null;
 
   function fmtDate(iso: string) {
-    return new Date(iso).toLocaleString(t("stockHistoryPanel.localeCode"), {
+    return new Date(iso).toLocaleString("pt-BR", {
       day: "2-digit", month: "2-digit", year: "2-digit",
       hour: "2-digit", minute: "2-digit",
     });
@@ -43,11 +41,11 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
     setCancelling(null);
     setConfirmId(null);
     if (result.ok) {
-      toast.success(t("stockHistoryPanel.toastCancelled"));
+      toast.success("Movimento cancelado e estoque revertido.");
       refetch();
       onSuccess(); // atualiza os cards
     } else {
-      toast.error(result.error ?? t("stockHistoryPanel.toastCancelError"));
+      toast.error(result.error ?? "Erro ao cancelar movimento.");
     }
   }
 
@@ -61,7 +59,7 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                 <Clock className="h-4 w-4 text-primary" />
-                {t("stockHistoryPanel.title")}
+                Histórico de Movimentos
               </DialogTitle>
             </DialogHeader>
             <p className="text-[12px] text-muted-foreground mt-1 line-clamp-1">{item.device.model}</p>
@@ -77,7 +75,7 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
 
           {!loading && movements.length === 0 && (
             <div className="text-center py-10 text-sm text-muted-foreground">
-              {t("stockHistoryPanel.noMovements")}
+              Nenhum movimento registrado
             </div>
           )}
 
@@ -103,13 +101,13 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
                       "text-[12px] font-semibold",
                       mv.type === "entrada" ? "text-success" : "text-destructive"
                     )}>
-                      {mv.type === "entrada" ? "+" : "-"}{mv.quantity} {t("stockHistoryPanel.units")}
+                      {mv.type === "entrada" ? "+" : "-"}{mv.quantity} un.
                     </span>
                     <span className="text-[10px] text-muted-foreground shrink-0">{fmtDate(mv.created_at)}</span>
                   </div>
                   {mv.lote && (
                     <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-primary/80 mt-0.5">
-                      <Tag className="h-2.5 w-2.5" />{t("stockHistoryPanel.lotLabel")} {mv.lote}
+                      <Tag className="h-2.5 w-2.5" />Lote {mv.lote}
                     </p>
                   )}
                   {mv.reason && (
@@ -125,7 +123,7 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
                 {/* Botão cancelar movimento */}
                 <button
                   type="button"
-                  title={t("stockHistoryPanel.cancelTitle")}
+                  title="Cancelar este movimento"
                   onClick={() => setConfirmId(confirmId === mv.id ? null : mv.id)}
                   className="h-6 w-6 flex items-center justify-center rounded-lg text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
                 >
@@ -139,8 +137,8 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
                   <div className="flex items-start gap-2 text-[11px] text-destructive">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                     <span>
-                      {t("stockHistoryPanel.cancelWillCancel")} {mv.type === "entrada" ? t("stockHistoryPanel.cancelEntry") : t("stockHistoryPanel.cancelExit")} {t("stockHistoryPanel.cancelOf")}{" "}
-                      <strong>{mv.quantity} {t("stockHistoryPanel.units")}</strong> {t("stockHistoryPanel.cancelAndRevert")}
+                      Isso cancelará {mv.type === "entrada" ? "a entrada" : "a saída"} de{" "}
+                      <strong>{mv.quantity} un.</strong> e reverterá o estoque.
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -150,7 +148,7 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
                       className="flex-1 h-7 text-[11px] rounded-lg"
                       onClick={() => setConfirmId(null)}
                     >
-                      {t("stockHistoryPanel.no")}
+                      Não
                     </Button>
                     <Button
                       size="sm"
@@ -161,7 +159,7 @@ export function StockHistoryPanel({ item, open, onClose, onSuccess }: Props) {
                       {cancelling === mv.id
                         ? <div className="h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
                         : <Trash2 className="h-3 w-3" />}
-                      {t("stockHistoryPanel.cancelMovement")}
+                      Cancelar movimento
                     </Button>
                   </div>
                 </div>

@@ -6,8 +6,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { X, Printer, Loader2, AlertTriangle } from "lucide-react";
-import i18n from "@/i18n";
-import { useTranslation } from "react-i18next";
 
 // Worker do pdfjs — mesmo setup usado em ExcelStockImport.tsx
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -40,7 +38,6 @@ interface Props {
  * usado em outras telas do app (PedidosEstoquePanel, Financeiro, etc.).
  */
 export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
-  const { t } = useTranslation();
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
@@ -78,10 +75,10 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
         const { data: signed, error: signErr } = await supabase.storage
           .from("desenhos-tecnicos")
           .createSignedUrl(path, 300);
-        if (signErr || !signed?.signedUrl) throw new Error(signErr?.message ?? i18n.t("technicalDrawingViewer.errLinkGen"));
+        if (signErr || !signed?.signedUrl) throw new Error(signErr?.message ?? "Erro ao gerar link do desenho.");
 
         const resp = await fetch(signed.signedUrl);
-        if (!resp.ok) throw new Error(i18n.t("technicalDrawingViewer.errLoadFile"));
+        if (!resp.ok) throw new Error("Erro ao carregar o arquivo do desenho.");
         const buf = await resp.arrayBuffer();
         if (cancelledRef.current) return;
 
@@ -95,7 +92,7 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
       } catch (e) {
         if (cancelledRef.current) return;
         logger.error("DesenhoTecnicoViewer load error:", e);
-        setError(e instanceof Error ? e.message : i18n.t("technicalDrawingViewer.errLoadGeneric"));
+        setError(e instanceof Error ? e.message : "Erro ao carregar o desenho técnico.");
       } finally {
         if (!cancelledRef.current) setLoading(false);
       }
@@ -119,7 +116,7 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
       win.document.write(`
         <html>
           <head>
-            <title>${i18n.t("technicalDrawingViewer.titlePrefix")} ${title}</title>
+            <title>Desenho técnico — ${title}</title>
             <style>
               @page { size: A4 landscape; margin: 0; }
               html, body { margin: 0; padding: 0; background: #525659; }
@@ -166,11 +163,11 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4">
       <div className="w-full max-w-4xl h-[92vh] bg-card rounded-2xl border border-border/40 shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-border/30 shrink-0">
-          <h3 className="font-semibold text-sm truncate pr-2">{t("technicalDrawingViewer.titlePrefix")} {title}</h3>
+          <h3 className="font-semibold text-sm truncate pr-2">Desenho técnico — {title}</h3>
           <div className="flex items-center gap-2 shrink-0">
             <Button size="sm" className="gap-1.5 h-8" onClick={handlePrint} disabled={pages.length === 0 || printing}>
               {printing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-              {printing ? t("technicalDrawingViewer.preparing") : t("technicalDrawingViewer.print")}
+              {printing ? "Preparando..." : "Imprimir"}
             </Button>
             <button onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/40">
               <X className="h-4 w-4" />
@@ -181,7 +178,7 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
         <div className="flex-1 min-h-0 bg-muted/30 relative overflow-y-auto">
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> {t("technicalDrawingViewer.loading")}
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando desenho...
             </div>
           )}
           {!loading && error && (
@@ -196,7 +193,7 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
                 <img
                   key={i}
                   src={src}
-                  alt={t("technicalDrawingViewer.pageAlt", { n: i + 1, title })}
+                  alt={`Página ${i + 1} do desenho técnico — ${title}`}
                   className="max-w-full rounded-lg shadow-md border border-border/30 bg-white"
                 />
               ))}

@@ -247,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: `Muitas tentativas de login. Aguarde ${Math.max(waitSec, backoffSec)} segundos.` };
       }
 
-      const email = `${trimmedLogin.toLowerCase()}@interno.zomini`;
+      const email = `${trimmedLogin.toLowerCase()}@interno.conceptus`;
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return { error: translateError(error.message) };
 

@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StockItem } from "@/hooks/useStock";
-import { useTranslation } from "react-i18next";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 export type ActiveView =
@@ -40,11 +39,10 @@ interface StockNavProps {
 }
 
 // ── Configuração das abas ──────────────────────────────────────────────────────
-function buildTabs(t: (key: string) => string) {
-  return [
+const TABS = [
   {
     id: "dashboard" as ActiveView,
-    label: t("stockNav.dashboard"),
+    label: "Dashboard",
     Icon: LayoutDashboard,
     activeColor: "text-primary",
     activeBg: "bg-primary/10",
@@ -55,7 +53,7 @@ function buildTabs(t: (key: string) => string) {
   },
   {
     id: "intermediaria" as ActiveView,
-    label: t("stockNav.intermediate"),
+    label: "Interm.",
     Icon: Package,
     activeColor: "text-primary",
     activeBg: "bg-primary/10",
@@ -66,7 +64,7 @@ function buildTabs(t: (key: string) => string) {
   },
   {
     id: "expedicao" as ActiveView,
-    label: t("stockNav.shipping"),
+    label: "Expedição",
     Icon: Truck,
     activeColor: "text-success",
     activeBg: "bg-success/10",
@@ -77,7 +75,7 @@ function buildTabs(t: (key: string) => string) {
   },
   {
     id: "retrabalho" as ActiveView,
-    label: t("stockNav.rework"),
+    label: "Retrab.",
     Icon: Wrench,
     activeColor: "text-orange-500",
     activeBg: "bg-orange-500/10",
@@ -88,7 +86,7 @@ function buildTabs(t: (key: string) => string) {
   },
   {
     id: "recebimento" as ActiveView,
-    label: t("stockNav.receiving"),
+    label: "Recebim.",
     Icon: Inbox,
     activeColor: "text-cyan-600 dark:text-cyan-400",
     activeBg: "bg-cyan-500/10",
@@ -99,7 +97,7 @@ function buildTabs(t: (key: string) => string) {
   },
   {
     id: "pedidos" as ActiveView,
-    label: t("stockNav.orders"),
+    label: "Pedidos",
     Icon: ShoppingBag,
     activeColor: "text-amber-600 dark:text-amber-400",
     activeBg: "bg-amber-500/10",
@@ -108,8 +106,7 @@ function buildTabs(t: (key: string) => string) {
     badgeText: "text-amber-600 dark:text-amber-400",
     animation: "animate-pop",
   },
-  ];
-}
+] as const;
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export function StockNav({
@@ -122,8 +119,6 @@ export function StockNav({
   pedidosPendentes = 0,
   qtyByFase,
 }: StockNavProps) {
-  const { t } = useTranslation();
-  const TABS = buildTabs(t);
   const [animating, setAnimating] = useState<ActiveView | null>(null);
   // Ref para evitar closure stale no handleClick (activeView pode ficar desatualizado
   // em taps rápidos mobile porque o useCallback não re-executa imediatamente).

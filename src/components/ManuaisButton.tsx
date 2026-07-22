@@ -38,7 +38,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useTranslation } from "react-i18next";
 
 const MAX_FILE_SIZE_MB = 20;
 const MAX_FILES_AT_ONCE = 20;
@@ -75,7 +74,6 @@ interface QueuedFile {
 }
 
 export function ManuaisButton() {
-  const { t } = useTranslation();
   const { isAdmin } = useAuth();
   const [manuals, setManuals] = useState<Manual[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,14 +114,14 @@ export function ManuaisButton() {
       const { data, error } = await supabase.storage
         .from("manuals")
         .createSignedUrl(manual.file_path, 300, { download: safeFilename });
-      if (error || !data?.signedUrl) { toast.error(t("manuaisButton.toastLinkError")); return; }
+      if (error || !data?.signedUrl) { toast.error("Erro ao gerar link de download"); return; }
       const a = document.createElement("a");
       a.href = data.signedUrl; a.download = safeFilename;
       a.target = "_blank"; a.rel = "noopener noreferrer";
       document.body.appendChild(a); a.click();
       setTimeout(() => { if (document.body.contains(a)) document.body.removeChild(a); }, 200);
     } catch {
-      toast.error(t("manuaisButton.toastDownloadError"));
+      toast.error("Erro ao baixar manual");
     } finally {
       setDownloadingId(null);
     }
@@ -135,10 +133,10 @@ export function ManuaisButton() {
       await supabase.storage.from("manuals").remove([manual.file_path]);
       const { error } = await supabase.from("manuals").delete().eq("id", manual.id);
       if (error) throw error;
-      toast.success(t("manuaisButton.toastDeleted"));
+      toast.success("Manual excluído");
       setManuals(prev => prev.filter(m => m.id !== manual.id));
     } catch {
-      toast.error(t("manuaisButton.toastDeleteError"));
+      toast.error("Erro ao excluir manual");
     } finally {
       setDeleteTarget(null);
     }
@@ -151,14 +149,14 @@ export function ManuaisButton() {
     const valid: QueuedFile[] = [];
     const skipped: string[] = [];
     for (const f of selected) {
-      if (f.type !== "application/pdf") { skipped.push(`${f.name} ${t("manuaisButton.notPdf")}`); continue; }
-      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) { skipped.push(`${f.name} ${t("manuaisButton.biggerThan", { mb: MAX_FILE_SIZE_MB })}`); continue; }
+      if (f.type !== "application/pdf") { skipped.push(`${f.name} (não é PDF)`); continue; }
+      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) { skipped.push(`${f.name} (maior que ${MAX_FILE_SIZE_MB}MB)`); continue; }
       valid.push({ id: `${Date.now()}_${Math.random()}`, file: f, title: pdfNameToTitle(f.name), description: "", status: "pending" });
     }
-    if (skipped.length > 0) toast.warning(t("manuaisButton.toastFilesSkipped", { list: skipped.join("\n") }));
+    if (skipped.length > 0) toast.warning(`Arquivos ignorados:\n${skipped.join("\n")}`);
     setQueue(prev => {
       const total = prev.length + valid.length;
-      if (total > MAX_FILES_AT_ONCE) { toast.error(t("manuaisButton.toastMaxFiles", { count: MAX_FILES_AT_ONCE })); return prev; }
+      if (total > MAX_FILES_AT_ONCE) { toast.error(`Máximo de ${MAX_FILES_AT_ONCE} arquivos por vez`); return prev; }
       return [...prev, ...valid];
     });
     if (fileRef.current) fileRef.current.value = "";
@@ -171,7 +169,7 @@ export function ManuaisButton() {
   const removeFromQueue = (id: string) => setQueue(prev => prev.filter(q => q.id !== id));
 
   const uploadOne = async (item: QueuedFile): Promise<boolean> => {
-    if (!item.title.trim()) { updateQueueItem(item.id, { status: "error", errorMsg: t("manuaisButton.toastTitleRequired") }); return false; }
+    if (!item.title.trim()) { updateQueueItem(item.id, { status: "error", errorMsg: "Título obrigatório" }); return false; }
     updateQueueItem(item.id, { status: "uploading" });
     try {
       const safeName = sanitizeFilename(item.file.name);
@@ -187,7 +185,7 @@ export function ManuaisButton() {
       updateQueueItem(item.id, { status: "done" });
       return true;
     } catch {
-      updateQueueItem(item.id, { status: "error", errorMsg: t("manuaisButton.toastUploadFailed") });
+      updateQueueItem(item.id, { status: "error", errorMsg: "Falha no upload. Tente novamente." });
       return false;
     }
   };
@@ -197,8 +195,8 @@ export function ManuaisButton() {
     if (!pending.length) return;
     const emptyTitles = pending.filter(q => !q.title.trim());
     if (emptyTitles.length > 0) {
-      toast.error(t("manuaisButton.toastFillAllTitles"));
-      emptyTitles.forEach(q => updateQueueItem(q.id, { status: "error", errorMsg: t("manuaisButton.toastTitleRequired") }));
+      toast.error("Preencha o título de todos os arquivos antes de enviar");
+      emptyTitles.forEach(q => updateQueueItem(q.id, { status: "error", errorMsg: "Título obrigatório" }));
       return;
     }
     setIsUploadingAll(true);
@@ -206,7 +204,7 @@ export function ManuaisButton() {
     for (const item of pending) { const ok = await uploadOne(item); if (ok) successCount++; }
     setIsUploadingAll(false);
     if (successCount > 0) {
-      toast.success(t("manuaisButton.toastManualsAdded", { count: successCount, plural: successCount > 1 ? "is" : "" }));
+      toast.success(`${successCount} manual${successCount > 1 ? "is" : ""} adicionado${successCount > 1 ? "s" : ""} com sucesso`);
       fetchManuals();
     }
     setQueue(prev => prev.filter(q => q.status !== "done"));
@@ -232,7 +230,7 @@ export function ManuaisButton() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" className="h-8 px-2 sm:px-3 gap-1 text-xs">
             <BookOpen className="h-4 w-4" />
-            <span className="hidden sm:inline">{t("manuaisButton.manuals")}</span>
+            <span className="hidden sm:inline">Manuais</span>
             <ChevronDown className="h-3 w-3 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
@@ -242,11 +240,11 @@ export function ManuaisButton() {
           {loading ? (
             <div className="flex items-center justify-center py-4 text-muted-foreground text-sm gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
-              {t("manuaisButton.loading")}
+              Carregando...
             </div>
           ) : manuals.length === 0 ? (
             <div className="px-3 py-2 text-xs text-muted-foreground">
-              {t("manuaisButton.noManualRegistered")}
+              Nenhum manual cadastrado
             </div>
           ) : (
             manuals.map((m) => (
@@ -286,7 +284,7 @@ export function ManuaisButton() {
                 className="gap-2 cursor-pointer text-primary focus:text-primary"
               >
                 <Plus className="h-4 w-4" />
-                {t("manuaisButton.addManuals")}
+                Adicionar manuais
               </DropdownMenuItem>
             </>
           )}
@@ -299,7 +297,7 @@ export function ManuaisButton() {
           <DialogHeader className="px-4 pt-4 pb-3 border-b border-border/40 shrink-0">
             <DialogTitle className="flex items-center gap-2 text-sm">
               <BookOpen className="h-4 w-4" />
-              {t("manuaisButton.addManuals")}
+              Adicionar Manuais
             </DialogTitle>
           </DialogHeader>
 
@@ -320,8 +318,8 @@ export function ManuaisButton() {
               disabled={isUploadingAll}
             >
               <Upload className="h-4 w-4 shrink-0" />
-              {t("manuaisButton.selectPdfs")}
-              <span className="opacity-60">{t("manuaisButton.multipleMaxEach", { mb: MAX_FILE_SIZE_MB })}</span>
+              Selecionar PDFs
+              <span className="opacity-60">(múltiplos, máx. {MAX_FILE_SIZE_MB}MB cada)</span>
             </Button>
 
             {/* Fila de arquivos com scroll */}
@@ -354,7 +352,7 @@ export function ManuaisButton() {
 
                     {item.status !== "done" && (
                       <div className="space-y-1">
-                        <Label className="text-[10px]">{t("manuaisButton.titleLabel")}</Label>
+                        <Label className="text-[10px]">Título *</Label>
                         <input
                           type="text" value={item.title}
                           onChange={e => updateQueueItem(item.id, {
@@ -363,7 +361,7 @@ export function ManuaisButton() {
                             errorMsg: undefined,
                           })}
                           disabled={item.status === "uploading"}
-                          placeholder={t("manuaisButton.manualTitlePlaceholder")} maxLength={200}
+                          placeholder="Título do manual" maxLength={200}
                           className="w-full rounded-md border border-border bg-background px-2.5 py-1 text-[11px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
                         />
                       </div>
@@ -371,12 +369,12 @@ export function ManuaisButton() {
 
                     {item.status !== "done" && (
                       <div className="space-y-1">
-                        <Label className="text-[10px]">{t("manuaisButton.descriptionLabel")}</Label>
+                        <Label className="text-[10px]">Descrição</Label>
                         <Textarea
                           value={item.description}
                           onChange={e => updateQueueItem(item.id, { description: e.target.value })}
                           disabled={item.status === "uploading"}
-                          placeholder={t("manuaisButton.optional")} rows={1}
+                          placeholder="Opcional" rows={1}
                           className="text-[11px] resize-none"
                         />
                       </div>
@@ -397,14 +395,14 @@ export function ManuaisButton() {
           {/* Footer */}
           <div className="flex justify-end gap-2 px-4 py-3 border-t border-border/40 shrink-0">
             <Button variant="outline" size="sm" onClick={handleCloseDialog} disabled={isUploadingAll}>
-              {hasQueue && queue.some(q => q.status === "done") ? t("manuaisButton.close") : t("manuaisButton.cancel")}
+              {hasQueue && queue.some(q => q.status === "done") ? "Fechar" : "Cancelar"}
             </Button>
             {hasQueue && pendingCount > 0 && (
               <Button size="sm" onClick={handleUploadAll} disabled={isUploadingAll}>
                 {isUploadingAll ? (
-                  <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />{t("manuaisButton.sending")}</>
+                  <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Enviando...</>
                 ) : (
-                  <><Upload className="h-3.5 w-3.5 mr-1.5" />{t("manuaisButton.sendFiles", { count: pendingCount, plural: pendingCount > 1 ? "s" : "" })}</>
+                  <><Upload className="h-3.5 w-3.5 mr-1.5" />Enviar {pendingCount} arquivo{pendingCount > 1 ? "s" : ""}</>
                 )}
               </Button>
             )}
@@ -416,18 +414,18 @@ export function ManuaisButton() {
       <AlertDialog open={!!deleteTarget} onOpenChange={o => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("manuaisButton.deleteManualTitle")}</AlertDialogTitle>
+            <AlertDialogTitle>Excluir manual</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("manuaisButton.deleteManualDesc")} <b>{deleteTarget?.title}</b>{t("manuaisButton.cannotUndo")}
+              Tem certeza que deseja excluir <b>{deleteTarget?.title}</b>? Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("manuaisButton.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => deleteTarget && handleDelete(deleteTarget)}
             >
-              {t("manuaisButton.delete")}
+              Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

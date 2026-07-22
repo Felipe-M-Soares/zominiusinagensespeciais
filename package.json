@@ -1,5 +1,5 @@
 {
-  "name": "zomini-usinagens-especiais",
+  "name": "concept-usinagens-especiais",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -35,8 +35,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",
-    "i18next": "^26.3.6",
-    "i18next-browser-languagedetector": "^8.2.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "jszip": "^3.10.1",
@@ -45,7 +43,6 @@
     "pdfjs-dist": "^6.1.200",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-i18next": "^17.0.10",
     "react-router-dom": "^6.30.1",
     "recharts": "^2.15.4",
     "sonner": "^1.7.4",

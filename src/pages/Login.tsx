@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +9,6 @@ import { logger } from "@/lib/logger";
 import logoZomini from "@/assets/logo_zomini.png";
 
 export default function Login() {
-  const { t } = useTranslation();
   const [login, setLogin]               = useState("");
   const [password, setPassword]         = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +34,7 @@ export default function Login() {
       navigate("/");
     } catch (err) {
       logger.error("Login error:", err);
-      toast.error(t("login.unexpectedError"));
+      toast.error("Erro inesperado. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -114,20 +112,20 @@ export default function Login() {
 
           <div>
             <h2 className="text-4xl font-bold leading-tight" style={{ color: "#f0f8ff", letterSpacing: "-0.02em" }}>
-              {t("login.heroTitleLine1")}<br />
-              <span style={{ color: "hsl(197,100%,60%)" }}>{t("login.heroTitleLine2")}</span>
+              Sistema de<br />
+              <span style={{ color: "hsl(197,100%,60%)" }}>Gestão Integrada</span>
             </h2>
             <p className="mt-4 text-base leading-relaxed" style={{ color: "hsla(197,20%,75%,0.8)" }}>
-              {t("login.heroSubtitle")}
+              Controle completo de estoque, produção e comercial — tudo em um único lugar.
             </p>
           </div>
 
           {/* Métricas decorativas */}
           <div className="grid grid-cols-3 gap-4 pt-4">
             {[
-              { label: t("login.metricModules"), value: "7" },
-              { label: t("login.metricIntegrated"), value: "100%" },
-              { label: t("login.metricRealTime"), value: "∞" },
+              { label: "Módulos", value: "7" },
+              { label: "Integrado", value: "100%" },
+              { label: "Tempo Real", value: "∞" },
             ].map((m) => (
               <div
                 key={m.label}
@@ -147,7 +145,7 @@ export default function Login() {
         {/* Rodapé */}
         <div className="relative z-10">
           <p className="text-xs" style={{ color: "hsla(197,20%,60%,0.5)" }}>
-            © {new Date().getFullYear()} {t("login.footer")}
+            © {new Date().getFullYear()} Zomini Usinagens Especiais
           </p>
         </div>
       </div>
@@ -174,16 +172,16 @@ export default function Login() {
               className="text-xs font-semibold uppercase tracking-[0.15em] mb-2"
               style={{ color: "hsl(197,100%,40%)" }}
             >
-              {t("login.welcomeBack")}
+              Bem-vindo de volta
             </p>
             <h1
               className="text-3xl font-bold"
               style={{ color: "hsl(0,0%,9%)", letterSpacing: "-0.02em" }}
             >
-              {t("login.accessAccount")}
+              Acesse sua conta
             </h1>
             <p className="mt-2 text-sm" style={{ color: "hsl(0,0%,45%)" }}>
-              {t("login.enterCredentials")}
+              Digite suas credenciais para continuar
             </p>
           </div>
 
@@ -198,9 +196,9 @@ export default function Login() {
             >
               <ShieldX className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "hsl(0,72%,50%)" }} />
               <div>
-                <p className="text-sm font-semibold" style={{ color: "hsl(0,72%,38%)" }}>{t("login.blockedTitle")}</p>
+                <p className="text-sm font-semibold" style={{ color: "hsl(0,72%,38%)" }}>Acesso Bloqueado</p>
                 <p className="text-xs mt-0.5" style={{ color: "hsl(0,50%,50%)" }}>
-                  {t("login.blockedMessage")}
+                  Seu acesso foi bloqueado. Entre em contato com o administrador.
                 </p>
               </div>
             </div>
@@ -214,11 +212,11 @@ export default function Login() {
                 className="text-xs font-semibold uppercase tracking-wider"
                 style={{ color: "hsl(0,0%,30%)" }}
               >
-                {t("login.loginLabel")}
+                Login
               </label>
               <Input
                 type="text"
-                placeholder={t("login.loginPlaceholder")}
+                placeholder="Seu login"
                 value={login}
                 onChange={(e) => setLogin(e.target.value)}
                 required
@@ -239,7 +237,7 @@ export default function Login() {
                 className="text-xs font-semibold uppercase tracking-wider"
                 style={{ color: "hsl(0,0%,30%)" }}
               >
-                {t("login.passwordLabel")}
+                Senha
               </label>
               <div className="relative">
                 <Input
@@ -291,11 +289,11 @@ export default function Login() {
                 {loading ? (
                   <>
                     <div className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    {t("login.signingIn")}
+                    Entrando...
                   </>
                 ) : (
                   <>
-                    {t("login.signIn")}
+                    Entrar
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 duration-200" />
                   </>
                 )}

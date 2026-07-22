@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { History, X, RefreshCw, ArrowDownCircle, ArrowUpCircle, User } from "lucide-react";
 import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
-import { useTranslation } from "react-i18next";
 
 interface HistoricoGeralProps {
   open: boolean;
@@ -14,7 +13,6 @@ interface HistoricoGeralProps {
 }
 
 export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralProps) {
-  const { t } = useTranslation();
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -63,7 +61,7 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
       const data = await fetchAllMovements(200, "expedicao");
       setMovements(data.filter(isComercialMovement));
     } catch (_e) {
-      toast.error(t("historicoGeralModal.loadError"));
+      toast.error("Erro ao carregar histórico.");
     } finally {
       setLoading(false);
     }
@@ -72,8 +70,8 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
   function fmtDate(iso: string) {
     const d = new Date(iso);
     return {
-      date: d.toLocaleDateString(t("historicoGeralModal.localeCode"), { day: "2-digit", month: "2-digit", year: "2-digit" }),
-      time: d.toLocaleTimeString(t("historicoGeralModal.localeCode"), { hour: "2-digit", minute: "2-digit" }),
+      date: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }),
+      time: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
     };
   }
 
@@ -89,19 +87,19 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
             <div>
               <div className="flex items-center gap-2">
                 <History className="h-4 w-4 text-violet-500" />
-                <p className="text-sm font-semibold">{t("historicoGeralModal.title")}</p>
+                <p className="text-sm font-semibold">Histórico Geral — Comercial</p>
               </div>
               <p className="text-[12px] text-muted-foreground mt-0.5">
-                {t("historicoGeralModal.subtitle")}
+                Últimas movimentações do comercial (agrupadas por pedido)
               </p>
             </div>
             <div className="flex items-center gap-1.5">
               {isAdmin && (
                 <ClearHistoryButton
                   rpc="admin_clear_comercial"
-                  label={t("historicoGeralModal.clearLabel")}
-                  confirmTitle={t("historicoGeralModal.clearConfirmTitle")}
-                  confirmDescription={t("historicoGeralModal.clearConfirmDesc")}
+                  label="Apagar"
+                  confirmTitle="Apagar histórico comercial?"
+                  confirmDescription="Apaga todos os pedidos e itens comerciais. O estoque e os cadastros de peças são mantidos."
                   onCleared={load}
                   className="h-7 px-2"
                 />
@@ -111,7 +109,7 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
                 onClick={load}
                 disabled={loading}
                 className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
-                title={t("historicoGeralModal.refresh")}
+                title="Atualizar"
               >
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               </button>
@@ -134,7 +132,7 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
           )}
           {!loading && movements.length === 0 && (
             <div className="text-center py-12 text-sm text-muted-foreground">
-              {t("historicoGeralModal.empty")}
+              Nenhuma movimentação registrada no comercial
             </div>
           )}
           {!loading && (() => {
@@ -196,7 +194,7 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-violet-500")}>
                       {isEntrada ? "+" : "-"}{g.quantity}
-                      <span className="text-[10px] font-normal ml-0.5 opacity-70">{t("historicoGeralModal.units")}</span>
+                      <span className="text-[10px] font-normal ml-0.5 opacity-70">un.</span>
                     </span>
                     <span className="text-[10px] text-muted-foreground">{date}</span>
                     <span className="text-[10px] text-muted-foreground/60">{time}</span>

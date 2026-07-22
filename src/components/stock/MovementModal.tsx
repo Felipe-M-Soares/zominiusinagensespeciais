@@ -18,27 +18,23 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { formatLote, loteBase, loteStatus } from "@/lib/lote";
-import i18n from "@/i18n";
-import { useTranslation } from "react-i18next";
 
 // ─── Tipos de saída ────────────────────────────────────────────────────────────
-function buildSaidaTypes(tr: (k: string) => string) {
-  return [
-    { value: "retirada" as const, label: tr("movementModal.withdrawal"), icon: Wrench },
-  ];
-}
+const SAIDA_TYPES = [
+  { value: "retirada", label: "Retirada", icon: Wrench },
+] as const;
 
 
 function loteHint(lote: string): string {
-  if (!lote) return i18n.t("recebimentoMaterialModal.loteHintEmpty");
-  if (loteStatus(lote) === "valid") return i18n.t("recebimentoMaterialModal.loteHintValid");
-  if (lote.length < 6) return i18n.t("recebimentoMaterialModal.loteHintDate");
-  if (lote.length === 6) return i18n.t("recebimentoMaterialModal.loteHintShift");
-  if (lote.length === 7 && !lote.includes("-")) return i18n.t("recebimentoMaterialModal.loteHintDash");
-  if (/^\d{6,7}-\d$/.test(lote)) return i18n.t("recebimentoMaterialModal.loteHintSublote");
-  if (/^\d{6,7}-\d{2}$/.test(lote)) return i18n.t("recebimentoMaterialModal.loteHintValid2");
-  if (/^\d{6,7}-\d{2}\//.test(lote)) return i18n.t("recebimentoMaterialModal.loteHintContinuation");
-  return i18n.t("recebimentoMaterialModal.loteHintFormat");
+  if (!lote) return "Ex: 0101261-01 (com turno) ou 010126-01 (peça de terceiro, sem turno)";
+  if (loteStatus(lote) === "valid") return "Lote válido ✓";
+  if (lote.length < 6) return "Digite a data: DDMMAA";
+  if (lote.length === 6) return "Adicione o turno (1 dígito) ou já coloque o hífen se a peça não tem turno";
+  if (lote.length === 7 && !lote.includes("-")) return "Adicione o hífen";
+  if (/^\d{6,7}-\d$/.test(lote)) return "Digite os 2 dígitos do sublote";
+  if (/^\d{6,7}-\d{2}$/.test(lote)) return "Lote válido! Adicione /A, /B... se for continuação";
+  if (/^\d{6,7}-\d{2}\//.test(lote)) return "Adicione a letra de continuação (A, B, C...)";
+  return "Formato: DDMMYYS-NN (com turno) ou DDMMYY-NN (sem turno)";
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -53,8 +49,6 @@ interface Props {
 }
 
 export function MovementModal({ item, open, initialType = "entrada", lockedType, onClose, onSuccess }: Props) {
-  const { t: tr } = useTranslation();
-  const SAIDA_TYPES = buildSaidaTypes(tr);
   const { user } = useAuth();
   const displayName: string | null =
     (user?.user_metadata?.display_name as string) ?? user?.email ?? null;
@@ -139,11 +133,11 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
   async function handleSubmit() {
     const safeQty = Math.trunc(resolvedQty);
     if (!item || safeQty < 1) return;
-    if (!lote.trim()) { toast.error(tr("movementModal.toastLoteRequired")); return; }
-    if (loteOk === "invalid") { toast.error(tr("movementModal.toastLoteInvalid")); return; }
+    if (!lote.trim()) { toast.error("Informe o número do lote."); return; }
+    if (loteOk === "invalid") { toast.error("Lote inválido. Use DDMMYYS-NN (com turno) ou DDMMYY-NN (sem turno, peça de terceiro).\nEx: 0101261-01 ou 010126-01"); return; }
 
     if (loteRepetidoNoIntermediario) {
-      toast.error(tr("movementModal.toastLoteRepeated"));
+      toast.error("Lote repetido");
       return;
     }
 
@@ -167,7 +161,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
       onSuccess();
       onClose();
     } else {
-      toast.error(result.error ?? tr("movementModal.toastError"));
+      toast.error(result.error ?? "Erro ao registrar movimento.");
     }
   }
 
@@ -179,7 +173,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
           <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
           <div className="relative">
             <DialogHeader>
-              <DialogTitle className="text-sm font-semibold">{tr("movementModal.title")}</DialogTitle>
+              <DialogTitle className="text-sm font-semibold">Movimentar Estoque</DialogTitle>
             </DialogHeader>
             <div className="mt-3 rounded-xl bg-muted/20 border border-border/30 p-3 space-y-1">
               <p className="text-[13px] font-semibold leading-snug line-clamp-2">{d.model}</p>
@@ -215,7 +209,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
                     : "bg-background border-border text-muted-foreground hover:bg-muted/30"
                 )}>
                 {t === "entrada" ? <ArrowDownCircle className="h-4 w-4" /> : <ArrowUpCircle className="h-4 w-4" />}
-                {t === "entrada" ? tr("movementModal.entry") : tr("movementModal.exit")}
+                {t === "entrada" ? "Entrada" : "Saída"}
               </button>
             ))}
           </div>
@@ -227,7 +221,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Tag className="h-3 w-3" />
-              {isSaidaMode ? tr("movementModal.selectLote") : tr("movementModal.loteNumber")}
+              {isSaidaMode ? "Selecionar Lote *" : "Número do Lote *"}
             </label>
 
             {/* SAÍDA: dropdown de lotes existentes com saldo */}
@@ -245,7 +239,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
                   )}
                 >
                   <span className={lote ? "text-foreground font-semibold" : "text-muted-foreground text-xs font-sans tracking-normal"}>
-                    {lote || (lotesLoading ? tr("movementModal.loadingLotes") : existingLotes.length === 0 ? tr("movementModal.noLoteAvailable") : tr("movementModal.selectLotePlaceholder"))}
+                    {lote || (lotesLoading ? "Carregando lotes..." : existingLotes.length === 0 ? "Nenhum lote disponível" : "Selecione o lote...")}
                   </span>
                   <div className="flex items-center gap-1.5">
                     {lote && <CheckCircle2 className="h-3.5 w-3.5 text-success" />}
@@ -262,7 +256,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
                       </div>
                     ) : existingLotes.length === 0 ? (
                       <div className="px-3 py-3 text-[12px] text-muted-foreground text-center">
-                        {tr("movementModal.noLoteWithBalance")}
+                        Nenhum lote com saldo disponível
                       </div>
                     ) : (
                       <div className="max-h-[180px] overflow-y-auto">
@@ -283,7 +277,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
                             </div>
                             <div className="flex items-center gap-1 text-success">
                               <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
-                              <span className="text-[10px] opacity-70">{tr("movementModal.units")}</span>
+                              <span className="text-[10px] opacity-70">un.</span>
                             </div>
                           </button>
                         ))}
@@ -326,11 +320,11 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
                   loteOk === "invalid" ? "text-destructive/70" :
                   "text-muted-foreground/60"
                 )}>
-                  {loteRepetidoNoIntermediario ? tr("movementModal.loteRepeated") : loteHint(lote)}
+                  {loteRepetidoNoIntermediario ? "Lote repetido" : loteHint(lote)}
                 </p>
                 {loteOk === "valid" && !loteRepetidoNoIntermediario && existingLotes.some(l => l.lote === lote.toUpperCase()) && (
                   <p className="text-[10px] text-warning font-medium flex items-center gap-1">
-                    {tr("movementModal.loteAlreadyExists")}
+                    ⚠️ Este lote já existe para este item. A entrada será somada ao lote existente.
                   </p>
                 )}
               </>
@@ -340,10 +334,10 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
           {/* Quantidade */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              {tr("movementModal.quantity")}
+              Quantidade
               {isSaidaMode && lote && existingLotes.find(l => l.lote === lote) && (
                 <span className="ml-1.5 text-success/70 normal-case">
-                  ({tr("movementModal.available")}: {existingLotes.find(l => l.lote === lote)?.saldo} {tr("movementModal.units")})
+                  (disponível: {existingLotes.find(l => l.lote === lote)?.saldo} un.)
                 </span>
               )}
             </label>
@@ -376,10 +370,10 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
           {/* Observação livre */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              {tr("movementModal.note")} <span className="normal-case text-muted-foreground/50">{tr("movementModal.optional")}</span>
+              Observação <span className="normal-case text-muted-foreground/50">(opcional)</span>
             </label>
             <Input
-              placeholder={isSaidaMode ? tr("movementModal.notePlaceholderExit") : tr("movementModal.notePlaceholderEntry")}
+              placeholder={isSaidaMode ? "Ex: paciente, cirurgia..." : "Ex: NF 1234, fornecedor..."}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
@@ -390,8 +384,8 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
           {/* Aviso de reservado */}
           {isSaidaMode && item.quantity_reserved > 0 && (
             <div className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs bg-warning/8 border border-warning/30 text-warning">
-              <span className="font-semibold">{item.quantity_reserved} {tr("movementModal.reservedUnits")}</span>
-              <span className="opacity-70">{tr("movementModal.reservedHint")}</span>
+              <span className="font-semibold">{item.quantity_reserved} un. reservadas</span>
+              <span className="opacity-70">— indisponíveis para retirada</span>
             </div>
           )}
 
@@ -404,16 +398,16 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
               ? "bg-warning/8 border-warning/30 text-warning"
               : "bg-success/8 border-success/30 text-success"
           )}>
-            <span className="text-xs font-medium opacity-70">{tr("movementModal.newStock")}</span>
+            <span className="text-xs font-medium opacity-70">Novo estoque</span>
             <span className="font-bold">
-              {afterQty < 0 ? tr("movementModal.insufficient") : `${afterQty} ` + tr("movementModal.unitsSuffix", { plural: afterQty !== 1 ? "s" : "" })}
+              {afterQty < 0 ? "Insuficiente" : `${afterQty} unidade${afterQty !== 1 ? "s" : ""}`}
             </span>
           </div>
 
           {/* Ações */}
           <div className="flex gap-2 pt-1">
             <Button variant="outline" className="flex-1 h-10 rounded-xl" onClick={onClose}>
-              {tr("movementModal.cancel")}
+              Cancelar
             </Button>
             <Button
               className={cn(
@@ -430,7 +424,7 @@ export function MovementModal({ item, open, initialType = "entrada", lockedType,
                 : type === "entrada"
                 ? <ArrowDownCircle className="h-4 w-4" />
                 : <ArrowUpCircle className="h-4 w-4" />}
-              {tr("movementModal.confirm")} {type === "entrada" ? tr("movementModal.entry") : tr("movementModal.exit")}
+              Confirmar {type === "entrada" ? "Entrada" : "Saída"}
             </Button>
           </div>
         </div>

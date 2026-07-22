@@ -8,7 +8,6 @@ import {
   useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { TableSkeleton } from "@/components/PageSkeleton";
@@ -1485,7 +1484,6 @@ interface LancModalProps {
 }
 
 function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }: LancModalProps) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const categorias = tipo === "compra_producao" ? CATEGORIAS_PRODUCAO
                    : tipo === "compra_empresa"  ? CATEGORIAS_EMPRESA
@@ -1524,8 +1522,8 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
   if (!open) return null;
 
   async function handleSave() {
-    if (!descricao.trim()) { toast.error(t("lancamentoModal.toastDescRequired")); return; }
-    if (!valor || parseFloat(valor) <= 0) { toast.error(t("lancamentoModal.toastValueRequired")); return; }
+    if (!descricao.trim()) { toast.error("Descrição obrigatória"); return; }
+    if (!valor || parseFloat(valor) <= 0) { toast.error("Informe o valor"); return; }
     setSaving(true);
     const payload = {
       tipo, categoria, descricao: descricao.trim(),
@@ -1545,17 +1543,17 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
         ({ error: err } = await supabase.from("financeiro_lancamentos").insert(payload));
       }
       if (err) throw err;
-      toast.success(inicial ? t("lancamentoModal.toastLancUpdated") : t("lancamentoModal.toastLancRegistered"));
+      toast.success(inicial ? "Lançamento atualizado!" : "Lançamento registrado!");
       onSuccess();
     } catch (e) {
-      toast.error(t("lancamentoModal.toastSaveError"));
+      toast.error("Erro ao salvar lançamento.");
       logger.error("LancamentoModal:", e);
     } finally { setSaving(false); }
   }
 
-  const tipoLabel = tipo === "compra_producao" ? t("lancamentoModal.typeProduction")
-                  : tipo === "compra_empresa"  ? t("lancamentoModal.typeCompany")
-                  :                              t("lancamentoModal.typeOperationalCost");
+  const tipoLabel = tipo === "compra_producao" ? "Compra — Produção"
+                  : tipo === "compra_empresa"  ? "Compra — Empresa"
+                  :                              "Custo Operacional";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
@@ -1565,7 +1563,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
             <div className="h-7 w-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
               <ShoppingCart className="h-4 w-4 text-violet-500" />
             </div>
-            <span className="text-sm font-semibold">{inicial ? t("lancamentoModal.edit") : t("lancamentoModal.new")} {tipoLabel}</span>
+            <span className="text-sm font-semibold">{inicial ? "Editar" : "Novo"} {tipoLabel}</span>
             <TestBadge modoTeste={modoTeste} />
           </div>
           <button type="button" onClick={onClose}
@@ -1575,7 +1573,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
         </div>
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
           <div className="space-y-2">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("lancamentoModal.category")}</label>
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Categoria *</label>
             <div className="grid grid-cols-2 gap-1.5">
               {categorias.map(cat => {
                 const Icon = cat.icon;
@@ -1593,8 +1591,8 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
             </div>
           </div>
           {[
-            { label: t("lancamentoModal.description"), val: descricao, set: setDescricao, placeholder: t("lancamentoModal.descriptionPlaceholder") },
-            { label: t("lancamentoModal.supplierCompany"), val: fornecedor, set: setFornecedor, placeholder: t("lancamentoModal.supplierPlaceholder") },
+            { label: "Descrição *", val: descricao, set: setDescricao, placeholder: "Ex: Compressor industrial, conta de luz..." },
+            { label: "Fornecedor / Empresa", val: fornecedor, set: setFornecedor, placeholder: "Nome do fornecedor" },
           ].map(f => (
             <div key={f.label} className="space-y-1">
               <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{f.label}</label>
@@ -1606,7 +1604,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
           ))}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("lancamentoModal.value")}</label>
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Valor (R$) *</label>
               <input type="number" min="0" step="0.01" value={valor} onChange={e => setValor(e.target.value)}
                 placeholder="0,00"
                 className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
@@ -1614,7 +1612,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                <CalendarDays className="h-2.5 w-2.5" />{t("lancamentoModal.date")}
+                <CalendarDays className="h-2.5 w-2.5" />Data
               </label>
               <input type="date" value={data} onChange={e => setData(e.target.value)}
                 className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
@@ -1622,7 +1620,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("lancamentoModal.nfStatus")}</label>
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Status da Nota Fiscal</label>
             <div className="flex gap-1.5">
               {(["sem_nf", "manual", "pendente"] as const).map(s => (
                 <button key={s} type="button" onClick={() => setStatusNf(s)}
@@ -1630,18 +1628,18 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                     statusNf === s
                       ? "border-violet-500/50 bg-violet-500/10 text-violet-600"
                       : "border-border/30 bg-muted/10 text-muted-foreground")}>
-                  {s === "sem_nf" ? t("lancamentoModal.noNf") : s === "manual" ? t("lancamentoModal.manual") : t("lancamentoModal.pending")}
+                  {s === "sem_nf" ? "Sem NF" : s === "manual" ? "Manual" : "Pendente"}
                 </button>
               ))}
             </div>
             {statusNf === "manual" && (
               <div className="space-y-2">
                 <input type="text" value={nfManual} onChange={e => setNfManual(e.target.value.slice(0,60))}
-                  placeholder={t("lancamentoModal.nfNumberPlaceholder")}
+                  placeholder="Número da NF (ex: NF-0001)"
                   className="w-full h-8 rounded-xl border border-border/50 bg-background text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
                 <input type="text" value={chaveNfe} onChange={e => setChaveNfe(e.target.value.replace(/\D/g,"").slice(0,44))}
-                  placeholder={t("lancamentoModal.nfeKeyPlaceholder")}
+                  placeholder="Chave de acesso NF-e 44 dígitos (opcional)"
                   className="w-full h-8 rounded-xl border border-border/50 bg-background text-foreground px-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>
@@ -1656,7 +1654,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                   <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-background text-foreground shadow transition-all",
                     recorrente ? "left-[calc(100%-18px)]" : "left-0.5")} />
                 </button>
-                <span className="text-[11px] font-medium">{t("lancamentoModal.recurringCost")}</span>
+                <span className="text-[11px] font-medium">Custo recorrente</span>
               </div>
               {recorrente && (
                 <div className="grid grid-cols-4 gap-1.5">
@@ -1666,7 +1664,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                         periodicidade === p
                           ? "border-violet-500/50 bg-violet-500/10 text-violet-600"
                           : "border-border/30 bg-muted/10 text-muted-foreground")}>
-                      {t(`lancamentoModal.${p === "mensal" ? "monthly" : p === "bimestral" ? "bimonthly" : p === "trimestral" ? "quarterly" : "yearly"}`)}
+                      {p.charAt(0).toUpperCase() + p.slice(1)}
                     </button>
                   ))}
                 </div>
@@ -1674,9 +1672,9 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
             </div>
           )}
           <div className="space-y-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{t("lancamentoModal.notes")}</label>
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Observações</label>
             <textarea value={obs} onChange={e => setObs(e.target.value.slice(0,300))}
-              placeholder={t("lancamentoModal.notesPlaceholder")} rows={2}
+              placeholder="Informações adicionais..." rows={2}
               className="w-full rounded-xl border border-border/50 bg-background text-foreground px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30"
             />
           </div>
@@ -1684,12 +1682,12 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
         <div className="px-5 pb-5 pt-3 border-t border-border/20 shrink-0 flex gap-2">
           <button type="button" onClick={onClose}
             className="h-10 px-4 rounded-xl border border-border/50 text-sm font-medium text-muted-foreground hover:bg-muted/40">
-            {t("lancamentoModal.cancel")}
+            Cancelar
           </button>
           <button type="button" onClick={handleSave} disabled={saving}
             className="flex-1 h-10 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            {inicial ? t("lancamentoModal.saveChanges") : t("lancamentoModal.registerEntry")}
+            {inicial ? "Salvar alterações" : "Registrar lançamento"}
           </button>
         </div>
       </div>
@@ -1700,7 +1698,6 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
 // ─── PainelLancamentos ───────────────────────────────────────────────────────
 
 function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["tipo"]; modoTeste: boolean }) {
-  const { t } = useTranslation();
   const [itens,      setItens]      = useState<LancamentoFinanceiro[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [modalOpen,  setModalOpen]  = useState(false);
@@ -1728,8 +1725,8 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
     setDeleting(true);
     const { error } = await supabase.from("financeiro_lancamentos").delete().eq("id", delItem.id);
     setDeleting(false);
-    if (error) { toast.error(t("painelLancamentos.toastDeleteError")); return; }
-    toast.success(t("painelLancamentos.toastDeleted")); setDelItem(null); load();
+    if (error) { toast.error("Erro ao excluir."); return; }
+    toast.success("Lançamento excluído."); setDelItem(null); load();
   }
 
   const now = new Date();
@@ -1752,10 +1749,10 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
   }), [itens, search, filtroNF, showRecorr, filtroDataInicio, filtroDataFim]);
 
   const nfColors: Record<LancamentoFinanceiro["status_nf"], { label: string; cls: string }> = {
-    sem_nf:     { label: t("painelLancamentos.nfStatus.sem_nf"),        cls: "bg-muted/50 text-muted-foreground border-border/40" },
-    manual:     { label: t("painelLancamentos.nfStatus.manual"),     cls: "bg-violet-500/10 text-violet-600 border-violet-500/20" },
-    pendente:   { label: t("painelLancamentos.nfStatus.pendente"),   cls: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
-    autorizada: { label: t("painelLancamentos.nfStatus.autorizada"), cls: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
+    sem_nf:     { label: "Sem NF",        cls: "bg-muted/50 text-muted-foreground border-border/40" },
+    manual:     { label: "NF Manual",     cls: "bg-violet-500/10 text-violet-600 border-violet-500/20" },
+    pendente:   { label: "NF Pendente",   cls: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+    autorizada: { label: "NF Autorizada", cls: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
   };
 
   return (
@@ -1763,10 +1760,10 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: t("painelLancamentos.thisMonth"),    value: fmtCurrency(totalMes),   icon: CalendarDays,   color: "#f97316" },
-          { label: t("painelLancamentos.grandTotal"), value: fmtCurrency(total),       icon: BarChart3,      color: "#7c3aed" },
-          { label: t("painelLancamentos.recurring"), value: fmtCurrency(totalRecorr), icon: Repeat2,        color: "#0ea5e9" },
-          { label: t("painelLancamentos.noNf"),      value: String(semNF),            icon: AlertTriangle,  color: semNF > 0 ? "#d97706" : "#10b981" },
+          { label: "Este Mês",    value: fmtCurrency(totalMes),   icon: CalendarDays,   color: "#f97316" },
+          { label: "Total Geral", value: fmtCurrency(total),       icon: BarChart3,      color: "#7c3aed" },
+          { label: "Recorrentes", value: fmtCurrency(totalRecorr), icon: Repeat2,        color: "#0ea5e9" },
+          { label: "Sem NF",      value: String(semNF),            icon: AlertTriangle,  color: semNF > 0 ? "#d97706" : "#10b981" },
         ].map(k => {
           const Icon = k.icon;
           return (
@@ -1788,42 +1785,42 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
         <button type="button" onClick={() => { setEditItem(null); setModalOpen(true); }}
           className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[12px] font-bold text-white transition-all hover:opacity-90 active:scale-95"
           style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", boxShadow: "0 2px 8px rgba(124,58,237,0.3)" }}>
-          <PlusCircle size={14} />{t("painelLancamentos.newEntry")}
+          <PlusCircle size={14} />Novo lançamento
         </button>
         <SearchInputWithBarcode
           className="flex-1 min-w-[160px]"
           value={search}
           onChange={v => setSearch(v)}
           onSearch={v => setSearch(v)}
-          placeholder={t("painelLancamentos.searchPlaceholder")}
+          placeholder="Buscar descrição, fornecedor ou bipe o código..."
           height="h-9"
           showSearchIcon
         />
         <select value={filtroNF} onChange={e => setFiltroNF(e.target.value as typeof filtroNF)}
           className="h-9 rounded-xl px-3 text-[12px] font-medium bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-500/30">
-          <option value="todos">{t("painelLancamentos.allNf")}</option>
-          <option value="sem_nf">{t("painelLancamentos.nfStatus.sem_nf")}</option>
-          <option value="manual">{t("painelLancamentos.nfStatus.manual")}</option>
-          <option value="pendente">{t("painelLancamentos.nfStatus.pendente")}</option>
-          <option value="autorizada">{t("painelLancamentos.nfStatus.autorizada")}</option>
+          <option value="todos">Todas NFs</option>
+          <option value="sem_nf">Sem NF</option>
+          <option value="manual">NF Manual</option>
+          <option value="pendente">NF Pendente</option>
+          <option value="autorizada">NF Autorizada</option>
         </select>
         <button type="button" onClick={() => setShowRecorr(v => !v)}
           className={cn("h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold border transition-all",
             showRecorr
               ? "bg-violet-500/15 border-violet-500/40 text-violet-600"
               : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50")}>
-          <Repeat2 size={13} />{t("painelLancamentos.recurring")}
+          <Repeat2 size={13} />Recorrentes
         </button>
         <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}
-          title={t("painelLancamentos.startDate")}
+          title="Data início"
           className="h-9 rounded-xl border border-border/50 bg-background text-foreground text-[11px] px-2 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
         <span className="text-[10px] text-muted-foreground">–</span>
         <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}
-          title={t("painelLancamentos.endDate")}
+          title="Data fim"
           className="h-9 rounded-xl border border-border/50 bg-background text-foreground text-[11px] px-2 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
         {(filtroDataInicio || filtroDataFim) && (
           <button type="button" onClick={() => { setFiltroDataInicio(""); setFiltroDataFim(""); }}
-            className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-muted/50 text-muted-foreground transition-colors" title={t("painelLancamentos.clearPeriod")}>
+            className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-muted/50 text-muted-foreground transition-colors" title="Limpar período">
             <X size={13} />
           </button>
         )}
@@ -1835,7 +1832,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
 
       {!loading && itens.length > 0 && (
         <p className="text-[11px] text-muted-foreground/70">
-          {t("painelLancamentos.ofEntries", { filtered: itensFiltrados.length, total: itens.length })}{search && ` · "${search}"`}
+          {itensFiltrados.length} de {itens.length} lançamentos{search && ` · "${search}"`}
         </p>
       )}
 
@@ -1850,10 +1847,10 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
           </div>
           <div>
             <p className="text-sm font-semibold">
-              {itens.length === 0 ? t("painelLancamentos.noEntryRegistered") : t("painelLancamentos.noResultsForFilter")}
+              {itens.length === 0 ? "Nenhum lançamento registrado" : "Nenhum resultado para o filtro"}
             </p>
             <p className="text-[12px] text-muted-foreground/70 mt-0.5">
-              {itens.length === 0 ? t("painelLancamentos.clickToStart") : t("painelLancamentos.clearFiltersToSeeAll")}
+              {itens.length === 0 ? "Clique em 'Novo lançamento' para começar" : "Limpe os filtros para ver todos"}
             </p>
           </div>
         </div>
@@ -1890,17 +1887,17 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                       </span>
                     )}
                     {isMes && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-600 border border-orange-500/20">{t("painelLancamentos.currentMonth")}</span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-orange-500/10 text-orange-600 border border-orange-500/20">mês atual</span>
                     )}
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-muted-foreground/70">
                     <span className="truncate">{item.fornecedor ?? "—"}</span>
-                    <span className="font-mono shrink-0 ml-2">{new Date(item.data_lancamento + "T12:00:00").toLocaleDateString(t("painelLancamentos.localeCode"))}</span>
+                    <span className="font-mono shrink-0 ml-2">{new Date(item.data_lancamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
                   </div>
                   {(item.nota_fiscal_manual || item.chave_nfe) && (
                     <div className="rounded-lg px-2 py-1.5 bg-muted/30 border border-border/40">
-                      {item.nota_fiscal_manual && <p className="text-[10px] font-mono text-muted-foreground">{t("painelLancamentos.invoiceLabel")} {item.nota_fiscal_manual}</p>}
-                      {item.chave_nfe && <p className="text-[9px] font-mono text-muted-foreground/70 truncate">{t("painelLancamentos.keyLabel")} {item.chave_nfe.slice(0, 20)}…</p>}
+                      {item.nota_fiscal_manual && <p className="text-[10px] font-mono text-muted-foreground">NF: {item.nota_fiscal_manual}</p>}
+                      {item.chave_nfe && <p className="text-[9px] font-mono text-muted-foreground/70 truncate">Chave: {item.chave_nfe.slice(0, 20)}…</p>}
                     </div>
                   )}
                   {item.observacoes && <p className="text-[10px] text-muted-foreground italic line-clamp-2">{item.observacoes}</p>}
@@ -1908,12 +1905,12 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                 <div className="flex" style={{ borderTop: "1px solid hsl(var(--border))" }}>
                   <button type="button" onClick={() => { setEditItem(item); setModalOpen(true); }}
                     className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-violet-500/8 hover:text-violet-700 transition-colors">
-                    <Edit3 size={11} />{t("painelLancamentos.edit")}
+                    <Edit3 size={11} />Editar
                   </button>
                   <div style={{ width: 1, background: "hsl(var(--border))" }} />
                   <button type="button" onClick={() => setDelItem(item)}
                     className="flex-1 h-8 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted-foreground/70 hover:bg-red-500/8 hover:text-red-600 transition-colors">
-                    <Trash2 size={11} />{t("painelLancamentos.delete")}
+                    <Trash2 size={11} />Excluir
                   </button>
                 </div>
               </div>
@@ -1936,7 +1933,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                 <Trash2 size={18} className="text-red-600" />
               </div>
               <div>
-                <p className="text-[14px] font-bold">{t("painelLancamentos.deleteEntryTitle")}</p>
+                <p className="text-[14px] font-bold">Excluir lançamento?</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5">{delItem.descricao}</p>
                 <p className="text-[13px] font-bold mt-1 text-red-500">{fmtCurrency(delItem.valor)}</p>
               </div>
@@ -1944,13 +1941,13 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
             <div className="flex gap-2">
               <button type="button" onClick={() => setDelItem(null)} disabled={deleting}
                 className="flex-1 h-9 rounded-xl border border-border/50 text-sm font-semibold text-muted-foreground hover:bg-muted/40 transition-colors">
-                {t("painelLancamentos.cancel")}
+                Cancelar
               </button>
               <button type="button" onClick={handleDelete} disabled={deleting}
                 className="flex-1 h-9 rounded-xl text-white text-sm font-bold transition-colors flex items-center justify-center gap-1.5"
                 style={{ background: "#dc2626" }}>
                 {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                {t("painelLancamentos.delete")}
+                Excluir
               </button>
             </div>
           </div>
@@ -1963,7 +1960,6 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
 // ─── PainelDashboard ─────────────────────────────────────────────────────────
 
 function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamentos: LancamentoFinanceiro[] }) {
-  const { t } = useTranslation();
   const mesAtual = new Date().toISOString().slice(0, 7);
 
   const vendas = pedidos.filter(p => p.status === "faturado" || p.status === "enviado");
@@ -1978,9 +1974,9 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
   const pendentesNF = pedidos.filter(p => p.status === "pronto").length;
 
   const custoPorTipo = [
-    { label: t("financeiro.production"),    valor: lancamentos.filter(l => l.tipo === "compra_producao").reduce((s, l) => s + l.valor, 0),    color: "#7c3aed" },
-    { label: t("financeiro.company"),     valor: lancamentos.filter(l => l.tipo === "compra_empresa").reduce((s, l) => s + l.valor, 0),     color: "#0ea5e9" },
-    { label: t("financeiro.operational"), valor: lancamentos.filter(l => l.tipo === "custo_operacional").reduce((s, l) => s + l.valor, 0),  color: "#f97316" },
+    { label: "Produção",    valor: lancamentos.filter(l => l.tipo === "compra_producao").reduce((s, l) => s + l.valor, 0),    color: "#7c3aed" },
+    { label: "Empresa",     valor: lancamentos.filter(l => l.tipo === "compra_empresa").reduce((s, l) => s + l.valor, 0),     color: "#0ea5e9" },
+    { label: "Operacional", valor: lancamentos.filter(l => l.tipo === "custo_operacional").reduce((s, l) => s + l.valor, 0),  color: "#f97316" },
   ];
 
   const topFornecedores = Object.entries(
@@ -1998,10 +1994,10 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: t("financeiro.revenueMonth"),   value: fmtCurrency(totalReceitaMes), sub: `${vendas.filter(p => (p.nf_criada_em ?? p.created_at).startsWith(mesAtual)).length} ${t("financeiro.salesSuffix")}`, icon: TrendingUp, color: "#10b981" },
-          { label: t("financeiro.costsMonth"),    value: fmtCurrency(totalCustoMes),   sub: `${lancamentos.filter(l => l.data_lancamento.startsWith(mesAtual)).length} ${t("financeiro.entriesSuffix")}`, icon: TrendingDown, color: "#ef4444" },
-          { label: t("financeiro.monthResult"), value: fmtCurrency(lucroMes),        sub: lucroMes >= 0 ? t("financeiro.profit") : t("financeiro.loss"), icon: BarChart2, color: lucroMes >= 0 ? "#7c3aed" : "#f97316" },
-          { label: t("financeiro.pendingNf"),    value: String(pendentesNF),           sub: t("financeiro.readyOrders"), icon: FileText, color: "#0ea5e9" },
+          { label: "Receita do Mês",   value: fmtCurrency(totalReceitaMes), sub: `${vendas.filter(p => (p.nf_criada_em ?? p.created_at).startsWith(mesAtual)).length} vendas`, icon: TrendingUp, color: "#10b981" },
+          { label: "Custos do Mês",    value: fmtCurrency(totalCustoMes),   sub: `${lancamentos.filter(l => l.data_lancamento.startsWith(mesAtual)).length} lançamentos`, icon: TrendingDown, color: "#ef4444" },
+          { label: "Resultado do Mês", value: fmtCurrency(lucroMes),        sub: lucroMes >= 0 ? "Lucro" : "Prejuízo", icon: BarChart2, color: lucroMes >= 0 ? "#7c3aed" : "#f97316" },
+          { label: "NFs Pendentes",    value: String(pendentesNF),           sub: "pedidos prontos", icon: FileText, color: "#0ea5e9" },
         ].map(k => {
           const Icon = k.icon;
           return (
@@ -2027,7 +2023,7 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
         <div className="rounded-2xl bg-card border border-border/50 p-4 space-y-4">
           <div className="flex items-center gap-2">
             <PieChart size={15} className="text-violet-500" />
-            <p className="text-sm font-bold">{t("financeiro.costDistribution")}</p>
+            <p className="text-sm font-bold">Distribuição de Custos</p>
           </div>
           {custoPorTipo.map(c => {
             const pct = totalCusto > 0 ? (c.valor / totalCusto) * 100 : 0;
@@ -2040,12 +2036,12 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
                 <div className="h-2 rounded-full bg-muted/40 overflow-hidden">
                   <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: c.color }} />
                 </div>
-                <p className="text-[10px] text-muted-foreground">{pct.toFixed(1)}{t("financeiro.ofTotal")}</p>
+                <p className="text-[10px] text-muted-foreground">{pct.toFixed(1)}% do total</p>
               </div>
             );
           })}
           <div className="pt-2 border-t border-border/40 flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-muted-foreground">{t("financeiro.totalCosts")}</span>
+            <span className="text-[11px] font-semibold text-muted-foreground">Total custos</span>
             <span className="text-[14px] font-black text-red-600 dark:text-red-400 font-mono">{fmtCurrency(totalCusto)}</span>
           </div>
         </div>
@@ -2053,10 +2049,10 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
         <div className="rounded-2xl bg-card border border-border/50 p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Layers size={15} className="text-violet-500" />
-            <p className="text-sm font-bold">{t("financeiro.topSuppliers")}</p>
+            <p className="text-sm font-bold">Maiores Fornecedores</p>
           </div>
           {topFornecedores.length === 0 ? (
-            <p className="text-[12px] text-muted-foreground py-4 text-center">{t("financeiro.noSupplierRegistered")}</p>
+            <p className="text-[12px] text-muted-foreground py-4 text-center">Nenhum fornecedor registrado ainda</p>
           ) : (
             topFornecedores.map(([nome, valor], idx) => (
               <div key={nome} className="flex items-center gap-3">
@@ -2072,7 +2068,7 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
           {recorrentes.length > 0 && (
             <div className="pt-3 border-t border-border/40 space-y-2">
               <p className="text-[11px] font-bold flex items-center gap-1.5">
-                <Repeat2 size={12} className="text-sky-500" />{t("financeiro.recurringCosts")} ({recorrentes.length})
+                <Repeat2 size={12} className="text-sky-500" />Custos Recorrentes ({recorrentes.length})
               </p>
               {recorrentes.slice(0, 3).map(l => (
                 <div key={l.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-sky-500/5 border border-sky-500/15">
@@ -2651,7 +2647,6 @@ async function sugerirNcmParaPeca(deviceId: string, model: string, reference: st
 }
 
 function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
-  const { t } = useTranslation();
   const { isAdmin } = useAuth();
   const [devices,    setDevices]    = useState<DevicePreco[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -2690,8 +2685,8 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
   async function limparPrecos() {
     if (!window.confirm("Zerar TODOS os preços de custo e venda? Esta ação não pode ser desfeita.")) return;
     const { error } = await supabase.from("devices").update({ preco_custo: 0, preco_venda: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
-    if (error) { toast.error(t("painelTabelaPrecos.toastClearPricesError")); return; }
-    toast.success(t("painelTabelaPrecos.toastPricesCleared"));
+    if (error) { toast.error("Erro ao limpar preços."); return; }
+    toast.success("Todos os preços foram zerados.");
     load();
   }
 
@@ -2704,8 +2699,8 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
       .from("devices")
       .update({ preco_custo: custo, preco_venda: venda })
       .neq("id", "00000000-0000-0000-0000-000000000000");
-    if (error) { toast.error(t("painelTabelaPrecos.toastFillPricesError") + error.message); return; }
-    toast.success(t("painelTabelaPrecos.toastTestPricesFilled"));
+    if (error) { toast.error("Erro ao preencher preços: " + error.message); return; }
+    toast.success("Todas as peças receberam custo R$45,00 e venda R$120,00 para teste.");
     load();
   }
 
@@ -2763,7 +2758,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
       </tr>`;
     }).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-    <title>${t("painelTabelaPrecos.printTitle")}</title>
+    <title>Tabela de Preços — Zomini</title>
     <style>
       body{font-family:Arial,sans-serif;font-size:11px;padding:16px;color:#111}
       h1{font-size:16px;font-weight:700;margin-bottom:4px}
@@ -2775,17 +2770,17 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
       @media print{body{padding:8px}button{display:none}}
     </style></head>
     <body>
-    <h1>${t("painelTabelaPrecos.printHeading")}</h1>
+    <h1>Tabela de Preços — Zomini Usinagens Especiais</h1>
     <p class="sub">Gerado em ${new Date().toLocaleString("pt-BR")} · ${filtered.length} peças</p>
     <table><thead><tr>
-      <th>${t("painelTabelaPrecos.colModel")}</th><th>${t("painelTabelaPrecos.colReference")}</th><th>NCM</th>
-      <th style="text-align:right">${t("painelTabelaPrecos.colCost")}</th><th style="text-align:right">${t("painelTabelaPrecos.colSale")}</th>
-      <th style="text-align:center">${t("painelTabelaPrecos.colMargin")}</th><th style="text-align:center">${t("painelTabelaPrecos.colMaxDiscount")}</th><th style="text-align:center">${t("painelTabelaPrecos.colStatus")}</th>
+      <th>Modelo</th><th>Referência</th><th>NCM</th>
+      <th style="text-align:right">Custo</th><th style="text-align:right">Venda</th>
+      <th style="text-align:center">Margem</th><th style="text-align:center">Desc. Máx</th><th style="text-align:center">Status</th>
     </tr></thead><tbody>${rows}</tbody></table>
     <script>window.print();</script>
     </body></html>`;
     const w = window.open("", "_blank");
-    if (!w) { toast.error(t("painelTabelaPrecos.toastPopupBlockedPrint")); return; }
+    if (!w) { toast.error("Popup bloqueado. Permita popups para imprimir."); return; }
     w.document.open(); w.document.write(html); w.document.close();
   }
 
@@ -2817,7 +2812,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
     const { error } = await supabase.from("devices").update(payload).eq("id", id);
     setSaving(null);
     if (error) { toast.error(friendlyError(error)); return; }
-    toast.success(t("painelTabelaPrecos.toastPriceUpdated"));
+    toast.success("Preço atualizado!");
     setEditRow(null);
     setDevices(prev => prev.map(d => d.id === id ? { ...d, ...payload } : d));
   }
@@ -2947,7 +2942,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
       ) : filtered.length === 0 ? (
         <div className="text-center py-14 space-y-2">
           <Tag size={32} className="text-muted-foreground/20 mx-auto" />
-          <p className="text-sm text-muted-foreground">{t("painelTabelaPrecos.noPieceFound")}</p>
+          <p className="text-sm text-muted-foreground">Nenhuma peça encontrada</p>
         </div>
       ) : (
         <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
@@ -2961,7 +2956,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
             <SortBtn col="cfop_padrao" label="CFOP" />
             <SortBtn col="ipi_pct"     label="IPI %" />
             <SortBtn col="ativo"       label="Ativo" />
-            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{t("painelTabelaPrecos.actions")}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ações</span>
           </div>
 
           {/* Linhas */}
@@ -3044,7 +3039,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                             setEditData(prev => ({ ...prev, ncm: sugestao.ncm, ipi_pct: sugestao.ipi }));
                             toast.success(`NCM ${sugestao.ncm} — ${sugestao.desc}`);
                           } else {
-                            toast.info(t("painelTabelaPrecos.toastNcmNotSuggested"));
+                            toast.info("Não foi possível sugerir NCM automaticamente. Preencha manualmente.");
                           }
                         }}
                         className="w-full h-6 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 text-[9px] font-semibold transition-colors flex items-center justify-center gap-1"
@@ -3119,7 +3114,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                   ) : (
                     <button type="button" onClick={() => startEdit(d)}
                       className="h-7 px-2.5 flex items-center gap-1 rounded-lg bg-muted/30 hover:bg-violet-500/10 hover:text-violet-600 text-muted-foreground text-[10px] font-semibold transition-colors">
-                      <Edit3 size={11} />{t("painelLancamentos.edit")}
+                      <Edit3 size={11} />Editar
                     </button>
                   )}
                 </div>
@@ -3157,7 +3152,6 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
 type FinTab = "dashboard" | "nfe" | "devolucoes" | "fluxo" | "fornecedores" | "compras" | "lancamentos" | "bancos" | "precos";
 
 export default function Financeiro() {
-  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { isAdmin, role } = useAuth();
   const isMobile = useIsMobile();
@@ -3184,7 +3178,7 @@ export default function Financeiro() {
     setModoTeste(v => {
       const next = !v;
       localStorage.setItem("financeiro_modo_teste", next ? "teste" : "producao");
-      toast.info(next ? t("financeiro.homologationOn") : t("financeiro.productionOn"));
+      toast.info(next ? "Modo Homologação ativado" : "Modo Produção ativado");
       return next;
     });
   }, []);
@@ -3335,30 +3329,23 @@ export default function Financeiro() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center space-y-2">
           <Ban className="h-10 w-10 text-destructive/40 mx-auto" />
-          <p className="text-sm text-muted-foreground">{t("financeiro.restrictedAccess")}</p>
-          <button type="button" onClick={() => navigate("/")} className="text-sm text-primary hover:underline">{t("financeiro.backToHome")}</button>
+          <p className="text-sm text-muted-foreground">Acesso restrito ao setor financeiro.</p>
+          <button type="button" onClick={() => navigate("/")} className="text-sm text-primary hover:underline">Voltar ao início</button>
         </div>
       </div>
     );
   }
 
-  // Emissão fiscal NF-e/SEFAZ é uma obrigação exclusivamente brasileira (Receita
-  // Federal). Fora do Brasil essas abas não fazem sentido — cada país tem seu
-  // próprio regime fiscal — então ficam ocultas quando o idioma ativo não é pt.
-  const isBrazilMarket = i18n.language.split("-")[0] === "pt";
-
   const TABS: { id: FinTab; label: string; icon: typeof Receipt; badge?: number }[] = [
-    { id: "dashboard",    label: t("financeiro.tabs.dashboard"),    icon: BarChart2   },
-    ...(isBrazilMarket ? [
-      { id: "nfe" as FinTab,        label: t("financeiro.tabs.nfe"),        icon: FileCheck2, badge: prontos },
-      { id: "devolucoes" as FinTab, label: t("financeiro.tabs.devolucoes"), icon: Repeat2 },
-    ] : []),
-    { id: "fluxo",        label: t("financeiro.tabs.fluxo"),        icon: TrendingUp  },
-    { id: "fornecedores", label: t("financeiro.tabs.fornecedores"), icon: Building2   },
-    { id: "compras",      label: t("financeiro.tabs.compras"),      icon: ShoppingCart},
-    { id: "lancamentos",  label: t("financeiro.tabs.lancamentos"),  icon: Zap         },
-    ...(isBrazilMarket ? [{ id: "bancos" as FinTab, label: t("financeiro.tabs.bancos"), icon: Landmark }] : []),
-    { id: "precos",       label: t("financeiro.tabs.precos"),       icon: Tag         },
+    { id: "dashboard",    label: "Dashboard",        icon: BarChart2   },
+    { id: "nfe",          label: "NF-e / SEFAZ",     icon: FileCheck2, badge: prontos },
+    { id: "devolucoes",   label: "Devoluções/Trocas", icon: Repeat2    },
+    { id: "fluxo",        label: "Fluxo de Caixa",   icon: TrendingUp  },
+    { id: "fornecedores", label: "Fornecedores",      icon: Building2   },
+    { id: "compras",      label: "Pedidos Compra",    icon: ShoppingCart},
+    { id: "lancamentos",  label: "Lançamentos",       icon: Zap         },
+    { id: "bancos",       label: "Bancos",            icon: Landmark    },
+    { id: "precos",       label: "Tabela de Preços",  icon: Tag         },
   ];
 
   const PAGE_NAV_TABS = TABS.map((tab, i) => {
@@ -3380,7 +3367,7 @@ export default function Financeiro() {
         <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <Receipt size={16} className="text-violet-600 dark:text-violet-400" />
-            <h1 className="text-sm font-semibold">{t("financeiro.title")}</h1>
+            <h1 className="text-sm font-semibold">Financeiro</h1>
             <TestBadge modoTeste={modoTeste} />
             {prontos > 0 && (
               <span className="hidden sm:flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
@@ -3393,21 +3380,21 @@ export default function Financeiro() {
             {isAdmin && (
               <ClearHistoryButton
                 rpc="admin_clear_financeiro"
-                label={t("financeiro.clearHistLabel")}
-                confirmTitle={t("financeiro.clearHistTitle")}
-                confirmDescription={t("financeiro.clearHistDesc")}
+                label="Apagar"
+                confirmTitle="Apagar histórico financeiro?"
+                confirmDescription="Apaga todas as contas a pagar e a receber. Fornecedores, bancos e pedidos comerciais são mantidos."
                 onCleared={() => { loadPedidos(); loadLancamentos(); }}
                 className="h-8"
               />
             )}
             <button type="button" onClick={() => setHistoricoOpen(true)}
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground"
-              title={t("financeiro.nfHistory")}>
+              title="Histórico de NFs">
               <History size={15} />
             </button>
             <button type="button" onClick={() => { loadPedidos(); loadLancamentos(); }}
               className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 transition-colors text-muted-foreground"
-              title={t("financeiro.refresh")}>
+              title="Atualizar">
               <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
             </button>
           </div>
@@ -3425,8 +3412,8 @@ export default function Financeiro() {
         {activeTab === "dashboard" && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-base font-bold">{t("financeiro.financialOverview")}</h2>
-              <p className="text-[12px] text-muted-foreground">{t("financeiro.financialOverviewDesc")}</p>
+              <h2 className="text-base font-bold">Visão Geral Financeira</h2>
+              <p className="text-[12px] text-muted-foreground">Resumo consolidado de receitas, custos e resultados</p>
             </div>
             <PainelDashboard pedidos={pedidos} lancamentos={lancamentos} />
           </div>
@@ -3436,10 +3423,10 @@ export default function Financeiro() {
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: t("financeiro.awaitingNf"), value: prontos,   icon: Receipt,     color: "#10b981" },
-                { label: t("financeiro.invoiced"),     value: faturados, icon: FileCheck2,  color: "#7c3aed" },
-                { label: t("financeiro.sent"),      value: enviados,  icon: Send,        color: "#0ea5e9" },
-                { label: t("financeiro.monthCosts"),    value: fmtCurrency(custosMes), icon: TrendingDown, color: "#f97316" },
+                { label: "Aguardando NF", value: prontos,   icon: Receipt,     color: "#10b981" },
+                { label: "Faturados",     value: faturados, icon: FileCheck2,  color: "#7c3aed" },
+                { label: "Enviados",      value: enviados,  icon: Send,        color: "#0ea5e9" },
+                { label: "Custos/mês",    value: fmtCurrency(custosMes), icon: TrendingDown, color: "#f97316" },
               ].map(kpi => {
                 const Icon = kpi.icon;
                 return (
@@ -3461,10 +3448,10 @@ export default function Financeiro() {
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1 flex-wrap">
                 {[
-                  { id: "pronto",   label: t("financeiro.awaitingNf"), count: prontos   },
-                  { id: "faturado", label: t("financeiro.invoiced"),      count: faturados },
-                  { id: "enviado",  label: t("financeiro.sent"),        count: enviados  },
-                  { id: "todos",    label: t("financeiro.all"),           count: pedidos.length },
+                  { id: "pronto",   label: "Aguardando NF", count: prontos   },
+                  { id: "faturado", label: "Faturados",      count: faturados },
+                  { id: "enviado",  label: "Enviados",        count: enviados  },
+                  { id: "todos",    label: "Todos",           count: pedidos.length },
                 ].map(f => (
                   <button key={f.id} type="button" onClick={() => setFiltroStatus(f.id)}
                     className={cn("h-8 px-3 rounded-full text-[11px] font-semibold border transition-all flex items-center gap-1.5",
@@ -3484,7 +3471,7 @@ export default function Financeiro() {
                 value={searchNF}
                 onChange={v => setSearchNF(v)}
                 onSearch={v => setSearchNF(v)}
-                placeholder={t("financeiro.searchOrderPlaceholder")}
+                placeholder="Buscar cliente, NF, vendedora ou bipe o código..."
                 height="h-8"
                 showSearchIcon
               />
@@ -3501,10 +3488,10 @@ export default function Financeiro() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold">
-                    {filtroStatus === "pronto" ? t("financeiro.noOrderAwaitingNf") : t("financeiro.noOrderFound")}
+                    {filtroStatus === "pronto" ? "Nenhum pedido aguardando nota fiscal" : "Nenhum pedido encontrado"}
                   </p>
                   <p className="text-[12px] text-muted-foreground/70 mt-0.5">
-                    {searchNF ? t("financeiro.tryOtherSearch") : t("financeiro.ordersAppearHint")}
+                    {searchNF ? "Tente outra busca" : "Pedidos aparecem aqui quando marcados como prontos no estoque"}
                   </p>
                 </div>
               </div>
@@ -3531,15 +3518,15 @@ export default function Financeiro() {
                 <Zap size={20} className="text-violet-600" />
               </div>
               <div>
-                <h2 className="text-base font-bold">{t("financeiro.entriesTitle")}</h2>
-                <p className="text-[12px] text-muted-foreground">{t("financeiro.entriesDesc")}</p>
+                <h2 className="text-base font-bold">Lançamentos</h2>
+                <p className="text-[12px] text-muted-foreground">Compras de produção, compras da empresa e custos operacionais</p>
               </div>
             </div>
             <div className="flex gap-2">
               {[
-                { tipo: "compra_producao" as const,   label: t("financeiro.production"),    Icon: Factory   },
-                { tipo: "compra_empresa" as const,    label: t("financeiro.company"),     Icon: Building2 },
-                { tipo: "custo_operacional" as const, label: t("financeiro.costs"),      Icon: Zap       },
+                { tipo: "compra_producao" as const,   label: "Produção",    Icon: Factory   },
+                { tipo: "compra_empresa" as const,    label: "Empresa",     Icon: Building2 },
+                { tipo: "custo_operacional" as const, label: "Custos",      Icon: Zap       },
               ].map(({ tipo, label, Icon }) => (
                 <button key={tipo} type="button" onClick={() => setLancTipo(tipo)}
                   className={cn("flex-1 h-9 rounded-xl text-[12px] font-semibold border transition-all flex items-center justify-center gap-1.5",
@@ -3552,9 +3539,9 @@ export default function Financeiro() {
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { tipo: "compra_producao",   label: t("financeiro.production"),    color: "#7c3aed" },
-                { tipo: "compra_empresa",    label: t("financeiro.company"),     color: "#0ea5e9" },
-                { tipo: "custo_operacional", label: t("financeiro.operational"), color: "#f97316" },
+                { tipo: "compra_producao",   label: "Produção",    color: "#7c3aed" },
+                { tipo: "compra_empresa",    label: "Empresa",     color: "#0ea5e9" },
+                { tipo: "custo_operacional", label: "Operacional", color: "#f97316" },
               ].map(({ tipo, label, color }) => {
                 const t = lancamentos.filter(l => l.tipo === tipo).reduce((s, l) => s + l.valor, 0);
                 return (
@@ -3577,8 +3564,8 @@ export default function Financeiro() {
                 <Landmark size={20} className="text-emerald-600" />
               </div>
               <div>
-                <h2 className="text-base font-bold">{t("financeiro.banksIntegration")}</h2>
-                <p className="text-[12px] text-muted-foreground">{t("financeiro.banksIntegrationDesc")}</p>
+                <h2 className="text-base font-bold">Bancos &amp; Integração SEFAZ</h2>
+                <p className="text-[12px] text-muted-foreground">Contas bancárias, webhooks e ambiente de emissão fiscal</p>
               </div>
             </div>
             <PainelBancos modoTeste={modoTeste} onToggleModoTeste={toggleModoTeste} />
@@ -3592,8 +3579,8 @@ export default function Financeiro() {
                   <Tag size={20} className="text-violet-600" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold">{t("financeiro.priceListTitle")}</h2>
-                  <p className="text-[12px] text-muted-foreground">{t("financeiro.priceListDesc")}</p>
+                  <h2 className="text-base font-bold">Tabela de Preços</h2>
+                  <p className="text-[12px] text-muted-foreground">Preços, custos, descontos máximos e NCM/CFOP por peça</p>
                 </div>
               </div>
             </div>
@@ -3607,8 +3594,8 @@ export default function Financeiro() {
                 <TrendingUp size={20} className="text-emerald-600" />
               </div>
               <div>
-                <h2 className="text-base font-bold">{t("financeiro.cashFlowTitle")}</h2>
-                <p className="text-[12px] text-muted-foreground">{t("financeiro.cashFlowDesc")}</p>
+                <h2 className="text-base font-bold">Fluxo de Caixa</h2>
+                <p className="text-[12px] text-muted-foreground">Análise de entradas/saídas, aging de inadimplência e projeção</p>
               </div>
             </div>
             <FluxoCaixaPanelLazy />

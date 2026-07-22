@@ -2,7 +2,6 @@ import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "@/hooks/useDebounce";
-import { useTranslation } from "react-i18next";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useAuth } from "@/hooks/useAuth";
 import { useStock } from "@/hooks/useStock";
@@ -98,7 +97,6 @@ interface IntermediaryCardProps {
 const IntermediaryCard = memo(function IntermediaryCard({
   item, onEntrada, onTransfer, onHistory, onDelete, onLotes, onReset, loteCount, isAdmin,
 }: IntermediaryCardProps) {
-  const { t } = useTranslation();
   const d = item.device;
   const qty = item.quantity;
   const isLow = qty > 0 && qty <= item.min_quantity;
@@ -154,7 +152,7 @@ const IntermediaryCard = memo(function IntermediaryCard({
         )}>
           <div className="flex items-center gap-2">
             <PackageCheck className={cn("h-[18px] w-[18px]", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")} />
-            <span className="text-[14px] font-medium text-muted-foreground">{t("estoque.intermediate")}</span>
+            <span className="text-[14px] font-medium text-muted-foreground">Intermediário</span>
           </div>
           <div className="flex items-center gap-2">
             {isEmpty && <AlertTriangle className="h-4 w-4 text-destructive" />}
@@ -201,7 +199,7 @@ const IntermediaryCard = memo(function IntermediaryCard({
               type="button"
               onClick={() => onHistory(item)}
               className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
-              title={t("estoque.historyTitle")}
+              title="Histórico"
             >
               <Clock className="h-4 w-4" /> Histórico
             </button>
@@ -209,7 +207,7 @@ const IntermediaryCard = memo(function IntermediaryCard({
               type="button"
               onClick={() => onLotes(item)}
               className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-primary/10 hover:text-primary text-muted-foreground text-[13px] transition-colors"
-              title={t("estoque.lotesTitle")}
+              title="Lotes"
             >
               <Tag className="h-4 w-4" /> Lotes
             </button>
@@ -219,7 +217,7 @@ const IntermediaryCard = memo(function IntermediaryCard({
                   type="button"
                   onClick={() => onReset(item)}
                   className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
-                  title={t("estoque.resetStockTitle")}
+                  title="Zerar estoque e histórico"
                 >
                   <PackageCheck className="h-4 w-4" />
                 </button>
@@ -227,7 +225,7 @@ const IntermediaryCard = memo(function IntermediaryCard({
                   type="button"
                   onClick={() => onDelete(item)}
                   className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-                  title={t("estoque.removeTitle")}
+                  title="Remover"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -248,7 +246,6 @@ interface RetrabalhoCardProps {
 }
 
 const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistory, onLotes, loteCount }: RetrabalhoCardProps) {
-  const { t } = useTranslation();
   const d = item.device;
 
   return (
@@ -279,7 +276,7 @@ const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistor
         <div className="flex items-center justify-between rounded-xl px-4 py-2.5 border bg-orange-500/8 border-orange-500/25">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <Wrench className="h-[18px] w-[18px] text-orange-500 shrink-0" />
-            <span className="text-[14px] font-medium text-muted-foreground truncate">{t("estoque.inRework")}</span>
+            <span className="text-[14px] font-medium text-muted-foreground truncate">Em retrabalho</span>
           </div>
           <div className="flex items-center gap-1 shrink-0 ml-2">
             <span className="text-[20px] font-bold tabular-nums text-orange-500">{item.quantity}</span>
@@ -359,7 +356,6 @@ interface ExpedicaoCardProps {
 const ExpedicaoCard = memo(function ExpedicaoCard({
   item, onSaida, onHistory, onDelete, onLotes, onRetrabalho, onReset, loteCount, isAdmin,
 }: ExpedicaoCardProps) {
-  const { t } = useTranslation();
   const d = item.device;
   const available = item.quantity_available;
   const isLow = available > 0 && available <= item.min_quantity;
@@ -415,7 +411,7 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
         )}>
           <div className="flex items-center gap-2">
             <PackageCheck className={cn("h-[18px] w-[18px]", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")} />
-            <span className="text-[14px] font-medium text-muted-foreground">{t("estoque.shipping")}</span>
+            <span className="text-[14px] font-medium text-muted-foreground">Expedição</span>
           </div>
           <div className="flex items-center gap-2">
             {isEmpty && <AlertTriangle className="h-4 w-4 text-destructive" />}
@@ -431,7 +427,7 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
           <div className="flex items-center justify-between rounded-xl px-4 py-2.5 border bg-amber-500/8 border-amber-500/25 -mt-1">
             <div className="flex items-center gap-2">
               <Archive className={cn("h-[18px] w-[18px] text-amber-500")} />
-              <span className="text-[14px] font-medium text-muted-foreground">{t("estoque.reserved")}</span>
+              <span className="text-[14px] font-medium text-muted-foreground">Reservado</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[20px] font-bold tabular-nums text-amber-500">
@@ -508,7 +504,7 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
                   type="button"
                   onClick={() => onReset(item)}
                   className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
-                  title={t("estoque.resetStockTitle")}
+                  title="Zerar estoque e histórico"
                 >
                   <PackageCheck className="h-4 w-4" />
                 </button>
@@ -516,7 +512,7 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
                   type="button"
                   onClick={() => onDelete(item)}
                   className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-                  title={t("estoque.removeTitle")}
+                  title="Remover"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -548,7 +544,6 @@ interface SearchBarProps {
 const SearchBar = memo(function SearchBar({
   onSearch, onClear, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
 }: SearchBarProps) {
-  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   useClickOutside(containerRef, onCloseSuggestions);
 
@@ -557,7 +552,7 @@ const SearchBar = memo(function SearchBar({
       <SearchInputWithBarcode
         onChange={v => { if (!v.trim()) { onClear(); return; } onSearch(v.trim()); }}
         onSearch={v => { onSearch(v.trim()); onCloseSuggestions(); }}
-        placeholder={t("estoque.searchPlaceholderBarcode")}
+        placeholder="Bipe o código ou busque por modelo, referência, UDI ou lote..."
         height="h-11"
       />
       {showSuggestions && suggestions.length > 0 && (
@@ -577,7 +572,6 @@ const SearchBar = memo(function SearchBar({
 const HIDE_EMPTY_INTERMEDIARIA = false;
 
 export default function Estoque() {
-  const { t } = useTranslation();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
@@ -667,7 +661,7 @@ export default function Estoque() {
       // Zera quantidades mas MANTÉM os stock_items (peças regularizadas ficam com qty=0)
       const { error: e4 } = await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
       if (e4) throw e4;
-      toast.success(t("estoque.toasts.clearHistSuccess"));
+      toast.success("Histórico apagado. Peças cadastradas mantidas com saldo zerado.");
       setClearHistConfirm(false);
       refetch();
     } catch (err: unknown) {
@@ -860,9 +854,9 @@ export default function Estoque() {
     const { error } = await supabase.from("stock_items").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     setDeletingAll(false);
     if (error) {
-      toast.error(t("estoque.toasts.deleteStockError"));
+      toast.error("Erro ao excluir estoque.");
     } else {
-      toast.success(t("estoque.toasts.allStockDeleted"));
+      toast.success("Todo o estoque foi excluído.");
       setDeleteAllOpen(false);
       setDeleteAllTyped("");
       refetch();
@@ -907,14 +901,14 @@ export default function Estoque() {
         .eq("stock_item_id", resetItem.id);
 
       if (movErr) {
-        toast.error(t("estoque.toasts.resetStockPartial"));
+        toast.error("Estoque zerado, mas não foi possível limpar o histórico.");
       } else {
-        toast.success(t("estoque.toasts.resetStockSuccess"));
+        toast.success("Estoque e histórico zerados com sucesso.");
       }
       setResetItem(null);
       refetch();
     } catch (_e) {
-      toast.error(t("estoque.toasts.resetStockError"), {
+      toast.error("Erro ao zerar estoque. Tente novamente.", {
         action: { label: "Tentar novamente", onClick: handleResetItem }
       });
     } finally {
@@ -934,7 +928,7 @@ export default function Estoque() {
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
               <Boxes className="h-4 w-4 text-primary" />
-              <h1 className="text-sm font-semibold">{t("estoque.title")}</h1>
+              <h1 className="text-sm font-semibold">Estoque</h1>
             {globalLowCount > 0 && (
               <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-600 dark:text-red-400">
                 <AlertTriangle className="h-3 w-3" />{globalLowCount} crítico{globalLowCount !== 1 ? "s" : ""}
@@ -962,7 +956,7 @@ export default function Estoque() {
                     <button
                       type="button"
                       onClick={() => setClearHistConfirm(true)}
-                      title={t("estoque.clearAllHistoryTitle")}
+                      title="Apagar todo o histórico"
                       className="h-8 w-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-colors"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -1058,7 +1052,7 @@ export default function Estoque() {
                 value={search}
                 onChange={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); }}
                 onSearch={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
-                placeholder={t("estoque.searchPlaceholder")}
+                placeholder="Buscar por modelo, referência, UDI ou lote..."
                 height="h-11"
               />
               <Button
@@ -1077,7 +1071,7 @@ export default function Estoque() {
                 size="icon"
                 className="h-11 w-11 shrink-0 relative"
                 onClick={() => setShowFilters(v => !v)}
-                title={t("estoque.filtersTitle")}
+                title="Filtros"
               >
                 <Filter className="h-4 w-4" />
                 {hasActiveFilters && (
@@ -1090,7 +1084,7 @@ export default function Estoque() {
             {showFilters && (
               <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("estoque.filters")}</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filtros</p>
                   {hasActiveFilters && (
                     <button
                       type="button"
@@ -1104,7 +1098,7 @@ export default function Estoque() {
 
                 {/* Status */}
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground font-medium">{t("estoque.status")}</p>
+                  <p className="text-[11px] text-muted-foreground font-medium">Status</p>
                   <div className="flex flex-wrap gap-1.5">
                     {([
                       { value: "all", label: "Todos" },
@@ -1131,9 +1125,9 @@ export default function Estoque() {
 
                 {/* Localização */}
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground font-medium">{t("estoque.location")}</p>
+                  <p className="text-[11px] text-muted-foreground font-medium">Localização</p>
                   <Input
-                    placeholder={t("estoque.locationPlaceholder")}
+                    placeholder="Filtrar por localização..."
                     value={filterLocation}
                     onChange={e => setFilterLocation(e.target.value)}
                     className="h-9 text-sm"
@@ -1142,9 +1136,9 @@ export default function Estoque() {
 
                 {/* Marca */}
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground font-medium">{t("estoque.brand")}</p>
+                  <p className="text-[11px] text-muted-foreground font-medium">Marca</p>
                   <Input
-                    placeholder={t("estoque.brandPlaceholder")}
+                    placeholder="Filtrar por marca..."
                     value={filterBrand}
                     onChange={e => setFilterBrand(e.target.value)}
                     className="h-9 text-sm"
@@ -1237,7 +1231,7 @@ export default function Estoque() {
         {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && loading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
-            <p className="text-sm text-muted-foreground">{t("estoque.loading")}</p>
+            <p className="text-sm text-muted-foreground">Carregando estoque...</p>
           </div>
         )}
 
@@ -1402,7 +1396,7 @@ export default function Estoque() {
               </div>
               <div className="max-h-[420px] overflow-y-auto divide-y divide-border/20">
                 {baixoItems.length === 0 ? (
-                  <p className="text-center text-sm text-muted-foreground py-10">{t("estoque.noLowStock")}</p>
+                  <p className="text-center text-sm text-muted-foreground py-10">Nenhuma peça com estoque baixo</p>
                 ) : baixoItems.map(item => (
                   <div key={item.id} className="flex items-center justify-between gap-3 px-5 py-3">
                     <div className="min-w-0">
@@ -1460,36 +1454,36 @@ export default function Estoque() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <Trash2 className="h-4 w-4" /> {t("estoque.deleteAllTitle")}
+              <Trash2 className="h-4 w-4" /> Excluir todo o estoque?
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <span className="block">
-                {t("estoque.deleteAllDesc1")} <strong>{t("estoque.deleteAllDesc1Strong")}</strong> {t("estoque.deleteAllDesc1Mid")} <strong>{t("estoque.deleteAllDesc1Strong2")}</strong>{t("estoque.deleteAllDesc1End")}
+                Isso irá remover <strong>todas as peças</strong> do estoque (intermediário + expedição) e <strong>todo o histórico</strong>. Ação irreversível.
               </span>
-              <span className="block text-xs text-muted-foreground">{t("estoque.backupHint")}</span>
+              <span className="block text-xs text-muted-foreground">💡 Faça um Backup antes de continuar.</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="px-1 space-y-1.5">
             <p className="text-sm text-muted-foreground">
-              {t("estoque.typeToConfirm")} <strong className="text-destructive font-mono">{t("estoque.confirmWord")}</strong> {t("estoque.typeToConfirmEnd")}
+              Digite <strong className="text-destructive font-mono">EXCLUIR</strong> para confirmar:
             </p>
             <Input
               value={deleteAllTyped}
               onChange={(e) => setDeleteAllTyped(e.target.value)}
-              placeholder={t("estoque.confirmWord")}
+              placeholder="EXCLUIR"
               className="font-mono"
               disabled={deletingAll}
               autoFocus
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>{t("estoque.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteAll}
-              disabled={deletingAll || deleteAllTyped !== t("estoque.confirmWord")}
+              disabled={deletingAll || deleteAllTyped !== "EXCLUIR"}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingAll ? t("estoque.deleting") : t("estoque.deleteAllAction")}
+              {deletingAll ? "Excluindo..." : "Excluir tudo"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1504,14 +1498,14 @@ export default function Estoque() {
                 <PackageCheck className="h-4 w-4 text-warning" />
               </div>
               <div>
-                <p className="text-sm font-semibold">{t("estoque.resetStockConfirmTitle")}</p>
+                <p className="text-sm font-semibold">Zerar estoque e histórico?</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
                   {resetItem.device.model}
                 </p>
               </div>
             </div>
             <p className="text-[12px] text-muted-foreground">
-              {t("estoque.resetStockConfirmDesc1")} <strong>{t("estoque.resetStockConfirmDesc1Strong")}</strong> {t("estoque.resetStockConfirmDesc1Mid")} <strong>{t("estoque.resetStockConfirmDesc1Strong2")}</strong> {t("estoque.resetStockConfirmDesc1End")}
+              Isso vai zerar a quantidade para <strong>0</strong> e apagar <strong>todo o histórico de movimentos</strong> desta peça. A peça permanece cadastrada no estoque.
             </p>
             <div className="flex gap-2">
               <button
@@ -1520,7 +1514,7 @@ export default function Estoque() {
                 onClick={() => setResetItem(null)}
                 disabled={resetting}
               >
-                {t("estoque.cancel")}
+                Cancelar
               </button>
               <button
                 type="button"
@@ -1529,8 +1523,8 @@ export default function Estoque() {
                 disabled={resetting}
               >
                 {resetting
-                  ? <span className="flex items-center justify-center gap-1.5"><span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" /> {t("estoque.resetting")}</span>
-                  : t("estoque.resetAll")}
+                  ? <span className="flex items-center justify-center gap-1.5"><span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" /> Zerando...</span>
+                  : "Zerar tudo"}
               </button>
             </div>
           </div>
@@ -1546,15 +1540,15 @@ export default function Estoque() {
                 <Trash2 className="h-4 w-4 text-destructive" />
               </div>
               <div>
-                <p className="text-sm font-semibold">{t("estoque.removeConfirmTitle")}</p>
+                <p className="text-sm font-semibold">Remover do estoque?</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
                   {deleteItem.device.model}
                 </p>
                 <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-                  {t("estoque.phaseLabel")} {deleteItem.fase === "intermediaria" ? t("estoque.phaseIntermediate") : t("estoque.phaseShipping")}
+                  Fase: {deleteItem.fase === "intermediaria" ? "Intermediário" : "Expedição"}
                 </p>
                 <p className="text-[11px] text-destructive/80 mt-1">
-                  {t("estoque.historyWillBeDeleted")}
+                  Todo o histórico de movimentos será apagado.
                 </p>
               </div>
             </div>
@@ -1564,7 +1558,7 @@ export default function Estoque() {
                 className="flex-1 h-10 rounded-xl border border-border text-sm font-medium hover:bg-muted/30 transition-colors"
                 onClick={() => setDeleteItem(null)}
               >
-                {t("estoque.cancel")}
+                Cancelar
               </button>
               <button
                 type="button"
@@ -1576,18 +1570,18 @@ export default function Estoque() {
                   const result = await deleteStockItem(deleteItem.id);
                   setDeleting(false);
                   if (result.ok) {
-                    toast.success(t("estoque.toasts.pieceRemoved"), { description: deleteItem.device.model });
+                    toast.success("Peça removida do estoque.", { description: deleteItem.device.model });
                     setDeleteItem(null);
                     refetch();
                   } else {
-                    toast.error(t("estoque.toasts.removePieceError"));
+                    toast.error("Erro ao remover peça. Tente novamente.");
                   }
                 }}
               >
                 {deleting
                   ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   : <Trash2 className="h-4 w-4" />}
-                {t("estoque.remove")}
+                Remover
               </button>
             </div>
           </div>
@@ -1604,23 +1598,23 @@ export default function Estoque() {
               <AlertTriangle className="h-5 w-5 text-destructive" />
             </div>
             <div>
-              <p className="text-sm font-bold text-destructive">{t("estoque.clearHistConfirmTitle")}</p>
+              <p className="text-sm font-bold text-destructive">Apagar todo o histórico?</p>
               <p className="text-[12px] text-muted-foreground mt-1">
-                {t("estoque.clearHistConfirmDesc1")} <strong>{t("estoque.clearHistConfirmDesc1Strong")}</strong>{t("estoque.clearHistConfirmDesc1Mid")} <strong>{t("estoque.clearHistConfirmDesc1Strong2")}</strong>{t("estoque.clearHistConfirmDesc1End")}
+                Isso vai apagar <strong>todos os movimentos</strong>, pedidos comerciais e zerar o estoque de todas as peças. Esta ação <strong>não pode ser desfeita</strong>.
               </p>
             </div>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setClearHistConfirm(false)} disabled={clearingHist}
               className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">
-              {t("estoque.cancel")}
+              Cancelar
             </button>
             <button type="button" onClick={clearAllHistory} disabled={clearingHist}
               className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
               {clearingHist
                 ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <Trash2 className="h-3.5 w-3.5" />}
-              {t("estoque.deleteAllAction2")}
+              Apagar tudo
             </button>
           </div>
         </div>

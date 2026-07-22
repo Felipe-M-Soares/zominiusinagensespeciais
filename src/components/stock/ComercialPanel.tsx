@@ -46,8 +46,6 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import i18n from "@/i18n";
-import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -112,7 +110,6 @@ interface ClienteModalProps {
 }
 
 function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const [nome, setNome] = useState(inicial?.nome ?? "");
   const [documento, setDocumento] = useState(inicial?.documento ?? "");
@@ -136,14 +133,14 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
   if (!open) return null;
 
   async function handleSave() {
-    if (!nome.trim()) { toast.error(t("stockComercialPanel.toastNameRequired")); return; }
+    if (!nome.trim()) { toast.error("Nome obrigatório"); return; }
     // Validate document and email format before persisting
     if (documento && !validarDocumento(documento)) {
-      toast.error(t("stockComercialPanel.toastInvalidTaxId"));
+      toast.error("CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos.");
       return;
     }
     if (email && !validarEmail(email)) {
-      toast.error(t("stockComercialPanel.toastInvalidEmail"));
+      toast.error("E-mail inválido.");
       return;
     }
     setSaving(true);
@@ -167,10 +164,10 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
         if (error) throw error;
         data = d as Cliente;
       }
-      toast.success(inicial ? t("stockComercialPanel.toastClientUpdated") : t("stockComercialPanel.toastClientCreated"));
+      toast.success(inicial ? "Cliente atualizado!" : "Cliente cadastrado!");
       onSuccess(data!);
     } catch (e: unknown) {
-      toast.error(t("stockComercialPanel.toastSaveClientError"));
+      toast.error("Erro ao salvar cliente.");
     } finally {
       setSaving(false);
     }
@@ -182,7 +179,7 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2">
             <User className="h-4 w-4 text-violet-500" />
-            <p className="text-sm font-semibold">{inicial ? t("stockComercialPanel.editClient") : t("stockComercialPanel.newClient")}</p>
+            <p className="text-sm font-semibold">{inicial ? "Editar Cliente" : "Novo Cliente"}</p>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
             <X className="h-4 w-4" />
@@ -190,40 +187,40 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
         </div>
         <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{t("stockComercialPanel.name")}</label>
-            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder={t("stockComercialPanel.namePlaceholder")} className="h-9 text-sm" autoFocus />
+            <label className="text-xs font-medium text-muted-foreground">Nome *</label>
+            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do cliente" className="h-9 text-sm" autoFocus />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">{t("stockComercialPanel.taxId")}</label>
+              <label className="text-xs font-medium text-muted-foreground">CPF / CNPJ</label>
               <Input value={documento} onChange={e => setDocumento(e.target.value)} placeholder="000.000.000-00" className="h-9 text-sm" />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">{t("stockComercialPanel.phone")}</label>
+              <label className="text-xs font-medium text-muted-foreground">Telefone</label>
               <Input value={telefone} onChange={e => setTelefone(e.target.value)} placeholder="(00) 00000-0000" className="h-9 text-sm" />
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{t("stockComercialPanel.email")}</label>
+            <label className="text-xs font-medium text-muted-foreground">E-mail</label>
             <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="cliente@email.com" className="h-9 text-sm" type="email" />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{t("stockComercialPanel.address")}</label>
-            <Input value={endereco} onChange={e => setEndereco(e.target.value)} placeholder={t("stockComercialPanel.address")} className="h-9 text-sm" />
+            <label className="text-xs font-medium text-muted-foreground">Endereço</label>
+            <Input value={endereco} onChange={e => setEndereco(e.target.value)} placeholder="Rua, número, cidade..." className="h-9 text-sm" />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{t("stockComercialPanel.notes")}</label>
+            <label className="text-xs font-medium text-muted-foreground">Observações</label>
             <textarea
               value={obs}
               onChange={e => setObs(e.target.value)}
-              placeholder={t("stockComercialPanel.notes")}
+              placeholder="Informações adicionais..."
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[60px] focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
         </div>
         <div className="flex gap-2 p-5 pt-0">
           <button type="button" onClick={onClose} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors" disabled={saving}>
-            {t("stockComercialPanel.cancel")}
+            Cancelar
           </button>
           <button
             type="button"
@@ -232,7 +229,7 @@ function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModalProps) 
             className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
           >
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-            {inicial ? t("stockComercialPanel.save") : t("stockComercialPanel.register")}
+            {inicial ? "Salvar" : "Cadastrar"}
           </button>
         </div>
       </div>
@@ -251,7 +248,6 @@ interface NovoPedidoModalProps {
 }
 
 function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems }: NovoPedidoModalProps) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clienteId, setClienteId] = useState(clienteFixo?.id ?? "");
@@ -323,7 +319,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
     const jaAdicionado = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
     const dispReal = dispBruto - jaAdicionado;
     if (qtd > dispReal) {
-      toast.error(dispReal <= 0 ? t("stockComercialPanel.toastNoStockForPiece") : t("stockComercialPanel.toastOnlyAvailable", { count: dispReal, plural: dispReal !== 1 ? "s" : "" }));
+      toast.error(dispReal <= 0 ? "Sem estoque disponível para esta peça" : `Apenas ${dispReal} unidade${dispReal !== 1 ? "s" : ""} disponível${dispReal !== 1 ? "s" : ""}`);
       return;
     }
     setItens(prev => [...prev, {
@@ -339,15 +335,15 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   }
 
   async function handleSave() {
-    if (!clienteId) { toast.error(t("stockComercialPanel.toastSelectClient")); return; }
-    if (itens.length === 0) { toast.error(t("stockComercialPanel.toastAddAtLeastOne")); return; }
-    if (!user?.id) { toast.error(t("stockComercialPanel.toastSessionExpired")); return; }
+    if (!clienteId) { toast.error("Selecione um cliente"); return; }
+    if (itens.length === 0) { toast.error("Adicione ao menos uma peça"); return; }
+    if (!user?.id) { toast.error("Sessão expirada. Faça login novamente."); return; }
     setSaving(true);
     try {
       // FIX: Usa criarPedidoComReserva de pedidoUtils — elimina duplicação e
       // garante a mesma lógica atômica de reserva de estoque usada em Comercial.tsx.
       const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle();
-      const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user.email ?? t("stockComercialPanel.defaultSellerName");
+      const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user.email ?? "Vendedora";
 
       const result = await criarPedidoComReserva({
         clienteId,
@@ -363,14 +359,14 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
       });
 
       if (!result.ok) {
-        toast.error(result.error ?? t("stockComercialPanel.toastOrderCreateError"));
+        toast.error(result.error ?? "Erro ao criar pedido.");
         return;
       }
 
-      toast.success(t("stockComercialPanel.toastOrderCreated"));
+      toast.success("Pedido criado! Peças reservadas na expedição.");
       onSuccess();
     } catch (_e) {
-      toast.error(t("stockComercialPanel.toastOrderCreateError"));
+      toast.error("Erro ao criar pedido.");
     } finally {
       setSaving(false);
     }
@@ -385,7 +381,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
           <div className="flex items-center gap-2">
             <ShoppingCart className="h-4 w-4 text-violet-500" />
-            <p className="text-sm font-semibold">{t("stockComercialPanel.newOrder")}</p>
+            <p className="text-sm font-semibold">Novo Pedido</p>
           </div>
           <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
             <X className="h-4 w-4" />
@@ -395,13 +391,13 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         <div className="p-5 space-y-4 overflow-y-auto flex-1">
           {/* Cliente */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("stockComercialPanel.client")}</label>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Cliente *</label>
             <div className="relative" ref={dropRef}>
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                   <Input
-                    placeholder={t("stockComercialPanel.searchClient")}
+                    placeholder="Buscar cliente..."
                     value={clienteSearch}
                     onChange={e => { setClienteSearch(e.target.value); setClienteId(""); setShowClienteDrop(true); }}
                     onFocus={() => setShowClienteDrop(true)}
@@ -412,7 +408,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                   type="button"
                   onClick={() => setClienteModal(true)}
                   className="h-9 w-9 flex items-center justify-center rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-500 transition-colors shrink-0"
-                  title={t("stockComercialPanel.newClientTitle")}
+                  title="Novo cliente"
                 >
                   <UserPlus className="h-3.5 w-3.5" />
                 </button>
@@ -435,20 +431,20 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
             </div>
             {clienteId && (
               <p className="text-[11px] text-violet-500 flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3" /> {t("stockComercialPanel.clientSelected")}
+                <CheckCircle2 className="h-3 w-3" /> Cliente selecionado
               </p>
             )}
           </div>
 
           {/* Seleção de peças */}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("stockComercialPanel.addPiece")}</label>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Adicionar Peça</label>
             <div className="rounded-xl border border-border/50 bg-muted/10 p-3 space-y-2">
               {/* Busca de peça */}
               <div className="relative" ref={pecaDropRef}>
                 <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                 <Input
-                  placeholder={t("stockComercialPanel.searchPieceShipping")}
+                  placeholder="Buscar peça na expedição..."
                   value={pecaSearch}
                   onChange={e => { setPecaSearch(e.target.value); setShowPecaDrop(true); setSelectedPeca(null); }}
                   onFocus={() => setShowPecaDrop(true)}
@@ -479,7 +475,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 )}
                 {showPecaDrop && pecaSearch && expedicaoDisponiveis.length === 0 && (
                   <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl p-3 text-center">
-                    <p className="text-xs text-muted-foreground">{t("stockComercialPanel.noPieceAvailable")}</p>
+                    <p className="text-xs text-muted-foreground">Nenhuma peça disponível</p>
                   </div>
                 )}
               </div>
@@ -487,12 +483,12 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
               {/* Quantidade */}
               <div className="space-y-1">
                 <label className="text-[10px] text-muted-foreground font-medium">
-                  {t("stockComercialPanel.quantity")}
+                  Quantidade
                   {selectedPeca && (() => {
                     const dispBruto = selectedPeca.quantity_available ?? Math.max(0, selectedPeca.quantity - selectedPeca.quantity_reserved);
                     const jaAd = jaAdicionadoNoPedido[selectedPeca.id] ?? 0;
                     const dispReal = dispBruto - jaAd;
-                    return dispReal > 0 ? <span className="text-muted-foreground/60"> ({t("stockComercialPanel.maxAbbrev")} {dispReal})</span> : null;
+                    return dispReal > 0 ? <span className="text-muted-foreground/60"> (máx {dispReal})</span> : null;
                   })()}
                 </label>
                 <Input
@@ -528,23 +524,23 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
                 disabled={!selectedPeca || qtd < 1}
                 className="w-full h-8 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-xs font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-1.5"
               >
-                <Plus className="h-3.5 w-3.5" /> {t("stockComercialPanel.addToOrder")}
+                <Plus className="h-3.5 w-3.5" /> Adicionar ao pedido
               </button>
             </div>
 
             {/* Lista de itens adicionados */}
             {itens.length > 0 && (
               <div className="space-y-1.5">
-                <p className="text-[11px] text-muted-foreground font-medium">{t("stockComercialPanel.itemsInOrder", { count: itens.length, plural: itens.length > 1 ? "s" : "" })}</p>
+                <p className="text-[11px] text-muted-foreground font-medium">{itens.length} item{itens.length > 1 ? "s" : ""} no pedido</p>
                 <div className="space-y-1">
                   {itens.map((it, idx) => (
                     <div key={idx} className="flex items-center gap-2 rounded-lg bg-muted/20 border border-border/30 px-3 py-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-medium truncate">{it.device_model}</p>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <span>{it.quantidade} {t("stockComercialPanel.units")}</span>
+                          <span>{it.quantidade} un.</span>
                           <span>·</span>
-                          <span className="text-muted-foreground/50 italic">{t("stockComercialPanel.lotAssignedLater")}</span>
+                          <span className="text-muted-foreground/50 italic">lote definido na separação</span>
                         </div>
                       </div>
                       <button
@@ -563,11 +559,11 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
 
           {/* Observações */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">{t("stockComercialPanel.notes")}</label>
+            <label className="text-xs font-medium text-muted-foreground">Observações</label>
             <textarea
               value={obs}
               onChange={e => setObs(e.target.value)}
-              placeholder={t("stockComercialPanel.notes")}
+              placeholder="Informações adicionais sobre o pedido..."
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[60px] focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -576,7 +572,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
         {/* Footer */}
         <div className="flex gap-2 p-5 border-t border-border/30 shrink-0">
           <button type="button" onClick={onClose} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors" disabled={saving}>
-            {t("stockComercialPanel.cancel")}
+            Cancelar
           </button>
           <button
             type="button"
@@ -585,7 +581,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
             className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
           >
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
-            {t("stockComercialPanel.createOrder")}
+            Criar Pedido
           </button>
         </div>
       </div>
@@ -614,20 +610,19 @@ interface PedidoCardProps {
 }
 
 function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onConfirmar }: PedidoCardProps) {
-  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
   const statusConfig = {
-    pendente:  { badge: "bg-amber-500/12 text-amber-600 border-amber-500/25",  accent: "from-amber-500",   icon: <Clock className="h-3 w-3" />,        label: t("stockComercialPanel.statusPending")  },
-    faturado:  { badge: "bg-emerald-500/12 text-emerald-600 border-emerald-500/25", accent: "from-emerald-500", icon: <CheckCircle2 className="h-3 w-3" />, label: t("stockComercialPanel.statusInvoiced")  },
-    cancelado: { badge: "bg-muted/30 text-muted-foreground border-border/30",  accent: "from-border/60",  icon: <Ban className="h-3 w-3" />,          label: t("stockComercialPanel.statusCancelled") },
+    pendente:  { badge: "bg-amber-500/12 text-amber-600 border-amber-500/25",  accent: "from-amber-500",   icon: <Clock className="h-3 w-3" />,        label: "Pendente"  },
+    faturado:  { badge: "bg-emerald-500/12 text-emerald-600 border-emerald-500/25", accent: "from-emerald-500", icon: <CheckCircle2 className="h-3 w-3" />, label: "Faturado"  },
+    cancelado: { badge: "bg-muted/30 text-muted-foreground border-border/30",  accent: "from-border/60",  icon: <Ban className="h-3 w-3" />,          label: "Cancelado" },
   }[pedido.status] ?? {
     badge: "bg-muted/30 text-muted-foreground border-border/30", accent: "from-border/60", icon: null, label: pedido.status,
   };
 
   const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
-  const data = new Date(pedido.created_at).toLocaleDateString(t("stockComercialPanel.localeCode"), { day: "2-digit", month: "2-digit", year: "2-digit" });
-  const hora = new Date(pedido.created_at).toLocaleTimeString(t("stockComercialPanel.localeCode"), { hour: "2-digit", minute: "2-digit" });
+  const data = new Date(pedido.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  const hora = new Date(pedido.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
   return (
     <div className={cn(
@@ -671,11 +666,11 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
           <div className="flex-1 rounded-xl bg-muted/20 border border-border/20 px-3 py-2 flex items-center justify-between gap-2">
             <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
               <Package className="h-3 w-3 shrink-0" />
-              {pedido.itens.length} {t("stockComercialPanel.type", { plural: pedido.itens.length !== 1 ? "s" : "" })}
+              {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}
             </span>
             <div className="flex items-baseline gap-0.5">
               <span className="text-[20px] font-bold tabular-nums leading-none text-violet-600 dark:text-violet-400">{totalItens}</span>
-              <span className="text-[10px] text-muted-foreground/50">{t("stockComercialPanel.units")}</span>
+              <span className="text-[10px] text-muted-foreground/50">un.</span>
             </div>
           </div>
         </div>
@@ -689,7 +684,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
         {/* Itens expandidos */}
         {expanded && (
           <div className="space-y-1.5 pt-2 border-t border-border/15 animate-in fade-in slide-in-from-top-1 duration-150">
-            <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">{t("stockComercialPanel.orderItemsTitle")}</p>
+            <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Peças do pedido</p>
             {pedido.itens.map(it => (
               <div key={it.id} className="flex items-center gap-2 rounded-xl bg-muted/20 border border-border/15 px-3 py-2">
                 <div className="h-6 w-6 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
@@ -701,7 +696,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
                 </div>
                 <div className="text-right shrink-0">
                   <span className="text-[14px] font-bold tabular-nums">{it.quantidade}</span>
-                  <span className="text-[10px] text-muted-foreground/50 ml-0.5">{t("stockComercialPanel.units")}</span>
+                  <span className="text-[10px] text-muted-foreground/50 ml-0.5">un.</span>
                 </div>
               </div>
             ))}
@@ -722,7 +717,7 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
             className="w-full flex items-center justify-center gap-1.5 h-7 rounded-xl bg-muted/20 hover:bg-muted/40 text-muted-foreground text-[11px] font-medium transition-colors"
           >
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {expanded ? t("stockComercialPanel.hide") : t("stockComercialPanel.viewPieces", { count: pedido.itens.length, plural: pedido.itens.length !== 1 ? "s" : "" })}
+            {expanded ? "Ocultar" : `Ver ${pedido.itens.length} peça${pedido.itens.length !== 1 ? "s" : ""}`}
           </button>
 
           {pedido.status === "pendente" && isAdmin && (
@@ -734,13 +729,13 @@ function PedidoCard({ pedido, isAdmin, onFaturar, onCancelar, isConfirmado, onCo
                 className="flex-1 h-8 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none border border-emerald-500/20"
               >
                 {isConfirmado ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Receipt className="h-3.5 w-3.5" />}
-                {isConfirmado ? t("stockComercialPanel.confirmed") : t("stockComercialPanel.invoice")}
+                {isConfirmado ? "Confirmado" : "Faturar"}
               </button>
               <button
                 type="button"
                 onClick={() => onCancelar(pedido)}
                 className="h-8 w-8 flex items-center justify-center rounded-xl bg-muted/20 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors border border-border/20"
-                title={t("stockComercialPanel.cancelOrderTitle")}
+                title="Cancelar pedido"
               >
                 <Ban className="h-3.5 w-3.5" />
               </button>
@@ -761,7 +756,6 @@ interface FaturarModalProps {
 }
 
 function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
   const submittingRef = useRef(false);
@@ -780,10 +774,10 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
         .eq("id", pedido.id);
       if (pedErr) throw pedErr;
 
-      toast.success(t("stockComercialPanel.toastInvoiced"));
+      toast.success("Pedido faturado!");
       onSuccess();
     } catch (_e) {
-      toast.error(t("stockComercialPanel.toastInvoiceError"));
+      toast.error("Erro ao faturar pedido.");
     } finally {
       submittingRef.current = false;
       setSaving(false);
@@ -800,19 +794,19 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
             <Receipt className="h-4 w-4 text-success" />
           </div>
           <div>
-            <p className="text-sm font-semibold">{t("stockComercialPanel.invoiceOrderTitle")}</p>
+            <p className="text-sm font-semibold">Faturar Pedido?</p>
             <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
           </div>
         </div>
         <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2.5 space-y-1">
           <p className="text-[12px] text-muted-foreground">
-            <strong className="text-foreground">{totalItens} {t("stockComercialPanel.units")}</strong> {t("stockComercialPanel.invoiceDesc1")} <strong>{t("stockComercialPanel.invoiceDesc1Strong")}</strong>.
+            <strong className="text-foreground">{totalItens} unidade{totalItens !== 1 ? "s" : ""}</strong> serão retiradas da expedição e o pedido será marcado como <strong>faturado</strong>.
           </p>
-          <p className="text-[11px] text-muted-foreground/70">{t("stockComercialPanel.cannotUndo")}</p>
+          <p className="text-[11px] text-muted-foreground/70">Esta ação não pode ser desfeita.</p>
         </div>
         <div className="flex gap-2">
           <button type="button" className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors" onClick={onClose} disabled={saving}>
-            {t("stockComercialPanel.cancel")}
+            Cancelar
           </button>
           <button
             type="button"
@@ -821,7 +815,7 @@ function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) {
             disabled={saving}
           >
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
-            {t("stockComercialPanel.invoice")}
+            Faturar
           </button>
         </div>
       </div>
@@ -839,7 +833,6 @@ interface ComercialDashboardProps {
 }
 
 function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: ComercialDashboardProps) {
-  const { t } = useTranslation();
   const faturados = pedidos.filter(p => p.status === "faturado");
   const totalPecas = faturados.reduce((sum, p) => sum + p.itens.reduce((s, i) => s + i.quantidade, 0), 0);
   const totalPendentes = pedidos.filter(p => p.status === "pendente").length;
@@ -859,7 +852,7 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
 
   function downloadPdfVendedora() {
     const meusPedidos = faturados.filter(p => p.vendedora_nome === currentUserName);
-    if (meusPedidos.length === 0) { toast.error(t("stockComercialPanel.toastNoInvoicedOrder")); return; }
+    if (meusPedidos.length === 0) { toast.error("Nenhum pedido faturado seu encontrado."); return; }
     const pecas: Record<string, { model: string; ref: string; total: number }> = {};
     for (const p of meusPedidos) {
       for (const i of p.itens) {
@@ -871,21 +864,21 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
     const pecasList = Object.values(pecas).sort((a, b) => b.total - a.total);
     // XSS: escape all user-supplied values injected into the HTML blob
     const esc = escHtml;
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${t("stockComercialPanel.salesReportTitle")} — ${esc(currentUserName ?? "")}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relatório — ${esc(currentUserName ?? "")}</title>
     <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin-bottom:4px}p.sub{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;padding:8px 10px;background:#f3f0ff;color:#5b21b6;border-bottom:2px solid #ddd6fe}td{padding:7px 10px;border-bottom:1px solid #eee}.total{font-weight:bold;font-size:15px;color:#5b21b6}.footer{margin-top:20px;font-size:11px;color:#999}</style></head><body>
-    <h1>📊 ${t("stockComercialPanel.salesReportTitle")}</h1>
-    <p class="sub">${t("stockComercialPanel.seller")} <strong>${esc(currentUserName ?? "")}</strong> &nbsp;·&nbsp; ${t("stockComercialPanel.generatedOn")} ${new Date().toLocaleDateString(t("stockComercialPanel.localeCode"))} ${new Date().toLocaleTimeString(t("stockComercialPanel.localeCode"), { hour: "2-digit", minute: "2-digit" })}</p>
-    <table><thead><tr><th>#</th><th>${t("stockComercialPanel.piece")}</th><th>${t("stockComercialPanel.reference")}</th><th>${t("stockComercialPanel.qtySold")}</th></tr></thead><tbody>
+    <h1>📊 Relatório de Vendas</h1>
+    <p class="sub">Vendedora: <strong>${esc(currentUserName ?? "")}</strong> &nbsp;·&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
+    <table><thead><tr><th>#</th><th>Peça</th><th>Referência</th><th>Qtd. Vendida</th></tr></thead><tbody>
     ${pecasList.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.model)}</td><td>${esc(p.ref)}</td><td class="total">${p.total}</td></tr>`).join("")}
     </tbody></table>
-    <p class="footer">${t("stockComercialPanel.totalOrders")} ${meusPedidos.length} ${t("stockComercialPanel.orderWord")} &nbsp;·&nbsp; ${pecasList.reduce((s, p) => s + p.total, 0)} ${t("stockComercialPanel.piecesInTotal")}</p>
+    <p class="footer">Total de ${meusPedidos.length} pedido(s) faturado(s) &nbsp;·&nbsp; ${pecasList.reduce((s, p) => s + p.total, 0)} peças no total</p>
     </body></html>`;
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const w = window.open(url, "_blank");
     if (!w) {
       URL.revokeObjectURL(url);
-      toast.error(t("stockComercialPanel.toastPopupBlocked"));
+      toast.error("Popup bloqueado. Permita popups para imprimir.");
       return;
     }
     w.addEventListener("load", () => {
@@ -911,9 +904,9 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
             <Package className="h-5 w-5 text-violet-500" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{t("stockComercialPanel.invoicedPieces")}</p>
-            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPecas.toLocaleString(t("stockComercialPanel.localeCode"))}</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{faturados.length} {t("stockComercialPanel.ordersSuffix")}</p>
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Peças Faturadas</p>
+            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPecas.toLocaleString("pt-BR")}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{faturados.length} pedido(s)</p>
           </div>
         </div>
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-start gap-3">
@@ -921,9 +914,9 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
             <Clock className="h-5 w-5 text-amber-500" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{t("stockComercialPanel.pending")}</p>
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Pendentes</p>
             <p className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">{totalPendentes}</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{t("stockComercialPanel.awaitingInvoice")}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">aguardando faturamento</p>
           </div>
         </div>
       </div>
@@ -932,11 +925,11 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
       <div className="rounded-2xl border border-border/40 overflow-hidden">
         <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
           <Trophy className="h-4 w-4 text-amber-500" />
-          <p className="text-sm font-semibold">{t("stockComercialPanel.topSellersRanking")}</p>
-          <span className="text-[11px] text-muted-foreground/60">{t("stockComercialPanel.invoicedPiecesSuffix")}</span>
+          <p className="text-sm font-semibold">Ranking de Vendedoras</p>
+          <span className="text-[11px] text-muted-foreground/60">(peças faturadas)</span>
         </div>
         {rankingVendList.length === 0
-          ? <div className="py-8 text-center text-sm text-muted-foreground/60">{t("stockComercialPanel.noDataAvailable")}</div>
+          ? <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
           : <div className="divide-y divide-border/20">
               {rankingVendList.map(([nome, total], idx) => (
                 <div key={nome} className="flex items-center gap-3 px-4 py-2.5">
@@ -962,11 +955,11 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
       <div className="rounded-2xl border border-border/40 overflow-hidden">
         <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-violet-500" />
-          <p className="text-sm font-semibold">{t("stockComercialPanel.topClients")}</p>
-          <span className="text-[11px] text-muted-foreground/60">{t("stockComercialPanel.piecesSuffix")}</span>
+          <p className="text-sm font-semibold">Clientes que Mais Compraram</p>
+          <span className="text-[11px] text-muted-foreground/60">(peças)</span>
         </div>
         {rankingCliList.length === 0
-          ? <div className="py-8 text-center text-sm text-muted-foreground/60">{t("stockComercialPanel.noDataAvailable")}</div>
+          ? <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
           : <div className="divide-y divide-border/20">
               {rankingCliList.map(([nome, total], idx) => (
                 <div key={nome} className="flex items-center gap-3 px-4 py-2.5">
@@ -995,7 +988,7 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
         className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-violet-500/30 text-violet-600 dark:text-violet-400 text-sm font-medium hover:bg-violet-500/10 transition-colors"
       >
         <Download className="h-4 w-4" />
-        {t("stockComercialPanel.downloadMyPdfReport")}
+        Baixar meu relatório em PDF
       </button>
     </div>
   );
@@ -1004,7 +997,6 @@ function ComercialDashboard({ pedidos, loading, currentUserName, isAdmin }: Come
 // ─── Histórico Geral Comercial (modal) ───────────────────────────────────────
 
 function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { open: boolean; onClose: () => void; currentUserName: string | null; isAdmin: boolean }) {
-  const { t } = useTranslation();
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -1035,7 +1027,7 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
 
   function fmtDate(iso: string) {
     const d = new Date(iso);
-    return { date: d.toLocaleDateString(t("stockComercialPanel.localeCode"), { day: "2-digit", month: "2-digit", year: "2-digit" }), time: d.toLocaleTimeString(t("stockComercialPanel.localeCode"), { hour: "2-digit", minute: "2-digit" }) };
+    return { date: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }), time: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) };
   }
 
   if (!open) return null;
@@ -1049,9 +1041,9 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
             <div>
               <div className="flex items-center gap-2">
                 <History className="h-4 w-4 text-violet-500" />
-                <p className="text-sm font-semibold">{t("stockComercialPanel.generalHistoryShipping")}</p>
+                <p className="text-sm font-semibold">Histórico Geral — Expedição</p>
               </div>
-              <p className="text-[12px] text-muted-foreground mt-0.5">{t("stockComercialPanel.latestMovements", { count: movements.length })}</p>
+              <p className="text-[12px] text-muted-foreground mt-0.5">Últimas {movements.length} movimentações</p>
             </div>
             <div className="flex items-center gap-1.5">
               <button type="button" onClick={() => loadMovements({ v: false })} disabled={loading} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
@@ -1065,7 +1057,7 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
         </div>
         <div className="px-3 pb-4 overflow-y-auto flex-1 space-y-1">
           {loading && <div className="flex items-center justify-center py-10"><div className="animate-spin h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full" /></div>}
-          {!loading && movements.length === 0 && <div className="text-center py-12 text-sm text-muted-foreground">{t("stockComercialPanel.noMovementShipping")}</div>}
+          {!loading && movements.length === 0 && <div className="text-center py-12 text-sm text-muted-foreground">Nenhuma movimentação na expedição</div>}
           {!loading && movements.map(mv => {
             const { date, time } = fmtDate(mv.created_at);
             const isEntrada = mv.type === "entrada";
@@ -1075,12 +1067,12 @@ function HistoricoGeralComercial({ open, onClose, currentUserName, isAdmin }: { 
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="text-[12px] font-semibold leading-snug line-clamp-1">{mv.device_model}</p>
                   <p className="text-[10px] text-muted-foreground font-mono">{mv.device_reference}</p>
-                  {displayLote(mv.lote) && <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-violet-500/80"><Tag className="h-2.5 w-2.5" />{t("stockComercialPanel.lotLabel")} {displayLote(mv.lote)}</p>}
+                  {displayLote(mv.lote) && <p className="flex items-center gap-1 text-[11px] font-mono font-semibold text-violet-500/80"><Tag className="h-2.5 w-2.5" />Lote {displayLote(mv.lote)}</p>}
                   {mv.reason && <p className="text-[11px] text-muted-foreground line-clamp-1">{mv.reason}</p>}
                   {mv.user_display_name && <p className="flex items-center gap-1 text-[10px] text-muted-foreground/60"><User className="h-2.5 w-2.5" />{mv.user_display_name}</p>}
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-violet-500")}>{isEntrada ? "+" : "-"}{mv.quantity}<span className="text-[10px] font-normal ml-0.5 opacity-70">{t("stockComercialPanel.units")}</span></span>
+                  <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-success" : "text-violet-500")}>{isEntrada ? "+" : "-"}{mv.quantity}<span className="text-[10px] font-normal ml-0.5 opacity-70">un.</span></span>
                   <span className="text-[10px] text-muted-foreground">{date}</span>
                   <span className="text-[10px] text-muted-foreground/60">{time}</span>
                 </div>
@@ -1109,7 +1101,7 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
   const anoAtual = now.getFullYear();
   const inicioMes = new Date(anoAtual, mesAtual, 1).toISOString();
   const fimMes    = new Date(anoAtual, mesAtual + 1, 0, 23, 59, 59).toISOString();
-  const nomeMes   = now.toLocaleDateString(i18n.t("stockComercialPanel.localeCode"), { month: "long", year: "numeric" });
+  const nomeMes   = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
   let query = supabase
     .from("pedidos_comerciais")
@@ -1124,7 +1116,7 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
   }
 
   const { data: pedidosData, error } = await query;
-  if (error || !pedidosData) { toast.error(i18n.t("stockComercialPanel.toastMonthOrdersError")); return; }
+  if (error || !pedidosData) { toast.error("Erro ao buscar pedidos do mês."); return; }
 
   const pedidoIds = pedidosData.map((p: Record<string, unknown>) => p.id as string);
 
@@ -1136,18 +1128,18 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
     : { data: [] };
 
   const statusLabel: Record<string, string> = {
-    pendente: i18n.t("stockComercialPanel.statusPending"),
-    faturado: i18n.t("stockComercialPanel.statusInvoiced"),
-    cancelado: i18n.t("stockComercialPanel.statusCancelled"),
+    pendente: "Pendente",
+    faturado: "Faturado",
+    cancelado: "Cancelado",
   };
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = vendedoraNome ?? i18n.t("stockComercialPanel.excelSystemDefault");
+  wb.creator = vendedoraNome ?? "Sistema Comercial";
   wb.created = now;
 
   // ─── Aba Pedidos do Mês ──────────────────────────────────────────────────────
-  const wsPedidos = wb.addWorksheet(i18n.t("stockComercialPanel.excelSheetOrdersMonth"));
-  const pedidosKeys = [i18n.t("stockComercialPanel.excelOrderId"), i18n.t("stockComercialPanel.excelClient"), i18n.t("stockComercialPanel.excelSeller"), i18n.t("stockComercialPanel.excelStatus"), i18n.t("stockComercialPanel.excelNotes"), i18n.t("stockComercialPanel.excelCreatedAt"), i18n.t("stockComercialPanel.excelInvoicedAt")];
+  const wsPedidos = wb.addWorksheet("Pedidos do Mês");
+  const pedidosKeys = ["Pedido ID", "Cliente", "Vendedora", "Status", "Observações", "Criado em", "Faturado em"];
   const pedidosCols = [12, 28, 20, 12, 30, 14, 14];
   wsPedidos.columns = pedidosKeys.map((h, i) => ({ header: h, key: h, width: pedidosCols[i] }));
 
@@ -1162,27 +1154,27 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
 
   pedidosData.forEach((p: Record<string, unknown>, rowIdx: number) => {
     const c = p.clientes as Record<string, unknown> | null;
-    const row: Record<string, unknown> = {
-      [pedidosKeys[0]]: String(p.id).slice(0, 8).toUpperCase(),
-      [pedidosKeys[1]]: String(c?.nome ?? "—"),
-      [pedidosKeys[2]]: String(p.vendedora_nome ?? "—"),
-      [pedidosKeys[3]]: statusLabel[p.status as string] ?? String(p.status),
-      [pedidosKeys[4]]: String(p.observacoes ?? ""),
-      [pedidosKeys[5]]: p.created_at ? new Date(p.created_at as string).toLocaleDateString(i18n.t("stockComercialPanel.localeCode")) : "",
-      [pedidosKeys[6]]: p.faturado_em ? new Date(p.faturado_em as string).toLocaleDateString(i18n.t("stockComercialPanel.localeCode")) : "",
+    const row = {
+      "Pedido ID":   String(p.id).slice(0, 8).toUpperCase(),
+      "Cliente":     String(c?.nome ?? "—"),
+      "Vendedora":   String(p.vendedora_nome ?? "—"),
+      "Status":      statusLabel[p.status as string] ?? String(p.status),
+      "Observações": String(p.observacoes ?? ""),
+      "Criado em":   p.created_at ? new Date(p.created_at as string).toLocaleDateString("pt-BR") : "",
+      "Faturado em": p.faturado_em ? new Date(p.faturado_em as string).toLocaleDateString("pt-BR") : "",
     };
     const exRow = wsPedidos.addRow(row);
     const isEven = rowIdx % 2 === 0;
     exRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const key = pedidosKeys[colNumber - 1];
-      const status = row[pedidosKeys[3]];
+      const status = row["Status"];
       let bgArgb = isEven ? "FFF5F0FF" : "FFFFFFFF";
       let fgArgb = "FF222222";
       let bold   = false;
-      if (key === pedidosKeys[3]) {
-        if (status === statusLabel.pendente)  { bgArgb = "FFFFF7E0"; fgArgb = "FFB45309"; bold = true; }
-        if (status === statusLabel.faturado)  { bgArgb = "FFEAFFEA"; fgArgb = "FF166534"; bold = true; }
-        if (status === statusLabel.cancelado) { bgArgb = "FFFFEAEA"; fgArgb = "FFCC0000"; bold = true; }
+      if (key === "Status") {
+        if (status === "Pendente")  { bgArgb = "FFFFF7E0"; fgArgb = "FFB45309"; bold = true; }
+        if (status === "Faturado")  { bgArgb = "FFEAFFEA"; fgArgb = "FF166534"; bold = true; }
+        if (status === "Cancelado") { bgArgb = "FFFFEAEA"; fgArgb = "FFCC0000"; bold = true; }
       }
       cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: bgArgb } };
       cell.font      = { name: "Arial", size: 10, color: { argb: fgArgb }, bold };
@@ -1192,8 +1184,8 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
   });
 
   // ─── Aba Itens ──────────────────────────────────────────────────────────────
-  const wsItens = wb.addWorksheet(i18n.t("stockComercialPanel.excelSheetItems"));
-  const itensKeys = [i18n.t("stockComercialPanel.excelOrderId"), i18n.t("stockComercialPanel.excelClient"), i18n.t("stockComercialPanel.excelModel"), i18n.t("stockComercialPanel.excelReference"), i18n.t("stockComercialPanel.excelLot"), i18n.t("stockComercialPanel.excelQuantity"), i18n.t("stockComercialPanel.excelOrderStatus")];
+  const wsItens = wb.addWorksheet("Itens dos Pedidos");
+  const itensKeys = ["Pedido ID", "Cliente", "Modelo", "Referência", "Lote", "Quantidade", "Status Pedido"];
   const itensCols = [12, 24, 36, 18, 14, 12, 14];
   wsItens.columns = itensKeys.map((h, i) => ({ header: h, key: h, width: itensCols[i] }));
   wsItens.getRow(1).eachCell((cell) => {
@@ -1209,20 +1201,20 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
     const device    = stockItem?.devices as Record<string, unknown> | null;
     const pedido    = pedidosData.find((p: Record<string, unknown>) => p.id === it.pedido_id) as Record<string, unknown> | undefined;
     const cliente   = pedido?.clientes as Record<string, unknown> | null;
-    const row: Record<string, unknown> = {
-      [itensKeys[0]]: String(it.pedido_id).slice(0, 8).toUpperCase(),
-      [itensKeys[1]]: String(cliente?.nome ?? "—"),
-      [itensKeys[2]]: String(device?.model ?? "—"),
-      [itensKeys[3]]: String(device?.reference ?? "—"),
-      [itensKeys[4]]: String(it.lote ?? ""),
-      [itensKeys[5]]: Number(it.quantidade ?? 0),
-      [itensKeys[6]]: statusLabel[pedido?.status as string ?? ""] ?? String(pedido?.status ?? ""),
+    const row = {
+      "Pedido ID":     String(it.pedido_id).slice(0, 8).toUpperCase(),
+      "Cliente":       String(cliente?.nome ?? "—"),
+      "Modelo":        String(device?.model ?? "—"),
+      "Referência":    String(device?.reference ?? "—"),
+      "Lote":          String(it.lote ?? ""),
+      "Quantidade":    Number(it.quantidade ?? 0),
+      "Status Pedido": statusLabel[pedido?.status as string ?? ""] ?? String(pedido?.status ?? ""),
     };
     const exRow = wsItens.addRow(row);
     const isEven = rowIdx % 2 === 0;
     exRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const key = itensKeys[colNumber - 1];
-      const isNum = key === itensKeys[5];
+      const isNum = key === "Quantidade";
       cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: isEven ? "FFF5F0FF" : "FFFFFFFF" } };
       cell.font      = { name: "Arial", size: 10, color: { argb: "FF222222" }, bold: isNum };
       cell.alignment = { horizontal: isNum ? "center" : "left", vertical: "middle" };
@@ -1237,24 +1229,22 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
   const cancelados = pedidosData.filter((p: Record<string, unknown>) => p.status === "cancelado").length;
   const totalPecas = (itensData ?? []).reduce((s: number, i: Record<string, unknown>) => s + Number(i.quantidade ?? 0), 0);
 
-  const wsResumo = wb.addWorksheet(i18n.t("stockComercialPanel.excelSheetSummary"));
-  const kIndicador = i18n.t("stockComercialPanel.excelIndicator");
-  const kValor = i18n.t("stockComercialPanel.excelValue");
-  wsResumo.columns = [{ header: kIndicador, key: "Indicador", width: 34 }, { header: kValor, key: "Valor", width: 22 }];
+  const wsResumo = wb.addWorksheet("Resumo");
+  wsResumo.columns = [{ header: "Indicador", key: "Indicador", width: 34 }, { header: "Valor", key: "Valor", width: 22 }];
   wsResumo.getRow(1).eachCell((cell) => {
     cell.font = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 10 };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4C1D95" } };
     cell.alignment = { horizontal: "center", vertical: "middle" };
   });
   [
-    { Indicador: i18n.t("stockComercialPanel.excelSellerLabel"),          Valor: vendedoraNome ?? "—" },
-    { Indicador: i18n.t("stockComercialPanel.excelPeriod"),            Valor: nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1) },
-    { Indicador: i18n.t("stockComercialPanel.excelTotalOrders"),   Valor: total },
-    { Indicador: i18n.t("stockComercialPanel.excelPendingOrders"),  Valor: pendentes },
-    { Indicador: i18n.t("stockComercialPanel.excelInvoicedOrders"),  Valor: faturados },
-    { Indicador: i18n.t("stockComercialPanel.excelCancelledOrders"), Valor: cancelados },
-    { Indicador: i18n.t("stockComercialPanel.excelTotalPieces"),     Valor: totalPecas },
-    { Indicador: i18n.t("stockComercialPanel.excelExportDate"), Valor: now.toLocaleString(i18n.t("stockComercialPanel.localeCode")) },
+    { Indicador: "Vendedora",          Valor: vendedoraNome ?? "—" },
+    { Indicador: "Período",            Valor: nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1) },
+    { Indicador: "Total de pedidos",   Valor: total },
+    { Indicador: "Pedidos pendentes",  Valor: pendentes },
+    { Indicador: "Pedidos faturados",  Valor: faturados },
+    { Indicador: "Pedidos cancelados", Valor: cancelados },
+    { Indicador: "Total de peças",     Valor: totalPecas },
+    { Indicador: "Data de exportação", Valor: now.toLocaleString("pt-BR") },
   ].forEach((r, rowIdx) => {
     const exRow = wsResumo.addRow(r);
     exRow.eachCell({ includeEmpty: true }, (cell) => {
@@ -1274,7 +1264,7 @@ async function exportExcelMesVendedora(userId: string | undefined, vendedoraNome
   a.download  = `pedidos-${mes2d}-${anoAtual}${vendedoraNome ? `-${vendedoraNome.replace(/\s+/g, "_")}` : ""}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
-  toast.success(i18n.t("stockComercialPanel.toastMonthExportSuccess", { count: total, plural: total !== 1 ? "s" : "", month: nomeMes }));
+  toast.success(`${total} pedido${total !== 1 ? "s" : ""} de ${nomeMes} exportado${total !== 1 ? "s" : ""} com sucesso!`);
 }
 
 // ─── Export Excel Comercial ──────────────────────────────────────────────────
@@ -1286,7 +1276,7 @@ async function exportExcelComercial() {
     .order("created_at", { ascending: false });
 
   if (error || !pedidosData) {
-    toast.error(i18n.t("stockComercialPanel.toastMonthOrdersError"));
+    toast.error("Erro ao buscar dados dos pedidos.");
     return;
   }
 
@@ -1300,25 +1290,22 @@ async function exportExcelComercial() {
     : { data: [] };
 
   const statusLabel: Record<string, string> = {
-    pendente: i18n.t("stockComercialPanel.statusPending"),
-    faturado: i18n.t("stockComercialPanel.statusInvoiced"),
-    cancelado: i18n.t("stockComercialPanel.statusCancelled"),
+    pendente: "Pendente",
+    faturado: "Faturado",
+    cancelado: "Cancelado",
   };
-
-  const pedidosKeys = [i18n.t("stockComercialPanel.excelOrderId"), i18n.t("stockComercialPanel.excelClient"), i18n.t("stockComercialPanel.excelSeller"), i18n.t("stockComercialPanel.excelStatus"), i18n.t("stockComercialPanel.excelNotes"), i18n.t("stockComercialPanel.excelCreatedAt"), i18n.t("stockComercialPanel.excelInvoicedAt")];
-  const itensKeys = [i18n.t("stockComercialPanel.excelOrderId"), i18n.t("stockComercialPanel.excelClient"), i18n.t("stockComercialPanel.excelModel"), i18n.t("stockComercialPanel.excelReference"), i18n.t("stockComercialPanel.excelLot"), i18n.t("stockComercialPanel.excelQuantity"), i18n.t("stockComercialPanel.excelOrderStatus")];
 
   // Aba 1: Pedidos
   const pedidosRows = pedidosData.map((p: Record<string, unknown>) => {
     const c = p.clientes as Record<string, unknown> | null;
     return {
-      [pedidosKeys[0]]: String(p.id).slice(0, 8).toUpperCase(),
-      [pedidosKeys[1]]: String(c?.nome ?? "—"),
-      [pedidosKeys[2]]: String(p.vendedora_nome ?? "—"),
-      [pedidosKeys[3]]: statusLabel[p.status as string] ?? String(p.status),
-      [pedidosKeys[4]]: String(p.observacoes ?? ""),
-      [pedidosKeys[5]]: p.created_at ? new Date(p.created_at as string).toLocaleDateString(i18n.t("stockComercialPanel.localeCode")) : "",
-      [pedidosKeys[6]]: p.faturado_em ? new Date(p.faturado_em as string).toLocaleDateString(i18n.t("stockComercialPanel.localeCode")) : "",
+      "Pedido ID":     String(p.id).slice(0, 8).toUpperCase(),
+      "Cliente":       String(c?.nome ?? "—"),
+      "Vendedora":     String(p.vendedora_nome ?? "—"),
+      "Status":        statusLabel[p.status as string] ?? String(p.status),
+      "Observações":   String(p.observacoes ?? ""),
+      "Criado em":     p.created_at ? new Date(p.created_at as string).toLocaleDateString("pt-BR") : "",
+      "Faturado em":   p.faturado_em ? new Date(p.faturado_em as string).toLocaleDateString("pt-BR") : "",
     };
   });
 
@@ -1329,20 +1316,21 @@ async function exportExcelComercial() {
     const pedido = pedidosData.find((p: Record<string, unknown>) => p.id === it.pedido_id) as Record<string, unknown> | undefined;
     const cliente = pedido?.clientes as Record<string, unknown> | null;
     return {
-      [itensKeys[0]]: String(it.pedido_id).slice(0, 8).toUpperCase(),
-      [itensKeys[1]]: String(cliente?.nome ?? "—"),
-      [itensKeys[2]]: String(device?.model ?? "—"),
-      [itensKeys[3]]: String(device?.reference ?? "—"),
-      [itensKeys[4]]: String(it.lote ?? ""),
-      [itensKeys[5]]: Number(it.quantidade ?? 0),
-      [itensKeys[6]]: statusLabel[pedido?.status as string ?? ""] ?? String(pedido?.status ?? ""),
+      "Pedido ID":    String(it.pedido_id).slice(0, 8).toUpperCase(),
+      "Cliente":      String(cliente?.nome ?? "—"),
+      "Modelo":       String(device?.model ?? "—"),
+      "Referência":   String(device?.reference ?? "—"),
+      "Lote":         String(it.lote ?? ""),
+      "Quantidade":   Number(it.quantidade ?? 0),
+      "Status Pedido": statusLabel[pedido?.status as string ?? ""] ?? String(pedido?.status ?? ""),
     };
   });
 
   const wb = new ExcelJS.Workbook();
 
   // ─── Aba Pedidos ────────────────────────────────────────────────────────────
-  const wsPedidos = wb.addWorksheet(i18n.t("stockComercialPanel.excelSheetOrders"));
+  const wsPedidos = wb.addWorksheet("Pedidos");
+  const pedidosKeys = ["Pedido ID","Cliente","Vendedora","Status","Observações","Criado em","Faturado em"];
   const pedidosCols = [12, 28, 20, 12, 30, 14, 14];
   wsPedidos.columns = pedidosKeys.map((h, i) => ({ header: h, key: h, width: pedidosCols[i] }));
   wsPedidos.getRow(1).eachCell((cell) => {
@@ -1358,14 +1346,14 @@ async function exportExcelComercial() {
     const isEven = rowIdx % 2 === 0;
     exRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const key = pedidosKeys[colNumber - 1];
-      const status = row[pedidosKeys[3]];
+      const status = row["Status"];
       let bgArgb = isEven ? "FFF5F0FF" : "FFFFFFFF";
       let fgArgb = "FF222222";
       let bold   = false;
-      if (key === pedidosKeys[3]) {
-        if (status === statusLabel.pendente)  { bgArgb = "FFFFF7E0"; fgArgb = "FFB45309"; bold = true; }
-        if (status === statusLabel.faturado)  { bgArgb = "FFEAFFEA"; fgArgb = "FF166534"; bold = true; }
-        if (status === statusLabel.cancelado) { bgArgb = "FFFFEAEA"; fgArgb = "FFCC0000"; bold = true; }
+      if (key === "Status") {
+        if (status === "Pendente")  { bgArgb = "FFFFF7E0"; fgArgb = "FFB45309"; bold = true; }
+        if (status === "Faturado")  { bgArgb = "FFEAFFEA"; fgArgb = "FF166534"; bold = true; }
+        if (status === "Cancelado") { bgArgb = "FFFFEAEA"; fgArgb = "FFCC0000"; bold = true; }
       }
       cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: bgArgb } };
       cell.font      = { name: "Arial", size: 10, color: { argb: fgArgb }, bold };
@@ -1375,7 +1363,8 @@ async function exportExcelComercial() {
   });
 
   // ─── Aba Itens ──────────────────────────────────────────────────────────────
-  const wsItens = wb.addWorksheet(i18n.t("stockComercialPanel.excelSheetItems"));
+  const wsItens = wb.addWorksheet("Itens dos Pedidos");
+  const itensKeys = ["Pedido ID","Cliente","Modelo","Referência","Lote","Quantidade","Status Pedido"];
   const itensCols = [12, 24, 36, 18, 14, 12, 14];
   wsItens.columns = itensKeys.map((h, i) => ({ header: h, key: h, width: itensCols[i] }));
   wsItens.getRow(1).eachCell((cell) => {
@@ -1391,7 +1380,7 @@ async function exportExcelComercial() {
     const isEven = rowIdx % 2 === 0;
     exRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const key = itensKeys[colNumber - 1];
-      const isNum = key === itensKeys[5];
+      const isNum = key === "Quantidade";
       cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: isEven ? "FFF5F0FF" : "FFFFFFFF" } };
       cell.font      = { name: "Arial", size: 10, color: { argb: "FF222222" }, bold: isNum };
       cell.alignment = { horizontal: isNum ? "center" : "left", vertical: "middle" };
@@ -1405,17 +1394,15 @@ async function exportExcelComercial() {
   const faturados  = pedidosData.filter((p: Record<string, unknown>) => p.status === "faturado").length;
   const cancelados = pedidosData.filter((p: Record<string, unknown>) => p.status === "cancelado").length;
 
-  const wsResumo = wb.addWorksheet(i18n.t("stockComercialPanel.excelSheetSummary"));
-  const kIndicador = i18n.t("stockComercialPanel.excelIndicator");
-  const kValor = i18n.t("stockComercialPanel.excelValue");
-  wsResumo.columns = [{ header: kIndicador, key: "Indicador", width: 30 }, { header: kValor, key: "Valor", width: 20 }];
+  const wsResumo = wb.addWorksheet("Resumo");
+  wsResumo.columns = [{ header: "Indicador", key: "Indicador", width: 30 }, { header: "Valor", key: "Valor", width: 20 }];
   [
-    { Indicador: i18n.t("stockComercialPanel.excelTotalOrders"),   Valor: total },
-    { Indicador: i18n.t("stockComercialPanel.excelPendingOrders"),  Valor: pendentes },
-    { Indicador: i18n.t("stockComercialPanel.excelInvoicedOrders"),  Valor: faturados },
-    { Indicador: i18n.t("stockComercialPanel.excelCancelledOrders"), Valor: cancelados },
-    { Indicador: i18n.t("stockComercialPanel.excelTotalItems"),     Valor: (itensData ?? []).length },
-    { Indicador: i18n.t("stockComercialPanel.excelExportDate"), Valor: new Date().toLocaleString(i18n.t("stockComercialPanel.localeCode")) },
+    { Indicador: "Total de pedidos",   Valor: total },
+    { Indicador: "Pedidos pendentes",  Valor: pendentes },
+    { Indicador: "Pedidos faturados",  Valor: faturados },
+    { Indicador: "Pedidos cancelados", Valor: cancelados },
+    { Indicador: "Total de itens",     Valor: (itensData ?? []).length },
+    { Indicador: "Data de exportação", Valor: new Date().toLocaleString("pt-BR") },
   ].forEach((r) => wsResumo.addRow(r));
 
   // Gera buffer e dispara download
@@ -1424,14 +1411,13 @@ async function exportExcelComercial() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href     = url;
-  a.download = `comercial-${new Date().toLocaleDateString(i18n.t("stockComercialPanel.localeCode")).replace(/\//g, "-")}.xlsx`;
+  a.download = `comercial-${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
-  toast.success(i18n.t("stockComercialPanel.toastComercialExportSuccess", { count: total, plural: total !== 1 ? "s" : "" }));
+  toast.success(`${total} pedido${total !== 1 ? "s" : ""} exportado${total !== 1 ? "s" : ""} para Excel (.xlsx).`);
 }
 
 export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: ComercialPanelProps) {
-  const { t } = useTranslation();
   const { role, user } = useAuth();
   const canAccess = isAdmin || isVendedora;
 
@@ -1543,7 +1529,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
 
       setPedidos(mapped);
     } catch (_e) {
-      toast.error(t("stockComercialPanel.toastLoadOrdersError"));
+      toast.error("Erro ao carregar pedidos.");
     } finally {
       setLoadingPedidos(false);
     }
@@ -1561,7 +1547,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
       if (error) throw error;
       setClientes((data as Cliente[]) ?? []);
     } catch (_e) {
-      toast.error(t("stockComercialPanel.toastLoadClientsError"));
+      toast.error("Erro ao carregar clientes.");
       setClientes([]);
     } finally {
       setLoadingClientes(false);
@@ -1588,8 +1574,8 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
         <ShoppingBag className="h-10 w-10 text-muted-foreground/30" />
-        <p className="text-muted-foreground font-medium">{t("stockComercialPanel.accessRestrictedTitle")}</p>
-        <p className="text-sm text-muted-foreground/60">{t("stockComercialPanel.accessRestrictedDesc")}</p>
+        <p className="text-muted-foreground font-medium">Acesso restrito</p>
+        <p className="text-sm text-muted-foreground/60">Esta área é exclusiva para vendedoras.</p>
       </div>
     );
   }
@@ -1602,12 +1588,12 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     try {
       // Use atomic RPC to cancel pedido + release reservations in one transaction
       const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
-      if (error) { toast.error(t("stockComercialPanel.toastCancelError")); return; }
-      toast.success(t("stockComercialPanel.toastOrderCancelled"));
+      if (error) { toast.error("Erro ao cancelar."); return; }
+      toast.success("Pedido cancelado.");
       setCancelarPedido(null);
       loadPedidos();
     } catch (_e) {
-      toast.error(t("stockComercialPanel.toastUnexpectedCancelError"));
+      toast.error("Erro inesperado ao cancelar pedido.");
     } finally {
       setCancelando(false);
     }
@@ -1626,8 +1612,8 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     }
     const { error } = await supabase.from("clientes").delete().eq("id", deleteCliente.id);
     setDeletingCliente(false);
-    if (error) { toast.error(t("stockComercialPanel.toastDeleteClientError")); return; }
-    toast.success(t("stockComercialPanel.toastClientDeleted"));
+    if (error) { toast.error("Erro ao excluir cliente."); return; }
+    toast.success("Cliente excluído.");
     setDeleteCliente(null);
     loadClientes();
   }
@@ -1640,16 +1626,16 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
           <ShoppingBag className="h-4 w-4 text-violet-500" />
         </div>
         <p className="text-[12px] text-violet-600 dark:text-violet-400 leading-relaxed">
-          {t("stockComercialPanel.infoBanner")}
+          Cadastre clientes, visualize peças disponíveis na expedição e registre pedidos. O estoque fatura e as peças saem automaticamente.
         </p>
       </div>
 
       {/* Sub-tabs */}
       <div className="flex items-center gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5">
         {([
-          { id: "dashboard", label: t("stockComercialPanel.tabDashboard"), icon: LayoutDashboard, badge: 0 },
-          { id: "pedidos",   label: t("stockComercialPanel.tabOrders"),   icon: ShoppingBag,    badge: pedidosPendentes },
-          { id: "clientes",  label: t("stockComercialPanel.tabClients"),  icon: User,           badge: 0 },
+          { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, badge: 0 },
+          { id: "pedidos",   label: "Pedidos",   icon: ShoppingBag,    badge: pedidosPendentes },
+          { id: "clientes",  label: "Clientes",  icon: User,           badge: 0 },
         ] as const).map(tab => (
           <button
             key={tab.id}
@@ -1685,19 +1671,19 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
           type="button"
           onClick={() => setHistoricoOpen(true)}
           className="flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl border border-transparent hover:bg-muted/30 transition-colors"
-          title={t("stockComercialPanel.historyTitle")}
+          title="Histórico Geral"
         >
           <History className="h-[18px] w-[18px] text-muted-foreground" />
-          <span className="text-[9px] font-medium text-muted-foreground hidden sm:block">{t("stockComercialPanel.history")}</span>
+          <span className="text-[9px] font-medium text-muted-foreground hidden sm:block">Histórico</span>
         </button>
         <button
           type="button"
           onClick={() => exportExcelMesVendedora(user?.id, currentUserName, isAdmin)}
           className="flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl border border-transparent hover:bg-emerald-500/10 transition-colors"
-          title={t("stockComercialPanel.exportMonthOrders")}
+          title="Exportar pedidos do mês"
         >
           <Download className="h-[18px] w-[18px] text-emerald-600 dark:text-emerald-400" />
-          <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 hidden sm:block">{t("stockComercialPanel.excel")}</span>
+          <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 hidden sm:block">Excel</span>
         </button>
       </div>
 
@@ -1718,10 +1704,10 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
             {/* Filtro status */}
             <div className="flex items-center gap-1 flex-wrap">
               {([
-                { value: "todos",     label: t("stockComercialPanel.filterAll")      },
-                { value: "pendente",  label: t("stockComercialPanel.filterPending")  },
-                { value: "faturado",  label: t("stockComercialPanel.filterInvoiced")  },
-                { value: "cancelado", label: t("stockComercialPanel.filterCancelled") },
+                { value: "todos",     label: "Todos"      },
+                { value: "pendente",  label: "Pendentes"  },
+                { value: "faturado",  label: "Faturados"  },
+                { value: "cancelado", label: "Cancelados" },
               ] as const).map(opt => (
                 <button
                   key={opt.value}
@@ -1744,14 +1730,14 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                 onClick={() => exportExcelComercial()}
                 className="h-8 px-3 flex items-center gap-1.5 rounded-xl border border-border/40 text-muted-foreground text-[11px] font-medium hover:bg-muted/30 transition-colors"
               >
-                <Download className="h-3.5 w-3.5" /> {t("stockComercialPanel.excel")}
+                <Download className="h-3.5 w-3.5" /> Excel
               </button>
               <button
                 type="button"
                 className="h-8 px-3 flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-semibold transition-colors"
                 onClick={() => setNovoPedidoOpen(true)}
               >
-                <Plus className="h-3.5 w-3.5" /> {t("stockComercialPanel.newOrder")}
+                <Plus className="h-3.5 w-3.5" /> Novo Pedido
               </button>
             </div>
           </div>
@@ -1763,13 +1749,13 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
           ) : pedidosFiltrados.length === 0 ? (
             <div className="text-center py-16 space-y-2">
               <ShoppingBag className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-              <p className="text-muted-foreground font-medium">{t("stockComercialPanel.noOrderFound")}</p>
+              <p className="text-muted-foreground font-medium">Nenhum pedido encontrado</p>
               <button
                 type="button"
                 onClick={() => setNovoPedidoOpen(true)}
                 className="mt-2 inline-flex items-center gap-1.5 h-8 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors"
               >
-                <Plus className="h-3.5 w-3.5" /> {t("stockComercialPanel.createFirstOrder")}
+                <Plus className="h-3.5 w-3.5" /> Criar primeiro pedido
               </button>
             </div>
           ) : (
@@ -1800,7 +1786,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                 value={clienteSearchFilter}
                 onChange={setClienteSearchFilter}
                 onSearch={setClienteSearchFilter}
-                placeholder={t("stockComercialPanel.searchOrScanClient")}
+                placeholder="Bipe o código ou busque por cliente..."
                 height="h-9"
               />
             </div>
@@ -1809,7 +1795,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
               className="h-9 px-3 flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-semibold transition-colors shrink-0"
               onClick={() => { setEditCliente(null); setClienteModal(true); }}
             >
-              <UserPlus className="h-3.5 w-3.5" /> {t("stockComercialPanel.newAbbrev")}
+              <UserPlus className="h-3.5 w-3.5" /> Novo
             </button>
           </div>
 
@@ -1820,14 +1806,14 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
           ) : clientesFiltrados.length === 0 ? (
             <div className="text-center py-16 space-y-2">
               <User className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-              <p className="text-muted-foreground font-medium">{clienteSearchFilter ? t("stockComercialPanel.noClientFound") : t("stockComercialPanel.noClientRegistered")}</p>
+              <p className="text-muted-foreground font-medium">{clienteSearchFilter ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}</p>
               {!clienteSearchFilter && (
                 <button
                   type="button"
                   onClick={() => { setEditCliente(null); setClienteModal(true); }}
                   className="mt-2 inline-flex items-center gap-1.5 h-8 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors"
                 >
-                  <UserPlus className="h-3.5 w-3.5" /> {t("stockComercialPanel.registerFirstClient")}
+                  <UserPlus className="h-3.5 w-3.5" /> Cadastrar primeiro cliente
                 </button>
               )}
             </div>
@@ -1879,14 +1865,14 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                         onClick={() => { setPedidoComCliente(c); setNovoPedidoOpen(true); setSubTab("pedidos"); }}
                         className="flex-1 h-8 flex items-center justify-center gap-1.5 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[11px] font-semibold transition-colors"
                       >
-                        <ShoppingCart className="h-3 w-3" /> {t("stockComercialPanel.orderAction")}
+                        <ShoppingCart className="h-3 w-3" /> Pedido
                       </button>
                       <button
                         type="button"
                         onClick={() => { setEditCliente(c); setClienteModal(true); }}
                         className="flex-1 h-8 flex items-center justify-center rounded-xl bg-muted/25 hover:bg-muted/50 text-muted-foreground text-[11px] font-medium transition-colors"
                       >
-                        {t("stockComercialPanel.edit")}
+                        Editar
                       </button>
                       {isAdmin && (
                         <button
@@ -1937,14 +1923,14 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                 <Ban className="h-4 w-4 text-destructive" />
               </div>
               <div>
-                <p className="text-sm font-semibold">{t("stockComercialPanel.cancelOrderConfirmTitle")}</p>
+                <p className="text-sm font-semibold">Cancelar pedido?</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5">{cancelarPedido.cliente_nome}</p>
               </div>
             </div>
-            <p className="text-[12px] text-muted-foreground">{t("stockComercialPanel.cancelOrderConfirmDesc")}</p>
+            <p className="text-[12px] text-muted-foreground">As peças reservadas voltarão a ficar disponíveis na expedição.</p>
             <div className="flex gap-2">
               <button type="button" className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors" onClick={() => setCancelarPedido(null)} disabled={cancelando}>
-                {t("stockComercialPanel.back")}
+                Voltar
               </button>
               <button
                 type="button"
@@ -1953,7 +1939,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                 disabled={cancelando}
               >
                 {cancelando ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
-                {t("stockComercialPanel.cancelOrderAction")}
+                Cancelar pedido
               </button>
             </div>
           </div>
@@ -1969,14 +1955,14 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                 <Trash2 className="h-4 w-4 text-destructive" />
               </div>
               <div>
-                <p className="text-sm font-semibold">{t("stockComercialPanel.deleteClientConfirmTitle")}</p>
+                <p className="text-sm font-semibold">Excluir cliente?</p>
                 <p className="text-[12px] text-muted-foreground mt-0.5">{deleteCliente.nome}</p>
               </div>
             </div>
-            <p className="text-[12px] text-muted-foreground">{isAdmin ? t("stockComercialPanel.deleteClientAdminDesc") : t("stockComercialPanel.deleteClientUserDesc")}</p>
+            <p className="text-[12px] text-muted-foreground">{isAdmin ? "Como admin, você pode excluir este cliente mesmo que tenha pedidos vinculados. Os pedidos também serão removidos." : "Clientes com pedidos vinculados não podem ser excluídos."}</p>
             <div className="flex gap-2">
               <button type="button" className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors" onClick={() => setDeleteCliente(null)} disabled={deletingCliente}>
-                {t("stockComercialPanel.cancel")}
+                Cancelar
               </button>
               <button
                 type="button"
@@ -1985,7 +1971,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
                 disabled={deletingCliente}
               >
                 {deletingCliente ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                {t("stockComercialPanel.delete")}
+                Excluir
               </button>
             </div>
           </div>

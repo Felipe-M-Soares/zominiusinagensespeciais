@@ -11,7 +11,6 @@ import { fetchLotesSummary } from "@/hooks/useStock";
 import type { LoteSummary, StockItem } from "@/hooks/useStock";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { useTranslation } from "react-i18next";
 
 interface Props {
   item: StockItem | null;
@@ -20,7 +19,6 @@ interface Props {
 }
 
 export function LotesPanel({ item, open, onClose }: Props) {
-  const { t } = useTranslation();
   const [lotes, setLotes] = useState<LoteSummary[]>([]);
   const [loading, setLoading] = useState(false);
   // valores ao vivo buscados do banco ao abrir o painel, evitando
@@ -145,7 +143,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                     <PackageCheck className="h-4 w-4 text-success" />
-                    {t("lotesPanel.titleShipping")}
+                    Estoque — Expedição
                   </DialogTitle>
                 </DialogHeader>
                 <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
@@ -156,7 +154,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
                 </p>
               </div>
               <Button variant="ghost" size="icon" className="h-7 w-7 mt-0.5 shrink-0"
-                onClick={() => load(item.id)} disabled={loading} title={t("lotesPanel.refresh")}>
+                onClick={() => load(item.id)} disabled={loading} title="Atualizar">
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               </Button>
             </div>
@@ -172,10 +170,10 @@ export function LotesPanel({ item, open, onClose }: Props) {
             )}>
               <div className="space-y-0.5">
                 <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                  {t("lotesPanel.availableInStock")}
+                  Disponível em estoque
                 </p>
                 <p className="text-[10px] text-muted-foreground/50">
-                  {t("lotesPanel.discountingReservations")}
+                  Descontando reservas de pedidos
                 </p>
               </div>
               <div className="text-right">
@@ -185,26 +183,26 @@ export function LotesPanel({ item, open, onClose }: Props) {
                 )}>
                   {available}
                 </p>
-                <p className="text-[10px] text-muted-foreground/60">{t("lotesPanel.units")}</p>
+                <p className="text-[10px] text-muted-foreground/60">unidades</p>
               </div>
             </div>
 
             {(liveReserved !== null ? liveReserved : item.quantity_reserved) > 0 && (
               <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground">{t("lotesPanel.reserved")}</p>
+                <p className="text-[11px] text-muted-foreground">Reservado (pedidos)</p>
                 <div className="flex items-center gap-1">
                   <span className="text-[15px] font-bold text-amber-500 tabular-nums">{liveReserved !== null ? liveReserved : item.quantity_reserved}</span>
-                  <span className="text-[10px] text-muted-foreground/60">{t("lotesPanel.unitsAbbrev")}</span>
+                  <span className="text-[10px] text-muted-foreground/60">un.</span>
                 </div>
               </div>
             )}
 
             {qty !== available && (
               <div className="rounded-xl border border-border/30 bg-muted/10 px-4 py-3 flex items-center justify-between">
-                <p className="text-[11px] text-muted-foreground">{t("lotesPanel.totalShipping")}</p>
+                <p className="text-[11px] text-muted-foreground">Total em expedição</p>
                 <div className="flex items-center gap-1">
                   <span className="text-[15px] font-bold text-foreground tabular-nums">{liveQty !== null ? liveQty : item.quantity}</span>
-                  <span className="text-[10px] text-muted-foreground/60">{t("lotesPanel.unitsAbbrev")}</span>
+                  <span className="text-[10px] text-muted-foreground/60">un.</span>
                 </div>
               </div>
             )}
@@ -221,7 +219,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
             {!loading && activeLotesExp.length === 0 && (
               <div className="text-center py-6 space-y-1">
                 <Tag className="h-6 w-6 text-muted-foreground/30 mx-auto" />
-                <p className="text-[11px] text-muted-foreground">{t("lotesPanel.noActiveLote")}</p>
+                <p className="text-[11px] text-muted-foreground">Nenhum lote com saldo ativo</p>
               </div>
             )}
 
@@ -241,7 +239,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
                   <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg shrink-0 bg-success/10 text-success">
                     <TrendingUp className="h-3 w-3" />
                     <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
-                    <span className="text-[10px] opacity-70">{t("lotesPanel.unitsAbbrev")}</span>
+                    <span className="text-[10px] opacity-70">un.</span>
                   </div>
                 </div>
               </div>
@@ -274,7 +272,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                     <Tag className="h-4 w-4 text-orange-500" />
-                    {t("lotesPanel.titleRework")}
+                    Estoque — Retrabalho
                   </DialogTitle>
                 </DialogHeader>
                 <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
@@ -293,7 +291,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
                 )}
               </div>
               <Button variant="ghost" size="icon" className="h-7 w-7 mt-0.5 shrink-0"
-                onClick={() => load(item.id)} disabled={loading} title={t("lotesPanel.refresh")}>
+                onClick={() => load(item.id)} disabled={loading} title="Atualizar">
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               </Button>
             </div>
@@ -307,10 +305,10 @@ export function LotesPanel({ item, open, onClose }: Props) {
             )}>
               <div className="space-y-0.5">
                 <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                  {t("lotesPanel.inRework")}
+                  Em retrabalho
                 </p>
                 <p className="text-[10px] text-muted-foreground/50">
-                  {t("lotesPanel.awaitingCompletion")}
+                  Aguardando conclusão
                 </p>
               </div>
               <div className="text-right">
@@ -320,7 +318,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
                 )}>
                   {qty}
                 </p>
-                <p className="text-[10px] text-muted-foreground/60">{t("lotesPanel.units")}</p>
+                <p className="text-[10px] text-muted-foreground/60">unidades</p>
               </div>
             </div>
           </div>
@@ -336,7 +334,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
             {!loading && activeLotesRet.length === 0 && (
               <div className="text-center py-4 space-y-1">
                 <Tag className="h-6 w-6 text-muted-foreground/30 mx-auto" />
-                <p className="text-[11px] text-muted-foreground">{t("lotesPanel.noActiveLote")}</p>
+                <p className="text-[11px] text-muted-foreground">Nenhum lote com saldo ativo</p>
               </div>
             )}
 
@@ -356,7 +354,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
                   <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg shrink-0 bg-orange-500/10 text-orange-500">
                     <TrendingUp className="h-3 w-3" />
                     <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
-                    <span className="text-[10px] opacity-70">{t("lotesPanel.unitsAbbrev")}</span>
+                    <span className="text-[10px] opacity-70">un.</span>
                   </div>
                 </div>
               </div>
@@ -384,7 +382,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                   <Tag className="h-4 w-4 text-primary" />
-                  {t("lotesPanel.titleRegistered")}
+                  Lotes Registrados
                 </DialogTitle>
               </DialogHeader>
               <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-1">
@@ -395,7 +393,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
               </p>
             </div>
             <Button variant="ghost" size="icon" className="h-7 w-7 mt-0.5 shrink-0"
-              onClick={() => load(item.id)} disabled={loading} title={t("lotesPanel.refresh")}>
+              onClick={() => load(item.id)} disabled={loading} title="Atualizar">
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             </Button>
           </div>
@@ -406,15 +404,15 @@ export function LotesPanel({ item, open, onClose }: Props) {
           <div className="px-5 pb-3">
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2 text-center">
-                <p className="text-[10px] text-muted-foreground">{t("lotesPanel.lots")}</p>
+                <p className="text-[10px] text-muted-foreground">Lotes</p>
                 <p className="text-[15px] font-bold text-foreground">{activeLotesCount}</p>
               </div>
               <div className="rounded-xl bg-success/8 border border-success/20 px-3 py-2 text-center">
-                <p className="text-[10px] text-success/70">{t("lotesPanel.entries")}</p>
+                <p className="text-[10px] text-success/70">Entradas</p>
                 <p className="text-[15px] font-bold text-success">{totalEntrada}</p>
               </div>
               <div className="rounded-xl bg-destructive/8 border border-destructive/20 px-3 py-2 text-center">
-                <p className="text-[10px] text-destructive/70">{t("lotesPanel.exits")}</p>
+                <p className="text-[10px] text-destructive/70">Saídas</p>
                 <p className="text-[15px] font-bold text-destructive">{totalSaida}</p>
               </div>
             </div>
@@ -432,9 +430,9 @@ export function LotesPanel({ item, open, onClose }: Props) {
           {!loading && lotes.length === 0 && (
             <div className="text-center py-10 space-y-1">
               <Tag className="h-8 w-8 text-muted-foreground/30 mx-auto" />
-              <p className="text-sm text-muted-foreground">{t("lotesPanel.noActiveLote")}</p>
+              <p className="text-sm text-muted-foreground">Nenhum lote com saldo ativo</p>
               <p className="text-[11px] text-muted-foreground/60">
-                {t("lotesPanel.lotsWillAppear")}
+                Os lotes aparecerão após registrar movimentos
               </p>
             </div>
           )}
@@ -469,7 +467,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
                      isZero   ? <Minus       className="h-3 w-3" /> :
                                 <TrendingDown className="h-3 w-3" />}
                     <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
-                    <span className="text-[10px] opacity-70">{t("lotesPanel.unitsAbbrev")}</span>
+                    <span className="text-[10px] opacity-70">un.</span>
                   </div>
                 </div>
 
@@ -488,11 +486,11 @@ export function LotesPanel({ item, open, onClose }: Props) {
                     <div className="flex justify-between text-[9px] text-muted-foreground/50">
                       <span className="flex items-center gap-0.5">
                         <TrendingUp className="h-2 w-2 text-success" />
-                        {l.total_entrada} {t("lotesPanel.entered")}
+                        {l.total_entrada} entraram
                       </span>
                       <span className="flex items-center gap-0.5">
                         <TrendingDown className="h-2 w-2 text-destructive" />
-                        {l.total_saida} {t("lotesPanel.exited")}
+                        {l.total_saida} saíram
                       </span>
                     </div>
                   </div>

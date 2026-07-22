@@ -9,7 +9,6 @@ import type { StockItem } from "@/hooks/useStock";
 import { Package, AlertTriangle, TrendingDown, CheckCircle2, List, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { escHtml } from "@/lib/escHtml";
-import { useTranslation } from "react-i18next";
 
 interface Props {
   open: boolean;
@@ -18,21 +17,20 @@ interface Props {
 }
 
 export function StockListModal({ open, onClose, items }: Props) {
-  const { t, i18n } = useTranslation();
   // Apenas itens com pelo menos 1 unidade, ordenados por nome
   const available = [...items]
     .filter((i) => i.quantity > 0)
-    .sort((a, b) => a.device.model.localeCompare(b.device.model, t("stockListModal.print.localeCode")));
+    .sort((a, b) => a.device.model.localeCompare(b.device.model, "pt-BR"));
 
   function handlePrint() {
-    const now = new Date().toLocaleDateString(t("stockListModal.print.localeCode"), {
+    const now = new Date().toLocaleDateString("pt-BR", {
       day: "2-digit", month: "2-digit", year: "numeric",
       hour: "2-digit", minute: "2-digit",
     });
 
     const rows = available.map((item) => {
       const isLow = item.quantity <= item.min_quantity;
-      const status = isLow ? t("stockListModal.print.low") : t("stockListModal.print.ok");
+      const status = isLow ? "⚠ Baixo" : "✓ OK";
       // SECURITY: todos os campos de texto do banco passam por escHtml() antes
       // de serem interpolados no HTML — evita XSS se algum campo contiver tags.
       return `
@@ -48,10 +46,10 @@ export function StockListModal({ open, onClose, items }: Props) {
     }).join("");
 
     const html = `<!DOCTYPE html>
-<html lang="${i18n.language}">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>${t("stockListModal.print.pageTitlePrefix")} ${now}</title>
+  <title>Estoque — ${now}</title>
   <style>
     body { font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }
     h2 { font-size: 14px; margin-bottom: 4px; }
@@ -64,19 +62,19 @@ export function StockListModal({ open, onClose, items }: Props) {
   </style>
 </head>
 <body>
-  <h2>${t("stockListModal.print.reportTitle")}</h2>
-  <p class="sub">${t("stockListModal.print.generatedOn")}: ${now} &nbsp;|&nbsp; ${t("stockListModal.print.total")}: ${available.length} ${t("stockListModal.print.piece")}${available.length !== 1 ? "s" : ""}</p>
-  <button onclick="window.print()" style="margin-bottom:14px;padding:6px 14px;cursor:pointer;font-size:11px;">${t("stockListModal.print.printBtn")}</button>
+  <h2>Relatório de Estoque</h2>
+  <p class="sub">Gerado em: ${now} &nbsp;|&nbsp; Total: ${available.length} peça${available.length !== 1 ? "s" : ""}</p>
+  <button onclick="window.print()" style="margin-bottom:14px;padding:6px 14px;cursor:pointer;font-size:11px;">🖨 Imprimir</button>
   <table>
     <thead>
       <tr>
-        <th>${t("stockListModal.print.model")}</th>
-        <th>${t("stockListModal.print.reference")}</th>
+        <th>Modelo</th>
+        <th>Referência</th>
         <th>UDI-DI</th>
-        <th style="text-align:center">${t("stockListModal.print.qty")}</th>
-        <th style="text-align:center">${t("stockListModal.print.min")}</th>
-        <th style="text-align:center">${t("stockListModal.print.status")}</th>
-        <th>${t("stockListModal.print.location")}</th>
+        <th style="text-align:center">Qtd.</th>
+        <th style="text-align:center">Mín.</th>
+        <th style="text-align:center">Status</th>
+        <th>Localização</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
@@ -87,7 +85,7 @@ export function StockListModal({ open, onClose, items }: Props) {
     const win = window.open("", "_blank");
     if (!win) {
       // Popup blocker ativo — orientar o usuário
-      alert(t("stockListModal.popupBlocked"));
+      alert("Popup bloqueado pelo navegador. Permita popups para este site e tente novamente.");
       return;
     }
     win.document.write(html);
@@ -104,11 +102,11 @@ export function StockListModal({ open, onClose, items }: Props) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                 <List className="h-4 w-4 text-primary" />
-                {t("stockListModal.title")}
+                Peças em Estoque
               </DialogTitle>
             </DialogHeader>
             <p className="text-[12px] text-muted-foreground mt-0.5">
-              {t("stockListModal.piecesAvailable", { count: available.length, plural: available.length !== 1 ? "s" : "" })}
+              {available.length} peça{available.length !== 1 ? "s" : ""} com unidades disponíveis
             </p>
           </div>
         </div>
@@ -116,7 +114,7 @@ export function StockListModal({ open, onClose, items }: Props) {
         <div className="px-3 pb-4 max-h-[480px] overflow-y-auto space-y-1">
           {available.length === 0 && (
             <div className="text-center py-12 text-sm text-muted-foreground">
-              {t("stockListModal.noneAvailable")}
+              Nenhuma peça com estoque disponível
             </div>
           )}
 
@@ -148,12 +146,12 @@ export function StockListModal({ open, onClose, items }: Props) {
                     <p className="text-[10px] text-muted-foreground font-mono">{item.device.reference}</p>
                     {isRetrabalho && (
                       <span className="text-[9px] font-semibold uppercase tracking-wide text-orange-500 bg-orange-500/10 px-1 py-0.5 rounded">
-                        {t("stockListModal.rework")}
+                        retrabalho
                       </span>
                     )}
                     {isIntermediaria && (
                       <span className="text-[9px] font-semibold uppercase tracking-wide text-blue-500 bg-blue-500/10 px-1 py-0.5 rounded">
-                        {t("stockListModal.intermediate")}
+                        intermediário
                       </span>
                     )}
                   </div>
@@ -172,7 +170,7 @@ export function StockListModal({ open, onClose, items }: Props) {
                 )}>
                   <Package className="h-3 w-3" />
                   {item.quantity}
-                  <span className="text-[10px] font-normal opacity-70">{t("stockListModal.units")}</span>
+                  <span className="text-[10px] font-normal opacity-70">un.</span>
                 </div>
               </div>
             );
@@ -189,7 +187,7 @@ export function StockListModal({ open, onClose, items }: Props) {
               onClick={handlePrint}
             >
               <Printer className="h-3.5 w-3.5" />
-              {t("stockListModal.exportButton")}
+              Exportar Tabela para Impressão
             </Button>
           </div>
         )}

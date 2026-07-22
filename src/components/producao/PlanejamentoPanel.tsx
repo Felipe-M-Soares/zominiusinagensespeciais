@@ -16,7 +16,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { useTranslation } from "react-i18next";
 
 type OPStatus = "planejada"|"em_producao"|"concluida"|"cancelada";
 type Prioridade = "baixa"|"normal"|"alta"|"urgente";
@@ -28,45 +27,36 @@ interface OrdemPlanejamento {
   user_id?: string; created_at?: string; updated_at?: string;
 }
 
-function buildStatusCfg(t: (k: string) => string): Record<OPStatus,{label:string;color:string;bg:string}> {
-  return {
-  planejada:   {label:t("planejamentoPanel.status.planejada"),   color:"text-blue-500",     bg:"bg-blue-500/10"},
-  em_producao: {label:t("planejamentoPanel.status.em_producao"), color:"text-green-500",    bg:"bg-green-500/10"},
-  concluida:   {label:t("planejamentoPanel.status.concluida"),   color:"text-primary",      bg:"bg-primary/10"},
-  cancelada:   {label:t("planejamentoPanel.status.cancelada"),   color:"text-destructive",  bg:"bg-destructive/10"},
-  };
-}
-function buildPrioCfg(t: (k: string) => string): Record<Prioridade,{label:string;color:string}> {
-  return {
-  baixa:   {label:t("planejamentoPanel.priority.baixa"),   color:"text-muted-foreground"},
-  normal:  {label:t("planejamentoPanel.priority.normal"),  color:"text-blue-500"},
-  alta:    {label:t("planejamentoPanel.priority.alta"),    color:"text-amber-500"},
-  urgente: {label:t("planejamentoPanel.priority.urgente"), color:"text-destructive"},
-  };
-}
-function buildTurnos(t: (k: string, opts?: any) => any): string[] {
-  return t("planejamentoPanel.shifts", { returnObjects: true }) as string[];
-}
+const STATUS_CFG: Record<OPStatus,{label:string;color:string;bg:string}> = {
+  planejada:   {label:"Planejada",   color:"text-blue-500",     bg:"bg-blue-500/10"},
+  em_producao: {label:"Em Produção", color:"text-green-500",    bg:"bg-green-500/10"},
+  concluida:   {label:"Concluída",   color:"text-primary",      bg:"bg-primary/10"},
+  cancelada:   {label:"Cancelada",   color:"text-destructive",  bg:"bg-destructive/10"},
+};
+const PRIO_CFG: Record<Prioridade,{label:string;color:string}> = {
+  baixa:   {label:"Baixa",   color:"text-muted-foreground"},
+  normal:  {label:"Normal",  color:"text-blue-500"},
+  alta:    {label:"Alta",    color:"text-amber-500"},
+  urgente: {label:"Urgente", color:"text-destructive"},
+};
+const TURNOS = ["1º Turno","2º Turno","3º Turno"];
 
 function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
   open:boolean; op?:OrdemPlanejamento; onClose:()=>void; onSaved:(o:OrdemPlanejamento)=>void;
   maquinas:string[]; produtos:string[];
 }) {
-  const { t } = useTranslation();
-  const TURNOS = buildTurnos(t);
-  const PRIO_CFG = buildPrioCfg(t);
   const {saveWithFallback}=useOfflineSync();
   const {user}=useAuth();
   const isEdit=!!op;
   const [form,setForm]=useState({
-    produto:"",maquina:"",turno:TURNOS[0],quantidade:"",
+    produto:"",maquina:"",turno:"1º Turno",quantidade:"",
     data_inicio:"",data_fim:"",prioridade:"normal" as Prioridade,capacidade:"70",
   });
   const [saving,setSaving]=useState(false);
 
   useEffect(()=>{
     if(open) setForm({
-      produto:op?.produto||"",maquina:op?.maquina||"",turno:op?.turno||TURNOS[0],
+      produto:op?.produto||"",maquina:op?.maquina||"",turno:op?.turno||"1º Turno",
       quantidade:String(op?.quantidade||""),data_inicio:op?.data_inicio||"",data_fim:op?.data_fim||"",
       prioridade:op?.prioridade||"normal",capacidade:String(op?.capacidade||"70"),
     });
@@ -76,7 +66,7 @@ function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
 
   async function save() {
     if(!form.produto||!form.maquina||!form.quantidade||!form.data_inicio||!form.data_fim){
-      toast.error(t("planejamentoPanel.toastRequiredFields")); return;
+      toast.error("Preencha todos os campos obrigatórios"); return;
     }
     setSaving(true);
     const id=op?.id||crypto.randomUUID();
@@ -91,8 +81,8 @@ function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
       "ordens_planejamento","ordens_planejamento",isEdit?"UPDATE":"INSERT",data
     );
     setSaving(false);
-    if(error){toast.error(t("planejamentoPanel.toastSaveError"));return;}
-    toast.success(savedOffline?t("planejamentoPanel.toastSavedOffline"):isEdit?t("planejamentoPanel.toastUpdated"):t("planejamentoPanel.toastCreated"));
+    if(error){toast.error("Erro ao salvar OP");return;}
+    toast.success(savedOffline?"Salvo offline":isEdit?"OP atualizada!":"OP criada!");
     onSaved(saved||data); onClose();
   }
 
@@ -100,48 +90,48 @@ function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-card rounded-t-2xl sm:rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">{isEdit?t("planejamentoPanel.editOP"):t("planejamentoPanel.newOP")}</h3>
-          <button onClick={onClose} aria-label={t("planejamentoPanel.close")}><X className="h-4 w-4"/></button>
+          <h3 className="font-semibold">{isEdit?"Editar OP":"Nova Ordem de Produção"}</h3>
+          <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("planejamentoPanel.product")}</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Produto *</label>
             {produtos.length>0
-              ? <select value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">{t("planejamentoPanel.select")}</option>{produtos.map(p=><option key={p} value={p}>{p}</option>)}</select>
-              : <Input value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} placeholder={t("planejamentoPanel.productPlaceholder")}/>}
+              ? <select value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{produtos.map(p=><option key={p} value={p}>{p}</option>)}</select>
+              : <Input value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} placeholder="Produto"/>}
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("planejamentoPanel.machine")}</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Máquina *</label>
             {maquinas.length>0
-              ? <select value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">{t("planejamentoPanel.select")}</option>{maquinas.map(m=><option key={m} value={m}>{m}</option>)}</select>
-              : <Input value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} placeholder={t("planejamentoPanel.machinePlaceholder")}/>}
+              ? <select value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{maquinas.map(m=><option key={m} value={m}>{m}</option>)}</select>
+              : <Input value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} placeholder="Máquina"/>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("planejamentoPanel.shift")}</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Turno</label>
               <select value={form.turno} onChange={e=>setForm(p=>({...p,turno:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
                 {TURNOS.map(t=><option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{t("planejamentoPanel.quantity")}</label><Input type="number" value={form.quantidade} onChange={e=>setForm(p=>({...p,quantidade:e.target.value}))} placeholder="0"/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade *</label><Input type="number" value={form.quantidade} onChange={e=>setForm(p=>({...p,quantidade:e.target.value}))} placeholder="0"/></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{t("planejamentoPanel.start")}</label><Input type="date" value={form.data_inicio} onChange={e=>setForm(p=>({...p,data_inicio:e.target.value}))}/></div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{t("planejamentoPanel.end")}</label><Input type="date" value={form.data_fim} onChange={e=>setForm(p=>({...p,data_fim:e.target.value}))}/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Início *</label><Input type="date" value={form.data_inicio} onChange={e=>setForm(p=>({...p,data_inicio:e.target.value}))}/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Fim *</label><Input type="date" value={form.data_fim} onChange={e=>setForm(p=>({...p,data_fim:e.target.value}))}/></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t("planejamentoPanel.priorityLabel")}</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Prioridade</label>
               <select value={form.prioridade} onChange={e=>setForm(p=>({...p,prioridade:e.target.value as Prioridade}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
                 {(Object.entries(PRIO_CFG)).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{t("planejamentoPanel.capacity")}</label><Input type="number" min="0" max="100" value={form.capacidade} onChange={e=>setForm(p=>({...p,capacidade:e.target.value}))}/></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Capacidade (%)</label><Input type="number" min="0" max="100" value={form.capacidade} onChange={e=>setForm(p=>({...p,capacidade:e.target.value}))}/></div>
           </div>
         </div>
         <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>{t("planejamentoPanel.cancel")}</Button>
-          <Button className="flex-1" onClick={save} disabled={saving}>{saving?t("planejamentoPanel.saving"):t("planejamentoPanel.save")}</Button>
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Salvar"}</Button>
         </div>
       </div>
     </div>
@@ -149,9 +139,6 @@ function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
 }
 
 export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
-  const { t } = useTranslation();
-  const STATUS_CFG = buildStatusCfg(t);
-  const PRIO_CFG = buildPrioCfg(t);
   const [ops,setOps]=useState<OrdemPlanejamento[]>([]);
   const [maquinas,setMaquinas]=useState<string[]>([]);
   const [produtos,setProdutos]=useState<string[]>([]);
@@ -183,16 +170,16 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
     const op=ops.find(o=>o.id===id);if(!op) return;
     const updated={...op,status};
     const {error,savedOffline}=await saveWithFallback("ordens_planejamento","ordens_planejamento","UPDATE",updated);
-    if(error){toast.error(t("planejamentoPanel.toastStatusUpdateError"));return;}
-    toast.success(savedOffline?t("planejamentoPanel.toastSavedOffline"):t("planejamentoPanel.toastStatusUpdated"));
+    if(error){toast.error("Erro ao atualizar status");return;}
+    toast.success(savedOffline?"Salvo offline":"Status atualizado!");
     setOps(prev=>prev.map(o=>o.id===id?updated:o));
   }
 
   async function handleDelete(id:string){
-    if(!confirm(t("planejamentoPanel.confirmRemoveOP"))) return;
+    if(!confirm("Remover esta OP?")) return;
     await saveWithFallback("ordens_planejamento","ordens_planejamento","DELETE",{id} as OrdemPlanejamento);
     setOps(prev=>prev.filter(o=>o.id!==id));
-    toast.success(t("planejamentoPanel.toastRemoved"));
+    toast.success("OP removida");
   }
 
   const filtered=ops.filter(o=>{
@@ -210,7 +197,7 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
     <div className="space-y-4 animate-in fade-in duration-200">
       {cargaData.length>0 && (
         <div className="rounded-2xl border bg-card/60 p-4">
-          <p className="text-sm font-medium mb-3">{t("planejamentoPanel.loadByMachine")}</p>
+          <p className="text-sm font-medium mb-3">Carga por Máquina (%)</p>
           <ResponsiveContainer width="100%" height={120}>
             <BarChart data={cargaData} margin={{top:0,right:0,left:-20,bottom:0}}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
@@ -224,20 +211,20 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       <div className="flex gap-2">
-        <div className="relative flex-1"><SearchInputWithBarcode value={search} onChange={setSearch} onSearch={setSearch} placeholder={t("planejamentoPanel.searchPlaceholder")} height="h-9"/></div>
+        <div className="relative flex-1"><SearchInputWithBarcode value={search} onChange={setSearch} onSearch={setSearch} placeholder="Bipe o código ou busque OP..." height="h-9"/></div>
         <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value as typeof filtroStatus)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm">
-          <option value="todos">{t("planejamentoPanel.all")}</option>
+          <option value="todos">Todos</option>
           {(Object.keys(STATUS_CFG) as OPStatus[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
         </select>
-        <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>{t("planejamentoPanel.newAbbrev")}</Button>
+        <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Nova OP</Button>
         <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>{t("planejamentoPanel.loading")}</div>
+        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
       ) : filtered.length===0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <CalendarClock className="h-8 w-8 opacity-30"/><p>{ops.length===0?t("planejamentoPanel.noOrderCreated"):t("planejamentoPanel.noResults")}</p>
+          <CalendarClock className="h-8 w-8 opacity-30"/><p>{ops.length===0?"Nenhuma ordem criada":"Nenhum resultado"}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -258,12 +245,12 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
                   <Badge variant="outline" className={cn("text-[10px] shrink-0",sc.color)}>{sc.label}</Badge>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-[11px]">
-                  <div><span className="text-muted-foreground">{t("planejamentoPanel.qty")}</span> <b>{op.quantidade.toLocaleString(t("planejamentoPanel.localeCode"))}</b></div>
-                  <div><span className="text-muted-foreground">{t("planejamentoPanel.startLabel")}</span> <b>{new Date(op.data_inicio+"T00:00:00").toLocaleDateString(t("planejamentoPanel.localeCode"))}</b></div>
-                  <div><span className="text-muted-foreground">{t("planejamentoPanel.endLabel")}</span> <b>{new Date(op.data_fim+"T00:00:00").toLocaleDateString(t("planejamentoPanel.localeCode"))}</b></div>
+                  <div><span className="text-muted-foreground">Qtd:</span> <b>{op.quantidade.toLocaleString("pt-BR")}</b></div>
+                  <div><span className="text-muted-foreground">Início:</span> <b>{new Date(op.data_inicio+"T00:00:00").toLocaleDateString("pt-BR")}</b></div>
+                  <div><span className="text-muted-foreground">Fim:</span> <b>{new Date(op.data_fim+"T00:00:00").toLocaleDateString("pt-BR")}</b></div>
                 </div>
                 <div>
-                  <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>{t("planejamentoPanel.capacityUsed")}</span><span>{op.capacidade}%</span></div>
+                  <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Capacidade utilizada</span><span>{op.capacidade}%</span></div>
                   <div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className={cn("h-full rounded-full",op.capacidade>=90?"bg-red-500":op.capacidade>=70?"bg-amber-500":"bg-green-500")} style={{width:`${op.capacidade}%`}}/></div>
                 </div>
                 <div className="flex items-center gap-2 pt-1 border-t border-border/30">
@@ -272,8 +259,8 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
                     {(Object.keys(STATUS_CFG) as OPStatus[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
                   </select>
                   {isAdmin && <>
-                    <button onClick={()=>{setEditTarget(op);setModalOpen(true);}} aria-label={t("planejamentoPanel.editOpAria")} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
-                    <button onClick={()=>handleDelete(op.id)} aria-label={t("planejamentoPanel.deleteOpAria")} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
+                    <button onClick={()=>{setEditTarget(op);setModalOpen(true);}} aria-label="Editar operação" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
+                    <button onClick={()=>handleDelete(op.id)} aria-label="Excluir operação" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
                   </>}
                 </div>
               </div>

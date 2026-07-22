@@ -18,8 +18,6 @@ import type { AppRole } from "@/types/roles";
 import { APP_ROLES, ROLE_LABELS } from "@/types/roles";
 import { logger } from "@/lib/logger";
 import { validatePassword, passwordStrength } from "@/lib/passwordUtils";
-import { useTranslation } from "react-i18next";
-import { buildRoleLabels } from "@/types/roles";
 
 interface UserProfile {
   user_id: string;
@@ -33,7 +31,6 @@ interface UserProfile {
 }
 
 function PasswordStrengthInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { t } = useTranslation();
   const [show, setShow] = useState(false);
   const strength = value ? passwordStrength(value) : null;
   const err = value.length > 0 ? validatePassword(value) : null;
@@ -42,7 +39,7 @@ function PasswordStrengthInput({ value, onChange }: { value: string; onChange: (
       <div className="relative">
         <Input
           type={show ? "text" : "password"}
-          placeholder={t("adminUsers.createSecurePassword")}
+          placeholder="Crie uma senha segura"
           value={value}
           onChange={e => onChange(e.target.value)}
           maxLength={72}
@@ -73,7 +70,7 @@ function PasswordStrengthInput({ value, onChange }: { value: string; onChange: (
       )}
       {value.length === 0 && (
         <p className="text-[10px] text-muted-foreground/60">
-          {t("adminUsers.minChars")}
+          Mín. 8 chars · maiúscula · minúscula · número · especial
         </p>
       )}
     </div>
@@ -81,8 +78,6 @@ function PasswordStrengthInput({ value, onChange }: { value: string; onChange: (
 }
 
 export function AdminUsers() {
-  const { t } = useTranslation();
-  const ROLE_LABELS = buildRoleLabels(t);
   const [users, setUsers]     = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -114,7 +109,7 @@ export function AdminUsers() {
         supabase.from("user_roles").select("*"),
       ]);
       if (controller.signal.aborted) return;
-      if (pErr || rErr) { toast.error(t("adminUsers.toastLoadUsersError")); return; }
+      if (pErr || rErr) { toast.error("Erro ao carregar usuários"); return; }
 
       const roleMap = new Map((roles ?? []).map(r => [r.user_id, r.role]));
       setUsers((profiles ?? []).map(p => ({
@@ -130,7 +125,7 @@ export function AdminUsers() {
     } catch (err) {
       if (controller.signal.aborted) return;
       logger.error("fetchUsers:", err);
-      toast.error(t("adminUsers.toastUnexpectedLoadError"));
+      toast.error("Erro inesperado ao carregar usuários");
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
@@ -143,12 +138,12 @@ export function AdminUsers() {
 
   const changeRole = async (userId: string, newRole: AppRole) => {
     if (userId === currentUser?.id && newRole !== "admin") {
-      toast.error(t("adminUsers.toastCannotRemoveOwnAdmin"));
+      toast.error("Você não pode remover sua própria permissão de administrador.");
       return;
     }
     const target = users.find(u => u.user_id === userId);
     if (target?.role === "admin" && newRole !== "admin") {
-      setDowngradeConfirm({ userId, userName: target.display_name ?? target.login ?? t("adminUsers.thisAdmin") });
+      setDowngradeConfirm({ userId, userName: target.display_name ?? target.login ?? "este admin" });
       return;
     }
     await applyRoleChange(userId, newRole);
@@ -156,14 +151,14 @@ export function AdminUsers() {
 
   const applyRoleChange = async (userId: string, newRole: AppRole) => {
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
-    if (error) toast.error(t("adminUsers.toastRoleChangeError"));
-    else { toast.success(t("adminUsers.toastRoleUpdated")); fetchUsers(); }
+    if (error) toast.error("Erro ao alterar função. Tente novamente.");
+    else { toast.success("Função atualizada"); fetchUsers(); }
   };
 
   const toggleApproval = async (userId: string, approve: boolean) => {
     const { error } = await supabase.from("profiles").update({ approved: approve }).eq("user_id", userId);
-    if (error) toast.error(t("adminUsers.toastApprovalError"));
-    else { toast.success(approve ? t("adminUsers.toastUserApproved") : t("adminUsers.toastApprovalRemoved")); fetchUsers(); }
+    if (error) toast.error("Erro ao alterar aprovação. Tente novamente.");
+    else { toast.success(approve ? "Usuário aprovado" : "Aprovação removida"); fetchUsers(); }
   };
 
   const revokeAccess = async (userId: string, userLogin: string | null) => {
@@ -172,12 +167,12 @@ export function AdminUsers() {
         .from("profiles")
         .update({ approved: false, blocked: true })
         .eq("user_id", userId);
-      if (profileErr) { toast.error(t("adminUsers.toastBlockError")); return; }
-      toast.success(t("adminUsers.toastAccessBlocked", { login: userLogin ?? t("adminUsers.defaultUser") }));
+      if (profileErr) { toast.error("Erro ao bloquear usuário. Tente novamente."); return; }
+      toast.success(`Acesso de ${userLogin ?? "usuário"} bloqueado.`);
       fetchUsers();
     } catch (err) {
       logger.error("revokeAccess error:", err);
-      toast.error(t("adminUsers.toastUnexpectedBlockError"));
+      toast.error("Erro inesperado ao bloquear usuário.");
     }
   };
 
@@ -186,8 +181,8 @@ export function AdminUsers() {
       .from("profiles")
       .update({ blocked: false, approved: true })
       .eq("user_id", userId);
-    if (error) toast.error(t("adminUsers.toastUnblockError"));
-    else { toast.success(t("adminUsers.toastUnblocked")); fetchUsers(); }
+    if (error) toast.error("Erro ao desbloquear. Tente novamente.");
+    else { toast.success("Usuário desbloqueado e aprovado"); fetchUsers(); }
   };
 
   const resetPassword = async () => {
@@ -204,12 +199,12 @@ export function AdminUsers() {
       });
       const errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
       if (errMsg) {
-        toast.error(t("adminUsers.toastResetPasswordError") + errMsg);
+        toast.error("Erro ao redefinir senha: " + errMsg);
       } else {
         await supabase.from("profiles")
           .update({ must_change_password: true })
           .eq("user_id", passwordDialog.user_id);
-        toast.success(t("adminUsers.toastPasswordReset", { name: passwordDialog.display_name ?? passwordDialog.login ?? t("adminUsers.defaultUser") }));
+        toast.success(`Senha de ${passwordDialog.display_name ?? passwordDialog.login ?? "usuário"} redefinida.`);
         setPasswordDialog(null);
         setNewPassword("");
         fetchUsers();
@@ -226,8 +221,8 @@ export function AdminUsers() {
         p_target_user_id: userId,
       });
       const errMsg = rpcErr?.message ?? (rpcData as { error?: string } | null)?.error ?? null;
-      if (errMsg) toast.error(t("adminUsers.toastDeleteError") + errMsg);
-      else { toast.success(t("adminUsers.toastAccountDeleted")); fetchUsers(); }
+      if (errMsg) toast.error("Erro ao excluir: " + errMsg);
+      else { toast.success("Conta excluída"); fetchUsers(); }
     } finally {
       setDeletingId(null);
     }
@@ -239,7 +234,7 @@ export function AdminUsers() {
 
   const createUser = async () => {
     if (!newUserLogin.trim() || !newUserName.trim() || !newUserPassword) {
-      toast.error(t("adminUsers.toastFillAllFields")); return;
+      toast.error("Preencha todos os campos."); return;
     }
     const pwErr = validatePassword(newUserPassword);
     if (pwErr) { toast.error(pwErr); return; }
@@ -255,9 +250,9 @@ export function AdminUsers() {
       });
       const errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
       if (errMsg) {
-        toast.error(t("adminUsers.toastCreateError") + errMsg);
+        toast.error("Erro ao criar conta: " + errMsg);
       } else {
-        toast.success(t("adminUsers.toastAccountCreated"));
+        toast.success("Conta criada!");
         setCreateDialog(false);
         resetCreateForm();
         fetchUsers();
@@ -277,31 +272,31 @@ export function AdminUsers() {
     <>
       <div className="flex justify-end mb-4">
         <Button size="sm" className="gap-1.5" onClick={() => setCreateDialog(true)}>
-          <UserPlus className="h-4 w-4" /> {t("adminUsers.createAccount")}
+          <UserPlus className="h-4 w-4" /> Criar Conta
         </Button>
       </div>
 
       <Dialog open={createDialog} onOpenChange={setCreateDialog}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>{t("adminUsers.createUserAccount")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Criar Conta de Usuário</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">{t("adminUsers.accountAlreadyApproved")}</p>
+            <p className="text-sm text-muted-foreground">Conta criada já aprovada.</p>
             <div className="space-y-2">
-              <Label>{t("adminUsers.fullName")}</Label>
-              <Input placeholder={t("adminUsers.namePlaceholder")} value={newUserName} onChange={e => setNewUserName(e.target.value)} maxLength={100} />
+              <Label>Nome completo *</Label>
+              <Input placeholder="Nome" value={newUserName} onChange={e => setNewUserName(e.target.value)} maxLength={100} />
             </div>
             <div className="space-y-2">
-              <Label>{t("adminUsers.login")}</Label>
-              <Input type="text" placeholder={t("adminUsers.loginPlaceholder")} value={newUserLogin}
+              <Label>Login *</Label>
+              <Input type="text" placeholder="ex: joao.silva" value={newUserLogin}
                 onChange={e => setNewUserLogin(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ""))}
                 autoComplete="off" />
             </div>
             <div className="space-y-2">
-              <Label>{t("adminUsers.initialPassword")}</Label>
+              <Label>Senha inicial *</Label>
               <PasswordStrengthInput value={newUserPassword} onChange={setNewUserPassword} />
             </div>
             <div className="space-y-2">
-              <Label>{t("adminUsers.profile")}</Label>
+              <Label>Perfil</Label>
               <Select value={newUserRole} onValueChange={v => setNewUserRole(v as AppRole)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -312,10 +307,10 @@ export function AdminUsers() {
               </Select>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setCreateDialog(false); resetCreateForm(); }}>{t("adminUsers.cancel")}</Button>
+              <Button variant="outline" onClick={() => { setCreateDialog(false); resetCreateForm(); }}>Cancelar</Button>
               <Button onClick={createUser}
                 disabled={creatingUser || !newUserLogin.trim() || !newUserName.trim() || !!validatePassword(newUserPassword)}>
-                {creatingUser ? t("adminUsers.creating") : t("adminUsers.createAccount")}
+                {creatingUser ? "Criando..." : "Criar Conta"}
               </Button>
             </div>
           </div>
@@ -326,11 +321,11 @@ export function AdminUsers() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("adminUsers.name")}</TableHead>
-              <TableHead>{t("adminUsers.loginCol")}</TableHead>
-              <TableHead>{t("adminUsers.registration")}</TableHead>
-              <TableHead>{t("adminUsers.status")}</TableHead>
-              <TableHead>{t("adminUsers.actions")}</TableHead>
+              <TableHead>Nome</TableHead>
+              <TableHead>Login</TableHead>
+              <TableHead>Cadastro</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -341,14 +336,14 @@ export function AdminUsers() {
                   <TableCell className="font-medium">{u.display_name ?? "—"}</TableCell>
                   <TableCell className="text-sm">{u.login ?? "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(u.created_at).toLocaleDateString(t("adminUsers.localeCode"))}
+                    {new Date(u.created_at).toLocaleDateString("pt-BR")}
                   </TableCell>
                   <TableCell>
                     {u.blocked
-                      ? <Badge variant="destructive" className="gap-1"><ShieldX className="h-3 w-3" /> {t("adminUsers.blocked")}</Badge>
+                      ? <Badge variant="destructive" className="gap-1"><ShieldX className="h-3 w-3" /> Bloqueado</Badge>
                       : u.approved
-                        ? <Badge variant="default" className="gap-1 bg-green-600"><CheckCircle className="h-3 w-3" /> {t("adminUsers.approved")}</Badge>
-                        : <Badge variant="secondary" className="gap-1 text-orange-600"><XCircle className="h-3 w-3" /> {t("adminUsers.pending")}</Badge>
+                        ? <Badge variant="default" className="gap-1 bg-green-600"><CheckCircle className="h-3 w-3" /> Aprovado</Badge>
+                        : <Badge variant="secondary" className="gap-1 text-orange-600"><XCircle className="h-3 w-3" /> Pendente</Badge>
                     }
                   </TableCell>
                   <TableCell>
@@ -365,14 +360,14 @@ export function AdminUsers() {
                       {u.blocked && !isSelf && (
                         <Button variant="outline" size="sm" className="h-8 text-green-600 border-green-300 hover:bg-green-50"
                           onClick={() => unblockAccess(u.user_id)}>
-                          <ShieldCheck className="h-4 w-4 mr-1" /> {t("adminUsers.unblock")}
+                          <ShieldCheck className="h-4 w-4 mr-1" /> Desbloquear
                         </Button>
                       )}
 
                       {!u.approved && !u.blocked && !isSelf && (
                         <Button variant="outline" size="sm" className="h-8 text-green-600 border-green-300 hover:bg-green-50"
                           onClick={() => toggleApproval(u.user_id, true)}>
-                          <CheckCircle className="h-4 w-4 mr-1" /> {t("adminUsers.approve")}
+                          <CheckCircle className="h-4 w-4 mr-1" /> Aprovar
                         </Button>
                       )}
 
@@ -380,29 +375,29 @@ export function AdminUsers() {
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="outline" size="sm" className="h-8 text-red-600 border-red-300 hover:bg-red-50">
-                              <ShieldX className="h-4 w-4 mr-1" /> {t("adminUsers.revoke")}
+                              <ShieldX className="h-4 w-4 mr-1" /> Revogar
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>{t("adminUsers.blockAccessOf", { name: u.display_name ?? u.login ?? t("adminUsers.defaultUser") })}</AlertDialogTitle>
+                              <AlertDialogTitle>Bloquear acesso de {u.display_name ?? u.login ?? "usuário"}?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                {t("adminUsers.loginWillBeBlocked")} <strong>{u.login ?? t("adminUsers.defaultUser")}</strong> {t("adminUsers.willBeBlockedImmediately")}
+                                O login <strong>{u.login ?? "usuário"}</strong> será bloqueado imediatamente.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>{t("adminUsers.cancel")}</AlertDialogCancel>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => revokeAccess(u.user_id, u.login)}
                                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                {t("adminUsers.blockAccessAction")}
+                                Bloquear Acesso
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
                       )}
 
-                      <Button variant="outline" size="icon" className="h-8 w-8" title={t("adminUsers.changePassword")}
+                      <Button variant="outline" size="icon" className="h-8 w-8" title="Alterar senha"
                         onClick={() => { setPasswordDialog(u); setNewPassword(""); }}>
                         <KeyRound className="h-4 w-4" />
                       </Button>
@@ -411,20 +406,20 @@ export function AdminUsers() {
                         <AlertDialogTrigger asChild>
                           <Button variant="destructive" size="icon" className="h-8 w-8"
                             disabled={isSelf || deletingId === u.user_id}
-                            title={isSelf ? t("adminUsers.cannotDeleteOwnAccount") : t("adminUsers.deleteAccount")}>
+                            title={isSelf ? "Não pode excluir sua própria conta" : "Excluir conta"}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>{t("adminUsers.deleteAccountOf", { name: u.display_name ?? u.login ?? t("adminUsers.defaultUser") })}</AlertDialogTitle>
-                            <AlertDialogDescription>{t("adminUsers.irreversibleAction")}</AlertDialogDescription>
+                            <AlertDialogTitle>Excluir conta de {u.display_name ?? u.login ?? "usuário"}?</AlertDialogTitle>
+                            <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>{t("adminUsers.cancel")}</AlertDialogCancel>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
                             <AlertDialogAction onClick={() => deleteUser(u.user_id)}
                               className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                              {deletingId === u.user_id ? t("adminUsers.deleting") : t("adminUsers.delete")}
+                              {deletingId === u.user_id ? "Excluindo..." : "Excluir"}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -440,19 +435,19 @@ export function AdminUsers() {
 
       <Dialog open={!!passwordDialog} onOpenChange={() => setPasswordDialog(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>{t("adminUsers.changePassword")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Alterar senha</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {t("adminUsers.newPasswordFor")} <strong>{passwordDialog?.display_name ?? passwordDialog?.login ?? t("adminUsers.defaultUser")}</strong>
+              Nova senha para <strong>{passwordDialog?.display_name ?? passwordDialog?.login ?? "usuário"}</strong>
             </p>
             <div className="space-y-2">
-              <Label>{t("adminUsers.newPassword")}</Label>
+              <Label>Nova senha</Label>
               <PasswordStrengthInput value={newPassword} onChange={setNewPassword} />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setPasswordDialog(null)}>{t("adminUsers.cancel")}</Button>
+              <Button variant="outline" onClick={() => setPasswordDialog(null)}>Cancelar</Button>
               <Button onClick={resetPassword} disabled={resettingPassword || !!validatePassword(newPassword)}>
-                {resettingPassword ? t("adminUsers.saving") : t("adminUsers.changePassword")}
+                {resettingPassword ? "Salvando..." : "Alterar senha"}
               </Button>
             </div>
           </div>
@@ -463,16 +458,16 @@ export function AdminUsers() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <ShieldX className="h-4 w-4" /> {t("adminUsers.downgradeAdmin")}
+              <ShieldX className="h-4 w-4" /> Rebaixar administrador?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t("adminUsers.downgradeWarning1")}{" "}
-              <strong>{downgradeConfirm?.userName}</strong>{t("adminUsers.downgradeWarning2")} {t("roles.estoque")}
-              {t("adminUsers.downgradeWarning3")}
+              Você está prestes a remover o acesso de administrador de{" "}
+              <strong>{downgradeConfirm?.userName}</strong>. O usuário passará a ter perfil de
+              Usuário e perderá acesso ao painel Admin imediatamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDowngradeConfirm(null)}>{t("adminUsers.cancel")}</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setDowngradeConfirm(null)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
@@ -481,7 +476,7 @@ export function AdminUsers() {
                   setDowngradeConfirm(null);
                 }
               }}>
-              {t("adminUsers.yesDowngrade")}
+              Sim, rebaixar para Funcionário
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

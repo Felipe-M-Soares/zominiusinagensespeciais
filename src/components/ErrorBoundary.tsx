@@ -1,6 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from "react";
 import { logger } from "@/lib/logger";
-import i18n from "@/i18n"; // classe React não pode usar hooks — usa a instância direto
 
 interface Props {
   children: ReactNode;
@@ -43,9 +42,9 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-screen flex items-center justify-center bg-background px-4">
           <div className="text-center space-y-4 max-w-md">
-            <h1 className="text-2xl font-semibold text-foreground">{i18n.t("errorBoundary.title")}</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Algo deu errado</h1>
             <p className="text-sm text-muted-foreground">
-              {i18n.t("errorBoundary.message")}
+              Ocorreu um erro inesperado. Tente recarregar a página.
             </p>
             {/* SECURITY: exibe detalhes do erro apenas em desenvolvimento.
                 Em produção, error.message pode vazar caminhos internos,
@@ -59,7 +58,7 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={() => window.location.reload()}
               className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
             >
-              {i18n.t("errorBoundary.reload")}
+              Recarregar página
             </button>
           </div>
         </div>

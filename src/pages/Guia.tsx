@@ -2,12 +2,10 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, FileText } from "lucide-react";
 import { Logo } from "@/components/Logo";
-import { useTranslation } from "react-i18next";
 
 const GUIA_PDF_PATH = "/guia-de-uso.pdf";
 
 export default function Guia() {
-  const { t } = useTranslation();
   const navigate = useNavigate();
 
   return (
@@ -18,10 +16,10 @@ export default function Guia() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <Logo className="h-8 object-contain" />
-          <h1 className="font-display text-lg font-semibold flex-1">{t("guia.title")}</h1>
+          <h1 className="font-display text-lg font-semibold flex-1">Guia de Uso do Sistema</h1>
           <a href={GUIA_PDF_PATH} download="Guia-de-Uso.pdf">
             <Button size="sm" className="gap-1.5">
-              <Download className="h-3.5 w-3.5" /> {t("guia.downloadPdf")}
+              <Download className="h-3.5 w-3.5" /> Baixar PDF
             </Button>
           </a>
         </div>
@@ -34,11 +32,11 @@ export default function Guia() {
             <div className="flex flex-col items-center justify-center h-full gap-4 py-20 text-center px-4">
               <FileText className="h-12 w-12 text-muted-foreground opacity-40" />
               <div>
-                <p className="text-sm font-medium">{t("guia.cannotDisplay")}</p>
-                <p className="text-xs text-muted-foreground mt-1">{t("guia.useButtonBelow")}</p>
+                <p className="text-sm font-medium">Não foi possível exibir o PDF aqui</p>
+                <p className="text-xs text-muted-foreground mt-1">Use o botão abaixo para abrir ou baixar o arquivo</p>
               </div>
               <a href={GUIA_PDF_PATH} download="Guia-de-Uso.pdf">
-                <Button size="sm" className="gap-1.5"><Download className="h-3.5 w-3.5" /> {t("guia.downloadPdf")}</Button>
+                <Button size="sm" className="gap-1.5"><Download className="h-3.5 w-3.5" /> Baixar PDF</Button>
               </a>
             </div>
           </object>

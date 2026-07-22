@@ -8,17 +8,15 @@ import { DashboardGeral } from "@/components/qualidade/DashboardGeral";
 import { PageNav } from "@/components/PageNav";
 import { Button } from "@/components/ui/button";
 import { Settings, Cpu, Users, LayoutDashboard, Shield, MessageSquare, DatabaseBackup } from "lucide-react";
-import { useTranslation } from "react-i18next";
 
 const BackupPanel = lazy(() => import("@/components/stock/BackupPanel").then(m => ({ default: m.BackupPanel })));
 
 type AdminTab = "dashboard" | "devices" | "users" | "auditoria" | "feedback";
 
-function buildAdminTabs(t: (k: string) => string) {
-  return [
+const ADMIN_TABS = [
   {
     id: "dashboard" as AdminTab,
-    label: t("admin.tabs.dashboard"),
+    label: "Dashboard",
     Icon: LayoutDashboard,
     activeColor: "text-emerald-600 dark:text-emerald-400",
     activeBg: "bg-emerald-500/10",
@@ -28,7 +26,7 @@ function buildAdminTabs(t: (k: string) => string) {
   },
   {
     id: "devices" as AdminTab,
-    label: t("admin.tabs.devices"),
+    label: "Dispositivos",
     Icon: Cpu,
     activeColor: "text-primary",
     activeBg: "bg-primary/10",
@@ -38,7 +36,7 @@ function buildAdminTabs(t: (k: string) => string) {
   },
   {
     id: "users" as AdminTab,
-    label: t("admin.tabs.users"),
+    label: "Usuários",
     Icon: Users,
     activeColor: "text-violet-600 dark:text-violet-400",
     activeBg: "bg-violet-500/10",
@@ -48,7 +46,7 @@ function buildAdminTabs(t: (k: string) => string) {
   },
   {
     id: "auditoria" as AdminTab,
-    label: t("admin.tabs.auditoria"),
+    label: "Auditoria",
     Icon: Shield,
     activeColor: "text-amber-600 dark:text-amber-400",
     activeBg: "bg-amber-500/10",
@@ -58,7 +56,7 @@ function buildAdminTabs(t: (k: string) => string) {
   },
   {
     id: "feedback" as AdminTab,
-    label: t("admin.tabs.feedback"),
+    label: "Feedback",
     Icon: MessageSquare,
     activeColor: "text-rose-600 dark:text-rose-400",
     activeBg: "bg-rose-500/10",
@@ -66,12 +64,9 @@ function buildAdminTabs(t: (k: string) => string) {
     badgeBg: "bg-rose-500/15",
     badgeText: "text-rose-600 dark:text-rose-400",
   },
-  ];
-}
+];
 
 export default function Admin() {
-  const { t } = useTranslation();
-  const ADMIN_TABS = buildAdminTabs(t);
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
   const [auditKey, setAuditKey] = useState(0);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -82,17 +77,17 @@ export default function Admin() {
         <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <Settings className="h-4 w-4 text-primary" />
-            <h1 className="text-sm font-semibold">{t("admin.title")}</h1>
+            <h1 className="text-sm font-semibold">Admin</h1>
           </div>
           <div className="flex items-center gap-1">
             <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setBackupOpen(true)}>
-              <DatabaseBackup className="h-3.5 w-3.5" /> {t("admin.backup")}
+              <DatabaseBackup className="h-3.5 w-3.5" /> Backup
             </Button>
             {activeTab === "auditoria" && (
               <ClearHistoryButton
                 rpc="admin_clear_audit_log"
-                confirmTitle={t("admin.clearAuditTitle")}
-                confirmDescription={t("admin.clearAuditDesc")}
+                confirmTitle="Apagar log de auditoria?"
+                confirmDescription="Apaga todo o histórico de ações administrativas registradas. Não afeta nenhum outro dado do sistema."
                 onCleared={() => setAuditKey(k => k + 1)}
               />
             )}
@@ -107,7 +102,7 @@ export default function Admin() {
       <main className="flex-1 overflow-y-auto">
         <div className="px-3 sm:px-4 py-4 space-y-4 h-full flex flex-col">
           <div className="rounded-xl border bg-primary/5 border-primary/20 text-primary/80 px-4 py-3 text-[12px]">
-            {t("admin.banner")}
+            Gerencie dispositivos cadastrados no sistema e controle o acesso dos usuários.
           </div>
 
           <PageNav

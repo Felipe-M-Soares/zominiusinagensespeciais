@@ -13,7 +13,6 @@ import {
 import type { StockItem, LoteSummary } from "@/hooks/useStock";
 import { fetchLotesSummary, transferToRetrabalho } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
-import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +24,6 @@ interface Props {
 }
 
 export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
-  const { t } = useTranslation();
   const { user } = useAuth();
   const displayName: string | null =
     (user?.user_metadata?.display_name as string) ?? user?.email ?? null;
@@ -77,13 +75,13 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
   async function handleConfirm() {
     const safeQty = Math.trunc(resolvedQty);
     if (!item || safeQty < 1) return;
-    if (!lote) { toast.error(t("retrabalhoModal.loteRequired") + " retrabalho."); return; }
+    if (!lote) { toast.error("Selecione o lote para retrabalho."); return; }
     const LOTE_INVALIDO = new Set(["sem lote", "a-definir", "a definir"]);
     if (LOTE_INVALIDO.has(lote.trim().toLowerCase())) {
-      toast.error(t("retrabalhoModal.toastLoteInvalid"));
+      toast.error("Lote sem numeração não é permitido. Registre uma entrada com lote válido (ex: 0101261-01) antes de enviar ao retrabalho.");
       return;
     }
-    if (afterExpedicaoQty < 0) { toast.error(t("retrabalhoModal.qtyExceedsBalance")); return; }
+    if (afterExpedicaoQty < 0) { toast.error("Quantidade maior que o saldo disponível."); return; }
 
     setLoading(true);
     const result = await transferToRetrabalho(
@@ -103,7 +101,7 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
       onSuccess();
       onClose();
     } else {
-      toast.error(result.error ?? t("retrabalhoModal.toastError"));
+      toast.error(result.error ?? "Erro ao enviar para retrabalho.");
     }
   }
 
@@ -117,7 +115,7 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
                 <Wrench className="h-4 w-4 text-orange-500" />
-                {t("retrabalhoModal.title")}
+                Enviar para Retrabalho
               </DialogTitle>
             </DialogHeader>
             <div className="mt-3 rounded-xl bg-muted/20 border border-border/30 p-3 space-y-1">
@@ -126,7 +124,7 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
               <div className="flex items-center gap-2 pt-0.5">
                 <Package className="h-3.5 w-3.5 text-primary" />
                 <span className="text-[12px] font-medium">
-                  {t("retrabalhoModal.shippingLabel")}{" "}
+                  Expedição:{" "}
                   <span className={item.quantity === 0 ? "text-destructive" : ""}>
                     {item.quantity} un.
                   </span>
@@ -141,25 +139,25 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
           <div className="flex items-center justify-center gap-3 py-1">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 border border-success/30">
               <Package className="h-3.5 w-3.5 text-success" />
-              <span className="text-[11px] font-medium text-success">{t("retrabalhoModal.shippingBadge")}</span>
+              <span className="text-[11px] font-medium text-success">Expedição</span>
             </div>
             <ArrowLeft className="h-4 w-4 text-orange-500" />
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/30">
               <Wrench className="h-3.5 w-3.5 text-orange-500" />
-              <span className="text-[11px] font-medium text-orange-500">{t("retrabalhoModal.reworkBadge")}</span>
+              <span className="text-[11px] font-medium text-orange-500">Retrabalho</span>
             </div>
           </div>
 
           {/* Aviso */}
           <div className="rounded-xl bg-orange-500/8 border border-orange-500/25 px-3 py-2.5 text-[11px] text-orange-600 dark:text-orange-400">
-            <strong>{t("retrabalhoModal.hintLabel")}</strong> {t("retrabalhoModal.hintDesc")}
+            <strong>Retrabalho:</strong> As unidades ficam em fila de retrabalho. Após concluir, envie para Expedição pela aba Retrabalho.
           </div>
 
           {/* Seleção de lote */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Tag className="h-3 w-3" />
-              {t("retrabalhoModal.selectLote")}
+              Selecionar Lote *
             </label>
 
             <div className="relative">
@@ -177,10 +175,10 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
                 <span className={lote ? "text-foreground font-semibold" : "text-muted-foreground text-xs font-sans tracking-normal"}>
                   {lote
                     || (lotesLoading
-                      ? t("retrabalhoModal.loadingLotes")
+                      ? "Carregando lotes..."
                       : existingLotes.length === 0
-                        ? t("retrabalhoModal.noLoteWithBalance")
-                        : t("retrabalhoModal.selectLotePlaceholder"))}
+                        ? "Nenhum lote com saldo disponível"
+                        : "Selecione o lote...")}
                 </span>
                 <div className="flex items-center gap-1.5">
                   {lote && <CheckCircle2 className="h-3.5 w-3.5 text-orange-500" />}
@@ -196,7 +194,8 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
                     </div>
                   ) : existingLotes.length === 0 ? (
                     <div className="px-3 py-3 text-[12px] text-muted-foreground text-center">
-                      {t("retrabalhoModal.noLoteInShipping")}
+                      Sem lote numerado na expedição.
+Registre uma entrada com lote (DDMMYYS-NN ou DDMMYY-NN) antes de enviar ao retrabalho.
                     </div>
                   ) : (
                     <div className="max-h-[180px] overflow-y-auto">
@@ -217,7 +216,7 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
                           </div>
                           <div className="flex items-center gap-1 text-orange-500">
                             <span className="text-[13px] font-bold tabular-nums">{l.saldo}</span>
-                            <span className="text-[10px] opacity-70">{t("retrabalhoModal.units")}</span>
+                            <span className="text-[10px] opacity-70">un.</span>
                           </div>
                         </button>
                       ))}
@@ -231,10 +230,10 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
           {/* Quantidade */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              {t("retrabalhoModal.qtyToSend")}
+              Quantidade para retrabalho
               {selectedLote && (
                 <span className="ml-1.5 text-orange-500/70 normal-case">
-                  {t("retrabalhoModal.quantityMax", { max: selectedLote.saldo })}
+                  (máx: {selectedLote.saldo} un.)
                 </span>
               )}
             </label>
@@ -276,26 +275,26 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
           {lote && resolvedQty > 0 && (
             <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 px-4 py-3 space-y-2">
               <p className="text-[11px] font-medium text-orange-500/70 uppercase tracking-wider">
-                {t("retrabalhoModal.resultTitle")}
+                Resultado do retrabalho
               </p>
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <Package className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground text-[12px]">{t("retrabalhoModal.shippingWillHave")}</span>
+                  <span className="text-muted-foreground text-[12px]">Expedição ficará com</span>
                 </div>
                 <span className={cn(
                   "font-bold text-[13px]",
                   afterExpedicaoQty < 0 ? "text-destructive" : "text-foreground"
                 )}>
-                  {afterExpedicaoQty < 0 ? t("retrabalhoModal.insufficient") : `${afterExpedicaoQty} ${t("retrabalhoModal.units")}`}
+                  {afterExpedicaoQty < 0 ? "Insuficiente" : `${afterExpedicaoQty} un.`}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <Wrench className="h-3.5 w-3.5 text-orange-500" />
-                  <span className="text-muted-foreground text-[12px]">{t("retrabalhoModal.reworkWillReceive")}</span>
+                  <span className="text-muted-foreground text-[12px]">Retrabalho receberá</span>
                 </div>
-                <span className="font-bold text-[13px] text-orange-500">+{resolvedQty} {t("retrabalhoModal.units")}</span>
+                <span className="font-bold text-[13px] text-orange-500">+{resolvedQty} un.</span>
               </div>
             </div>
           )}
@@ -303,7 +302,7 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
           {/* Ações */}
           <div className="flex gap-2 pt-1">
             <Button variant="outline" className="flex-1 h-10 rounded-xl" onClick={onClose}>
-              {t("retrabalhoModal.cancel")}
+              Cancelar
             </Button>
             <Button
               className="flex-1 h-10 rounded-xl gap-2 font-semibold bg-orange-500 hover:bg-orange-600 text-white"
@@ -313,7 +312,7 @@ export function RetrabalhoModal({ item, open, onClose, onSuccess }: Props) {
               {loading
                 ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <Wrench className="h-4 w-4" />}
-              {t("retrabalhoModal.submit")}
+              Enviar para Retrabalho
             </Button>
           </div>
         </div>

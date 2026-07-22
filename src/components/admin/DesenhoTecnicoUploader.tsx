@@ -29,7 +29,6 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
-import { useTranslation } from "react-i18next";
 
 const MAX_ZIP_SIZE_MB = 1024;
 // Candidatos de nome com menos que isso (já normalizado) não entram na
@@ -113,7 +112,6 @@ interface Props {
 }
 
 export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
-  const { t } = useTranslation();
   const [results,   setResults]   = useState<FileResult[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -122,11 +120,11 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
 
   const processZip = useCallback(async (zipFile: File) => {
     if (!zipFile.name.toLowerCase().endsWith(".zip")) {
-      toast.error(t("desenhoTecnicoUploader.toastSelectZip"));
+      toast.error("Selecione um arquivo .zip");
       return;
     }
     if (zipFile.size > MAX_ZIP_SIZE_MB * 1024 * 1024) {
-      toast.error(t("desenhoTecnicoUploader.toastFileTooLarge", { gb: (MAX_ZIP_SIZE_MB / 1024).toFixed(0) }));
+      toast.error(`Arquivo muito grande. Máximo: ${(MAX_ZIP_SIZE_MB / 1024).toFixed(0)}GB`);
       return;
     }
 
@@ -140,7 +138,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
       );
 
       if (entries.length === 0) {
-        toast.error(t("desenhoTecnicoUploader.toastNoPdfFound"));
+        toast.error("Nenhum PDF encontrado dentro do .zip.");
         setExtracting(false);
         return;
       }
@@ -150,7 +148,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
         .select("id, reference, model");
 
       if (error || !devices) {
-        toast.error(t("desenhoTecnicoUploader.toastLoadDevicesError"));
+        toast.error("Erro ao buscar componentes do banco.");
         setExtracting(false);
         return;
       }
@@ -188,7 +186,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
       setDone(false);
     } catch (e) {
       logger.error("processZip error:", e);
-      toast.error(t("desenhoTecnicoUploader.toastZipReadError"));
+      toast.error("Não foi possível ler o arquivo .zip. Verifique se não está corrompido.");
     } finally {
       setExtracting(false);
     }
@@ -278,9 +276,9 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-primary" />
             <div>
-              <h3 className="font-semibold text-sm">{t("desenhoTecnicoUploader.title")}</h3>
+              <h3 className="font-semibold text-sm">Upload de Desenhos Técnicos (.zip)</h3>
               <p className="text-[11px] text-muted-foreground">
-                {t("desenhoTecnicoUploader.subtitle")}
+                Casa cada PDF pelo nome do arquivo ou da pasta com a referência da peça
               </p>
             </div>
           </div>
@@ -305,9 +303,9 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                     : <FileArchive className="h-6 w-6 text-primary" />}
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold">{extracting ? t("desenhoTecnicoUploader.readingZip") : t("desenhoTecnicoUploader.selectZipFile")}</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">{t("desenhoTecnicoUploader.foldersScanned")}</p>
-                  <p className="text-[10px] text-muted-foreground/70">{t("desenhoTecnicoUploader.largeFilesHint")}</p>
+                  <p className="text-sm font-semibold">{extracting ? "Lendo arquivo .zip..." : "Selecionar arquivo .zip"}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Pastas e subpastas são varridas automaticamente · até 1GB</p>
+                  <p className="text-[10px] text-muted-foreground/70">Arquivos grandes podem levar alguns minutos para carregar — não feche esta tela</p>
                 </div>
               </button>
               <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="hidden"
@@ -320,25 +318,25 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3 text-center">
                   <p className="text-xl font-bold text-green-600">{counts.matched}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("desenhoTecnicoUploader.matched")}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Casaram</p>
                 </div>
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
                   <p className="text-xl font-bold text-amber-600">{counts.noMatch}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("desenhoTecnicoUploader.noMatch")}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Sem match</p>
                 </div>
                 <div className="rounded-xl border border-border/40 p-3 text-center">
                   <p className="text-xl font-bold">{counts.total}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("desenhoTecnicoUploader.pdfsInZip")}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">PDFs no zip</p>
                 </div>
               </div>
               {counts.fuzzy > 0 && (
                 <p className="text-[11px] text-amber-600 flex items-center gap-1.5">
-                  <Sparkles className="h-3 w-3" /> {t("desenhoTecnicoUploader.fuzzyMatchWarning", { count: counts.fuzzy })}
+                  <Sparkles className="h-3 w-3" /> {counts.fuzzy} correspondência(s) aproximada(s) — confira antes de enviar.
                 </p>
               )}
               {counts.duplicate > 0 && (
                 <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                  <Copy className="h-3 w-3" /> {t("desenhoTecnicoUploader.duplicateWarning", { count: counts.duplicate })}
+                  <Copy className="h-3 w-3" /> {counts.duplicate} PDF(s) ignorado(s) por casar com uma peça que já recebeu outro arquivo neste envio.
                 </p>
               )}
 
@@ -356,14 +354,14 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                     <div className="flex-1 min-w-0">
                       <p className="font-mono font-medium truncate" title={r.zipPath}>{r.zipPath}</p>
                       {r.status === "no_match" ? (
-                        <p className="text-amber-600 text-[10px]">{t("desenhoTecnicoUploader.noMatchDetail")}</p>
+                        <p className="text-amber-600 text-[10px]">Nenhuma peça com esta referência</p>
                       ) : r.status === "duplicate" ? (
-                        <p className="text-muted-foreground text-[10px] truncate">{t("desenhoTecnicoUploader.alreadyMatchedBy", { ref: r.reference })}</p>
+                        <p className="text-muted-foreground text-[10px] truncate">Já casado por outro arquivo: {r.reference}</p>
                       ) : r.status === "error" ? (
                         <p className="text-red-500 text-[10px] truncate">{r.error}</p>
                       ) : r.reference ? (
                         <p className={cn("text-[10px] truncate", r.fuzzy ? "text-amber-600" : "text-muted-foreground")}>
-                          {r.fuzzy && "≈ "}{r.reference} · {r.model}{r.fuzzy && t("desenhoTecnicoUploader.approximate")}
+                          {r.fuzzy && "≈ "}{r.reference} · {r.model}{r.fuzzy && " (aproximado)"}
                         </p>
                       ) : null}
                     </div>
@@ -374,7 +372,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
 
               {!uploading && (
                 <button onClick={resetar} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">
-                  {t("desenhoTecnicoUploader.selectAnotherFile")}
+                  ← Selecionar outro arquivo
                 </button>
               )}
             </>
@@ -383,7 +381,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
 
         <div className="flex gap-3 px-5 py-4 border-t border-border/30 shrink-0">
           <Button variant="outline" className="flex-1" onClick={onClose} disabled={uploading}>
-            {done ? t("desenhoTecnicoUploader.close") : t("desenhoTecnicoUploader.cancel")}
+            {done ? "Fechar" : "Cancelar"}
           </Button>
 
           {counts.matched > 0 && !done && (
@@ -392,17 +390,17 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <ArrowUpCircle className="h-4 w-4" />}
               {uploading
-                ? t("desenhoTecnicoUploader.sending")
-                : t("desenhoTecnicoUploader.sendDrawings", { count: counts.matched, plural: counts.matched !== 1 ? "s" : "" })}
+                ? "Enviando..."
+                : `Enviar ${counts.matched} desenho${counts.matched !== 1 ? "s" : ""}`}
             </Button>
           )}
 
           {done && (
             <div className="flex-1 flex items-center justify-center gap-2 text-green-600 text-sm font-medium">
               <CheckCircle2 className="h-4 w-4" />
-              {t("desenhoTecnicoUploader.sentCount", { count: counts.done })}
+              {counts.done} enviado{counts.done !== 1 ? "s" : ""}
               {counts.errors > 0 && (
-                <span className="text-red-500 ml-2">{t("desenhoTecnicoUploader.errorsCount", { count: counts.errors, plural: counts.errors !== 1 ? "s" : "" })}</span>
+                <span className="text-red-500 ml-2">({counts.errors} erro{counts.errors !== 1 ? "s" : ""})</span>
               )}
             </div>
           )}

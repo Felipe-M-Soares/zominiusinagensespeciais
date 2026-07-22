@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useTranslation } from "react-i18next";
 
 interface Cert { id:string; nome:string; tipo:string; numero:string|null; orgao_emissor:string|null; data_emissao:string|null; data_validade:string|null; arquivo_url:string|null; status:string; alerta_dias:number; observacoes:string|null; }
 
@@ -27,7 +26,6 @@ function statusAuto(c:Cert):string {
 const statusStyle=(s:string)=>s==="vencido"?"text-red-600 bg-red-500/10 border-red-500/20":s==="vencendo"?"text-amber-600 bg-amber-500/10 border-amber-500/20":"text-green-600 bg-green-500/10 border-green-500/20";
 
 export function CertificadosPanel() {
-  const { t } = useTranslation();
   const [items,setItems]=useState<Cert[]>([]);
   const [loading,setLoading]=useState(true);
   const [modal,setModal]=useState(false);
@@ -52,7 +50,7 @@ export function CertificadosPanel() {
   useEffect(()=>{load();},[load]);
 
   async function save() {
-    if(!form.nome){toast.error(t("certificadosPanel.toastNameRequired"));return;}
+    if(!form.nome){toast.error("Nome obrigatório");return;}
     setSaving(true);
     let arquivo_url:string|null=null;
 
@@ -75,7 +73,7 @@ export function CertificadosPanel() {
     });
     setSaving(false);
     if(error){toast.error(error.message);return;}
-    toast.success(t("certificadosPanel.toastCreated"));
+    toast.success("Certificado cadastrado!");
     setModal(false); load();
   }
 
@@ -87,19 +85,19 @@ export function CertificadosPanel() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[11px] text-muted-foreground">
-            {items.filter(c=>statusAuto(c)==="vencido").length} {t("certificadosPanel.expired")} ·{" "}
-            {items.filter(c=>statusAuto(c)==="vencendo").length} {t("certificadosPanel.expiringSoon")}
+            {items.filter(c=>statusAuto(c)==="vencido").length} vencidos ·{" "}
+            {items.filter(c=>statusAuto(c)==="vencendo").length} vencendo em breve
           </p>
         </div>
         <div className="flex gap-2">
           <button onClick={load} className="h-8 w-8 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40"><RefreshCw className={cn("h-4 w-4 text-muted-foreground",loading&&"animate-spin")}/></button>
-          <Button size="sm" className="h-8 gap-1" onClick={()=>setModal(true)}><Plus className="h-3.5 w-3.5"/>{t("certificadosPanel.register")}</Button>
+          <Button size="sm" className="h-8 gap-1" onClick={()=>setModal(true)}><Plus className="h-3.5 w-3.5"/>Cadastrar</Button>
         </div>
       </div>
 
       <div className="space-y-2">
-        {loading&&items.length===0?<div className="flex justify-center py-10 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>{t("certificadosPanel.loading")}</div>
-        :items.length===0?<div className="text-center py-10 text-muted-foreground text-sm"><Shield className="h-8 w-8 mx-auto opacity-20 mb-2"/><p>{t("certificadosPanel.noCertRegistered")}</p></div>
+        {loading&&items.length===0?<div className="flex justify-center py-10 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
+        :items.length===0?<div className="text-center py-10 text-muted-foreground text-sm"><Shield className="h-8 w-8 mx-auto opacity-20 mb-2"/><p>Nenhum certificado cadastrado</p></div>
         :items.map(c=>{
           const s=statusAuto(c);
           const d=diasRestantes(c.data_validade);
@@ -116,10 +114,10 @@ export function CertificadosPanel() {
                   </div>
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap mt-0.5">
                     {c.orgao_emissor&&<span>{c.orgao_emissor}</span>}
-                    {c.numero&&<span>{t("certificadosPanel.numberAbbrev")} {c.numero}</span>}
-                    {c.data_validade&&<span>{t("certificadosPanel.expires")} {new Date(c.data_validade+"T12:00:00").toLocaleDateString(t("certificadosPanel.localeCode"))}</span>}
-                    {d!==null&&d>=0&&<span className="font-medium">{t("certificadosPanel.daysLabel", { count: d })}</span>}
-                    {d!==null&&d<0&&<span className="font-medium text-red-600">{t("certificadosPanel.daysOverdue", { count: Math.abs(d) })}</span>}
+                    {c.numero&&<span>Nº {c.numero}</span>}
+                    {c.data_validade&&<span>Vence: {new Date(c.data_validade+"T12:00:00").toLocaleDateString("pt-BR")}</span>}
+                    {d!==null&&d>=0&&<span className="font-medium">({d} dias)</span>}
+                    {d!==null&&d<0&&<span className="font-medium text-red-600">({Math.abs(d)} dias vencido)</span>}
                   </div>
                 </div>
                 {c.arquivo_url&&(
@@ -137,33 +135,33 @@ export function CertificadosPanel() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
           <div className="w-full max-w-md bg-card rounded-t-2xl sm:rounded-2xl border border-border/40 shadow-2xl flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
-              <h3 className="font-semibold text-sm">{t("certificadosPanel.newCertificate")}</h3>
+              <h3 className="font-semibold text-sm">Novo Certificado</h3>
               <button onClick={()=>setModal(false)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40"><X className="h-4 w-4"/></button>
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-              <div><label className={lbl}>{t("certificadosPanel.name")}</label><Input value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))} className="h-9"/></div>
+              <div><label className={lbl}>Nome *</label><Input value={form.nome} onChange={e=>setForm(f=>({...f,nome:e.target.value}))} className="h-9"/></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={lbl}>{t("certificadosPanel.type")}</label><select value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))} className={sel}>{TIPOS.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-                <div><label className={lbl}>{t("certificadosPanel.number")}</label><Input value={form.numero} onChange={e=>setForm(f=>({...f,numero:e.target.value}))} className="h-9"/></div>
+                <div><label className={lbl}>Tipo</label><select value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))} className={sel}>{TIPOS.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
+                <div><label className={lbl}>Número</label><Input value={form.numero} onChange={e=>setForm(f=>({...f,numero:e.target.value}))} className="h-9"/></div>
               </div>
-              <div><label className={lbl}>{t("certificadosPanel.issuer")}</label><Input value={form.orgao_emissor} onChange={e=>setForm(f=>({...f,orgao_emissor:e.target.value}))} className="h-9"/></div>
+              <div><label className={lbl}>Órgão Emissor</label><Input value={form.orgao_emissor} onChange={e=>setForm(f=>({...f,orgao_emissor:e.target.value}))} className="h-9"/></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={lbl}>{t("certificadosPanel.issueDate")}</label><input type="date" value={form.data_emissao} onChange={e=>setForm(f=>({...f,data_emissao:e.target.value}))} className={sel}/></div>
-                <div><label className={lbl}>{t("certificadosPanel.expiryDate")}</label><input type="date" value={form.data_validade} onChange={e=>setForm(f=>({...f,data_validade:e.target.value}))} className={sel}/></div>
+                <div><label className={lbl}>Data Emissão</label><input type="date" value={form.data_emissao} onChange={e=>setForm(f=>({...f,data_emissao:e.target.value}))} className={sel}/></div>
+                <div><label className={lbl}>Data Validade</label><input type="date" value={form.data_validade} onChange={e=>setForm(f=>({...f,data_validade:e.target.value}))} className={sel}/></div>
               </div>
-              <div><label className={lbl}>{t("certificadosPanel.alertDaysAhead")}</label><Input type="number" min="1" value={form.alerta_dias} onChange={e=>setForm(f=>({...f,alerta_dias:e.target.value}))} className="h-9"/></div>
+              <div><label className={lbl}>Alertar com antecedência (dias)</label><Input type="number" min="1" value={form.alerta_dias} onChange={e=>setForm(f=>({...f,alerta_dias:e.target.value}))} className="h-9"/></div>
               <div>
-                <label className={lbl}>{t("certificadosPanel.file")}</label>
+                <label className={lbl}>Arquivo (PDF/imagem)</label>
                 <label className="flex items-center gap-2 h-9 rounded-lg border border-input bg-background px-3 text-sm cursor-pointer hover:bg-muted/20 transition-colors">
                   <Upload className="h-4 w-4 text-muted-foreground"/>
-                  <span className="text-muted-foreground">{file?file.name:t("certificadosPanel.selectFile")}</span>
+                  <span className="text-muted-foreground">{file?file.name:"Selecionar arquivo..."}</span>
                   <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={e=>{if(e.target.files?.[0]) setFile(e.target.files[0]);}}/>
                 </label>
               </div>
             </div>
             <div className="flex gap-3 px-5 py-4 border-t border-border/30 shrink-0">
-              <Button variant="outline" className="flex-1" onClick={()=>setModal(false)}>{t("certificadosPanel.cancel")}</Button>
-              <Button className="flex-1" onClick={save} disabled={saving}>{saving?t("certificadosPanel.saving"):t("certificadosPanel.register")}</Button>
+              <Button variant="outline" className="flex-1" onClick={()=>setModal(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Cadastrar"}</Button>
             </div>
           </div>
         </div>

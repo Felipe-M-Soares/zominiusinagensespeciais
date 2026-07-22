@@ -9,10 +9,8 @@ import { toast } from "sonner";
 import { Lock, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { validatePassword, passwordStrength } from "@/lib/passwordUtils";
 import { logger } from "@/lib/logger";
-import { useTranslation } from "react-i18next";
 
 export default function SetPassword() {
-  const { t } = useTranslation();
   const { user, clearMustChangePassword } = useAuth();
   const navigate = useNavigate();
   const [password, setPassword]     = useState("");
@@ -43,38 +41,38 @@ export default function SetPassword() {
   }, [user?.id, navigate]);
 
   const displayName =
-    (user?.user_metadata?.display_name as string) ?? t("setPassword.defaultUser");
+    (user?.user_metadata?.display_name as string) ?? "Usuário";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (password.length < 8) {
-      toast.error(t("setPassword.errors.minLength"));
+      toast.error("Senha deve ter no mínimo 8 caracteres.");
       return;
     }
     if (password.length > 72) {
-      toast.error(t("setPassword.errors.maxLength"));
+      toast.error("Senha deve ter no máximo 72 caracteres.");
       return;
     }
     // SECURITY: valida complexidade — igual ao AdminUsers.validatePassword(),
     // evita que usuário defina senha fraca como "12345678" no primeiro login.
     if (!/[A-Z]/.test(password)) {
-      toast.error(t("setPassword.errors.upper"));
+      toast.error("A senha deve conter ao menos 1 letra maiúscula.");
       return;
     }
     if (!/[a-z]/.test(password)) {
-      toast.error(t("setPassword.errors.lower"));
+      toast.error("A senha deve conter ao menos 1 letra minúscula.");
       return;
     }
     if (!/[0-9]/.test(password)) {
-      toast.error(t("setPassword.errors.number"));
+      toast.error("A senha deve conter ao menos 1 número.");
       return;
     }
     if (!/[^A-Za-z0-9]/.test(password)) {
-      toast.error(t("setPassword.errors.special"));
+      toast.error("A senha deve conter ao menos 1 caractere especial (!@#$%...).");
       return;
     }
     if (password !== confirm) {
-      toast.error(t("setPassword.errors.mismatch"));
+      toast.error("As senhas não coincidem.");
       return;
     }
 
@@ -88,24 +86,24 @@ export default function SetPassword() {
       });
 
       if (rpcErr) {
-        toast.error(t("setPassword.errors.setFailedPrefix") + rpcErr.message);
+        toast.error("Erro ao definir senha: " + rpcErr.message);
         return;
       }
 
       const res = result as { ok: boolean; error?: string } | null;
       if (!res?.ok) {
-        toast.error(res?.error ?? t("setPassword.errors.setFailedGeneric"));
+        toast.error(res?.error ?? "Erro ao definir senha. Tente novamente.");
         return;
       }
 
       // Zera o estado local imediatamente — evita que ProtectedLayout
       // redirecione de volta para /set-password antes do Realtime atualizar
       clearMustChangePassword();
-      toast.success(t("setPassword.success"));
+      toast.success("Senha definida com sucesso! Bem-vindo.");
       navigate("/", { replace: true });
     } catch (err) {
       logger.error("SetPassword error:", err);
-      toast.error(t("setPassword.errors.unexpected"));
+      toast.error("Erro inesperado. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -128,10 +126,10 @@ export default function SetPassword() {
           <Logo className="h-14 object-contain" />
           <div>
             <h1 className="text-xl font-semibold text-foreground tracking-tight">
-              {t("setPassword.greeting", { name: displayName })}
+              Olá, {displayName}!
             </h1>
             <p className="text-xs text-muted-foreground mt-1">
-              {t("setPassword.subtitle")}
+              Defina sua senha pessoal para continuar
             </p>
           </div>
         </div>
@@ -141,9 +139,9 @@ export default function SetPassword() {
           <div className="flex items-start gap-3 rounded-xl bg-primary/5 border border-primary/20 px-4 py-3">
             <ShieldCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
             <p className="text-xs text-muted-foreground leading-relaxed">
-              {t("setPassword.securityNote")}
+              Esta é sua senha pessoal de acesso. Guarde-a com segurança.
               <strong className="text-foreground block mt-0.5">
-                {t("setPassword.securityNoteStrong")}
+                Se precisar redefinir, entre em contato com o administrador.
               </strong>
             </p>
           </div>
@@ -151,12 +149,12 @@ export default function SetPassword() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Nova senha */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">{t("setPassword.newPassword")}</label>
+              <label className="text-xs font-medium text-foreground">Nova senha</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
                 <Input
                   type={showPwd ? "text" : "password"}
-                  placeholder={t("setPassword.newPasswordPlaceholder")}
+                  placeholder="Mínimo 8 caracteres"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -175,12 +173,12 @@ export default function SetPassword() {
 
             {/* Confirmar senha */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">{t("setPassword.confirmPassword")}</label>
+              <label className="text-xs font-medium text-foreground">Confirmar senha</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
                 <Input
                   type={showConf ? "text" : "password"}
-                  placeholder={t("setPassword.confirmPasswordPlaceholder")}
+                  placeholder="Repita a senha"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   required
@@ -224,7 +222,7 @@ export default function SetPassword() {
               className="w-full h-11 rounded-xl font-medium text-sm"
               disabled={loading || !!validatePassword(password) || password !== confirm}
             >
-              {loading ? t("setPassword.saving") : t("setPassword.submit")}
+              {loading ? "Salvando..." : "Definir senha e entrar"}
             </Button>
           </form>
         </div>

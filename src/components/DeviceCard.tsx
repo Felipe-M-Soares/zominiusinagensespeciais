@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 import type { Device } from "@/types/device";
 import { Shield, Package, Activity, Copy, Check, Box, FileText } from "lucide-react";
 import { DesenhoTecnicoViewer } from "@/components/DesenhoTecnicoViewer";
-import { useTranslation } from "react-i18next";
 
 interface Props {
 device: Device;
@@ -46,7 +45,6 @@ export function countryFlag(country: string): string {
 }
 
 export function DeviceCard({ device, onClick }: Props) {
-  const { t } = useTranslation();
   const [copied,    setCopied]    = useState(false);
   const [imgError,  setImgError]  = useState(false);
   const [desenhoOpen, setDesenhoOpen] = useState(false);
@@ -109,7 +107,7 @@ export function DeviceCard({ device, onClick }: Props) {
         </h3>
         <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success tracking-wide mt-0.5">
           <span className="h-1.5 w-1.5 rounded-full bg-success" />
-          {t("deviceCard.active")}
+          Ativo
         </span>
       </div>
 
@@ -122,7 +120,7 @@ export function DeviceCard({ device, onClick }: Props) {
       {/* GTIN/UDI — destaque tipográfico sem fundo saturado */}
       <button
         type="button"
-        title={t("deviceCard.copyUdiTitle")}
+        title="Clique para copiar o GTIN/UDI"
         onClick={handleCopyUDI}
         className={cn(
           "w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 transition-colors group/copy text-left",
@@ -145,12 +143,12 @@ export function DeviceCard({ device, onClick }: Props) {
       {device.desenho_tecnico_path && (
         <button
           type="button"
-          title={t("deviceCard.technicalDrawingTitle")}
+          title="Visualizar e imprimir o desenho técnico"
           onClick={(e) => { e.stopPropagation(); setDesenhoOpen(true); }}
           className="w-full flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
         >
           <FileText className="h-3.5 w-3.5" />
-          {t("deviceCard.technicalDrawing")}
+          Desenho técnico
         </button>
       )}
 
@@ -165,24 +163,24 @@ export function DeviceCard({ device, onClick }: Props) {
       <div className="flex flex-wrap gap-1.5">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-0.5 text-[10px] font-medium text-brand tracking-wide">
           <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-          {t("deviceCard.class")} {device.classification_code || "—"}
+          Classe {device.classification_code || "—"}
         </span>
         {device.sterile && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-0.5 text-[10px] font-medium text-success tracking-wide">
             <Shield className="h-2.5 w-2.5" />
-            {t("deviceCard.sterile")}
+            Estéril
           </span>
         )}
         {device.single_use && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-500/10 px-2.5 py-0.5 text-[10px] font-medium text-orange-500 tracking-wide">
             <Package className="h-2.5 w-2.5" />
-            {t("deviceCard.singleUse")}
+            Uso único
           </span>
         )}
         {device.implantable && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2.5 py-0.5 text-[10px] font-medium text-violet-500 tracking-wide">
             <Activity className="h-2.5 w-2.5" />
-            {t("deviceCard.implantable")}
+            Implantável
           </span>
         )}
       </div>
@@ -198,7 +196,7 @@ export function DeviceCard({ device, onClick }: Props) {
         {device.exocad_compatibility && device.exocad_compatibility !== "N.A" && (
           <span className="flex items-center gap-1 font-medium text-foreground/60">
             <Box className="h-2.5 w-2.5" />
-            {t("catalog.exocad")}
+            Exocad
           </span>
         )}
       </div>

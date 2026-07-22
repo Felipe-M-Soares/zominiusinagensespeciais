@@ -32,8 +32,8 @@ describe("escHtml", () => {
   });
 
   it("não altera texto sem caracteres especiais", () => {
-    expect(escHtml("Zomini Usinagens Especiais")).toBe(
-      "Zomini Usinagens Especiais"
+    expect(escHtml("Concept Usinagens Especiais")).toBe(
+      "Concept Usinagens Especiais"
     );
   });
 

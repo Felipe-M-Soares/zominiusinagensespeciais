@@ -4,7 +4,6 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useTranslation } from "react-i18next";
 
 type AdminClearRpc =
   | "admin_clear_stock_movements"
@@ -43,16 +42,12 @@ interface Props {
  */
 export function ClearHistoryButton({
   rpc,
-  label,
+  label = "Apagar histórico",
   confirmTitle,
   confirmDescription,
   onCleared,
   className,
 }: Props) {
-  const { t, i18n } = useTranslation();
-  const resolvedLabel = label ?? t("clearHistoryButton.defaultLabel");
-  const lang = i18n.language.split("-")[0];
-  const confirmWord = lang === "en" ? "DELETE" : lang === "es" ? "ELIMINAR" : "EXCLUIR";
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [typed, setTyped] = useState("");
@@ -63,7 +58,7 @@ export function ClearHistoryButton({
   }
 
   async function handleClear() {
-    if (typed !== confirmWord) return;
+    if (typed !== "EXCLUIR") return;
     setClearing(true);
     const { data, error } = await supabase.rpc(rpc);
     setClearing(false);
@@ -71,15 +66,15 @@ export function ClearHistoryButton({
     const result = data as { ok?: boolean; error?: string; deleted?: number } | null;
 
     if (error || result?.ok === false) {
-      toast.error(result?.error ?? error?.message ?? t("clearHistoryButton.toastError"));
+      toast.error(result?.error ?? error?.message ?? "Erro ao apagar histórico.");
       return;
     }
 
     const count = result?.deleted;
     toast.success(
       typeof count === "number"
-        ? t("clearHistoryButton.toastClearedCount", { count, plural: count !== 1 ? "s" : "" })
-        : t("clearHistoryButton.toastCleared")
+        ? `Histórico apagado (${count} registro${count !== 1 ? "s" : ""}).`
+        : "Histórico apagado com sucesso."
     );
     closeModal();
     onCleared?.();
@@ -98,7 +93,7 @@ export function ClearHistoryButton({
         )}
       >
         <Trash2 className="h-3.5 w-3.5" />
-        {resolvedLabel}
+        {label}
       </button>
 
       {confirmOpen && createPortal(
@@ -111,18 +106,18 @@ export function ClearHistoryButton({
               <div>
                 <p className="text-sm font-bold text-destructive">{confirmTitle}</p>
                 <p className="text-[12px] text-muted-foreground mt-1">{confirmDescription}</p>
-                <p className="text-[12px] text-muted-foreground mt-1">{t("clearHistoryButton.cannotUndo")}</p>
+                <p className="text-[12px] text-muted-foreground mt-1">Esta ação não pode ser desfeita.</p>
               </div>
             </div>
             <div className="space-y-1.5">
               <p className="text-sm text-muted-foreground">
-                {t("clearHistoryButton.typeToConfirm")} <strong className="text-destructive font-mono">{confirmWord}</strong> {t("clearHistoryButton.typeToConfirmEnd")}
+                Digite <strong className="text-destructive font-mono">EXCLUIR</strong> para confirmar:
               </p>
               <input
                 type="text"
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}
-                placeholder={confirmWord}
+                placeholder="EXCLUIR"
                 autoFocus
                 disabled={clearing}
                 className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-destructive/30"
@@ -135,18 +130,18 @@ export function ClearHistoryButton({
                 disabled={clearing}
                 className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
               >
-                {t("clearHistoryButton.cancel")}
+                Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleClear}
-                disabled={clearing || typed !== confirmWord}
+                disabled={clearing || typed !== "EXCLUIR"}
                 className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {clearing
                   ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   : <Trash2 className="h-3.5 w-3.5" />}
-                {t("clearHistoryButton.delete")}
+                Apagar
               </button>
             </div>
           </div>

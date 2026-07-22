@@ -18,7 +18,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { ScanBarcode, X, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useTranslation } from "react-i18next";
 
 interface Props {
   value?: string;
@@ -39,7 +38,7 @@ export function SearchInputWithBarcode({
   onChange,
   onSearch,
   onFocus,
-  placeholder,
+  placeholder = "Bipe o código de barras ou pesquise aqui...",
   className,
   inputClass,
   height = "h-9",
@@ -47,8 +46,6 @@ export function SearchInputWithBarcode({
   debounceMs = 300,
   showSearchIcon = false,
 }: Props) {
-  const { t } = useTranslation();
-  const resolvedPlaceholder = placeholder ?? t("catalog.searchPlaceholder");
   const [localValue, setLocalValue] = useState(value ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,7 +102,7 @@ export function SearchInputWithBarcode({
           onChange={e => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={onFocus}
-          placeholder={resolvedPlaceholder}
+          placeholder={placeholder}
           autoFocus={autoFocus}
           className={cn(
             "w-full rounded-xl border border-border bg-background text-sm",
@@ -124,7 +121,7 @@ export function SearchInputWithBarcode({
             <button
               type="button"
               onClick={handleClear}
-              aria-label={t("catalog.clearSearch")}
+              aria-label="Limpar busca"
               className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
             >
               <X className="h-3 w-3" />

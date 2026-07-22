@@ -11,7 +11,6 @@ import {
 import { Activity, TrendingUp, AlertTriangle, Clock, Zap, Award, RefreshCw, Target, BarChart2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { useTranslation } from "react-i18next";
 
 interface OEEData {
   hr_planejadas: number;
@@ -76,7 +75,6 @@ function GaugeOEE({ value, label, color }: { value: number; label: string; color
 }
 
 export function DashboardPanel() {
-  const { t } = useTranslation();
   const now = new Date();
   const [mes, setMes]     = useState(now.getMonth() + 1);
   const [ano, setAno]     = useState(now.getFullYear());
@@ -94,7 +92,7 @@ export function DashboardPanel() {
 
   useEffect(() => { load(); }, [load]);
 
-  const meses = t("dashboardPanel.months", { returnObjects: true }) as string[];
+  const meses = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
   const oeeColor = (v: number) =>
     v >= 85 ? "#22c55e" : v >= 65 ? "#f59e0b" : "#ef4444";
@@ -122,13 +120,13 @@ export function DashboardPanel() {
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground text-sm gap-2">
-          <RefreshCw className="h-4 w-4 animate-spin" /> {t("dashboardPanel.calculatingOee")}
+          <RefreshCw className="h-4 w-4 animate-spin" /> Calculando OEE...
         </div>
       ) : !data || data.geral.hr_planejadas === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <Activity className="h-10 w-10 mx-auto opacity-20 mb-2" />
-          <p className="text-sm">{t("dashboardPanel.noDataPeriod")}</p>
-          <p className="text-[11px]">{t("dashboardPanel.registerEntriesHint")}</p>
+          <p className="text-sm">Sem dados de produção neste período</p>
+          <p className="text-[11px]">Registre apontamentos no Controle de Produção</p>
         </div>
       ) : (
         <>
@@ -145,21 +143,21 @@ export function DashboardPanel() {
               </span>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <GaugeOEE value={data.geral.disponibilidade} label={t("dashboardPanel.gaugeAvailability")} color="#3b82f6" />
-              <GaugeOEE value={data.geral.performance}     label={t("dashboardPanel.gaugePerformance")}     color="#8b5cf6" />
-              <GaugeOEE value={data.geral.qualidade}       label={t("dashboardPanel.gaugeQuality")}       color="#22c55e" />
+              <GaugeOEE value={data.geral.disponibilidade} label="Disponibilidade" color="#3b82f6" />
+              <GaugeOEE value={data.geral.performance}     label="Performance"     color="#8b5cf6" />
+              <GaugeOEE value={data.geral.qualidade}       label="Qualidade"       color="#22c55e" />
             </div>
           </div>
 
           {/* KPIs */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {[
-              { icon: Clock,        label: t("dashboardPanel.hrPlanned"),  value: `${data.geral.hr_planejadas.toFixed(1)}h`,  color: "text-blue-600",   bg: "bg-blue-500/5 border-blue-500/20" },
-              { icon: AlertTriangle,label: t("dashboardPanel.hrStopped"),     value: `${data.geral.hr_paradas.toFixed(1)}h`,    color: "text-red-600",    bg: "bg-red-500/5 border-red-500/20" },
-              { icon: Zap,          label: t("dashboardPanel.hrAvailable"), value: `${data.geral.hr_disponiveis.toFixed(1)}h`, color: "text-green-600",  bg: "bg-green-500/5 border-green-500/20" },
-              { icon: TrendingUp,   label: t("dashboardPanel.qtyPlanned"), value: data.geral.qtde_planejada.toLocaleString(t("dashboardPanel.localeCode")) + " " + t("dashboardPanel.pieceAbbrev"), color: "text-purple-600", bg: "bg-purple-500/5 border-purple-500/20" },
-              { icon: Award,        label: t("dashboardPanel.qtyProduced"), value: data.geral.qtde_produzida.toLocaleString(t("dashboardPanel.localeCode")) + " " + t("dashboardPanel.pieceAbbrev"), color: "text-green-600",  bg: "bg-green-500/5 border-green-500/20" },
-              { icon: AlertTriangle,label: t("dashboardPanel.totalScrap"),   value: data.geral.total_refugo.toLocaleString(t("dashboardPanel.localeCode")) + " " + t("dashboardPanel.pieceAbbrev"), color: "text-orange-600", bg: "bg-orange-500/5 border-orange-500/20" },
+              { icon: Clock,        label: "Hr Planejadas",  value: `${data.geral.hr_planejadas.toFixed(1)}h`,  color: "text-blue-600",   bg: "bg-blue-500/5 border-blue-500/20" },
+              { icon: AlertTriangle,label: "Hr Paradas",     value: `${data.geral.hr_paradas.toFixed(1)}h`,    color: "text-red-600",    bg: "bg-red-500/5 border-red-500/20" },
+              { icon: Zap,          label: "Hr Disponíveis", value: `${data.geral.hr_disponiveis.toFixed(1)}h`, color: "text-green-600",  bg: "bg-green-500/5 border-green-500/20" },
+              { icon: TrendingUp,   label: "Qtde Planejada", value: data.geral.qtde_planejada.toLocaleString("pt-BR") + " pç", color: "text-purple-600", bg: "bg-purple-500/5 border-purple-500/20" },
+              { icon: Award,        label: "Qtde Produzida", value: data.geral.qtde_produzida.toLocaleString("pt-BR") + " pç", color: "text-green-600",  bg: "bg-green-500/5 border-green-500/20" },
+              { icon: AlertTriangle,label: "Total Refugo",   value: data.geral.total_refugo.toLocaleString("pt-BR") + " pç", color: "text-orange-600", bg: "bg-orange-500/5 border-orange-500/20" },
             ].map(k => (
               <div key={k.label} className={cn("rounded-2xl border p-3 space-y-1", k.bg)}>
                 <div className="flex items-center gap-1.5">
@@ -175,7 +173,7 @@ export function DashboardPanel() {
           {data.por_maquina && data.por_maquina.length > 0 && (
             <div className="rounded-2xl border bg-card p-4 space-y-3">
               <h3 className="text-sm font-semibold flex items-center gap-2">
-                <BarChart2 className="h-4 w-4 text-primary" /> {t("dashboardPanel.performanceByMachine")}
+                <BarChart2 className="h-4 w-4 text-primary" /> Performance por Máquina
               </h3>
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={data.por_maquina} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -184,10 +182,10 @@ export function DashboardPanel() {
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
-                    formatter={(v: number, name: string) => [v.toLocaleString(t("dashboardPanel.localeCode")), name === "qtde_produzida" ? t("dashboardPanel.produced") : t("dashboardPanel.planned")]}
+                    formatter={(v: number, name: string) => [v.toLocaleString("pt-BR"), name === "qtde_produzida" ? "Produzido" : "Planejado"]}
                   />
-                  <Bar dataKey="qtde_planejada" fill="hsl(var(--muted))" radius={[4,4,0,0]} name={t("dashboardPanel.planned")} />
-                  <Bar dataKey="qtde_produzida" radius={[4,4,0,0]} name={t("dashboardPanel.produced")}>
+                  <Bar dataKey="qtde_planejada" fill="hsl(var(--muted))" radius={[4,4,0,0]} name="Planejado" />
+                  <Bar dataKey="qtde_produzida" radius={[4,4,0,0]} name="Produzido">
                     {data.por_maquina.map((m, i) => {
                       const eff = m.qtde_planejada > 0 ? m.qtde_produzida / m.qtde_planejada : 0;
                       return <Cell key={i} fill={eff >= 0.95 ? "#22c55e" : eff >= 0.80 ? "#f59e0b" : "#ef4444"} />;
@@ -202,7 +200,7 @@ export function DashboardPanel() {
           {data.paradas_por_tipo && data.paradas_por_tipo.length > 0 && (
             <div className="rounded-2xl border bg-card p-4 space-y-3">
               <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Clock className="h-4 w-4 text-red-500" /> {t("dashboardPanel.stopsByType")}
+                <Clock className="h-4 w-4 text-red-500" /> Paradas por Tipo
               </h3>
               <div className="space-y-2">
                 {data.paradas_por_tipo.slice(0, 8).map((p, i) => {
@@ -228,7 +226,7 @@ export function DashboardPanel() {
           {data.refugos_por_tipo && data.refugos_por_tipo.length > 0 && (
             <div className="rounded-2xl border bg-card p-4 space-y-3">
               <h3 className="text-sm font-semibold flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-orange-500" /> {t("dashboardPanel.scrapByType")}
+                <AlertTriangle className="h-4 w-4 text-orange-500" /> Refugos por Tipo
               </h3>
               <div className="space-y-2">
                 {data.refugos_por_tipo.map((r, i) => {
@@ -238,7 +236,7 @@ export function DashboardPanel() {
                     <div key={i} className="space-y-0.5">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-foreground">{r.tipo}</span>
-                        <span className="text-muted-foreground">{r.total.toLocaleString(t("dashboardPanel.localeCode"))} {t("dashboardPanel.pieceAbbrev")}</span>
+                        <span className="text-muted-foreground">{r.total.toLocaleString("pt-BR")} pç</span>
                       </div>
                       <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                         <div className="h-full bg-orange-500/60 rounded-full" style={{ width: `${pct}%` }} />
