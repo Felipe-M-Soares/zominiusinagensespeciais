@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { RecebimentoMaterialModal } from "./RecebimentoMaterialModal";
+import { RecebimentoMaterialModal, parseTipoMaterial, stripTipoPrefix, TIPO_MATERIAL_LABEL, TIPO_MATERIAL_ICON, type TipoMaterial } from "./RecebimentoMaterialModal";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 import {
   AlertDialog,
@@ -57,6 +57,9 @@ interface RecebimentoCardProps {
 
 function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCardProps) {
   const isAtivo = item.status === "ativo";
+  const tipo = parseTipoMaterial(item.descricao);
+  const TipoIcon = tipo ? TIPO_MATERIAL_ICON[tipo] : null;
+  const descricaoLimpa = stripTipoPrefix(item.descricao);
 
   return (
     <div
@@ -76,9 +79,14 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
       <div className="p-4 space-y-3">
         {/* Cabeçalho */}
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-0.5">
+          <div className="min-w-0 space-y-1">
+            {tipo && TipoIcon && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+                <TipoIcon className="h-2.5 w-2.5" /> {TIPO_MATERIAL_LABEL[tipo]}
+              </span>
+            )}
             <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">
-              {item.descricao}
+              {descricaoLimpa}
             </h3>
             {item.fornecedor && (
               <p className="text-[11px] text-muted-foreground/70 truncate">{item.fornecedor}</p>
@@ -221,7 +229,7 @@ function RetiradaModal({ item, onClose, onSuccess }: RetiradaModalProps) {
           <div>
             <p className="text-sm font-semibold">Confirmar retirada do material?</p>
             <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
-              {item.descricao}
+              {stripTipoPrefix(item.descricao)}
             </p>
             <p className="text-[11px] font-mono text-cyan-600 dark:text-cyan-400 mt-0.5">
               {displayLote(item.lote) ? `Lote ${displayLote(item.lote)} · ` : ""}{item.quantity} un.
@@ -267,6 +275,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showAtivos, setShowAtivos] = useState<"todos" | "ativos" | "retirados">("ativos");
+  const [filtroTipo, setFiltroTipo] = useState<"todos" | TipoMaterial>("todos");
 
   const [addOpen, setAddOpen] = useState(false);
   const [retirarItem, setRetirarItem] = useState<RecebimentoItem | null>(null);
@@ -294,6 +303,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
   const filteredItems = items.filter((item) => {
     if (showAtivos === "ativos" && item.status !== "ativo") return false;
     if (showAtivos === "retirados" && item.status !== "retirado") return false;
+    if (filtroTipo !== "todos" && parseTipoMaterial(item.descricao) !== filtroTipo) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       return (
@@ -305,6 +315,8 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
     }
     return true;
   });
+
+  const countPorTipo = (t: TipoMaterial) => items.filter((i) => parseTipoMaterial(i.descricao) === t).length;
 
   const countAtivos = items.filter((i) => i.status === "ativo").length;
   const countRetirados = items.filter((i) => i.status === "retirado").length;
@@ -379,6 +391,39 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
         placeholder="Bipe o código ou busque por lote, descrição, fornecedor..."
         height="h-11"
       />
+
+      {/* Filtro por tipo de material */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setFiltroTipo("todos")}
+          className={cn(
+            "flex items-center gap-1 px-2.5 h-7 rounded-full text-[11px] font-medium transition-all",
+            filtroTipo === "todos" ? "bg-primary/10 text-primary" : "bg-muted/30 text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Todos os tipos
+        </button>
+        {(Object.keys(TIPO_MATERIAL_LABEL) as TipoMaterial[]).map((t) => {
+          const Icon = TIPO_MATERIAL_ICON[t];
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setFiltroTipo(t)}
+              className={cn(
+                "flex items-center gap-1 px-2.5 h-7 rounded-full text-[11px] font-medium transition-all",
+                filtroTipo === t ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400" : "bg-muted/30 text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="h-3 w-3" /> {TIPO_MATERIAL_LABEL[t]}
+              <span className={cn("text-[9px] font-bold px-1 rounded-full", filtroTipo === t ? "bg-cyan-500/20" : "bg-muted/50")}>
+                {countPorTipo(t)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Descrição da aba */}
       <div className="rounded-xl border px-4 py-3 text-[12px] bg-cyan-500/5 border-cyan-500/20 text-cyan-700 dark:text-cyan-300">
@@ -465,7 +510,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
             </AlertDialogTitle>
             <AlertDialogDescription>
               <span className="block">
-                Excluir o registro{displayLote(deleteItem?.lote) ? <> do lote <strong className="font-mono">{displayLote(deleteItem?.lote)}</strong></> : ""} — {deleteItem?.descricao}?
+                Excluir o registro{displayLote(deleteItem?.lote) ? <> do lote <strong className="font-mono">{displayLote(deleteItem?.lote)}</strong></> : ""} — {deleteItem ? stripTipoPrefix(deleteItem.descricao) : ""}?
               </span>
               <span className="block mt-1 text-xs text-muted-foreground">Esta ação é irreversível.</span>
             </AlertDialogDescription>

@@ -22,7 +22,7 @@ import { formatBRL } from "@/lib/format";
 import {
   RefreshCw, PlusCircle, X, Search, Undo2, Repeat2, FileCheck2,
   Loader2, Trash2, Printer, ChevronRight, AlertTriangle, CheckCircle2,
-  Ban, User, FileText,
+  Ban, User, FileText, Lock, ShieldCheck,
 } from "lucide-react";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -95,6 +95,23 @@ interface PedidoBusca {
 }
 
 const BRL = formatBRL;
+
+// Deriva o "sub-status" de qualidade a partir de status_msg — mesma
+// convenção usada no painel da Qualidade ("[QUALIDADE:xxx] laudo..."),
+// reaproveitando o campo de mensagem já existente nesta tabela em vez de
+// criar uma coluna nova.
+type QSub = "em_analise" | "aprovado_devolucao" | "aprovado_troca" | "reprovado" | null;
+function qSubStatus(r: Pick<NotaDevTroca, "status_msg">): QSub {
+  const m = r.status_msg ?? "";
+  if (m.startsWith("[QUALIDADE:em_analise]")) return "em_analise";
+  if (m.startsWith("[QUALIDADE:aprovado_devolucao]")) return "aprovado_devolucao";
+  if (m.startsWith("[QUALIDADE:aprovado_troca]")) return "aprovado_troca";
+  if (m.startsWith("[QUALIDADE:reprovado]")) return "reprovado";
+  return null;
+}
+function qLaudoTexto(msg: string | null): string {
+  return (msg ?? "").replace(/^\[QUALIDADE:[a-z_]+\]\s*/, "");
+}
 
 function novoItem(): ItemDevTroca {
   return {
@@ -240,6 +257,16 @@ export function DevolucaoTrocaPanel({ modoTeste }: { modoTeste: boolean }) {
                 </span>
               </div>
               <p className="text-[13px] font-semibold truncate">{r.cliente_nome}</p>
+              {qSubStatus(r) === "em_analise" && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                  <Lock size={9} /> Em análise pela Qualidade
+                </span>
+              )}
+              {(qSubStatus(r) === "aprovado_devolucao" || qSubStatus(r) === "aprovado_troca") && r.status === "rascunho" && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+                  <ShieldCheck size={9} /> Aprovado pela Qualidade — pronto p/ emitir
+                </span>
+              )}
               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                 <span>{r.numero ? `${r.tipo_nota.toUpperCase()}-${r.numero.padStart(9,"0")}` : "sem número"}</span>
                 <span className="font-semibold text-foreground">{BRL(r.valor_total)}</span>
@@ -260,7 +287,7 @@ export function DevolucaoTrocaPanel({ modoTeste }: { modoTeste: boolean }) {
         />
       )}
       {viewRegistro && (
-        <ViewerModal registro={viewRegistro} onClose={() => setViewRegistro(null)} onChanged={load} />
+        <ViewerModal registro={viewRegistro} onClose={() => setViewRegistro(null)} onChanged={load} modoTeste={modoTeste} />
       )}
     </div>
   );
@@ -268,8 +295,13 @@ export function DevolucaoTrocaPanel({ modoTeste }: { modoTeste: boolean }) {
 
 // ─── Modal: visualizar / cancelar / imprimir ────────────────────────────────
 
-function ViewerModal({ registro, onClose, onChanged }: { registro: NotaDevTroca; onClose: () => void; onChanged: () => void }) {
+function ViewerModal({ registro, onClose, onChanged, modoTeste }: { registro: NotaDevTroca; onClose: () => void; onChanged: () => void; modoTeste: boolean }) {
   const [canceling, setCanceling] = useState(false);
+  const [emitindo, setEmitindo] = useState(false);
+  const qsub = qSubStatus(registro);
+  const travadoQualidade = qsub === "em_analise";
+  const prontoParaEmitir = (qsub === "aprovado_devolucao" || qsub === "aprovado_troca") && registro.status === "rascunho";
+  const podeImprimir = registro.status === "autorizada"; // regra SEFAZ: só sai pro cliente quando pronta
 
   async function handleCancelar() {
     if (!confirm("Cancelar este registro? Esta ação apenas marca o registro como cancelado neste sistema — não transmite evento de cancelamento ao SEFAZ.")) return;
@@ -284,6 +316,82 @@ function ViewerModal({ registro, onClose, onChanged }: { registro: NotaDevTroca;
     } catch (err) {
       toast.error(friendlyError(err));
     } finally { setCanceling(false); }
+  }
+
+  // Emite a NF a partir de um rascunho que a Qualidade já concluiu — reaproveita
+  // os mesmos dados decididos por ela (tipo, itens, motivo/laudo), sem reabrir
+  // o assistente de criação: a nota "já criada" é só alterada até virar
+  // autorizada, exatamente como pedido.
+  async function handleEmitirAprovado() {
+    setEmitindo(true);
+    try {
+      const { data: numReservado, error: numErr } = await supabase.rpc("get_next_nf_number", { p_serie: "2", p_tipo: registro.tipo });
+      if (numErr) throw numErr;
+      const numeroFinal = String(numReservado ?? "").padStart(9, "0");
+      const naturezaOperacao = registro.tipo === "devolucao" ? "DEVOLUÇÃO DE VENDA DE MERCADORIA" : "TROCA DE MERCADORIA";
+
+      await supabase.from("notas_devolucao_troca").update({ numero: numeroFinal, natureza_operacao: naturezaOperacao }).eq("id", registro.id);
+
+      if (modoTeste) {
+        await new Promise(r => setTimeout(r, 1200));
+        const fake = {
+          chaveAcesso: ("35" + Date.now() + "0".repeat(40)).slice(0, 44),
+          protocolo: "141" + Date.now(),
+          dhAutorizacao: new Date().toISOString(),
+          xMotivo: "Autorizado o uso da NF-e",
+        };
+        await supabase.rpc("registrar_devolucao_troca", {
+          p_id: registro.id, p_status: "autorizada", p_status_msg: fake.xMotivo,
+          p_chave_acesso: fake.chaveAcesso, p_protocolo: fake.protocolo, p_dh_autorizacao: fake.dhAutorizacao,
+        });
+        toast.success(`[TESTE] ${registro.tipo === "devolucao" ? "Devolução" : "Troca"} emitida! Protocolo ${fake.protocolo}`, { duration: 5000 });
+        onChanged(); onClose(); return;
+      }
+
+      const { data: fnData, error: fnErr } = await supabase.functions.invoke("sefaz-emitir-devolucao", {
+        body: {
+          registroId: registro.id,
+          dadosFiscais: {
+            tipoNota: registro.tipo_nota, tipoOperacao: registro.tipo, tpNF: registro.tp_nf,
+            numero: numeroFinal, serie: "2", naturezaOperacao,
+            refNFe: (registro.nf_original_chave ?? "").replace(/\D/g, ""),
+            destDocumento: registro.cliente_documento, destNome: registro.cliente_nome, destEmail: registro.cliente_email,
+            destEndereco: registro.cliente_endereco,
+            itens: registro.itens.map(i => ({
+              itemId: i.id, descricao: i.descricao, ncm: i.ncm, cfop: i.cfop,
+              unidade: "UN", quantidade: i.quantidade, valorUnitario: i.valorUnitario,
+              aliqICMS: i.aliqICMS, cst: i.cst,
+            })),
+            valorFrete: String(registro.valor_frete ?? 0), modFrete: "9",
+            informacoesAdicionais: qLaudoTexto(registro.status_msg),
+          },
+        },
+      });
+      if (fnErr) throw new Error(fnErr.message);
+      const result = fnData as { sucesso: boolean; xMotivo?: string; erro?: string; cStat?: string; protocolo?: string; chaveAcesso?: string; dhAutorizacao?: string; xmlAssinado?: string };
+
+      if (!result.sucesso) {
+        await supabase.rpc("registrar_devolucao_troca", {
+          p_id: registro.id, p_status: "rejeitada",
+          p_status_msg: result.xMotivo ? `SEFAZ cStat ${result.cStat}: ${result.xMotivo}` : (result.erro ?? "Nota rejeitada"),
+          p_chave_acesso: null, p_protocolo: null, p_dh_autorizacao: null,
+        });
+        toast.error(result.xMotivo ? `SEFAZ cStat ${result.cStat}: ${result.xMotivo}` : (result.erro ?? "Nota rejeitada pelo SEFAZ"), { duration: 8000 });
+        onChanged(); return;
+      }
+
+      await supabase.rpc("registrar_devolucao_troca", {
+        p_id: registro.id, p_status: "autorizada", p_status_msg: result.xMotivo ?? "Autorizado",
+        p_chave_acesso: result.chaveAcesso ?? null, p_protocolo: result.protocolo ?? null,
+        p_dh_autorizacao: result.dhAutorizacao ?? new Date().toISOString(),
+        p_xml_nfe: result.xmlAssinado ?? null,
+      });
+      toast.success(`✅ ${registro.tipo === "devolucao" ? "Devolução" : "Troca"} autorizada! Protocolo ${result.protocolo}`, { duration: 6000 });
+      onChanged(); onClose();
+    } catch (err) {
+      toast.error(`Erro ao emitir: ${friendlyError(err)}`);
+      logger.error("handleEmitirAprovado:", err);
+    } finally { setEmitindo(false); }
   }
 
   function handleImprimir() {
@@ -350,13 +458,25 @@ function ViewerModal({ registro, onClose, onChanged }: { registro: NotaDevTroca;
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 text-[12px]">
+          {travadoQualidade && (
+            <div className="rounded-lg p-2.5 flex gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300">
+              <Lock size={14} className="shrink-0 mt-0.5"/>
+              <p><strong>Em análise pela Qualidade.</strong> Esta nota está travada — nenhuma ação (emissão, cancelamento) fica disponível até a Qualidade concluir a análise na aba Qualidade → Devolução/Troca.</p>
+            </div>
+          )}
+          {prontoParaEmitir && (
+            <div className="rounded-lg p-2.5 flex gap-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300">
+              <ShieldCheck size={14} className="shrink-0 mt-0.5"/>
+              <div><strong>Analisado pela Qualidade — laudo:</strong> {qLaudoTexto(registro.status_msg) || "(sem laudo)"}</div>
+            </div>
+          )}
           <div><span className="text-muted-foreground">Cliente:</span> <strong>{registro.cliente_nome}</strong></div>
           {registro.cliente_documento && <div><span className="text-muted-foreground">Documento:</span> {registro.cliente_documento}</div>}
           {registro.nf_original_numero && <div><span className="text-muted-foreground">NF original:</span> {registro.nf_original_numero}</div>}
           {registro.numero && <div><span className="text-muted-foreground">Nº desta nota:</span> {registro.tipo_nota.toUpperCase()}-{registro.numero.padStart(9,"0")}</div>}
           {registro.chave_acesso && <div className="break-all"><span className="text-muted-foreground">Chave:</span> <span className="font-mono text-[10px]">{registro.chave_acesso}</span></div>}
           {registro.protocolo_sefaz && <div><span className="text-muted-foreground">Protocolo:</span> {registro.protocolo_sefaz}</div>}
-          {registro.status_msg && (
+          {registro.status_msg && !qsub && (
             <div className={cn("rounded-lg p-2 text-[11px]", registro.status === "rejeitada" ? "bg-red-500/10 text-red-700 dark:text-red-400" : "bg-muted/30")}>
               {registro.status_msg}
             </div>
@@ -375,11 +495,18 @@ function ViewerModal({ registro, onClose, onChanged }: { registro: NotaDevTroca;
           </div>
         </div>
         <div className="p-4 border-t border-border/20 shrink-0 flex items-center gap-2">
-          <button type="button" onClick={handleImprimir}
-            className="flex-1 h-9 rounded-xl border border-border/50 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:bg-muted/30">
+          <button type="button" onClick={handleImprimir} disabled={!podeImprimir}
+            title={podeImprimir ? undefined : "Só disponível após a nota ser autorizada pela SEFAZ — regra de só entregar ao cliente quando estiver pronta"}
+            className="flex-1 h-9 rounded-xl border border-border/50 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:bg-muted/30 disabled:opacity-40 disabled:cursor-not-allowed">
             <Printer size={13}/> Imprimir
           </button>
-          {registro.status !== "cancelada" && (
+          {prontoParaEmitir && (
+            <button type="button" onClick={handleEmitirAprovado} disabled={emitindo}
+              className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-[12px] font-semibold flex items-center justify-center gap-1.5 disabled:opacity-60">
+              {emitindo ? <><Loader2 size={13} className="animate-spin"/> Emitindo...</> : <><FileCheck2 size={13}/> Emitir NF-e</>}
+            </button>
+          )}
+          {!travadoQualidade && registro.status !== "cancelada" && (
             <button type="button" onClick={handleCancelar} disabled={canceling}
               className="flex-1 h-9 rounded-xl border border-red-500/30 text-red-600 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:bg-red-500/10 disabled:opacity-50">
               {canceling ? <Loader2 size={13} className="animate-spin"/> : <Ban size={13}/>} Cancelar
@@ -517,7 +644,20 @@ function NovaDevolucaoTrocaModal({
     setResultadosBusca(filtrados);
   }, [buscaPedido, todosPedidos]);
 
-  function selecionarPedido(p: PedidoBusca) {
+  async function selecionarPedido(p: PedidoBusca) {
+    // TRAVA: não deixa mexer no pedido enquanto a Qualidade estiver analisando
+    // um retorno dele — evita duas ações competindo pela mesma nota original.
+    const { data: emAnalise } = await supabase
+      .from("notas_devolucao_troca")
+      .select("id")
+      .eq("pedido_id", p.id)
+      .like("status_msg", "[QUALIDADE:em_analise]%")
+      .limit(1)
+      .maybeSingle();
+    if (emAnalise) {
+      toast.error("Este pedido tem uma devolução/troca em análise pela Qualidade agora — aguarde a conclusão (aba Qualidade → Devolução/Troca) antes de criar outra.", { duration: 7000 });
+      return;
+    }
     setPedidoSel(p);
     setClienteNome(p.cliente_nome);
     setClienteDocumento(p.cliente_documento ?? "");

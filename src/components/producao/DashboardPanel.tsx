@@ -8,9 +8,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Cell,
 } from "recharts";
-import { Activity, TrendingUp, AlertTriangle, Clock, Zap, Award, RefreshCw, Target, BarChart2 } from "lucide-react";
+import { Activity, TrendingUp, AlertTriangle, Clock, Zap, Award, RefreshCw, Target, BarChart2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { META_SEMESTRE_CODIGO, periodoSemestre } from "@/components/producao/MetasPanel";
 
 interface OEEData {
   hr_planejadas: number;
@@ -81,12 +82,26 @@ export function DashboardPanel() {
   const [data, setData]   = useState<ResumoMensal | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Meta semestral de produtividade (definida em Metas, convenção 'SEMESTRE')
+  const [semMeta, setSemMeta] = useState<{ sem: 1|2; alvo: number; real: number; pecas: number } | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
-    const { data: res, error } = await (supabase.rpc as any)("resumo_mensal_producao", {
-      p_mes: mes, p_ano: ano,
-    });
+    const sem: 1|2 = mes <= 6 ? 1 : 2;
+    const per = periodoSemestre(sem, ano);
+    const [{ data: res, error }, { data: meta }, { data: oeeSem }] = await Promise.all([
+      (supabase.rpc as any)("resumo_mensal_producao", { p_mes: mes, p_ano: ano }),
+      supabase.from("metas_producao").select("meta_oee_pct")
+        .eq("ano", ano).eq("mes", sem === 1 ? 1 : 7).eq("maquina_codigo", META_SEMESTRE_CODIGO).maybeSingle(),
+      (supabase.rpc as any)("calcular_oee", { p_data_ini: per.ini, p_data_fim: per.fim, p_maquina: null }),
+    ]);
     if (!error && res) setData(res as ResumoMensal);
+    if (meta && oeeSem) {
+      const o = oeeSem as { performance: number; qtde_produzida: number };
+      setSemMeta({ sem, alvo: Number(meta.meta_oee_pct) || 0, real: o.performance ?? 0, pecas: o.qtde_produzida ?? 0 });
+    } else {
+      setSemMeta(null);
+    }
     setLoading(false);
   }, [mes, ano]);
 
@@ -117,6 +132,32 @@ export function DashboardPanel() {
           {meses[mes-1]}/{ano}
         </span>
       </div>
+
+      {/* Meta semestral de produtividade das máquinas — visão geral */}
+      {!loading && semMeta && semMeta.alvo > 0 && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <Target className="h-4 w-4 text-emerald-600" />
+            <h3 className="text-sm font-semibold">Meta do {semMeta.sem}º Semestre — Produtividade das Máquinas</h3>
+            {semMeta.real >= semMeta.alvo
+              ? <CheckCircle2 className="h-4 w-4 text-green-600 ml-auto" />
+              : <AlertTriangle className="h-4 w-4 text-amber-500 ml-auto" />}
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className={cn("text-2xl font-black", semMeta.real >= semMeta.alvo ? "text-green-600" : "text-amber-600")}>
+              {semMeta.real.toFixed(1)}%
+            </span>
+            <span className="text-[11px] text-muted-foreground">de {semMeta.alvo}% da meta semestral</span>
+          </div>
+          <div className="h-2.5 rounded-full bg-muted overflow-hidden relative">
+            <div className={cn("h-full rounded-full transition-all", semMeta.real >= semMeta.alvo ? "bg-green-500" : "bg-amber-500")}
+              style={{ width: `${Math.min(100, (semMeta.real / semMeta.alvo) * 100)}%` }} />
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            {semMeta.pecas.toLocaleString("pt-BR")} peças produzidas no semestre · produtividade = produzido ÷ planejado de todas as máquinas · meta definida em Desempenho → Metas
+          </p>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground text-sm gap-2">

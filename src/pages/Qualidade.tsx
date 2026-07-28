@@ -23,7 +23,7 @@ import {
   ShieldAlert, AlertCircle, CheckCircle2, Copy, RefreshCw,
   ArrowDownCircle, ArrowUpCircle, ExternalLink, Hash, Barcode,
   FileText, AlertTriangle, ChevronRight, X, Save, Loader2,
-  CalendarClock, ClipboardCheck, BadgeCheck, Shield,
+  CalendarClock, ClipboardCheck, BadgeCheck, Undo2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,10 +32,10 @@ import { sanitizeQuery } from "@/lib/sanitize";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-const CertificadosPanel   = lazy(() => import("@/components/qualidade/CertificadosPanel").then(m => ({ default: m.CertificadosPanel })));
 const RastreabilidadePanel = lazy(() => import("@/components/qualidade/RastreabilidadePanel").then(m => ({ default: m.RastreabilidadePanel })));
 const GS1Panel             = lazy(() => import("@/components/qualidade/GS1Panel").then(m => ({ default: m.GS1Panel })));
 const RecallPanel          = lazy(() => import("@/components/qualidade/RecallPanel").then(m => ({ default: m.RecallPanel })));
+const DevolucaoTrocaQualidadePanel = lazy(() => import("@/components/qualidade/DevolucaoTrocaQualidadePanel").then(m => ({ default: m.DevolucaoTrocaQualidadePanel })));
 import { PageNav } from "@/components/PageNav";
 import type { PageNavTab } from "@/components/PageNav";
 import type { StockFase, AllMovement } from "@/hooks/useStock";
@@ -45,7 +45,7 @@ import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type QualidadeView = "pipeline" | "rastreamento" | "rastreabilidade_pos" | "recall" | "historico" | "gs1" | "certificados";
+type QualidadeView = "pipeline" | "rastreamento" | "rastreabilidade_pos" | "recall" | "historico" | "gs1" | "devolucao_troca";
 
 type FaseNum = 1 | 2 | 3 | 4 | 5;
 type StatusReg =
@@ -101,7 +101,7 @@ const TABS: PageNavTab<QualidadeView>[] = [
   { id: "rastreamento", label: "Rastreamento", Icon: Search,         activeColor: "text-blue-500",    activeBg: "bg-blue-500/10",    activeBorder: "border-blue-500/40"   },
   { id: "historico",    label: "Histórico",    Icon: History,        activeColor: "text-amber-500",   activeBg: "bg-amber-500/10",   activeBorder: "border-amber-500/40"  },
   { id: "rastreabilidade_pos", label: "Rastreab. Pós-venda", Icon: MapPin, activeColor: "text-rose-500", activeBg: "bg-rose-500/10", activeBorder: "border-rose-500/40" },
-  { id: "certificados", label: "Certificados", Icon: Shield,         activeColor: "text-teal-500",    activeBg: "bg-teal-500/10",    activeBorder: "border-teal-500/40"   },
+  { id: "devolucao_troca", label: "Devolução/Troca", Icon: Undo2, activeColor: "text-orange-500", activeBg: "bg-orange-500/10", activeBorder: "border-orange-500/40" },
   { id: "recall",       label: "Recall",       Icon: AlertTriangle,  activeColor: "text-red-500",     activeBg: "bg-red-500/10",     activeBorder: "border-red-500/40"    },
   { id: "gs1",          label: "GS1",          Icon: Barcode,        activeColor: "text-cyan-500",    activeBg: "bg-cyan-500/10",    activeBorder: "border-cyan-500/40"   },
 ];
@@ -1202,8 +1202,8 @@ export default function Qualidade() {
         {activeView === "pipeline"          && <PipelinePanel />}
         {activeView === "rastreamento"      && <RastreamentoPanel />}
         {activeView === "rastreabilidade_pos" && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><RastreabilidadePanel/></Suspense>}
+        {activeView === "devolucao_troca"    && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><DevolucaoTrocaQualidadePanel/></Suspense>}
         {activeView === "historico"         && <HistoricoPanel />}
-        {activeView === "certificados"      && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><CertificadosPanel/></Suspense>}
         {activeView === "recall"            && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><RecallPanel /></Suspense>}
         {activeView === "gs1"               && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><GS1Panel /></Suspense>}
       </div>

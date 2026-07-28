@@ -11,6 +11,20 @@ interface OEEReal { oee:number; disponibilidade:number; performance:number; qual
 
 const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
+/**
+ * Meta SEMESTRAL de produtividade das máquinas — armazenada na mesma tabela
+ * metas_producao (sem migration nova), usando a convenção:
+ *   maquina_codigo = 'SEMESTRE'  e  mes = 1 (1º sem) ou 7 (2º sem).
+ * O campo meta_oee_pct guarda a % de produtividade alvo do semestre.
+ * A UNIQUE(mes, ano, maquina_codigo) do banco garante 1 meta por semestre/ano.
+ */
+export const META_SEMESTRE_CODIGO = "SEMESTRE";
+export function periodoSemestre(sem:1|2, ano:number){
+  return sem===1
+    ? { ini:`${ano}-01-01`, fim:`${ano}-06-30` }
+    : { ini:`${ano}-07-01`, fim:`${ano}-12-31` };
+}
+
 export function MetasPanel() {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth()+1);
@@ -22,20 +36,51 @@ export function MetasPanel() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ maquina_codigo:"", meta_pecas:"0", meta_oee_pct:"85", meta_disponibilidade_pct:"90", meta_qualidade_pct:"98" });
 
+  // ── Meta semestral de produtividade ──────────────────────────────────────
+  const semAtual:1|2 = now.getMonth()+1<=6?1:2;
+  const [semestre, setSemestre] = useState<1|2>(semAtual);
+  const [metaSemestre, setMetaSemestre] = useState<Meta|null>(null);
+  const [realSemestre, setRealSemestre] = useState<OEEReal|null>(null);
+  const [metaSemInput, setMetaSemInput] = useState("85");
+  const [salvandoSem, setSalvandoSem] = useState(false);
+
   const load = useCallback(async()=>{
     setLoading(true);
     const ini = `${ano}-${String(mes).padStart(2,"0")}-01`;
     const fim = new Date(ano,mes,0).toISOString().split("T")[0];
-    const[{data:m},{data:oee},{data:maq}] = await Promise.all([
+    const per = periodoSemestre(semestre, ano);
+    const[{data:m},{data:oee},{data:maq},{data:ms},{data:oeeSem}] = await Promise.all([
       supabase.from("metas_producao").select("*").eq("mes",mes).eq("ano",ano).order("maquina_codigo"),
       (supabase.rpc as any)("calcular_oee",{p_data_ini:ini,p_data_fim:fim,p_maquina:null}),
       supabase.from("maquinas_producao").select("codigo").order("codigo"),
+      supabase.from("metas_producao").select("*").eq("ano",ano).eq("mes",semestre===1?1:7).eq("maquina_codigo",META_SEMESTRE_CODIGO).maybeSingle(),
+      (supabase.rpc as any)("calcular_oee",{p_data_ini:per.ini,p_data_fim:per.fim,p_maquina:null}),
     ]);
-    if(m) setMetas(m as Meta[]);
+    // A linha 'SEMESTRE' é uma convenção interna — não aparece na lista mensal
+    if(m) setMetas((m as Meta[]).filter(x=>x.maquina_codigo!==META_SEMESTRE_CODIGO));
     if(oee) setOeeReal(oee as OEEReal);
     if(maq) setMaquinas(maq);
+    setMetaSemestre(ms as Meta|null);
+    if(ms) setMetaSemInput(String((ms as Meta).meta_oee_pct));
+    if(oeeSem) setRealSemestre(oeeSem as OEEReal);
     setLoading(false);
-  },[mes,ano]);
+  },[mes,ano,semestre]);
+
+  async function salvarMetaSemestre() {
+    const pct = parseFloat(metaSemInput);
+    if(!pct||pct<=0||pct>100){toast.error("Informe uma porcentagem entre 1 e 100");return;}
+    setSalvandoSem(true);
+    const {error}=await supabase.from("metas_producao").upsert({
+      mes: semestre===1?1:7, ano,
+      maquina_codigo: META_SEMESTRE_CODIGO,
+      meta_pecas: 0, meta_oee_pct: pct,
+      meta_disponibilidade_pct: pct, meta_qualidade_pct: pct,
+    },{onConflict:"mes,ano,maquina_codigo"});
+    setSalvandoSem(false);
+    if(error){toast.error(error.message);return;}
+    toast.success(`Meta do ${semestre}º semestre/${ano} salva: ${pct}%`);
+    load();
+  }
 
   useEffect(()=>{load();},[load]);
 
@@ -117,6 +162,62 @@ export function MetasPanel() {
           )}
         </div>
       )}
+
+      {/* Meta semestral de produtividade das máquinas */}
+      <div className="rounded-2xl border border-border/40 bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Target className="h-4 w-4 text-emerald-600"/>
+          <h3 className="text-sm font-semibold">Produtividade das Máquinas — Meta Semestral</h3>
+          <select value={semestre} onChange={e=>setSemestre(Number(e.target.value) as 1|2)}
+            className="ml-auto h-8 rounded-lg border border-input bg-background px-2 text-xs">
+            <option value={1}>1º semestre</option>
+            <option value={2}>2º semestre</option>
+          </select>
+        </div>
+
+        {(()=>{
+          // Produtividade = performance real do semestre (produzido ÷ planejado)
+          const real = realSemestre?.performance ?? 0;
+          const alvo = metaSemestre?.meta_oee_pct ?? 0;
+          const g = alvo>0 ? gauge(real, alvo) : null;
+          return (
+            <>
+              {alvo>0 ? (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[12px]">
+                    <span>Produtividade real ({semestre}º sem/{ano})</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={g!.ok?"text-green-600 font-bold":"text-red-600 font-bold"}>{real.toFixed(1)}%</span>
+                      <span className="text-muted-foreground text-[10px]">/ meta {alvo}%</span>
+                      {g!.ok ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600"/> : <AlertTriangle className="h-3.5 w-3.5 text-red-500"/>}
+                    </div>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div className={cn("h-full rounded-full transition-all",g!.color)} style={{width:`${g!.pct}%`}}/>
+                  </div>
+                  {realSemestre && (
+                    <p className="text-[10px] text-muted-foreground pt-0.5">
+                      {realSemestre.qtde_produzida.toLocaleString("pt-BR")} peças produzidas no período · calculado sobre os apontamentos de todas as máquinas
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[12px] text-muted-foreground">Nenhuma meta definida para o {semestre}º semestre de {ano} — defina abaixo.</p>
+              )}
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className={lbl}>Meta de produtividade (%)</label>
+                  <Input type="number" min="1" max="100" step="0.5" value={metaSemInput}
+                    onChange={e=>setMetaSemInput(e.target.value)} className="h-9"/>
+                </div>
+                <Button className="h-9" onClick={salvarMetaSemestre} disabled={salvandoSem}>
+                  {salvandoSem?"Salvando...":metaSemestre?"Atualizar":"Definir meta"}
+                </Button>
+              </div>
+            </>
+          );
+        })()}
+      </div>
 
       {/* Lista de metas */}
       {metas.length===0 && !loading && (

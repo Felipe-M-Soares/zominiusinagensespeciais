@@ -1,11 +1,29 @@
 /**
  * DashboardGeral — Painel executivo unificado
  * KPIs de todos os módulos: Estoque, Comercial, Financeiro, Produção, Qualidade
+ *
+ * v2: além dos KPIs numéricos (mantidos como estavam — nenhum dado removido),
+ * acrescenta uma camada visual de gráficos (recharts, já usado no resto do
+ * app) para leitura executiva mais rápida: tendência de faturamento e OEE
+ * nos últimos 6 meses, distribuição do estoque por fase, Receber×Pagar e
+ * um raio-x dos alertas por área. As séries de 6 meses são calculadas no
+ * cliente a partir das mesmas tabelas/RPCs já existentes (pedidos_comerciais
+ * + pedido_itens, e a RPC calcular_oee chamada uma vez por mês) — nenhuma
+ * tabela, coluna ou RPC nova.
  */
 import { useState, useEffect, useCallback } from "react";
-import { Package, ShoppingBag, TrendingUp, Factory, Shield, AlertTriangle, CheckCircle2, RefreshCw, Clock, Wrench, DollarSign, ArrowUpCircle, ArrowDownCircle, Activity, HeartPulse, HardDrive, Database } from "lucide-react";
+import {
+  Package, ShoppingBag, TrendingUp, TrendingDown, Factory, Shield, AlertTriangle,
+  CheckCircle2, RefreshCw, Clock, Wrench, DollarSign, ArrowUpCircle, ArrowDownCircle,
+  Activity, HeartPulse, HardDrive, Database, LayoutDashboard, Sparkles,
+} from "lucide-react";
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  PieChart, Pie, Cell, LineChart, Line, ReferenceLine, Legend,
+} from "recharts";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { formatBRL } from "@/lib/format";
 
 interface SaudeSistema {
   ok: boolean;
@@ -26,9 +44,17 @@ interface KPIs {
   devices_vencendo_anvisa:number; devices_anvisa_vencidos:number; certificados_vencendo:number; certificados_vencidos:number; ferramentas_alerta:number; recall_ativos:number;
 }
 
+interface MesSerie { mes: string; valor: number; }
+
+const CHART_TOOLTIP_STYLE = { background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 10, fontSize: 12, boxShadow: "0 4px 16px -4px rgba(0,0,0,0.15)" };
+const AXIS_TICK = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
+
 function KpiCard({ icon:Icon, label, value, sub, color, alert }:{icon:React.ElementType;label:string;value:string;sub?:string;color:string;alert?:boolean}) {
   return (
-    <div className={cn("rounded-2xl border p-4 space-y-2", alert?"border-red-500/30 bg-red-500/5":"border-border/40 bg-card")}>
+    <div className={cn(
+      "rounded-2xl border p-4 space-y-2 transition-shadow hover:shadow-md",
+      alert ? "border-red-500/30 bg-red-500/5" : "border-border/40 bg-card"
+    )}>
       <div className="flex items-center justify-between">
         <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center bg-current/10")}>
           <Icon className={cn("h-4 w-4",color)} />
@@ -36,7 +62,7 @@ function KpiCard({ icon:Icon, label, value, sub, color, alert }:{icon:React.Elem
         {alert&&<AlertTriangle className="h-4 w-4 text-red-500 animate-pulse"/>}
       </div>
       <div>
-        <p className={cn("text-2xl font-black",alert?"text-red-600":color)}>{value}</p>
+        <p className={cn("text-2xl font-black tabular-nums",alert?"text-red-600":color)}>{value}</p>
         <p className="text-[11px] text-muted-foreground font-medium">{label}</p>
         {sub&&<p className="text-[10px] text-muted-foreground">{sub}</p>}
       </div>
@@ -44,9 +70,52 @@ function KpiCard({ icon:Icon, label, value, sub, color, alert }:{icon:React.Elem
   );
 }
 
+// ── Card de estatística "hero" — números grandes no topo do dashboard ────────
+function HeroStat({ icon:Icon, label, value, accent, trend }:{icon:React.ElementType;label:string;value:string;accent:string;trend?:{ up:boolean; label:string }}) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border/30 bg-card p-4 sm:p-5">
+      <div className={cn("absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-[0.07]", accent)} style={{ background: "currentColor" }} />
+      <div className="relative flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</p>
+          <p className={cn("text-2xl sm:text-[28px] font-black tabular-nums mt-1 truncate", accent)}>{value}</p>
+          {trend && (
+            <p className={cn("text-[10px] font-semibold flex items-center gap-1 mt-1", trend.up ? "text-emerald-600" : "text-red-600")}>
+              {trend.up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+              {trend.label}
+            </p>
+          )}
+        </div>
+        <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-current/10", accent)}>
+          <Icon className={cn("h-5 w-5", accent)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Card genérico para envolver cada gráfico com título + descrição ─────────
+function ChartCard({ icon:Icon, title, sub, color, children }:{icon:React.ElementType;title:string;sub?:string;color:string;children:React.ReactNode}) {
+  return (
+    <div className="rounded-2xl border border-border/40 bg-card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className={cn("h-7 w-7 rounded-lg flex items-center justify-center bg-current/10", color)}>
+          <Icon className={cn("h-3.5 w-3.5", color)} />
+        </div>
+        <div>
+          <h4 className="text-[12.5px] font-semibold leading-tight">{title}</h4>
+          {sub && <p className="text-[10px] text-muted-foreground leading-tight">{sub}</p>}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function Sec({icon:Icon,label,color}:{icon:React.ElementType;label:string;color:string}) {
   return (
     <div className="flex items-center gap-2 mb-3">
+      <span className={cn("h-1.5 w-1.5 rounded-full", color)} style={{ background: "currentColor" }} />
       <Icon className={cn("h-4 w-4",color)}/>
       <h3 className="text-sm font-semibold">{label}</h3>
       <div className="flex-1 h-px bg-border/40"/>
@@ -67,12 +136,33 @@ function tempoRelativo(iso: string | null): string {
   return `há ${dias} dia${dias > 1 ? "s" : ""}`;
 }
 
+const MESES_ABREV = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
+/** Últimos N meses (mais antigo → mais recente), cada um com início/fim do período. */
+function ultimosMeses(n: number): { ini: Date; fim: Date; label: string }[] {
+  const out: { ini: Date; fim: Date; label: string }[] = [];
+  const hoje = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    const ref = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    const ini = new Date(ref.getFullYear(), ref.getMonth(), 1);
+    const fimMes = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+    const fim = fimMes > hoje ? hoje : fimMes;
+    out.push({ ini, fim, label: `${MESES_ABREV[ref.getMonth()]}/${String(ref.getFullYear()).slice(2)}` });
+  }
+  return out;
+}
+function toISODate(d: Date): string { return d.toISOString().split("T")[0]; }
+
 export function DashboardGeral() {
   const [kpis,setKpis]=useState<KPIs|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
   const [updated,setUpdated]=useState<Date|null>(null);
   const [saude, setSaude] = useState<SaudeSistema | null>(null);
+
+  const [faturamentoSerie, setFaturamentoSerie] = useState<MesSerie[]>([]);
+  const [oeeSerie, setOeeSerie] = useState<MesSerie[]>([]);
+  const [seriesLoading, setSeriesLoading] = useState(true);
 
   const loadSaude = useCallback(async () => {
     // Evita spam de 404 no console em ambientes onde a migration
@@ -90,6 +180,51 @@ export function DashboardGeral() {
     }
     const s = data as SaudeSistema | null;
     setSaude(s?.ok ? s : null);
+  }, []);
+
+  // ── Séries de 6 meses para os gráficos de tendência ──────────────────────
+  // Faturamento: soma de pedido_itens (qtd × valor unit.) + frete, de pedidos
+  // faturado/enviado, agrupado por mês do nf_criada_em — mesma regra usada
+  // pela RPC dashboard_gerencial para o mês corrente, só que aqui buscamos
+  // os pedidos dos últimos 6 meses de uma vez e agrupamos no cliente.
+  const loadSeries = useCallback(async () => {
+    setSeriesLoading(true);
+    const periodo = ultimosMeses(6);
+    const inicioTudo = toISODate(periodo[0].ini);
+
+    try {
+      const { data: pedidos } = await supabase
+        .from("pedidos_comerciais")
+        .select("nf_criada_em, frete, pedido_itens(quantidade, valor_unitario)")
+        .in("status", ["faturado", "enviado"])
+        .gte("nf_criada_em", inicioTudo);
+
+      const faturamentoPorMes = new Map<string, number>(periodo.map(p => [p.label, 0]));
+      for (const p of (pedidos ?? []) as Record<string, unknown>[]) {
+        const nfData = p.nf_criada_em as string | null;
+        if (!nfData) continue;
+        const d = new Date(nfData);
+        const label = `${MESES_ABREV[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`;
+        if (!faturamentoPorMes.has(label)) continue;
+        const itens = (p.pedido_itens as { quantidade:number; valor_unitario:number }[]) ?? [];
+        const totalItens = itens.reduce((s, i) => s + (i.quantidade||0) * (i.valor_unitario||0), 0);
+        faturamentoPorMes.set(label, (faturamentoPorMes.get(label) ?? 0) + totalItens + (Number(p.frete)||0));
+      }
+      setFaturamentoSerie(periodo.map(p => ({ mes: p.label, valor: faturamentoPorMes.get(p.label) ?? 0 })));
+    } catch {
+      setFaturamentoSerie([]);
+    }
+
+    try {
+      const oeeResultados = await Promise.all(periodo.map(p =>
+        (supabase.rpc as any)("calcular_oee", { p_data_ini: toISODate(p.ini), p_data_fim: toISODate(p.fim), p_maquina: null })
+      ));
+      setOeeSerie(periodo.map((p, i) => ({ mes: p.label, valor: (oeeResultados[i]?.data as { oee?: number } | null)?.oee ?? 0 })));
+    } catch {
+      setOeeSerie([]);
+    }
+
+    setSeriesLoading(false);
   }, []);
 
   const load=useCallback(async()=>{
@@ -122,13 +257,13 @@ export function DashboardGeral() {
     setLoading(false);
   },[]);
 
-  useEffect(()=>{load(); loadSaude();},[load, loadSaude]);
+  useEffect(()=>{load(); loadSaude(); loadSeries();},[load, loadSaude, loadSeries]);
 
   // Auto-refresh a cada 5 minutos
   useEffect(()=>{
-    const id = setInterval(() => { load(); loadSaude(); }, 5 * 60 * 1000);
+    const id = setInterval(() => { load(); loadSaude(); loadSeries(); }, 5 * 60 * 1000);
     return () => clearInterval(id);
-  },[load, loadSaude]);
+  },[load, loadSaude, loadSeries]);
 
   if(loading&&!kpis) return(
     <div className="flex items-center justify-center py-20 text-muted-foreground text-sm gap-2">
@@ -158,19 +293,169 @@ export function DashboardGeral() {
 
   const alerts=kpis.estoque_critico+kpis.pedidos_atrasados+kpis.contas_receber_vencidas+kpis.contas_pagar_vencidas+kpis.devices_anvisa_vencidos+kpis.certificados_vencidos+kpis.ferramentas_alerta+kpis.recall_ativos;
 
+  // Tendência de faturamento: mês corrente vs. mês anterior (para a seta no hero)
+  const faturamentoTrend = (() => {
+    if (faturamentoSerie.length < 2) return undefined;
+    const atual = faturamentoSerie[faturamentoSerie.length - 1].valor;
+    const anterior = faturamentoSerie[faturamentoSerie.length - 2].valor;
+    if (anterior <= 0) return undefined;
+    const pct = ((atual - anterior) / anterior) * 100;
+    return { up: pct >= 0, label: `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}% vs. mês anterior` };
+  })();
+
+  const estoqueDist = [
+    { name: "Intermediário", value: kpis.estoque_intermediario_qty, color: "#3b82f6" },
+    { name: "Expedição",     value: kpis.estoque_expedicao_qty,     color: "#22c55e" },
+  ].filter(d => d.value > 0);
+
+  const receberPagarData = [
+    { grupo: "A Receber", Aberto: kpis.contas_receber_abertas, Vencido: kpis.contas_receber_vencidas },
+    { grupo: "A Pagar",   Aberto: kpis.contas_pagar_abertas,   Vencido: kpis.contas_pagar_vencidas },
+  ];
+
+  const alertasPorArea = [
+    { area: "Estoque crítico", valor: kpis.estoque_critico },
+    { area: "Pedidos atrasados", valor: kpis.pedidos_atrasados },
+    { area: "ANVISA vencidos", valor: kpis.devices_anvisa_vencidos },
+    { area: "Certificados vencidos", valor: kpis.certificados_vencidos },
+    { area: "Ferramentas alerta", valor: kpis.ferramentas_alerta },
+    { area: "Recalls ativos", valor: kpis.recall_ativos },
+  ].filter(a => a.valor > 0).sort((a,b) => b.valor - a.valor);
+
+  const oeeCor = kpis.oee_mes>=85?"#22c55e":kpis.oee_mes>=65?"#f59e0b":"#ef4444";
+
   return(
     <div className="space-y-6 animate-in fade-in duration-200">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-sm font-semibold">Dashboard Executivo</h2>
-          <p className="text-[11px] text-muted-foreground">{updated?`Atualizado ${updated.toLocaleTimeString("pt-BR")}`:""}</p>
+      {/* Header executivo */}
+      <div className="relative overflow-hidden rounded-2xl border border-border/30 bg-gradient-to-br from-primary/[0.06] via-card to-card p-4 sm:p-5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <LayoutDashboard className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-[15px] font-bold leading-tight flex items-center gap-1.5">
+                Dashboard Executivo <Sparkles className="h-3.5 w-3.5 text-primary/60" />
+              </h2>
+              <p className="text-[11px] text-muted-foreground">{updated?`Atualizado às ${updated.toLocaleTimeString("pt-BR")}`:""} · dados em tempo real</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {alerts>0
+              ? <span className="flex items-center gap-1.5 text-[12px] font-semibold text-red-600 bg-red-500/10 px-3 py-1.5 rounded-full"><AlertTriangle className="h-3.5 w-3.5"/>{alerts} alerta{alerts!==1?"s":""} ativo{alerts!==1?"s":""}</span>
+              : <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-600 bg-emerald-500/10 px-3 py-1.5 rounded-full"><CheckCircle2 className="h-3.5 w-3.5"/>Tudo em dia</span>}
+            <button onClick={() => { load(); loadSeries(); }} disabled={loading} className="h-9 w-9 flex items-center justify-center rounded-xl border border-input hover:bg-muted/40 transition-colors bg-card">
+              <RefreshCw className={cn("h-4 w-4 text-muted-foreground",loading&&"animate-spin")}/>
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          {alerts>0&&<span className="flex items-center gap-1.5 text-[12px] font-semibold text-red-600 bg-red-500/10 px-3 py-1 rounded-full"><AlertTriangle className="h-3.5 w-3.5"/>{alerts} alerta{alerts!==1?"s":""}</span>}
-          <button onClick={load} disabled={loading} className="h-8 w-8 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40 transition-colors">
-            <RefreshCw className={cn("h-4 w-4 text-muted-foreground",loading&&"animate-spin")}/>
-          </button>
-        </div>
+      </div>
+
+      {/* Hero stats — os 4 números que mais importam, em destaque */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <HeroStat icon={TrendingUp} label="Faturamento do mês" value={BRL(kpis.faturamento_mes)} accent="text-emerald-600" trend={faturamentoTrend} />
+        <HeroStat icon={Activity} label="OEE do mês" value={kpis.oee_mes>0?`${kpis.oee_mes.toFixed(1)}%`:"—"} accent={kpis.oee_mes>=85?"text-emerald-600":kpis.oee_mes>=65?"text-amber-600":"text-red-600"} />
+        <HeroStat icon={ShoppingBag} label="Pedidos em aberto" value={String(kpis.pedidos_pendentes + kpis.pedidos_prontos)} accent="text-violet-600" />
+        <HeroStat icon={AlertTriangle} label="Alertas ativos" value={String(alerts)} accent={alerts>0?"text-red-600":"text-emerald-600"} />
+      </div>
+
+      {/* Gráficos executivos */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <ChartCard icon={TrendingUp} title="Faturamento — últimos 6 meses" sub="Pedidos faturados + enviados" color="text-emerald-600">
+          {seriesLoading ? (
+            <div className="h-[180px] flex items-center justify-center text-muted-foreground/50 text-[11px]"><RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5"/>Calculando...</div>
+          ) : faturamentoSerie.every(f => f.valor === 0) ? (
+            <div className="h-[180px] flex items-center justify-center text-muted-foreground/50 text-[11px]">Sem faturamento no período</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={faturamentoSerie} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="mes" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => [formatBRL(v), "Faturamento"]} />
+                <Bar dataKey="valor" name="Faturamento" fill="#22c55e" radius={[6,6,0,0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <ChartCard icon={Activity} title="OEE — últimos 6 meses" sub="Meta de referência: 85%" color="text-orange-600">
+          {seriesLoading ? (
+            <div className="h-[180px] flex items-center justify-center text-muted-foreground/50 text-[11px]"><RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5"/>Calculando...</div>
+          ) : oeeSerie.every(o => o.valor === 0) ? (
+            <div className="h-[180px] flex items-center justify-center text-muted-foreground/50 text-[11px]">Sem apontamentos no período</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={oeeSerie} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="mes" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => [`${v.toFixed(1)}%`, "OEE"]} />
+                <ReferenceLine y={85} stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.5} />
+                <Line type="monotone" dataKey="valor" name="OEE" stroke={oeeCor} strokeWidth={2.5} dot={{ r: 3.5, fill: oeeCor }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <ChartCard icon={Package} title="Estoque por fase" sub="Unidades em Intermediário × Expedição" color="text-blue-600">
+          {estoqueDist.length === 0 ? (
+            <div className="h-[180px] flex items-center justify-center text-muted-foreground/50 text-[11px]">Sem estoque registrado</div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <ResponsiveContainer width="55%" height={160}>
+                <PieChart>
+                  <Pie data={estoqueDist} dataKey="value" nameKey="name" innerRadius={45} outerRadius={70} paddingAngle={3}>
+                    {estoqueDist.map((d,i) => <Cell key={i} fill={d.color} />)}
+                  </Pie>
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => v.toLocaleString("pt-BR")} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-2 flex-1">
+                {estoqueDist.map(d => {
+                  const total = estoqueDist.reduce((s,x) => s+x.value, 0);
+                  const pct = total > 0 ? (d.value/total*100).toFixed(0) : "0";
+                  return (
+                    <div key={d.name} className="flex items-center gap-2 text-[11px]">
+                      <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: d.color }} />
+                      <span className="text-muted-foreground truncate flex-1">{d.name}</span>
+                      <span className="font-bold">{d.value.toLocaleString("pt-BR")}</span>
+                      <span className="text-muted-foreground/60 text-[10px] w-8 text-right">{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </ChartCard>
+
+        <ChartCard icon={DollarSign} title="Receber × Pagar" sub="Valores em aberto e vencidos" color="text-emerald-600">
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={receberPagarData} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis dataKey="grupo" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+              <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)} />
+              <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => formatBRL(v)} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="Aberto" fill="#3b82f6" radius={[6,6,0,0]} maxBarSize={36} />
+              <Bar dataKey="Vencido" fill="#ef4444" radius={[6,6,0,0]} maxBarSize={36} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        {alertasPorArea.length > 0 && (
+          <ChartCard icon={AlertTriangle} title="Alertas por área" sub="Onde a atenção é mais urgente agora" color="text-red-600">
+            <ResponsiveContainer width="100%" height={Math.max(140, alertasPorArea.length * 32)}>
+              <BarChart data={alertasPorArea} layout="vertical" margin={{ top: 0, right: 16, left: 4, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                <XAxis type="number" tick={AXIS_TICK} axisLine={false} tickLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="area" tick={{ ...AXIS_TICK, fontSize: 10.5 }} axisLine={false} tickLine={false} width={120} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                <Bar dataKey="valor" name="Ocorrências" fill="#ef4444" radius={[0,6,6,0]} maxBarSize={18} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
       </div>
 
       <div><Sec icon={Package} label="Estoque" color="text-blue-600"/>
@@ -255,7 +540,7 @@ export function DashboardGeral() {
         </div>
       )}
 
-      <p className="text-[10px] text-muted-foreground text-center pb-2">KPIs em tempo real · Mês corrente</p>
+      <p className="text-[10px] text-muted-foreground text-center pb-2">KPIs em tempo real · Mês corrente · Tendências dos últimos 6 meses</p>
     </div>
   );
 }

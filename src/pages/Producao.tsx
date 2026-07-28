@@ -27,13 +27,14 @@ import { getStoredTheme, applyTheme } from "@/lib/theme";
 import {
   LayoutDashboard, ClipboardList, CalendarClock,
   Settings2, OctagonPause, ShieldAlert, Boxes,
-  Factory, WifiOff, RefreshCw,
+  Factory, WifiOff, RefreshCw, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { PageNav, type PageNavTab } from "@/components/PageNav";
 import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 
+const LancamentoDiario  = lazy(() => import("@/components/producao/LancamentoDiarioPanel").then(m => ({ default: m.LancamentoDiarioPanel })));
 const DesempenhoPanel   = lazy(() => import("@/components/producao/DesempenhoPanel").then(m => ({ default: m.DesempenhoPanel })));
 const ControlePanel     = lazy(() => import("@/components/producao/ControlePanel").then(m => ({ default: m.ControlePanel })));
 const PlanejamentoPanel = lazy(() => import("@/components/producao/PlanejamentoPanel").then(m => ({ default: m.PlanejamentoPanel })));
@@ -43,7 +44,7 @@ const QualidadePanel    = lazy(() => import("@/components/producao/QualidadeProd
 const MateriaPrimaPanel = lazy(() => import("@/components/producao/MateriaPrimaPanel").then(m => ({ default: m.MateriaPrimaPanel })));
 const ImportadorPPI51   = lazy(() => import("@/components/producao/ImportadorPPI51").then(m => ({ default: m.ImportadorPPI51 })));
 
-type ProdView = "desempenho"|"controle"|"planejamento"|"cadastros"|"paradas"|"qualidade"|"materiaprima";
+type ProdView = "diario"|"desempenho"|"controle"|"planejamento"|"cadastros"|"paradas"|"qualidade"|"materiaprima";
 
 interface ProdModule {
   id: ProdView; label: string;
@@ -57,6 +58,7 @@ interface ProdModule {
 }
 
 const MODULES: ProdModule[] = [
+  { id:"diario",       label:"Diário",       Icon:Zap,             activeColor:"text-cyan-600 dark:text-cyan-400",     activeBg:"bg-cyan-500/10",     activeBorder:"border-cyan-500/40",     badgeBg:"bg-cyan-500/15",     badgeText:"text-cyan-600 dark:text-cyan-400" },
   { id:"desempenho",   label:"Desempenho",   Icon:LayoutDashboard, activeColor:"text-blue-600 dark:text-blue-400",     activeBg:"bg-blue-500/10",     activeBorder:"border-blue-500/40",     badgeBg:"bg-blue-500/15",     badgeText:"text-blue-600 dark:text-blue-400" },
   { id:"controle",     label:"Controle",     Icon:ClipboardList,   activeColor:"text-green-600 dark:text-green-400",   activeBg:"bg-green-500/10",    activeBorder:"border-green-500/40",    badgeBg:"bg-green-500/15",    badgeText:"text-green-600 dark:text-green-400" },
   { id:"planejamento", label:"Planejamento", Icon:CalendarClock,   activeColor:"text-amber-600 dark:text-amber-400",   activeBg:"bg-amber-500/10",    activeBorder:"border-amber-500/40",    badgeBg:"bg-amber-500/15",    badgeText:"text-amber-600 dark:text-amber-400" },
@@ -94,7 +96,7 @@ export default function Producao() {
   const isMobile = useIsMobile();
   const isAdmin = role === "admin";
   const canWriteCadastros = role === "admin" || role === "producao";
-  const [view, setView] = useState<ProdView>("desempenho");
+  const [view, setView] = useState<ProdView>("diario");
   const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => { applyTheme(getStoredTheme()); }, []);
@@ -147,6 +149,7 @@ export default function Producao() {
           />
 
           <Suspense fallback={<LoadingScreen />}>
+            {view === "diario"       && <LancamentoDiario />}
             {view === "desempenho"   && <DesempenhoPanel />}
             {view === "controle"     && <ControlePanel onImport={() => setImportOpen(true)} />}
             {view === "planejamento" && <PlanejamentoPanel isAdmin={isAdmin} />}

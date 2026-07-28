@@ -2,10 +2,10 @@
 -- PROCESSOS — integra o módulo /processos ao banco (antes só salvava em
 -- localStorage do navegador, sem multiusuário, sem backup, sem RLS real).
 -- =============================================================================
--- 1) Libera a role 'processos' para gravar em ferramentas_cnc, fornecedores,
---    pedidos_compra e pedido_compra_itens (essas tabelas já existiam com RLS,
---    mas só permitiam escrita para admin/producao/estoque/financeiro — a role
---    'processos' conseguia logar na tela mas nunca conseguia salvar nada).
+-- 1) Libera as roles 'processos' e 'producao' para gravar em ferramentas_cnc,
+--    fornecedores, pedidos_compra e pedido_compra_itens (essas tabelas já
+--    existiam com RLS, mas só permitiam escrita para admin/estoque/financeiro —
+--    'producao' precisa gravar para o "Pedido de barras" da aba Matéria-Prima).
 -- 2) Cria a tabela programas_cnc (biblioteca de código G-code/CNC), que não
 --    existia — a aba "Códigos" salvava só no localStorage do navegador.
 -- =============================================================================
@@ -22,11 +22,11 @@ CREATE POLICY "forn_write" ON public.fornecedores
 
 DROP POLICY IF EXISTS "pc_write" ON public.pedidos_compra;
 CREATE POLICY "pc_write" ON public.pedidos_compra
-  FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro','processos'));
+  FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro','processos','producao'));
 
 DROP POLICY IF EXISTS "pci_write" ON public.pedido_compra_itens;
 CREATE POLICY "pci_write" ON public.pedido_compra_itens
-  FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro','processos'));
+  FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro','processos','producao'));
 
 -- ── 2. Biblioteca de programas CNC (aba "Códigos") ───────────────────────────
 

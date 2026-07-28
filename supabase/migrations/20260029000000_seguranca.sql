@@ -375,7 +375,7 @@ CREATE POLICY "stock_movements_insert" ON public.stock_movements
 -- ── clientes ──────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "clientes_select" ON public.clientes;
 CREATE POLICY "clientes_select" ON public.clientes FOR SELECT TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = (select auth.uid()) AND role IN ('admin','comercial','estoque','financeiro'))
+  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = (select auth.uid()) AND role IN ('admin','comercial','estoque','financeiro','qualidade'))
   OR (select auth.uid()) = created_by
 );
 
@@ -396,7 +396,7 @@ CREATE POLICY "clientes_delete" ON public.clientes FOR DELETE TO authenticated U
 -- ── pedidos_comerciais ────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "pedidos_select" ON public.pedidos_comerciais;
 CREATE POLICY "pedidos_select" ON public.pedidos_comerciais FOR SELECT TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = (select auth.uid()) AND role IN ('admin','comercial','estoque','financeiro'))
+  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = (select auth.uid()) AND role IN ('admin','comercial','estoque','financeiro','qualidade'))
   OR vendedora_id = (select auth.uid())
 );
 
@@ -410,7 +410,7 @@ DROP POLICY IF EXISTS "pedido_itens_select" ON public.pedido_itens;
 CREATE POLICY "pedido_itens_select" ON public.pedido_itens FOR SELECT TO authenticated USING (
   EXISTS (SELECT 1 FROM public.pedidos_comerciais pc WHERE pc.id = pedido_id AND (
     pc.vendedora_id = (select auth.uid()) OR
-    EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = (select auth.uid()) AND role IN ('admin','comercial','estoque','financeiro'))
+    EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = (select auth.uid()) AND role IN ('admin','comercial','estoque','financeiro','qualidade'))
   ))
 );
 
