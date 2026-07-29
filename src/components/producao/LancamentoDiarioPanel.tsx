@@ -1,22 +1,25 @@
 /**
  * LancamentoDiarioPanel — Aba "Diário" da Produção
- * Layout direto para lançamento do dia-a-dia do chão de fábrica, sem o
- * formulário completo em 3 passos do Controle (PPI-51). Três lançamentos
- * rápidos, todos com data/hora capturadas automaticamente no momento do
- * registro:
  *
- *  1. PRODUÇÃO — máquina, peça (produtos de produção OU componentes já
- *     registrados em `devices`), matéria-prima usada e quantidade.
- *     Grava via RPC `criar_apontamento_ppi51` (mesma dos outros painéis),
- *     então o lançamento aparece automaticamente em Controle, Desempenho,
- *     Relatórios e entra no cálculo de OEE — nada duplicado.
- *  2. SETUP — registra que a máquina está em setup para produzir
- *     determinada peça. Grava em `paradas_producao` (aparece na aba
- *     Paradas) e muda o status da máquina para "setup" até finalizar.
- *  3. SITUAÇÃO — códigos de situação (Refeição/almoço, janta, Café,
- *     Troca p/ quebra de ferramenta, etc — tabela `tipo_parada_producao`,
- *     a mesma usada no Controle). Grava em `paradas_producao` com início
- *     automático; o botão "Finalizar" fecha com hora e duração automáticas.
+ * Fluxo único (antes eram 3 abas separadas — Produção/Setup/Situação —
+ * unificadas aqui a pedido: quem é responsável pela produção cuida de 6
+ * máquinas e precisa lançar rápido e sem se perder entre telas):
+ *
+ *  1. Escolhe a MÁQUINA num grid grande (6 botões, com status colorido —
+ *     mais rápido de tocar que um dropdown).
+ *  2. Escolhe o que está acontecendo: PRODUÇÃO ou SITUAÇÃO.
+ *     - Produção: peça, material usado, quantidade, tempo. Grava via RPC
+ *       `criar_apontamento_ppi51` (mesma dos outros painéis) — aparece
+ *       automaticamente em Controle, Desempenho, Relatórios e no OEE.
+ *     - Situação: código numerado (01 Refeição, 02 Café, ... — tabela
+ *       `tipo_parada_producao`, a mesma do Controle). O código "SetUp" é
+ *       só mais um código da lista — ao escolhê-lo, pede também qual peça
+ *       vai ser produzida (mesma informação que antes ficava numa aba
+ *       separada) e marca a máquina como "setup" até finalizar.
+ *  3. Operador fica salvo no aparelho (localStorage) entre lançamentos —
+ *     quem faz vários lançamentos seguidos não precisa redigitar o nome.
+ *
+ * Data e hora são sempre capturadas automaticamente no momento do envio.
  *
  * Gráficos do dia: distribuição do tempo (produção × cada situação, em %),
  * peças por máquina (com % de participação) e eficiência (produzido ÷
@@ -29,8 +32,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 import {
-  Zap, Wrench, Coffee, RefreshCw, CheckCircle2, Clock,
-  Package, Factory, Timer, TrendingUp, StopCircle, PlayCircle,
+  Zap, Coffee, RefreshCw, CheckCircle2, Clock,
+  Package, Factory, Timer, TrendingUp, StopCircle, PlayCircle, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,26 +62,31 @@ interface ParadaHoje {
   operador: string; observacoes?: string | null; user_id?: string | null;
 }
 
-type Lancamento = "producao" | "setup" | "situacao";
+type Modo = "producao" | "situacao";
 
 const CORES_PIZZA = ["#22c55e", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#64748b", "#a855f7"];
+const OPERADOR_STORAGE_KEY = "diario_producao_operador";
 
 const lbl = "text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 block";
-const sel = "w-full h-9 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
+const sel = "w-full h-10 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
+
+const STATUS_MAQUINA: Record<string, { label: string; dot: string; text: string }> = {
+  operando: { label: "Operando", dot: "bg-green-500", text: "text-green-700 dark:text-green-400" },
+  setup: { label: "Em setup", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400" },
+  parada: { label: "Parada", dot: "bg-red-500", text: "text-red-700 dark:text-red-400" },
+  manutencao: { label: "Manutenção", dot: "bg-red-500", text: "text-red-700 dark:text-red-400" },
+};
 
 function turnoAtual(): string {
   const h = new Date().getHours();
   return h >= 6 && h < 14 ? "1º Turno" : h >= 14 && h < 22 ? "2º Turno" : "3º Turno";
 }
-
 function horaDecimal(d: Date): number {
   return +(d.getHours() + d.getMinutes() / 60).toFixed(4);
 }
-
 function fmtHora(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
-
 function minutosDecorridos(inicioIso: string): number {
   return Math.max(0, Math.round((Date.now() - new Date(inicioIso).getTime()) / 60000));
 }
@@ -101,12 +109,22 @@ export function LancamentoDiarioPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
 
-  const [tipo, setTipo] = useState<Lancamento>("producao");
+  // ── Fluxo único: máquina + modo + um só formulário ─────────────────────────
+  const [maquinaSel, setMaquinaSel] = useState("");
+  const [modo, setModo] = useState<Modo>("producao");
+  const [operador, setOperador] = useState(() => {
+    try { return localStorage.getItem(OPERADOR_STORAGE_KEY) ?? ""; } catch { return ""; }
+  });
+  const [peca, setPeca] = useState("");
+  const [materia, setMateria] = useState("");
+  const [quantidade, setQuantidade] = useState("");
+  const [tempoH, setTempoH] = useState("");
+  const [tipoParadaId, setTipoParadaId] = useState("");
+  const [obs, setObs] = useState("");
 
-  // Formulários rápidos
-  const [fProd, setFProd] = useState({ maquina: "", peca: "", materia: "", quantidade: "", tempo_h: "", operador: "" });
-  const [fSetup, setFSetup] = useState({ maquina: "", peca: "", operador: "", obs: "" });
-  const [fSit, setFSit] = useState({ maquina: "", tipo_parada: "", operador: "", obs: "" });
+  useEffect(() => {
+    try { localStorage.setItem(OPERADOR_STORAGE_KEY, operador); } catch { /* ignore */ }
+  }, [operador]);
 
   const hoje = new Date().toISOString().split("T")[0];
 
@@ -127,7 +145,8 @@ export function LancamentoDiarioPanel() {
         .gte("inicio", `${dia}T00:00:00`).order("inicio", { ascending: false }),
     ]);
 
-    setMaquinas(maqRes.sort((a, b) => a.codigo.localeCompare(b.codigo)));
+    const maqOrdenadas = maqRes.sort((a, b) => a.codigo.localeCompare(b.codigo));
+    setMaquinas(maqOrdenadas);
 
     // Peças = produtos de produção + componentes registrados (devices)
     const doProducao: PecaOption[] = (prodRes.data ?? []).map(p => ({
@@ -143,33 +162,64 @@ export function LancamentoDiarioPanel() {
     setMaterias(mpRes.sort((a, b) => a.codigo.localeCompare(b.codigo)));
     if (apRes.data) setApontamentosHoje(apRes.data as ApontamentoHoje[]);
     if (parRes.data) setParadasHoje(parRes.data as ParadaHoje[]);
+
+    // Se nenhuma máquina estava selecionada ainda, sugere a primeira —
+    // menos um toque pra quem só cuida das 6 mesmas máquinas todo dia
+    setMaquinaSel(prev => prev || maqOrdenadas[0]?.codigo || "");
     setLoading(false);
   }, [loadWithFallback]);
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Lançamento de PRODUÇÃO (data/hora automáticas, via RPC do PPI-51) ──────
-  async function lancarProducao() {
-    if (!fProd.maquina || !fProd.peca || !fProd.quantidade || !fProd.operador) {
-      toast.error("Preencha máquina, peça, quantidade e operador"); return;
+  // Código "SetUp" dentro da lista de situações — ao escolher esse código
+  // específico, pedimos também a peça (é a única situação em que isso
+  // importa: o que vai ser produzido depois do setup).
+  const tipoSetup = useMemo(
+    () => tiposParada.find(t => t.nome.trim().toLowerCase() === "setup"),
+    [tiposParada]
+  );
+  const isSetupSelecionado = tipoParadaId !== "" && Number(tipoParadaId) === tipoSetup?.id;
+
+  function limparCamposEspecificos() {
+    setPeca(""); setMateria(""); setQuantidade(""); setTempoH(""); setTipoParadaId(""); setObs("");
+  }
+
+  // ── Envio único — decide o destino conforme o modo escolhido ───────────────
+  async function lancar() {
+    if (!maquinaSel) { toast.error("Selecione a máquina"); return; }
+    if (!operador.trim()) { toast.error("Informe o operador"); return; }
+
+    if (modo === "producao") {
+      await lancarProducao();
+      return;
     }
-    const peca = pecas.find(p => p.codigo === fProd.peca);
-    const mp   = materias.find(m => m.id === fProd.materia);
-    const qtde = parseInt(fProd.quantidade) || 0;
+    if (isSetupSelecionado) {
+      await lancarSetup();
+    } else {
+      await lancarSituacaoComum();
+    }
+  }
+
+  // Produção (RPC do PPI-51, data/hora automáticas)
+  async function lancarProducao() {
+    if (!peca || !quantidade) { toast.error("Preencha peça e quantidade"); return; }
+    const pecaSel = pecas.find(p => p.codigo === peca);
+    const mp   = materias.find(m => m.id === materia);
+    const qtde = parseInt(quantidade) || 0;
     if (qtde <= 0) { toast.error("Quantidade deve ser maior que zero"); return; }
 
     const agora   = new Date();
     const fim     = horaDecimal(agora);
-    const horas   = parseFloat(fProd.tempo_h.replace(",", ".")) || 0;
+    const horas   = parseFloat(tempoH.replace(",", ".")) || 0;
     const inicio  = +(Math.max(0, fim - horas)).toFixed(4);
-    const porHora = peca?.pecas_por_hora ?? 0;
+    const porHora = pecaSel?.pecas_por_hora ?? 0;
     const planDisp = horas > 0 && porHora > 0 ? +(porHora * horas).toFixed(2) : qtde;
 
     setSaving(true);
     const args = {
       p_data: hoje, p_turno: turnoAtual(),
-      p_maquina: fProd.maquina, p_equipamento: fProd.maquina,
-      p_produto: fProd.peca, p_descricao_produto: peca?.descricao ?? fProd.peca,
+      p_maquina: maquinaSel, p_equipamento: maquinaSel,
+      p_produto: peca, p_descricao_produto: pecaSel?.descricao ?? peca,
       p_qtde_por_hora: porHora, p_horas_planejadas: horas, p_qtde_plan_disp: planDisp,
       p_qtde_produzida: qtde,
       p_horario_inicio: inicio, p_horario_fim: fim,
@@ -177,78 +227,73 @@ export function LancamentoDiarioPanel() {
       p_lead_time_horas: horas || null,
       p_lote: "", p_lote_mp: mp?.lote_atual ?? "", p_descricao_mp: mp?.descricao ?? "",
       p_comprimento_mm: null, p_consumo_mp_metros: null,
-      p_operador: fProd.operador, p_paradas: [], p_refugos: [],
+      p_operador: operador.trim(), p_paradas: [], p_refugos: [],
     };
     const preview = {
       seq_producao: 0, data_apontamento: hoje, turno: turnoAtual(),
-      maquina: fProd.maquina, maquina_codigo: fProd.maquina,
-      produto: fProd.peca, descricao_produto: peca?.descricao,
+      maquina: maquinaSel, maquina_codigo: maquinaSel,
+      produto: peca, descricao_produto: pecaSel?.descricao,
       qtde_por_hora: porHora, horas_planejadas: horas, qtde_plan_disp: planDisp,
       quantidade: qtde, horario_inicio: inicio, horario_fim: fim,
-      lote: "(pendente)", operador: fProd.operador, status: "concluido",
+      lote: "(pendente)", operador: operador.trim(), status: "concluido",
       created_at: agora.toISOString(),
     };
     const { ok, savedOffline } = await saveRpcWithFallback("criar_apontamento_ppi51", args, "apontamentos", preview);
     setSaving(false);
     if (!ok) { toast.error("Erro ao lançar produção"); return; }
     toast.success(savedOffline ? "Produção salva offline — sincroniza ao reconectar" : `Produção lançada às ${fmtHora(agora.toISOString())}`);
-    setFProd(f => ({ ...f, peca: "", materia: "", quantidade: "", tempo_h: "" }));
+    limparCamposEspecificos();
     load();
   }
 
-  // ── Lançamento de SETUP ────────────────────────────────────────────────────
+  // Situação = "SetUp" (grava parada + marca máquina em setup + guarda a peça)
   async function lancarSetup() {
-    if (!fSetup.maquina || !fSetup.peca || !fSetup.operador) {
-      toast.error("Preencha máquina, peça e operador"); return;
-    }
-    const peca = pecas.find(p => p.codigo === fSetup.peca);
+    if (!peca) { toast.error("Selecione a peça que será produzida"); return; }
+    const pecaSel = pecas.find(p => p.codigo === peca);
     setSaving(true);
     const agora = new Date().toISOString();
     const parada: ParadaHoje & { user_id?: string } = {
       id: crypto.randomUUID(),
-      maquina: fSetup.maquina,
-      motivo: `Setup — ${fSetup.peca}${peca ? ` (${peca.descricao})` : ""}`,
+      maquina: maquinaSel,
+      motivo: `Setup — ${peca}${pecaSel ? ` (${pecaSel.descricao})` : ""}`,
       tipo: "planejada", inicio: agora, fim: null, duracao_min: null,
-      operador: fSetup.operador,
-      observacoes: fSetup.obs || `Preparação para produzir ${fSetup.peca}`,
+      operador: operador.trim(),
+      observacoes: obs || `Preparação para produzir ${peca}`,
       user_id: user?.id,
     };
     const { error } = await saveWithFallback("paradas_producao", "paradas", "INSERT", parada);
     if (error) { setSaving(false); toast.error("Erro ao registrar setup"); return; }
 
-    // Integra com Cadastros/Máquinas: sinaliza a máquina em setup
-    const maq = maquinas.find(m => m.codigo === fSetup.maquina);
+    const maq = maquinas.find(m => m.codigo === maquinaSel);
     if (maq) {
       await supabase.from("maquinas_producao").update({ status: "setup" }).eq("id", maq.id);
       setMaquinas(prev => prev.map(m => m.id === maq.id ? { ...m, status: "setup" } : m));
     }
     setSaving(false);
     toast.success(`Setup iniciado às ${fmtHora(agora)}`);
-    setFSetup({ maquina: "", peca: "", operador: fSetup.operador, obs: "" });
+    limparCamposEspecificos();
     setParadasHoje(prev => [parada, ...prev]);
   }
 
-  // ── Lançamento de SITUAÇÃO (código de situação) ────────────────────────────
-  async function lancarSituacao() {
-    if (!fSit.maquina || !fSit.tipo_parada || !fSit.operador) {
-      toast.error("Preencha máquina, situação e operador"); return;
-    }
-    const tp = tiposParada.find(t => t.id === Number(fSit.tipo_parada));
+  // Situação comum (qualquer código exceto SetUp)
+  async function lancarSituacaoComum() {
+    if (!tipoParadaId) { toast.error("Selecione o código de situação"); return; }
+    const tp = tiposParada.find(t => t.id === Number(tipoParadaId));
     if (!tp) return;
     setSaving(true);
     const agora = new Date().toISOString();
     const parada: ParadaHoje & { user_id?: string } = {
       id: crypto.randomUUID(),
-      maquina: fSit.maquina, motivo: tp.nome,
+      maquina: maquinaSel, motivo: tp.nome,
       tipo: tp.categoria === "operacional" || tp.categoria === "setup" ? "planejada" : "nao_planejada",
       inicio: agora, fim: null, duracao_min: null,
-      operador: fSit.operador, observacoes: fSit.obs || null, user_id: user?.id,
+      operador: operador.trim(), observacoes: obs || null, user_id: user?.id,
     };
     const { error } = await saveWithFallback("paradas_producao", "paradas", "INSERT", parada);
     setSaving(false);
     if (error) { toast.error("Erro ao registrar situação"); return; }
     toast.success(`${tp.nome} iniciado às ${fmtHora(agora)}`);
-    setFSit({ maquina: "", tipo_parada: "", operador: fSit.operador, obs: "" });
+    limparCamposEspecificos();
     setParadasHoje(prev => [parada, ...prev]);
   }
 
@@ -260,7 +305,6 @@ export function LancamentoDiarioPanel() {
     const { error } = await saveWithFallback("paradas_producao", "paradas", "UPDATE", atualizada);
     if (error) { toast.error("Erro ao finalizar"); return; }
 
-    // Se era setup, devolve a máquina para "operando"
     if (p.motivo.startsWith("Setup")) {
       const maq = maquinas.find(m => m.codigo === p.maquina);
       if (maq && maq.status === "setup") {
@@ -279,7 +323,6 @@ export function LancamentoDiarioPanel() {
     const totalPlan     = apontamentosHoje.reduce((s, a) => s + (Number(a.qtde_plan_disp) || 0), 0);
     const eficiencia    = totalPlan > 0 ? (totalPecas / totalPlan) * 100 : 0;
 
-    // Tempo por situação (paradas encerradas + em andamento até agora)
     const porMotivo = new Map<string, number>();
     for (const p of paradasHoje) {
       const min = p.duracao_min ?? minutosDecorridos(p.inicio);
@@ -292,7 +335,6 @@ export function LancamentoDiarioPanel() {
       ...[...porMotivo.entries()].map(([name, h]) => ({ name, horas: +h.toFixed(2) })),
     ].map(d => ({ ...d, pct: tempoTotal > 0 ? +((d.horas / tempoTotal) * 100).toFixed(1) : 0 }));
 
-    // Peças por máquina (com % de participação)
     const porMaquina = new Map<string, number>();
     for (const a of apontamentosHoje) {
       const m = a.maquina_codigo || a.maquina;
@@ -306,12 +348,7 @@ export function LancamentoDiarioPanel() {
   }, [apontamentosHoje, paradasHoje]);
 
   const abertas = paradasHoje.filter(p => !p.fim);
-
-  const cardTipo = [
-    { id: "producao" as const, label: "Produção", Icon: Zap,    cor: "text-green-600",  bg: "bg-green-500/10 border-green-500/40" },
-    { id: "setup"    as const, label: "Setup",    Icon: Wrench, cor: "text-amber-600",  bg: "bg-amber-500/10 border-amber-500/40" },
-    { id: "situacao" as const, label: "Situação", Icon: Coffee, cor: "text-blue-600",   bg: "bg-blue-500/10 border-blue-500/40" },
-  ];
+  const maquinaAtual = maquinas.find(m => m.codigo === maquinaSel);
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
@@ -345,29 +382,98 @@ export function LancamentoDiarioPanel() {
         ))}
       </div>
 
-      {/* Lançamento rápido */}
+      {/* Lançamento — fluxo único */}
       <div className="rounded-2xl border bg-card p-4 space-y-4">
-        <div className="grid grid-cols-3 gap-2">
-          {cardTipo.map(t => (
-            <button key={t.id} onClick={() => setTipo(t.id)}
-              className={cn("flex items-center justify-center gap-1.5 h-10 rounded-xl border text-sm font-medium transition-colors",
-                tipo === t.id ? cn(t.bg, t.cor) : "border-input hover:bg-muted/30 text-muted-foreground")}>
-              <t.Icon className="h-4 w-4" />{t.label}
-            </button>
-          ))}
+        {/* 1. Máquina — grid grande, um toque só */}
+        <div>
+          <label className={lbl}>Máquina *</label>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {maquinas.map(m => {
+              const st = STATUS_MAQUINA[m.status] ?? STATUS_MAQUINA.operando;
+              const ativa = maquinaSel === m.codigo;
+              return (
+                <button key={m.id} type="button" onClick={() => setMaquinaSel(m.codigo)}
+                  className={cn("relative flex flex-col items-center justify-center gap-0.5 h-16 rounded-xl border-2 transition-colors",
+                    ativa ? "border-primary bg-primary/5" : "border-input hover:bg-muted/30")}>
+                  <span className="text-sm font-bold">{m.codigo}</span>
+                  <span className="text-[9px] text-muted-foreground truncate max-w-full px-1">{m.nome}</span>
+                  <span className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                    <span className={cn("h-1.5 w-1.5 rounded-full", st.dot)} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {maquinaAtual && (
+            <p className={cn("text-[11px] mt-1.5 font-medium", STATUS_MAQUINA[maquinaAtual.status]?.text)}>
+              {maquinaAtual.codigo} — {STATUS_MAQUINA[maquinaAtual.status]?.label ?? maquinaAtual.status}
+            </p>
+          )}
         </div>
 
-        {tipo === "producao" && (
+        {/* 2. O que está acontecendo */}
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setModo("producao")}
+            className={cn("flex items-center justify-center gap-1.5 h-10 rounded-xl border text-sm font-medium transition-colors",
+              modo === "producao" ? "bg-green-500/10 border-green-500/40 text-green-700 dark:text-green-400" : "border-input hover:bg-muted/30 text-muted-foreground")}>
+            <Zap className="h-4 w-4" /> Produção
+          </button>
+          <button type="button" onClick={() => setModo("situacao")}
+            className={cn("flex items-center justify-center gap-1.5 h-10 rounded-xl border text-sm font-medium transition-colors",
+              modo === "situacao" ? "bg-blue-500/10 border-blue-500/40 text-blue-700 dark:text-blue-400" : "border-input hover:bg-muted/30 text-muted-foreground")}>
+            <Coffee className="h-4 w-4" /> Situação <span className="text-[9px] opacity-70">(inclui Setup)</span>
+          </button>
+        </div>
+
+        {/* 3. Operador — sempre visível, fica salvo entre lançamentos */}
+        <div>
+          <label className={lbl}><User className="h-3 w-3 inline -mt-0.5 mr-1" />Operador *</label>
+          <Input value={operador} onChange={e => setOperador(e.target.value)} className="h-10" placeholder="Nome do operador" />
+        </div>
+
+        {/* 4. Campos do modo escolhido */}
+        {modo === "producao" ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><label className={lbl}>Máquina *</label>
-                <select value={fProd.maquina} onChange={e => setFProd(f => ({ ...f, maquina: e.target.value }))} className={sel}>
-                  <option value="">Selecione...</option>
-                  {maquinas.map(m => <option key={m.id} value={m.codigo}>{m.codigo} — {m.nome}</option>)}
-                </select>
+            <div><label className={lbl}>Peça *</label>
+              <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
+                <option value="">Selecione...</option>
+                <optgroup label="Produtos de produção">
+                  {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                </optgroup>
+                <optgroup label="Componentes registrados">
+                  {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                </optgroup>
+              </select>
+            </div>
+            <div><label className={lbl}>Material usado</label>
+              <select value={materia} onChange={e => setMateria(e.target.value)} className={sel}>
+                <option value="">Nenhum / não informar</option>
+                {materias.map(m => <option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={lbl}>Quantidade *</label>
+                <Input type="number" min="1" inputMode="numeric" value={quantidade}
+                  onChange={e => setQuantidade(e.target.value)} className="h-10" placeholder="pç" />
               </div>
-              <div><label className={lbl}>Peça *</label>
-                <select value={fProd.peca} onChange={e => setFProd(f => ({ ...f, peca: e.target.value }))} className={sel}>
+              <div><label className={lbl}>Tempo (h)</label>
+                <Input type="number" min="0" step="0.25" inputMode="decimal" value={tempoH}
+                  onChange={e => setTempoH(e.target.value)} className="h-10" placeholder="ex: 2.5" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div><label className={lbl}>Código de situação *</label>
+              <select value={tipoParadaId} onChange={e => setTipoParadaId(e.target.value)} className={sel}>
+                <option value="">Selecione...</option>
+                {tiposParada.map(t => <option key={t.id} value={t.id}>{String(t.id).padStart(2, "0")} — {t.nome}</option>)}
+              </select>
+            </div>
+            {isSetupSelecionado && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-1">
+                <label className={lbl}>Peça que será produzida *</label>
+                <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
                   <option value="">Selecione...</option>
                   <optgroup label="Produtos de produção">
                     {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
@@ -376,96 +482,20 @@ export function LancamentoDiarioPanel() {
                     {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
                   </optgroup>
                 </select>
+                <p className="text-[10px] text-amber-700 dark:text-amber-400">A máquina fica marcada como "Em setup" até você finalizar na lista abaixo</p>
               </div>
-              <div><label className={lbl}>Material usado</label>
-                <select value={fProd.materia} onChange={e => setFProd(f => ({ ...f, materia: e.target.value }))} className={sel}>
-                  <option value="">Nenhum / não informar</option>
-                  {materias.map(m => <option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className={lbl}>Quantidade *</label>
-                  <Input type="number" min="1" inputMode="numeric" value={fProd.quantidade}
-                    onChange={e => setFProd(f => ({ ...f, quantidade: e.target.value }))} className="h-9" placeholder="pç" />
-                </div>
-                <div><label className={lbl}>Tempo (h)</label>
-                  <Input type="number" min="0" step="0.25" inputMode="decimal" value={fProd.tempo_h}
-                    onChange={e => setFProd(f => ({ ...f, tempo_h: e.target.value }))} className="h-9" placeholder="ex: 2.5" />
-                </div>
-              </div>
-              <div className="sm:col-span-2"><label className={lbl}>Operador *</label>
-                <Input value={fProd.operador} onChange={e => setFProd(f => ({ ...f, operador: e.target.value }))} className="h-9" placeholder="Nome do operador" />
-              </div>
+            )}
+            <div><label className={lbl}>Observação</label>
+              <Input value={obs} onChange={e => setObs(e.target.value)} className="h-10" placeholder="Opcional" />
             </div>
-            <Button className="w-full gap-1.5" onClick={lancarProducao} disabled={saving}>
-              <Zap className="h-4 w-4" />{saving ? "Lançando..." : "Lançar produção agora"}
-            </Button>
-            <p className="text-[10px] text-muted-foreground text-center">Data e hora são registradas automaticamente no momento do lançamento</p>
           </div>
         )}
 
-        {tipo === "setup" && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><label className={lbl}>Máquina *</label>
-                <select value={fSetup.maquina} onChange={e => setFSetup(f => ({ ...f, maquina: e.target.value }))} className={sel}>
-                  <option value="">Selecione...</option>
-                  {maquinas.map(m => <option key={m.id} value={m.codigo}>{m.codigo} — {m.nome}{m.status === "setup" ? " (em setup)" : ""}</option>)}
-                </select>
-              </div>
-              <div><label className={lbl}>Peça que será produzida *</label>
-                <select value={fSetup.peca} onChange={e => setFSetup(f => ({ ...f, peca: e.target.value }))} className={sel}>
-                  <option value="">Selecione...</option>
-                  <optgroup label="Produtos de produção">
-                    {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                  </optgroup>
-                  <optgroup label="Componentes registrados">
-                    {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                  </optgroup>
-                </select>
-              </div>
-              <div><label className={lbl}>Operador *</label>
-                <Input value={fSetup.operador} onChange={e => setFSetup(f => ({ ...f, operador: e.target.value }))} className="h-9" placeholder="Nome do operador" />
-              </div>
-              <div><label className={lbl}>Observação</label>
-                <Input value={fSetup.obs} onChange={e => setFSetup(f => ({ ...f, obs: e.target.value }))} className="h-9" placeholder="Opcional" />
-              </div>
-            </div>
-            <Button className="w-full gap-1.5" onClick={lancarSetup} disabled={saving}>
-              <PlayCircle className="h-4 w-4" />{saving ? "Registrando..." : "Iniciar setup agora"}
-            </Button>
-            <p className="text-[10px] text-muted-foreground text-center">A máquina fica marcada como "setup" até você finalizar na lista abaixo</p>
-          </div>
-        )}
-
-        {tipo === "situacao" && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div><label className={lbl}>Máquina *</label>
-                <select value={fSit.maquina} onChange={e => setFSit(f => ({ ...f, maquina: e.target.value }))} className={sel}>
-                  <option value="">Selecione...</option>
-                  {maquinas.map(m => <option key={m.id} value={m.codigo}>{m.codigo} — {m.nome}</option>)}
-                </select>
-              </div>
-              <div><label className={lbl}>Código de situação *</label>
-                <select value={fSit.tipo_parada} onChange={e => setFSit(f => ({ ...f, tipo_parada: e.target.value }))} className={sel}>
-                  <option value="">Selecione...</option>
-                  {tiposParada.map(t => <option key={t.id} value={t.id}>{String(t.id).padStart(2, "0")} — {t.nome}</option>)}
-                </select>
-              </div>
-              <div><label className={lbl}>Operador *</label>
-                <Input value={fSit.operador} onChange={e => setFSit(f => ({ ...f, operador: e.target.value }))} className="h-9" placeholder="Nome do operador" />
-              </div>
-              <div><label className={lbl}>Observação</label>
-                <Input value={fSit.obs} onChange={e => setFSit(f => ({ ...f, obs: e.target.value }))} className="h-9" placeholder="Opcional" />
-              </div>
-            </div>
-            <Button className="w-full gap-1.5" onClick={lancarSituacao} disabled={saving}>
-              <PlayCircle className="h-4 w-4" />{saving ? "Registrando..." : "Iniciar situação agora"}
-            </Button>
-            <p className="text-[10px] text-muted-foreground text-center">Início registrado automaticamente — finalize na lista abaixo para fechar o tempo</p>
-          </div>
-        )}
+        <Button className="w-full gap-1.5 h-11" onClick={lancar} disabled={saving}>
+          <PlayCircle className="h-4 w-4" />
+          {saving ? "Registrando..." : modo === "producao" ? "Lançar produção agora" : "Registrar situação agora"}
+        </Button>
+        <p className="text-[10px] text-muted-foreground text-center -mt-2">Data e hora são registradas automaticamente no momento do lançamento</p>
       </div>
 
       {/* Situações / setups em aberto */}

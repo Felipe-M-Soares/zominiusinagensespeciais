@@ -511,6 +511,15 @@ $f01$;
 GRANT EXECUTE ON FUNCTION public.criar_apontamento_ppi51 TO authenticated;
 
 -- ── RPC: OEE real por período e máquina ───────────────────────────────────────
+-- v2: além das paradas/refugos lançados dentro do assistente completo do
+-- Controle (PPI-51 — tabelas apontamento_paradas/apontamento_refugos,
+-- vinculadas a um apontamento específico), agora também soma as paradas e
+-- refugos lançados nas telas rápidas e independentes — aba Paradas
+-- (paradas_producao), aba Refugo (refugos_producao) e a aba Diário —, que
+-- antes ficavam de fora do cálculo por estarem em tabelas sem vínculo com
+-- nenhum apontamento. Isso corrige a Disponibilidade e a Qualidade, que
+-- antes podiam aparecer artificialmente altas por ignorar parte real das
+-- paradas/refugos do chão de fábrica.
 CREATE OR REPLACE FUNCTION public.calcular_oee(
   p_data_ini date DEFAULT date_trunc('month', CURRENT_DATE)::date,
   p_data_fim date DEFAULT CURRENT_DATE,
@@ -525,6 +534,7 @@ DECLARE
   v_hr_plan     numeric; v_hr_paradas  numeric; v_hr_disp     numeric;
   v_disp        numeric; v_qtde_plan   numeric; v_qtde_prod   numeric;
   v_perf        numeric; v_refugo      numeric; v_qual        numeric; v_oee numeric;
+  v_hr_paradas_avulsas numeric; v_refugo_avulso numeric;
 BEGIN
   SELECT COALESCE(SUM(a.horas_planejadas),0), COALESCE(SUM(a.quantidade),0), COALESCE(SUM(a.qtde_plan_disp),0)
   INTO v_hr_plan, v_qtde_prod, v_qtde_plan
@@ -532,22 +542,42 @@ BEGIN
   WHERE a.data_apontamento BETWEEN p_data_ini AND p_data_fim
     AND (p_maquina IS NULL OR a.maquina_codigo = p_maquina);
 
+  -- Paradas vinculadas a um apontamento (assistente completo do Controle)
   SELECT COALESCE(SUM(ap.duracao_horas),0) INTO v_hr_paradas
   FROM public.apontamento_paradas ap
   JOIN public.apontamentos_producao a ON a.id = ap.apontamento_id
   WHERE a.data_apontamento BETWEEN p_data_ini AND p_data_fim
     AND (p_maquina IS NULL OR a.maquina_codigo = p_maquina);
 
+  -- Paradas avulsas (aba Paradas + aba Diário) — só as já finalizadas
+  -- (duracao_min preenchida); uma parada ainda em andamento entra no
+  -- cálculo assim que for finalizada, no próximo recálculo.
+  SELECT COALESCE(SUM(pp.duracao_min),0) / 60.0 INTO v_hr_paradas_avulsas
+  FROM public.paradas_producao pp
+  WHERE pp.inicio::date BETWEEN p_data_ini AND p_data_fim
+    AND pp.duracao_min IS NOT NULL
+    AND (p_maquina IS NULL OR pp.maquina = p_maquina);
+
+  -- Refugos vinculados a um apontamento (assistente completo do Controle)
   SELECT COALESCE(SUM(ar.quantidade),0) INTO v_refugo
   FROM public.apontamento_refugos ar
   JOIN public.apontamentos_producao a ON a.id = ar.apontamento_id
   WHERE a.data_apontamento BETWEEN p_data_ini AND p_data_fim
     AND (p_maquina IS NULL OR a.maquina_codigo = p_maquina);
 
+  -- Refugos avulsos (aba Refugo)
+  SELECT COALESCE(SUM(rp.quantidade),0) INTO v_refugo_avulso
+  FROM public.refugos_producao rp
+  WHERE rp.created_at::date BETWEEN p_data_ini AND p_data_fim
+    AND (p_maquina IS NULL OR rp.maquina = p_maquina);
+
+  v_hr_paradas := v_hr_paradas + v_hr_paradas_avulsas;
+  v_refugo     := v_refugo + v_refugo_avulso;
+
   v_hr_disp := GREATEST(0, v_hr_plan - v_hr_paradas);
   v_disp    := CASE WHEN v_hr_plan   > 0 THEN ROUND(v_hr_disp  / v_hr_plan   * 100, 2) ELSE 0   END;
   v_perf    := CASE WHEN v_qtde_plan > 0 THEN ROUND(v_qtde_prod / v_qtde_plan * 100, 2) ELSE 0   END;
-  v_qual    := CASE WHEN v_qtde_prod > 0 THEN ROUND((v_qtde_prod - v_refugo)  / v_qtde_prod * 100, 2) ELSE 100 END;
+  v_qual    := CASE WHEN v_qtde_prod > 0 THEN GREATEST(0, ROUND((v_qtde_prod - v_refugo)  / v_qtde_prod * 100, 2)) ELSE 100 END;
   v_oee     := ROUND(v_disp * v_perf * v_qual / 10000, 2);
 
   RETURN jsonb_build_object(
@@ -561,6 +591,12 @@ $f02$;
 GRANT EXECUTE ON FUNCTION public.calcular_oee(date, date, text) TO authenticated;
 
 -- ── RPC: resumo mensal (equivale ao Resumo_Dados_Produção do PPI-51) ──────────
+-- v2: "paradas_por_tipo" e "refugos_por_tipo" agora também incluem as
+-- paradas/refugos avulsos, pelo mesmo motivo do calcular_oee acima — sem
+-- isso, o gráfico de composição das paradas na aba Desempenho mostrava só
+-- uma fatia da realidade. Motivos de setup lançados pelo Diário (que
+-- guardam a peça no texto, ex: "Setup — CODIGO (desc)") são agrupados sob
+-- "Setup" para não aparecer como uma linha diferente por peça.
 CREATE OR REPLACE FUNCTION public.resumo_mensal_producao(
   p_mes integer DEFAULT EXTRACT(MONTH FROM CURRENT_DATE)::integer,
   p_ano integer DEFAULT EXTRACT(YEAR  FROM CURRENT_DATE)::integer
@@ -590,21 +626,41 @@ BEGIN
   ) t;
 
   SELECT jsonb_agg(row_to_json(t)) INTO v_paradas FROM (
-    SELECT ap.tipo_parada_nome AS tipo,
-      SUM(ap.duracao_horas) AS total_horas, COUNT(*) AS ocorrencias
-    FROM public.apontamento_paradas ap
-    JOIN public.apontamentos_producao a ON a.id = ap.apontamento_id
-    WHERE a.data_apontamento BETWEEN v_ini AND v_fim
-    GROUP BY ap.tipo_parada_nome ORDER BY total_horas DESC
+    SELECT tipo, SUM(total_horas) AS total_horas, SUM(ocorrencias) AS ocorrencias
+    FROM (
+      SELECT ap.tipo_parada_nome AS tipo,
+        SUM(ap.duracao_horas) AS total_horas, COUNT(*) AS ocorrencias
+      FROM public.apontamento_paradas ap
+      JOIN public.apontamentos_producao a ON a.id = ap.apontamento_id
+      WHERE a.data_apontamento BETWEEN v_ini AND v_fim
+      GROUP BY ap.tipo_parada_nome
+      UNION ALL
+      SELECT CASE WHEN pp.motivo LIKE 'Setup%' THEN 'Setup' ELSE pp.motivo END AS tipo,
+        COALESCE(SUM(pp.duracao_min),0) / 60.0 AS total_horas, COUNT(*) AS ocorrencias
+      FROM public.paradas_producao pp
+      WHERE pp.inicio::date BETWEEN v_ini AND v_fim AND pp.duracao_min IS NOT NULL
+      GROUP BY CASE WHEN pp.motivo LIKE 'Setup%' THEN 'Setup' ELSE pp.motivo END
+    ) u
+    GROUP BY tipo ORDER BY total_horas DESC
   ) t;
 
   SELECT jsonb_agg(row_to_json(t)) INTO v_refugos FROM (
-    SELECT ar.tipo_refugo_nome AS tipo,
-      SUM(ar.quantidade) AS total, COUNT(*) AS ocorrencias
-    FROM public.apontamento_refugos ar
-    JOIN public.apontamentos_producao a ON a.id = ar.apontamento_id
-    WHERE a.data_apontamento BETWEEN v_ini AND v_fim
-    GROUP BY ar.tipo_refugo_nome ORDER BY total DESC
+    SELECT tipo, SUM(total) AS total, SUM(ocorrencias) AS ocorrencias
+    FROM (
+      SELECT ar.tipo_refugo_nome AS tipo,
+        SUM(ar.quantidade) AS total, COUNT(*) AS ocorrencias
+      FROM public.apontamento_refugos ar
+      JOIN public.apontamentos_producao a ON a.id = ar.apontamento_id
+      WHERE a.data_apontamento BETWEEN v_ini AND v_fim
+      GROUP BY ar.tipo_refugo_nome
+      UNION ALL
+      SELECT COALESCE(NULLIF(trim(rp.tipo_defeito),''), 'Outros') AS tipo,
+        SUM(rp.quantidade) AS total, COUNT(*) AS ocorrencias
+      FROM public.refugos_producao rp
+      WHERE rp.created_at::date BETWEEN v_ini AND v_fim
+      GROUP BY COALESCE(NULLIF(trim(rp.tipo_defeito),''), 'Outros')
+    ) u
+    GROUP BY tipo ORDER BY total DESC
   ) t;
 
   RETURN jsonb_build_object(
