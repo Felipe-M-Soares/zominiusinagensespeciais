@@ -551,11 +551,14 @@ BEGIN
 
   -- Paradas avulsas (aba Paradas + aba Diário) — só as já finalizadas
   -- (duracao_min preenchida); uma parada ainda em andamento entra no
-  -- cálculo assim que for finalizada, no próximo recálculo.
+  -- cálculo assim que for finalizada, no próximo recálculo. Exclui as
+  -- entradas "Produzindo — ..." — são o cronômetro interno de produção do
+  -- Diário (tempo rodando, não parado) e não devem contar como downtime.
   SELECT COALESCE(SUM(pp.duracao_min),0) / 60.0 INTO v_hr_paradas_avulsas
   FROM public.paradas_producao pp
   WHERE pp.inicio::date BETWEEN p_data_ini AND p_data_fim
     AND pp.duracao_min IS NOT NULL
+    AND pp.motivo NOT LIKE 'Produzindo%'
     AND (p_maquina IS NULL OR pp.maquina = p_maquina);
 
   -- Refugos vinculados a um apontamento (assistente completo do Controle)
@@ -639,6 +642,7 @@ BEGIN
         COALESCE(SUM(pp.duracao_min),0) / 60.0 AS total_horas, COUNT(*) AS ocorrencias
       FROM public.paradas_producao pp
       WHERE pp.inicio::date BETWEEN v_ini AND v_fim AND pp.duracao_min IS NOT NULL
+        AND pp.motivo NOT LIKE 'Produzindo%'
       GROUP BY CASE WHEN pp.motivo LIKE 'Setup%' THEN 'Setup' ELSE pp.motivo END
     ) u
     GROUP BY tipo ORDER BY total_horas DESC

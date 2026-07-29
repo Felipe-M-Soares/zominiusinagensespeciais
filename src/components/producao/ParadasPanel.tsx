@@ -159,7 +159,10 @@ export function ParadasPanel() {
   const load=useCallback(async()=>{
     setLoading(true);
     const data=await loadWithFallback<Parada>("paradas_producao","paradas");
-    setParadas(data.sort((a,b)=>b.inicio.localeCompare(a.inicio)));
+    // Entradas "Produzindo — ..." são o cronômetro interno de produção do
+    // Diário (aba Produção), não uma parada real — não fazem sentido aqui.
+    const soPodasReais = data.filter(p=>!p.motivo?.startsWith("Produzindo"));
+    setParadas(soPodasReais.sort((a,b)=>b.inicio.localeCompare(a.inicio)));
     if(navigator.onLine){
       const {data:maq}=await supabase.from("maquinas_producao").select("codigo").order("codigo");
       if(maq) setMaquinas(maq.map((m:{codigo:string})=>m.codigo));
