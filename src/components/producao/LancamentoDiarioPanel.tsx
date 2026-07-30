@@ -1,34 +1,29 @@
 /**
  * LancamentoDiarioPanel — Aba "Diário" da Produção
  *
- * Fluxo único de cronômetro por máquina (Produção e Situação são o mesmo
- * mecanismo, porque uma máquina só pode estar fazendo UMA coisa por vez —
- * produzindo, ou parada por algum motivo — e é isso que controla o tempo
- * real, não uma hora digitada de memória):
+ * Fluxo de fim de turno: quem é responsável pela produção lança tudo o que
+ * aconteceu no dia de uma vez só — setup, tudo que rodou, toda situação
+ * (almoço, manutenção, troca de ferramenta...) — em TODAS as 6 máquinas,
+ * numa única sessão. Não há cronômetro correndo ao vivo: cada lançamento
+ * já entra com a duração em horas (o que realmente aconteceu, contado de
+ * cabeça/pela régua do turno), e Situação é só mais um tipo de lançamento
+ * dentro dessa MESMA lista — não uma aba separada.
  *
- *  1. Escolhe a MÁQUINA (grid de botões, status colorido).
- *  2. Se a máquina não tem nada em andamento, escolhe o que vai COMEÇAR:
- *     Produção (peça + material) ou Situação (código numerado — o SetUp é
- *     só mais um código; ao escolhê-lo, também pede a peça que vai ser
- *     produzida depois). Aperta "Iniciar agora" — só isso, o relógio
- *     começa a contar sozinho.
- *  3. Se a máquina JÁ tem algo em andamento, o formulário de início some e
- *     aparece só o card "Em andamento" com o tempo passando ao vivo e o
- *     botão "Finalizar". Isso IMPEDE registrar duas coisas ao mesmo tempo
- *     na mesma máquina — a máquina só pode estar numa situação por vez.
- *  4. Ao finalizar uma Produção, só pede a quantidade produzida (o resto —
- *     hora de início, hora de fim, tempo total — já foi capturado pelo
- *     relógio) e grava via RPC `criar_apontamento_ppi51`, aparecendo em
- *     Controle, Desempenho, Relatórios e no OEE. Ao finalizar uma Situação,
- *     fecha direto com a duração já calculada.
+ * Como funciona:
+ *  1. Escolhe a MÁQUINA (grid).
+ *  2. Monta um lançamento (Produção ou Situação, com as horas) e clica
+ *     "Adicionar à lista" — pode adicionar quantos quiser, pra quantas
+ *     máquinas quiser, antes de salvar (ex: MQ001 2h de Setup + 5h de
+ *     Produção; MQ002 8h de Produção; MQ003 1h de Almoço + 7h de Produção…).
+ *  3. No final, um botão só — "Salvar todos os lançamentos de hoje" — grava
+ *     tudo de uma vez. A hora de início/fim de cada item é calculada pra
+ *     trás a partir de agora, empilhando as durações de cada máquina na
+ *     ordem em que foram adicionadas (a mais recente termina agora).
  *
- * Isso também corrige a precisão do OEE: "horas trabalhadas" deixa de ser
- * uma estimativa digitada e passa a ser o tempo real entre Iniciar e
- * Finalizar.
- *
- * Gráficos do dia: distribuição do tempo (produção × cada situação, em %),
- * peças por máquina (com % de participação) e eficiência (produzido ÷
- * planejado). Tudo lido das mesmas tabelas das demais abas.
+ * Produção grava via RPC `criar_apontamento_ppi51` (mesma dos outros
+ * painéis — aparece em Controle, Desempenho, Relatórios e no OEE).
+ * Situação grava direto em `paradas_producao`, já fechada (início e fim
+ * preenchidos, sem precisar de "finalizar" depois).
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -38,7 +33,7 @@ import {
 } from "recharts";
 import {
   Zap, Coffee, RefreshCw, CheckCircle2, Clock,
-  Package, Factory, Timer, TrendingUp, StopCircle, PlayCircle, User, Lock,
+  Package, Factory, Timer, TrendingUp, Plus, X, ListPlus, User, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,15 +62,19 @@ interface ParadaHoje {
   operador: string; observacoes?: string | null; user_id?: string | null;
 }
 
-type Modo = "producao" | "situacao";
+// Um lançamento ainda não salvo, esperando na lista da sessão
+interface Pendente {
+  id: string;
+  maquina: string;
+  tipo: "producao" | "situacao";
+  peca?: string; materiaId?: string; quantidade?: string;
+  tipoParadaId?: string;
+  horas: string;
+  obs?: string;
+}
 
 const CORES_PIZZA = ["#22c55e", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#64748b", "#a855f7"];
 const OPERADOR_STORAGE_KEY = "diario_producao_operador";
-// Prefixo usado para marcar, dentro de paradas_producao, o cronômetro
-// interno de uma produção em andamento (tempo rodando, não parado) — não é
-// uma parada de verdade, por isso é filtrado do OEE e da aba Paradas.
-const PREFIXO_PRODUZINDO = "Produzindo — ";
-const PREFIXO_MATERIA = "materia:";
 
 const lbl = "text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 block";
 const sel = "w-full h-10 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
@@ -117,37 +116,31 @@ export function LancamentoDiarioPanel() {
   const [tiposParada, setTiposParada] = useState<TipoParada[]>([]);
   const [materias, setMaterias]       = useState<MateriaPrima[]>([]);
 
-  // Dados do dia
+  // Dados do dia (já gravados)
   const [apontamentosHoje, setApontamentosHoje] = useState<ApontamentoHoje[]>([]);
   const [paradasHoje, setParadasHoje]           = useState<ParadaHoje[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
 
-  // ── Fluxo único: máquina + "o que vai começar" ──────────────────────────────
+  // ── Formulário de montagem do lançamento (ainda não salvo) ──────────────────
   const [maquinaSel, setMaquinaSel] = useState("");
-  const [modo, setModo] = useState<Modo>("producao");
+  const [tipo, setTipo] = useState<"producao" | "situacao">("producao");
   const [operador, setOperador] = useState(() => {
     try { return localStorage.getItem(OPERADOR_STORAGE_KEY) ?? ""; } catch { return ""; }
   });
   const [peca, setPeca] = useState("");
   const [materia, setMateria] = useState("");
+  const [quantidade, setQuantidade] = useState("");
   const [tipoParadaId, setTipoParadaId] = useState("");
+  const [horas, setHoras] = useState("");
   const [obs, setObs] = useState("");
 
-  // Quantidade só é pedida ao FINALIZAR uma produção (não dá pra saber
-  // quantas peças vão sair antes de a máquina rodar)
-  const [qtdeFinalizacao, setQtdeFinalizacao] = useState("");
+  // Lista de lançamentos montados na sessão, esperando serem salvos juntos
+  const [pendentes, setPendentes] = useState<Pendente[]>([]);
 
   useEffect(() => {
     try { localStorage.setItem(OPERADOR_STORAGE_KEY, operador); } catch { /* ignore */ }
   }, [operador]);
-
-  // Re-renderiza a cada segundo pra o cronômetro "ao vivo" andar
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
 
   const hoje = new Date().toISOString().split("T")[0];
 
@@ -171,7 +164,6 @@ export function LancamentoDiarioPanel() {
     const maqOrdenadas = maqRes.sort((a, b) => a.codigo.localeCompare(b.codigo));
     setMaquinas(maqOrdenadas);
 
-    // Peças = produtos de produção + componentes registrados (devices)
     const doProducao: PecaOption[] = (prodRes.data ?? []).map(p => ({
       codigo: p.codigo, descricao: p.descricao, pecas_por_hora: p.pecas_por_hora ?? 0, origem: "producao",
     }));
@@ -198,162 +190,132 @@ export function LancamentoDiarioPanel() {
   );
   const isSetupSelecionado = tipoParadaId !== "" && Number(tipoParadaId) === tipoSetup?.id;
 
-  // O que está rodando AGORA na máquina selecionada (produção ou situação —
-  // só uma coisa por vez, é isso que trava o formulário de "Iniciar")
-  const emAndamentoNaMaquina = useMemo(
-    () => paradasHoje.find(p => p.maquina === maquinaSel && !p.fim) ?? null,
-    [paradasHoje, maquinaSel]
-  );
-  const ehProducaoEmAndamento = emAndamentoNaMaquina?.motivo.startsWith(PREFIXO_PRODUZINDO) ?? false;
-
-  function limparCamposInicio() {
-    setPeca(""); setMateria(""); setTipoParadaId(""); setObs("");
+  function limparCamposEntrada() {
+    setPeca(""); setMateria(""); setQuantidade(""); setTipoParadaId(""); setHoras(""); setObs("");
   }
 
-  // ── Iniciar (abre o cronômetro) ─────────────────────────────────────────────
-  async function iniciar() {
+  // ── Adiciona um item à lista da sessão (ainda não grava no banco) ──────────
+  function adicionarALista() {
     if (!maquinaSel) { toast.error("Selecione a máquina"); return; }
-    if (!operador.trim()) { toast.error("Informe o operador"); return; }
-    if (emAndamentoNaMaquina) { toast.error("Essa máquina já tem algo em andamento — finalize antes de iniciar outro."); return; }
+    const h = parseFloat(horas.replace(",", ".")) || 0;
+    if (h <= 0) { toast.error("Informe as horas"); return; }
 
-    if (modo === "producao") {
+    if (tipo === "producao") {
       if (!peca) { toast.error("Selecione a peça"); return; }
-      setSaving(true);
-      const agora = new Date().toISOString();
-      const parada: ParadaHoje & { user_id?: string } = {
-        id: crypto.randomUUID(), maquina: maquinaSel,
-        motivo: `${PREFIXO_PRODUZINDO}${peca}`,
-        tipo: "planejada", inicio: agora, fim: null, duracao_min: null,
-        operador: operador.trim(),
-        observacoes: materia ? `${PREFIXO_MATERIA}${materia}` : null,
-        user_id: user?.id,
-      };
-      const { error } = await saveWithFallback("paradas_producao", "paradas", "INSERT", parada);
-      setSaving(false);
-      if (error) { toast.error("Erro ao iniciar produção"); return; }
-      toast.success(`Produção iniciada às ${fmtHora(agora)} — o relógio está correndo`);
-      limparCamposInicio();
-      setParadasHoje(prev => [parada, ...prev]);
-      return;
+      if (!quantidade || parseInt(quantidade) <= 0) { toast.error("Informe a quantidade produzida"); return; }
+    } else {
+      if (!tipoParadaId) { toast.error("Selecione o código de situação"); return; }
+      if (isSetupSelecionado && !peca) { toast.error("Selecione a peça que será produzida depois do setup"); return; }
     }
 
-    // Situação (inclui SetUp como só mais um código)
-    if (!tipoParadaId) { toast.error("Selecione o código de situação"); return; }
-    const tp = tiposParada.find(t => t.id === Number(tipoParadaId));
-    if (!tp) return;
-    if (isSetupSelecionado && !peca) { toast.error("Selecione a peça que será produzida depois do setup"); return; }
+    const item: Pendente = {
+      id: crypto.randomUUID(), maquina: maquinaSel, tipo, horas,
+      peca: peca || undefined, materiaId: materia || undefined,
+      quantidade: quantidade || undefined, tipoParadaId: tipoParadaId || undefined,
+      obs: obs || undefined,
+    };
+    setPendentes(prev => [...prev, item]);
+    limparCamposEntrada();
+    toast.success("Adicionado à lista — continue lançando ou salve quando terminar");
+  }
+
+  function removerDaLista(id: string) {
+    setPendentes(prev => prev.filter(p => p.id !== id));
+  }
+
+  // ── Salva tudo o que está na lista, de uma vez ──────────────────────────────
+  async function salvarTudo() {
+    if (pendentes.length === 0) { toast.error("Adicione ao menos um lançamento à lista"); return; }
+    if (!operador.trim()) { toast.error("Informe o operador"); return; }
 
     setSaving(true);
-    const agora = new Date().toISOString();
-    const pecaSel = pecas.find(p => p.codigo === peca);
-    const motivo = isSetupSelecionado
-      ? `Setup — ${peca}${pecaSel ? ` (${pecaSel.descricao})` : ""}`
-      : tp.nome;
-    const parada: ParadaHoje & { user_id?: string } = {
-      id: crypto.randomUUID(), maquina: maquinaSel, motivo,
-      tipo: tp.categoria === "operacional" || tp.categoria === "setup" ? "planejada" : "nao_planejada",
-      inicio: agora, fim: null, duracao_min: null,
-      operador: operador.trim(),
-      observacoes: obs || (isSetupSelecionado ? `Preparação para produzir ${peca}` : null),
-      user_id: user?.id,
-    };
-    const { error } = await saveWithFallback("paradas_producao", "paradas", "INSERT", parada);
-    if (error) { setSaving(false); toast.error("Erro ao iniciar situação"); return; }
-
-    if (isSetupSelecionado) {
-      const maq = maquinas.find(m => m.codigo === maquinaSel);
-      if (maq) {
-        await supabase.from("maquinas_producao").update({ status: "setup" }).eq("id", maq.id);
-        setMaquinas(prev => prev.map(m => m.id === maq.id ? { ...m, status: "setup" } : m));
-      }
-    }
-    setSaving(false);
-    toast.success(`${tp.nome} iniciado às ${fmtHora(agora)}`);
-    limparCamposInicio();
-    setParadasHoje(prev => [parada, ...prev]);
-  }
-
-  // ── Finalizar (fecha o cronômetro; produção pede quantidade antes) ─────────
-  async function finalizarSituacao(p: ParadaHoje) {
-    const fim = new Date().toISOString();
-    const dur = minutosDecorridos(p.inicio);
-    const atualizada = { ...p, fim, duracao_min: dur };
-    const { error } = await saveWithFallback("paradas_producao", "paradas", "UPDATE", atualizada);
-    if (error) { toast.error("Erro ao finalizar"); return; }
-
-    if (p.motivo.startsWith("Setup")) {
-      const maq = maquinas.find(m => m.codigo === p.maquina);
-      if (maq && maq.status === "setup") {
-        await supabase.from("maquinas_producao").update({ status: "operando" }).eq("id", maq.id);
-        setMaquinas(prev => prev.map(m => m.id === maq.id ? { ...m, status: "operando" } : m));
-      }
-    }
-    toast.success(`Finalizado — ${fmtDuracao(dur)}`);
-    setParadasHoje(prev => prev.map(x => x.id === p.id ? atualizada : x));
-  }
-
-  async function finalizarProducao(p: ParadaHoje) {
-    const qtde = parseInt(qtdeFinalizacao) || 0;
-    if (qtde <= 0) { toast.error("Informe a quantidade produzida"); return; }
-
-    const codigoPeca = p.motivo.replace(PREFIXO_PRODUZINDO, "").trim();
-    const pecaSel = pecas.find(pc => pc.codigo === codigoPeca);
-    const materiaId = p.observacoes?.startsWith(PREFIXO_MATERIA) ? p.observacoes.replace(PREFIXO_MATERIA, "") : "";
-    const mp = materias.find(m => m.id === materiaId);
-
-    const inicioDate = new Date(p.inicio);
+    const falharam: Pendente[] = [];
     const agora = new Date();
-    const horas = Math.max(0, (agora.getTime() - inicioDate.getTime()) / 3600000);
-    const inicioDec = horaDecimal(inicioDate);
-    const fimDec = horaDecimal(agora);
-    const porHora = pecaSel?.pecas_por_hora ?? 0;
-    const planDisp = horas > 0 && porHora > 0 ? +(porHora * horas).toFixed(2) : qtde;
 
-    setSaving(true);
-    const args = {
-      p_data: hoje, p_turno: turnoAtual(),
-      p_maquina: p.maquina, p_equipamento: p.maquina,
-      p_produto: codigoPeca, p_descricao_produto: pecaSel?.descricao ?? codigoPeca,
-      p_qtde_por_hora: porHora, p_horas_planejadas: +horas.toFixed(4), p_qtde_plan_disp: planDisp,
-      p_qtde_produzida: qtde,
-      p_horario_inicio: inicioDec, p_horario_fim: fimDec,
-      p_cycle_time_min: qtde > 0 && horas > 0 ? +((horas * 60) / qtde).toFixed(4) : null,
-      p_lead_time_horas: +horas.toFixed(2) || null,
-      p_lote: "", p_lote_mp: mp?.lote_atual ?? "", p_descricao_mp: mp?.descricao ?? "",
-      p_comprimento_mm: null, p_consumo_mp_metros: null,
-      p_operador: p.operador, p_paradas: [], p_refugos: [],
-    };
-    const preview = {
-      seq_producao: 0, data_apontamento: hoje, turno: turnoAtual(),
-      maquina: p.maquina, maquina_codigo: p.maquina,
-      produto: codigoPeca, descricao_produto: pecaSel?.descricao,
-      qtde_por_hora: porHora, horas_planejadas: +horas.toFixed(4), qtde_plan_disp: planDisp,
-      quantidade: qtde, horario_inicio: inicioDec, horario_fim: fimDec,
-      lote: "(pendente)", operador: p.operador, status: "concluido",
-      created_at: agora.toISOString(),
-    };
-    const { ok, savedOffline } = await saveRpcWithFallback("criar_apontamento_ppi51", args, "apontamentos", preview);
-    if (!ok) { setSaving(false); toast.error("Erro ao lançar produção"); return; }
+    // Processa cada máquina de forma independente: a última entrada
+    // adicionada termina agora, e o tempo vai sendo empilhado pra trás.
+    const porMaquina = new Map<string, Pendente[]>();
+    for (const p of pendentes) {
+      porMaquina.set(p.maquina, [...(porMaquina.get(p.maquina) ?? []), p]);
+    }
 
-    // Fecha o cronômetro interno (fica marcado como concluído, mas o motivo
-    // "Produzindo —" continua excluído do OEE e da aba Paradas — ver
-    // migration/RPC calcular_oee)
-    const atualizada = { ...p, fim: agora.toISOString(), duracao_min: Math.round(horas * 60) };
-    await saveWithFallback("paradas_producao", "paradas", "UPDATE", atualizada);
+    for (const [maquina, itens] of porMaquina) {
+      let fimAtual = agora;
+      // percorre de trás pra frente (o último item da lista é o mais recente)
+      for (let i = itens.length - 1; i >= 0; i--) {
+        const item = itens[i];
+        const h = parseFloat(item.horas.replace(",", ".")) || 0;
+        const inicioDate = new Date(fimAtual.getTime() - h * 3600000);
+        const fimDate = fimAtual;
+        fimAtual = inicioDate;
+
+        try {
+          if (item.tipo === "producao") {
+            const pecaSel = pecas.find(pc => pc.codigo === item.peca);
+            const mp = materias.find(m => m.id === item.materiaId);
+            const qtde = parseInt(item.quantidade ?? "0") || 0;
+            const porHora = pecaSel?.pecas_por_hora ?? 0;
+            const planDisp = h > 0 && porHora > 0 ? +(porHora * h).toFixed(2) : qtde;
+            const args = {
+              p_data: hoje, p_turno: turnoAtual(),
+              p_maquina: maquina, p_equipamento: maquina,
+              p_produto: item.peca, p_descricao_produto: pecaSel?.descricao ?? item.peca,
+              p_qtde_por_hora: porHora, p_horas_planejadas: h, p_qtde_plan_disp: planDisp,
+              p_qtde_produzida: qtde,
+              p_horario_inicio: horaDecimal(inicioDate), p_horario_fim: horaDecimal(fimDate),
+              p_cycle_time_min: qtde > 0 && h > 0 ? +((h * 60) / qtde).toFixed(4) : null,
+              p_lead_time_horas: h || null,
+              p_lote: "", p_lote_mp: mp?.lote_atual ?? "", p_descricao_mp: mp?.descricao ?? "",
+              p_comprimento_mm: null, p_consumo_mp_metros: null,
+              p_operador: operador.trim(), p_paradas: [], p_refugos: [],
+            };
+            const preview = {
+              seq_producao: 0, data_apontamento: hoje, turno: turnoAtual(),
+              maquina, maquina_codigo: maquina,
+              produto: item.peca, descricao_produto: pecaSel?.descricao,
+              qtde_por_hora: porHora, horas_planejadas: h, qtde_plan_disp: planDisp,
+              quantidade: qtde, horario_inicio: horaDecimal(inicioDate), horario_fim: horaDecimal(fimDate),
+              lote: "(pendente)", operador: operador.trim(), status: "concluido",
+              created_at: fimDate.toISOString(),
+            };
+            const { ok } = await saveRpcWithFallback("criar_apontamento_ppi51", args, "apontamentos", preview);
+            if (!ok) throw new Error("Falha ao gravar produção");
+          } else {
+            const tp = tiposParada.find(t => t.id === Number(item.tipoParadaId));
+            if (!tp) throw new Error("Código de situação inválido");
+            const ehSetup = tp.id === tipoSetup?.id;
+            const pecaSel = pecas.find(pc => pc.codigo === item.peca);
+            const motivo = ehSetup ? `Setup — ${item.peca}${pecaSel ? ` (${pecaSel.descricao})` : ""}` : tp.nome;
+            const parada = {
+              id: crypto.randomUUID(), maquina, motivo,
+              tipo: tp.categoria === "operacional" || tp.categoria === "setup" ? "planejada" : "nao_planejada",
+              inicio: inicioDate.toISOString(), fim: fimDate.toISOString(), duracao_min: Math.round(h * 60),
+              operador: operador.trim(),
+              observacoes: item.obs || (ehSetup ? `Preparação para produzir ${item.peca}` : null),
+              user_id: user?.id,
+            };
+            const { error } = await saveWithFallback("paradas_producao", "paradas", "INSERT", parada);
+            if (error) throw new Error("Falha ao gravar situação");
+          }
+        } catch {
+          falharam.push(item);
+        }
+      }
+    }
 
     setSaving(false);
-    toast.success(savedOffline ? "Produção salva offline — sincroniza ao reconectar" : `Produção finalizada — ${fmtDuracao(Math.round(horas * 60))}, ${qtde} pç`);
-    setQtdeFinalizacao("");
-    setParadasHoje(prev => prev.map(x => x.id === p.id ? atualizada : x));
+    const totalSalvos = pendentes.length - falharam.length;
+    if (falharam.length === 0) {
+      toast.success(`${totalSalvos} lançamento${totalSalvos !== 1 ? "s" : ""} salvo${totalSalvos !== 1 ? "s" : ""} com sucesso!`);
+      setPendentes([]);
+    } else {
+      toast.error(`${totalSalvos} salvos, ${falharam.length} falharam — continuam na lista pra tentar de novo`);
+      setPendentes(falharam);
+    }
     load();
   }
 
-  function finalizar(p: ParadaHoje) {
-    if (p.motivo.startsWith(PREFIXO_PRODUZINDO)) { finalizarProducao(p); return; }
-    finalizarSituacao(p);
-  }
-
-  // ── Agregações do dia para os gráficos ─────────────────────────────────────
+  // ── Agregações do dia para os gráficos (só do que já foi salvo) ────────────
   const resumo = useMemo(() => {
     const horasProducao = apontamentosHoje.reduce((s, a) => s + (Number(a.horas_planejadas) || 0), 0);
     const totalPecas    = apontamentosHoje.reduce((s, a) => s + (a.quantidade || 0), 0);
@@ -362,7 +324,6 @@ export function LancamentoDiarioPanel() {
 
     const porMotivo = new Map<string, number>();
     for (const p of paradasHoje) {
-      if (p.motivo.startsWith(PREFIXO_PRODUZINDO)) continue; // cronômetro interno, não é parada
       const min = p.duracao_min ?? minutosDecorridos(p.inicio);
       const chave = p.motivo.startsWith("Setup") ? "Setup" : p.motivo;
       porMotivo.set(chave, (porMotivo.get(chave) ?? 0) + min / 60);
@@ -385,17 +346,22 @@ export function LancamentoDiarioPanel() {
     return { horasProducao, totalPecas, totalPlan, eficiencia, pizzaTempo, barMaquinas };
   }, [apontamentosHoje, paradasHoje]);
 
-  // "Em aberto" pra fins de KPI/lista global — inclui produção em andamento
-  const abertas = paradasHoje.filter(p => !p.fim);
   const maquinaAtual = maquinas.find(m => m.codigo === maquinaSel);
+  const totalHorasPendentes = pendentes.reduce((s, p) => s + (parseFloat(p.horas.replace(",", ".")) || 0), 0);
+  const pendentesPorMaquina = useMemo(() => {
+    const g = new Map<string, Pendente[]>();
+    for (const p of pendentes) g.set(p.maquina, [...(g.get(p.maquina) ?? []), p]);
+    return [...g.entries()];
+  }, [pendentes]);
 
-  function labelAndamento(p: ParadaHoje): string {
-    if (p.motivo.startsWith(PREFIXO_PRODUZINDO)) {
-      const codigo = p.motivo.replace(PREFIXO_PRODUZINDO, "").trim();
-      const pecaSel = pecas.find(pc => pc.codigo === codigo);
-      return `Produzindo ${codigo}${pecaSel ? ` — ${pecaSel.descricao}` : ""}`;
+  function descricaoPendente(p: Pendente): string {
+    if (p.tipo === "producao") {
+      const pecaSel = pecas.find(pc => pc.codigo === p.peca);
+      return `Produção — ${p.peca}${pecaSel ? ` (${pecaSel.descricao})` : ""} · ${p.quantidade} pç`;
     }
-    return p.motivo;
+    const tp = tiposParada.find(t => t.id === Number(p.tipoParadaId));
+    const ehSetup = tp?.id === tipoSetup?.id;
+    return ehSetup ? `Setup — peça ${p.peca}` : (tp?.nome ?? "Situação");
   }
 
   return (
@@ -412,13 +378,17 @@ export function LancamentoDiarioPanel() {
         </button>
       </div>
 
-      {/* KPIs do dia */}
+      <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 px-3 py-2 text-[11.5px] text-blue-800 dark:text-blue-300">
+        Lançamento de fim de turno: monte a lista com tudo que aconteceu no dia — produção, setup e situações, em quantas máquinas precisar — e salve tudo de uma vez no final.
+      </div>
+
+      {/* KPIs do dia (do que já foi salvo) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { Icon: Package,    label: "Peças hoje",  value: resumo.totalPecas.toLocaleString("pt-BR"), cor: "text-green-600",  bg: "bg-green-500/5 border-green-500/20" },
           { Icon: Timer,      label: "Hr produção", value: `${resumo.horasProducao.toFixed(1)}h`,     cor: "text-blue-600",   bg: "bg-blue-500/5 border-blue-500/20" },
           { Icon: TrendingUp, label: "Eficiência",  value: `${resumo.eficiencia.toFixed(1)}%`,        cor: resumo.eficiencia >= 95 ? "text-green-600" : resumo.eficiencia >= 80 ? "text-amber-600" : "text-red-600", bg: "bg-purple-500/5 border-purple-500/20" },
-          { Icon: Clock,      label: "Em aberto",   value: String(abertas.length),                    cor: abertas.length > 0 ? "text-amber-600" : "text-muted-foreground", bg: "bg-amber-500/5 border-amber-500/20" },
+          { Icon: ListPlus,   label: "Na lista",    value: String(pendentes.length),                  cor: pendentes.length > 0 ? "text-blue-600" : "text-muted-foreground", bg: "bg-blue-500/5 border-blue-500/20" },
         ].map(k => (
           <div key={k.label} className={cn("rounded-2xl border p-3 space-y-1", k.bg)}>
             <div className="flex items-center gap-1.5">
@@ -430,16 +400,15 @@ export function LancamentoDiarioPanel() {
         ))}
       </div>
 
-      {/* Cronômetro — fluxo único por máquina */}
+      {/* Montagem do lançamento */}
       <div className="rounded-2xl border bg-card p-4 space-y-4">
-        {/* 1. Máquina — grid grande, um toque só */}
         <div>
           <label className={lbl}>Máquina *</label>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {maquinas.map(m => {
               const st = STATUS_MAQUINA[m.status] ?? STATUS_MAQUINA.operando;
               const ativa = maquinaSel === m.codigo;
-              const temAlgoRodando = paradasHoje.some(p => p.maquina === m.codigo && !p.fim);
+              const qtdNaLista = pendentes.filter(p => p.maquina === m.codigo).length;
               return (
                 <button key={m.id} type="button" onClick={() => setMaquinaSel(m.codigo)}
                   className={cn("relative flex flex-col items-center justify-center gap-0.5 h-16 rounded-xl border-2 transition-colors",
@@ -447,7 +416,7 @@ export function LancamentoDiarioPanel() {
                   <span className="text-sm font-bold">{m.codigo}</span>
                   <span className="text-[9px] text-muted-foreground truncate max-w-full px-1">{m.nome}</span>
                   <span className="absolute top-1.5 right-1.5 flex items-center gap-1">
-                    {temAlgoRodando && <Clock className="h-2.5 w-2.5 text-blue-500 animate-pulse" />}
+                    {qtdNaLista > 0 && <span className="text-[9px] font-bold text-blue-600 bg-blue-500/15 rounded-full h-3.5 w-3.5 flex items-center justify-center">{qtdNaLista}</span>}
                     <span className={cn("h-1.5 w-1.5 rounded-full", st.dot)} />
                   </span>
                 </button>
@@ -461,141 +430,127 @@ export function LancamentoDiarioPanel() {
           )}
         </div>
 
-        {emAndamentoNaMaquina ? (
-          // ── Máquina ocupada: só mostra o cronômetro rodando + Finalizar ──
-          <div className={cn("rounded-xl border-2 p-4 space-y-3",
-            ehProducaoEmAndamento ? "border-green-500/40 bg-green-500/5" : "border-amber-500/40 bg-amber-500/5")}>
-            <div className="flex items-center gap-2">
-              <span className={cn("h-8 w-8 rounded-lg flex items-center justify-center shrink-0",
-                ehProducaoEmAndamento ? "bg-green-500/15 text-green-600" : "bg-amber-500/15 text-amber-600")}>
-                {ehProducaoEmAndamento ? <Zap className="h-4 w-4" /> : <Coffee className="h-4 w-4" />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold truncate">{labelAndamento(emAndamentoNaMaquina)}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {emAndamentoNaMaquina.operador} · desde {fmtHora(emAndamentoNaMaquina.inicio)}
-                </p>
+        <div>
+          <label className={lbl}><User className="h-3 w-3 inline -mt-0.5 mr-1" />Operador *</label>
+          <Input value={operador} onChange={e => setOperador(e.target.value)} className="h-10" placeholder="Nome do operador" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setTipo("producao")}
+            className={cn("flex items-center justify-center gap-1.5 h-10 rounded-xl border text-sm font-medium transition-colors",
+              tipo === "producao" ? "bg-green-500/10 border-green-500/40 text-green-700 dark:text-green-400" : "border-input hover:bg-muted/30 text-muted-foreground")}>
+            <Zap className="h-4 w-4" /> Produção
+          </button>
+          <button type="button" onClick={() => setTipo("situacao")}
+            className={cn("flex items-center justify-center gap-1.5 h-10 rounded-xl border text-sm font-medium transition-colors",
+              tipo === "situacao" ? "bg-blue-500/10 border-blue-500/40 text-blue-700 dark:text-blue-400" : "border-input hover:bg-muted/30 text-muted-foreground")}>
+            <Coffee className="h-4 w-4" /> Situação <span className="text-[9px] opacity-70">(inclui Setup)</span>
+          </button>
+        </div>
+
+        {tipo === "producao" ? (
+          <div className="space-y-3">
+            <div><label className={lbl}>Peça *</label>
+              <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
+                <option value="">Selecione...</option>
+                <optgroup label="Produtos de produção">
+                  {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                </optgroup>
+                <optgroup label="Componentes registrados">
+                  {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                </optgroup>
+              </select>
+            </div>
+            <div><label className={lbl}>Material usado</label>
+              <select value={materia} onChange={e => setMateria(e.target.value)} className={sel}>
+                <option value="">Nenhum / não informar</option>
+                {materias.map(m => <option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={lbl}>Quantidade produzida *</label>
+                <Input type="number" min="1" inputMode="numeric" value={quantidade}
+                  onChange={e => setQuantidade(e.target.value)} className="h-10" placeholder="pç" />
               </div>
-              <div className="text-right shrink-0">
-                <p className={cn("text-lg font-black tabular-nums", ehProducaoEmAndamento ? "text-green-600" : "text-amber-600")}>
-                  {fmtDuracao(minutosDecorridos(emAndamentoNaMaquina.inicio))}
-                </p>
+              <div><label className={lbl}>Horas *</label>
+                <Input type="number" min="0" step="0.25" inputMode="decimal" value={horas}
+                  onChange={e => setHoras(e.target.value)} className="h-10" placeholder="ex: 5" />
               </div>
             </div>
-
-            {ehProducaoEmAndamento && (
-              <div>
-                <label className={lbl}>Quantidade produzida *</label>
-                <Input type="number" min="1" inputMode="numeric" value={qtdeFinalizacao}
-                  onChange={e => setQtdeFinalizacao(e.target.value)} className="h-10" placeholder="pç" autoFocus />
-              </div>
-            )}
-
-            <Button className="w-full gap-1.5 h-11" variant="outline" onClick={() => finalizar(emAndamentoNaMaquina)} disabled={saving}>
-              <StopCircle className="h-4 w-4" />
-              {saving ? "Finalizando..." : "Finalizar agora"}
-            </Button>
-            <p className="text-[10px] text-muted-foreground text-center flex items-center justify-center gap-1">
-              <Lock className="h-2.5 w-2.5" /> Esta máquina fica travada pra um novo início até finalizar
-            </p>
           </div>
         ) : (
-          // ── Máquina livre: formulário de início ──────────────────────────
-          <>
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => setModo("producao")}
-                className={cn("flex items-center justify-center gap-1.5 h-10 rounded-xl border text-sm font-medium transition-colors",
-                  modo === "producao" ? "bg-green-500/10 border-green-500/40 text-green-700 dark:text-green-400" : "border-input hover:bg-muted/30 text-muted-foreground")}>
-                <Zap className="h-4 w-4" /> Produção
-              </button>
-              <button type="button" onClick={() => setModo("situacao")}
-                className={cn("flex items-center justify-center gap-1.5 h-10 rounded-xl border text-sm font-medium transition-colors",
-                  modo === "situacao" ? "bg-blue-500/10 border-blue-500/40 text-blue-700 dark:text-blue-400" : "border-input hover:bg-muted/30 text-muted-foreground")}>
-                <Coffee className="h-4 w-4" /> Situação <span className="text-[9px] opacity-70">(inclui Setup)</span>
-              </button>
+          <div className="space-y-3">
+            <div><label className={lbl}>Código de situação *</label>
+              <select value={tipoParadaId} onChange={e => setTipoParadaId(e.target.value)} className={sel}>
+                <option value="">Selecione...</option>
+                {tiposParada.map(t => <option key={t.id} value={t.id}>{String(t.id).padStart(2, "0")} — {t.nome}</option>)}
+              </select>
             </div>
-
-            <div>
-              <label className={lbl}><User className="h-3 w-3 inline -mt-0.5 mr-1" />Operador *</label>
-              <Input value={operador} onChange={e => setOperador(e.target.value)} className="h-10" placeholder="Nome do operador" />
-            </div>
-
-            {modo === "producao" ? (
-              <div className="space-y-3">
-                <div><label className={lbl}>Peça *</label>
-                  <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
-                    <option value="">Selecione...</option>
-                    <optgroup label="Produtos de produção">
-                      {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                    </optgroup>
-                    <optgroup label="Componentes registrados">
-                      {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                    </optgroup>
-                  </select>
-                </div>
-                <div><label className={lbl}>Material usado</label>
-                  <select value={materia} onChange={e => setMateria(e.target.value)} className={sel}>
-                    <option value="">Nenhum / não informar</option>
-                    {materias.map(m => <option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
-                  </select>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div><label className={lbl}>Código de situação *</label>
-                  <select value={tipoParadaId} onChange={e => setTipoParadaId(e.target.value)} className={sel}>
-                    <option value="">Selecione...</option>
-                    {tiposParada.map(t => <option key={t.id} value={t.id}>{String(t.id).padStart(2, "0")} — {t.nome}</option>)}
-                  </select>
-                </div>
-                {isSetupSelecionado && (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-1">
-                    <label className={lbl}>Peça que será produzida *</label>
-                    <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
-                      <option value="">Selecione...</option>
-                      <optgroup label="Produtos de produção">
-                        {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                      </optgroup>
-                      <optgroup label="Componentes registrados">
-                        {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                      </optgroup>
-                    </select>
-                  </div>
-                )}
-                <div><label className={lbl}>Observação</label>
-                  <Input value={obs} onChange={e => setObs(e.target.value)} className="h-10" placeholder="Opcional" />
-                </div>
+            {isSetupSelecionado && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-1">
+                <label className={lbl}>Peça que será produzida *</label>
+                <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
+                  <option value="">Selecione...</option>
+                  <optgroup label="Produtos de produção">
+                    {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                  </optgroup>
+                  <optgroup label="Componentes registrados">
+                    {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                  </optgroup>
+                </select>
               </div>
             )}
-
-            <Button className="w-full gap-1.5 h-11" onClick={iniciar} disabled={saving}>
-              <PlayCircle className="h-4 w-4" />
-              {saving ? "Iniciando..." : modo === "producao" ? "Iniciar produção agora" : "Iniciar situação agora"}
-            </Button>
-            <p className="text-[10px] text-muted-foreground text-center -mt-2">O tempo começa a contar no instante em que você inicia — sem digitar hora</p>
-          </>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={lbl}>Horas *</label>
+                <Input type="number" min="0" step="0.25" inputMode="decimal" value={horas}
+                  onChange={e => setHoras(e.target.value)} className="h-10" placeholder="ex: 1" />
+              </div>
+              <div><label className={lbl}>Observação</label>
+                <Input value={obs} onChange={e => setObs(e.target.value)} className="h-10" placeholder="Opcional" />
+              </div>
+            </div>
+          </div>
         )}
+
+        <Button className="w-full gap-1.5 h-11" variant="outline" onClick={adicionarALista} disabled={saving}>
+          <Plus className="h-4 w-4" /> Adicionar à lista
+        </Button>
       </div>
 
-      {/* Tudo que está rodando agora, nas outras máquinas também */}
-      {abertas.filter(p => p.maquina !== maquinaSel).length > 0 && (
-        <div className="rounded-2xl border border-border/40 bg-card p-4 space-y-2">
-          <h3 className="text-sm font-semibold flex items-center gap-2">
-            <Clock className="h-4 w-4 text-muted-foreground" /> Em andamento nas outras máquinas
-          </h3>
-          {abertas.filter(p => p.maquina !== maquinaSel).map(p => (
-            <div key={p.id} className="rounded-xl border bg-card/70 p-3 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{labelAndamento(p)}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {p.maquina} · {p.operador} · desde {fmtHora(p.inicio)} ({fmtDuracao(minutosDecorridos(p.inicio))})
-                </p>
+      {/* Lista da sessão — tudo que ainda não foi salvo */}
+      {pendentes.length > 0 && (
+        <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <ListPlus className="h-4 w-4 text-blue-600" /> Lançamentos prontos pra salvar
+            </h3>
+            <span className="text-[11px] text-muted-foreground">{pendentes.length} itens · {totalHorasPendentes.toFixed(1)}h no total</span>
+          </div>
+
+          <div className="space-y-3">
+            {pendentesPorMaquina.map(([maquina, itens]) => (
+              <div key={maquina} className="rounded-xl border bg-card/70 p-3 space-y-1.5">
+                <p className="text-[11px] font-bold text-muted-foreground">{maquina}</p>
+                {itens.map(p => (
+                  <div key={p.id} className="flex items-center gap-2 text-[12px]">
+                    <span className={cn("h-5 w-5 rounded flex items-center justify-center shrink-0",
+                      p.tipo === "producao" ? "bg-green-500/10 text-green-600" : "bg-blue-500/10 text-blue-600")}>
+                      {p.tipo === "producao" ? <Zap className="h-3 w-3" /> : <Coffee className="h-3 w-3" />}
+                    </span>
+                    <span className="flex-1 truncate">{descricaoPendente(p)}</span>
+                    <span className="font-semibold shrink-0">{p.horas}h</span>
+                    <button type="button" onClick={() => removerDaLista(p.id)} className="text-muted-foreground hover:text-red-500 shrink-0">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
-              <Button size="sm" variant="outline" className="gap-1 h-8 shrink-0" onClick={() => setMaquinaSel(p.maquina)}>
-                Selecionar
-              </Button>
-            </div>
-          ))}
+            ))}
+          </div>
+
+          <Button className="w-full gap-1.5 h-11" onClick={salvarTudo} disabled={saving}>
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="h-4 w-4" /> Salvar todos os lançamentos de hoje ({pendentes.length})</>}
+          </Button>
         </div>
       )}
 
@@ -663,13 +618,13 @@ export function LancamentoDiarioPanel() {
         </div>
       </div>
 
-      {/* Lançamentos do dia */}
+      {/* Lançamentos do dia já salvos */}
       <div className="rounded-2xl border bg-card p-4 space-y-2">
         <h3 className="text-sm font-semibold flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-green-600" /> Lançamentos de hoje
+          <CheckCircle2 className="h-4 w-4 text-green-600" /> Lançamentos de hoje (já salvos)
         </h3>
         {apontamentosHoje.length === 0 ? (
-          <p className="text-[12px] text-muted-foreground py-6 text-center">Nenhuma produção lançada hoje — use o cronômetro acima</p>
+          <p className="text-[12px] text-muted-foreground py-6 text-center">Nenhuma produção salva hoje ainda — monte a lista acima e salve</p>
         ) : (
           <div className="space-y-2">
             {apontamentosHoje.slice(0, 20).map(a => (

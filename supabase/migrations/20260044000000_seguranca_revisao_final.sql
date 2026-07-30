@@ -268,15 +268,22 @@ BEGIN
     v_stock_item_id := NULLIF(v_item->>'stock_item_id','')::uuid;
     IF v_stock_item_id IS NULL THEN CONTINUE; END IF;
 
-    SELECT COALESCE(SUM(pi.quantidade),0), MAX(pi.valor_unitario), MAX(pi.lote),
-           MAX(si.device_id), MAX(d.model), MAX(d.ncm), MAX(d.cfop_padrao)
-    INTO v_pi_qtd, v_valor_unit, v_lote, v_device, v_descricao, v_ncm, v_cfop
+    SELECT COALESCE(SUM(pi.quantidade),0), MAX(pi.valor_unitario), MAX(pi.lote)
+    INTO v_pi_qtd, v_valor_unit, v_lote
     FROM public.pedido_itens pi
-    JOIN public.stock_items si ON si.id = pi.stock_item_id
-    JOIN public.devices d ON d.id = si.device_id
     WHERE pi.pedido_id = p_pedido_id AND pi.stock_item_id = v_stock_item_id;
 
     IF v_pi_qtd IS NULL OR v_pi_qtd <= 0 THEN CONTINUE; END IF; -- item não pertence a este pedido
+
+    -- device_id é uuid — não existe MAX(uuid) no Postgres, e de qualquer
+    -- forma stock_item_id é único em stock_items, então é uma busca de uma
+    -- linha só, sem precisar de agregação.
+    SELECT si.device_id, d.model, d.ncm, d.cfop_padrao
+    INTO v_device, v_descricao, v_ncm, v_cfop
+    FROM public.stock_items si
+    JOIN public.devices d ON d.id = si.device_id
+    WHERE si.id = v_stock_item_id;
+
     IF v_device IS NULL OR COALESCE(trim(v_lote),'') = '' THEN CONTINUE; END IF; -- sem lote não dá pra rastrear
 
     SELECT COALESCE(SUM((it->>'quantidade')::numeric),0) INTO v_ja_devolvido
