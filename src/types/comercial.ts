@@ -47,6 +47,7 @@ export interface PedidoCompleto {
   cliente_id: string;
   cliente_nome: string;
   vendedora_nome: string | null;
+  vendedora_id: string | null;
   status: "pendente" | "separando" | "pronto" | "faturado" | "enviado" | "cancelado" | "retorno";
   observacoes: string | null;
   desconto_pct: number;

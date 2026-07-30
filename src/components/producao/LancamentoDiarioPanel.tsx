@@ -480,9 +480,9 @@ export function LancamentoDiarioPanel() {
 
         <div className="rounded-xl border border-border/60 p-3 space-y-3">
           <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-            <Zap className="h-3.5 w-3.5 text-green-600" /> Produção neste período <span className="font-normal normal-case text-muted-foreground/70">(deixe em branco se foi só parada)</span>
+            <Zap className="h-3.5 w-3.5 text-green-600" /> Produção neste período <span className="font-normal normal-case text-muted-foreground/70">(deixe a peça em "Nenhuma" se o período foi só parada)</span>
           </p>
-          <div><label className={lbl}>Peça</label>
+          <div><label className={lbl}>Peça (o que está sendo produzido)</label>
             <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
               <option value="">Nenhuma — período só com situação/parada</option>
               <optgroup label="Produtos de produção">
@@ -493,26 +493,22 @@ export function LancamentoDiarioPanel() {
               </optgroup>
             </select>
           </div>
-          {peca && (
-            <>
-              <div><label className={lbl}>Material usado</label>
-                <select value={materia} onChange={e => setMateria(e.target.value)} className={sel}>
-                  <option value="">Nenhum / não informar</option>
-                  {materias.map(m => <option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className={lbl}>Quantidade produzida *</label>
-                  <Input type="number" min="1" inputMode="numeric" value={quantidade}
-                    onChange={e => setQuantidade(e.target.value)} className="h-10" placeholder="pç" />
-                </div>
-                <div><label className={lbl}>Horas totais do período *</label>
-                  <Input type="number" min="0" step="0.25" inputMode="decimal" value={horas}
-                    onChange={e => setHoras(e.target.value)} className="h-10" placeholder="ex: 5" />
-                </div>
-              </div>
-            </>
-          )}
+          <div><label className={lbl}>Material usado</label>
+            <select value={materia} onChange={e => setMateria(e.target.value)} className={sel}>
+              <option value="">Nenhum / não informar</option>
+              {materias.map(m => <option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={lbl}>Quantidade produzida {peca && "*"}</label>
+              <Input type="number" min="1" inputMode="numeric" value={quantidade}
+                onChange={e => setQuantidade(e.target.value)} className="h-10" placeholder="pç" />
+            </div>
+            <div><label className={lbl}>Horas totais do período {peca && "*"}</label>
+              <Input type="number" min="0" step="0.25" inputMode="decimal" value={horas}
+                onChange={e => setHoras(e.target.value)} className="h-10" placeholder="ex: 5" />
+            </div>
+          </div>
         </div>
 
         <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-3 space-y-3">

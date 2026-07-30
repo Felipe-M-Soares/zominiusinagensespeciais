@@ -30,6 +30,8 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clienteId, setClienteId] = useState(clienteFixo?.id ?? "");
   const [saldoCliente, setSaldoCliente] = useState(0);
+  const [usarCredito, setUsarCredito] = useState(false);
+  const [valorCreditoAplicado, setValorCreditoAplicado] = useState("");
 
   // Crédito em aberto do cliente por devoluções aprovadas — pra vendedora
   // saber, na hora de montar o pedido, que o cliente já tem saldo a favor.
@@ -411,6 +413,19 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
       const { data: profile } = await supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle();
       const vendedoraNome = (profile as { display_name?: string } | null)?.display_name ?? user.email ?? "Vendedora";
 
+      // Crédito de devolução aplicado (se a vendedora marcou a opção): reduz
+      // proporcionalmente o valor líquido de cada item, e o total efetivo
+      // (pra pedidos_comerciais.desconto_pct, usado em relatórios).
+      const subtotalLiquidoAtual = itens.reduce((s, i) => s + precoLiquido(i) * i.quantidade, 0);
+      const subtotalBrutoAtual = itens.reduce((s, i) => s + (i.preco_unitario ?? 0) * i.quantidade, 0);
+      const creditoValor = usarCredito
+        ? Math.max(0, Math.min(parseFloat(valorCreditoAplicado.replace(",", ".")) || 0, saldoCliente, subtotalLiquidoAtual))
+        : 0;
+      const fatorCredito = creditoValor > 0 && subtotalLiquidoAtual > 0 ? Math.max(0, 1 - creditoValor / subtotalLiquidoAtual) : 1;
+      const descontoComCredito = subtotalBrutoAtual > 0
+        ? Math.round((1 - (subtotalLiquidoAtual * fatorCredito) / subtotalBrutoAtual) * 1000) / 10
+        : descontoMedio;
+
       const result = await criarPedidoComReserva({
         clienteId,
         itens: itens.map(i => ({
@@ -418,12 +433,14 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
           lote: i.lote || null,
           quantidade: i.quantidade,
           device_model: i.device_model,
-          valorUnitarioLiquido: precoLiquido(i),
+          valorUnitarioLiquido: precoLiquido(i) * fatorCredito,
         })),
         vendedoraId: user.id,
         vendedoraNome,
-        observacoes: obs || null,
-        descontoPct: descontoMedio,
+        observacoes: creditoValor > 0
+          ? `${obs ? obs + " — " : ""}Crédito de devolução aplicado: ${creditoValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+          : (obs || null),
+        descontoPct: creditoValor > 0 ? descontoComCredito : descontoMedio,
         frete: frete > 0 ? frete : 0,
         prazoEntrega: prazoEntrega || null,
         formaPagamento: formaPagamento || null,
@@ -437,7 +454,19 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
         return;
       }
 
-      toast.success("Pedido criado! O estoque irá separar os lotes.");
+      if (creditoValor > 0) {
+        const { data: consumo } = await (supabase.rpc as any)("consumir_credito_cliente", {
+          p_cliente_id: clienteId, p_valor: creditoValor, p_pedido_id: result.pedidoId ?? null,
+        });
+        const r = consumo as { ok?: boolean; error?: string } | null;
+        if (!r?.ok) {
+          toast.error(`Pedido criado, mas houve um problema ao consumir o crédito: ${r?.error ?? "erro desconhecido"} — avise o financeiro.`);
+        }
+      }
+
+      toast.success(creditoValor > 0
+        ? `Pedido criado com ${creditoValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} de crédito aplicado!`
+        : "Pedido criado! O estoque irá separar os lotes.");
       onSuccess();
     } catch (_e) {
       toast.error("Erro ao salvar pedido.");
@@ -507,8 +536,22 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
               <Plus className="h-3 w-3" /> Cadastrar novo cliente
             </button>
             {clienteId && saldoCliente > 0 && (
-              <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-500/10 border border-orange-500/25 rounded-lg px-2.5 py-1.5">
-                💰 Este cliente tem {saldoCliente.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} de crédito por devolução — combine com ele como abater
+              <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 px-2.5 py-2 space-y-1.5">
+                <label className="flex items-center gap-2 text-[11.5px] font-semibold text-orange-700 dark:text-orange-400 cursor-pointer select-none">
+                  <input type="checkbox" checked={usarCredito}
+                    onChange={e => {
+                      setUsarCredito(e.target.checked);
+                      if (e.target.checked && !valorCreditoAplicado) setValorCreditoAplicado(saldoCliente.toFixed(2));
+                    }}
+                    className="h-3.5 w-3.5 rounded border-orange-400" />
+                  💰 Cliente tem {saldoCliente.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} de crédito — usar neste pedido?
+                </label>
+                {usarCredito && (
+                  <input type="number" min={0} max={saldoCliente} step="0.01" value={valorCreditoAplicado}
+                    onChange={e => setValorCreditoAplicado(e.target.value)}
+                    className="w-full h-8 rounded-lg border border-orange-400/40 bg-background px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                    placeholder="Valor a abater" />
+                )}
               </div>
             )}
           </div>

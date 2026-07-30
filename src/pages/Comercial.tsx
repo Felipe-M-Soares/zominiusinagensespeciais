@@ -142,10 +142,16 @@ interface PedidoCardProps {
 // ser alterada — por regra fiscal ela continua "ativa" com a quantidade
 // original —, então o jeito certo de não confundir ninguém é mostrar aqui,
 // na tela, que uma devolução/troca já foi aprovada para este pedido.
-function DevolucaoBadgePedido({ pedidoId }: { pedidoId: string }) {
+// Só aparece pra quem pode ver: admin, ou a vendedora dona do pedido — não
+// pra outras vendedoras que só estejam olhando a lista geral.
+function DevolucaoBadgePedido({ pedidoId, vendedoraId, isAdmin }: { pedidoId: string; vendedoraId: string | null; isAdmin: boolean }) {
+  const { user } = useAuth();
   const [info, setInfo] = useState<{ tipo: string; qtd: number } | null>(null);
 
+  const podeVer = isAdmin || (!!user?.id && !!vendedoraId && user.id === vendedoraId);
+
   useEffect(() => {
+    if (!podeVer) { setInfo(null); return; }
     let cancelled = false;
     supabase
       .from("notas_devolucao_troca")
@@ -164,14 +170,14 @@ function DevolucaoBadgePedido({ pedidoId }: { pedidoId: string }) {
         setInfo({ tipo: aprovadas[0].tipo as string, qtd });
       });
     return () => { cancelled = true; };
-  }, [pedidoId]);
+  }, [pedidoId, podeVer]);
 
-  if (!info || info.qtd === 0) return null;
+  if (!podeVer || !info || info.qtd === 0) return null;
 
   return (
     <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-500/10 border border-orange-500/25 rounded-lg px-2.5 py-1.5">
       <RotateCcw className="h-3 w-3 shrink-0" />
-      {info.tipo === "devolucao" ? "Devolução" : "Troca"} registrada — {info.qtd} peça{info.qtd !== 1 ? "s" : ""} voltou{info.qtd !== 1 ? "aram" : ""} (NF original mantém os valores da venda por regra do SEFAZ)
+      {info.tipo === "devolucao" ? "Devolução" : "Troca"} registrada — {info.qtd} peça{info.qtd !== 1 ? "s" : ""} {info.qtd !== 1 ? "voltaram" : "voltou"} (NF original mantém os valores da venda por regra do SEFAZ)
     </div>
   );
 }
@@ -359,7 +365,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
             </span>
           </div>
 
-          <DevolucaoBadgePedido pedidoId={pedido.id} />
+          <DevolucaoBadgePedido pedidoId={pedido.id} vendedoraId={pedido.vendedora_id} isAdmin={isAdmin} />
 
           {/* ── Linha 2: Métricas (peças + desconto + data) ── */}
           <div className="flex items-center gap-2">
@@ -1188,7 +1194,7 @@ export default function Comercial() {
 
       setPedidos(pedidosData.map((p: Record<string, unknown>) => {
         const c = p.clientes as Record<string, unknown> | null;
-        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, frete: (p.frete as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
+        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, vendedora_id: (p.vendedora_id as string | null) ?? null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, frete: (p.frete as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
     } catch (_e) {
       toast.error("Erro ao carregar pedidos.", {

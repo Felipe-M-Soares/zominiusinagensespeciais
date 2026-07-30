@@ -53,6 +53,7 @@ BEGIN
     WHEN 'registrar_devolucao_troca'  THEN v_max := 5;   v_window := 60;
     WHEN 'iniciar_analise_qualidade_devolucao'   THEN v_max := 15;  v_window := 60;
     WHEN 'finalizar_analise_qualidade_devolucao' THEN v_max := 15;  v_window := 60;
+    WHEN 'consumir_credito_cliente'              THEN v_max := 10;  v_window := 60;
     ELSE                                    v_max := 100; v_window := 60;
   END CASE;
 
@@ -461,6 +462,24 @@ BEGIN
     status_msg  = '[QUALIDADE:' || (CASE WHEN p_decisao = 'reprovado' THEN 'reprovado' ELSE 'aprovado_'||p_decisao END) || '] ' || COALESCE(p_laudo,'')
   WHERE id = p_id;
 
+  -- Rastreabilidade regulatória (ANVISA): TODA peça que volta — devolução OU
+  -- troca — precisa ficar marcada como devolvida no histórico pós-venda,
+  -- pro controle de qualidade. Isso é independente da classificação fiscal
+  -- (devolução vs troca) que só importa pro Financeiro.
+  IF p_decisao IN ('devolucao','troca') THEN
+    FOR v_item IN SELECT * FROM jsonb_array_elements(v_itens_final) LOOP
+      v_lote   := upper(trim(COALESCE(v_item->>'lote','')));
+      v_device := NULLIF(v_item->>'device_id','')::uuid;
+      IF v_device IS NULL OR v_lote = '' THEN CONTINUE; END IF;
+
+      UPDATE public.rastreabilidade_pos_venda
+      SET status_recall = CASE WHEN status_recall = 'recall_ativo' THEN status_recall ELSE 'devolvido' END,
+          observacoes = COALESCE(observacoes || ' | ', '') || 'Qualidade: ' ||
+            (CASE WHEN p_decisao = 'devolucao' THEN 'devolução' ELSE 'troca' END) || ' aprovada — ' || COALESCE(p_laudo,'')
+      WHERE pedido_id = v_nota.pedido_id AND device_id = v_device AND lote = v_lote;
+    END LOOP;
+  END IF;
+
   IF p_decisao = 'devolucao' THEN
     FOR v_item IN SELECT * FROM jsonb_array_elements(v_itens_final) LOOP
       v_lote   := upper(trim(COALESCE(v_item->>'lote','')));
@@ -522,6 +541,82 @@ BEGIN
   RETURN jsonb_build_object('ok', true, 'decisao', p_decisao, 'valor_total', v_valor_total);
 END; $f14$;
 GRANT EXECUTE ON FUNCTION public.finalizar_analise_qualidade_devolucao(uuid, text, text, jsonb) TO authenticated;
+
+-- =============================================================================
+-- Consumo do saldo/crédito do cliente na hora da venda
+-- =============================================================================
+-- A vendedora não tem (e não deve ter) permissão de escrita direta em
+-- contas_financeiras (isso continua restrito a admin/financeiro). Esta RPC
+-- SECURITY DEFINER é o único jeito de "gastar" o crédito de devolução de um
+-- cliente: consome os créditos em aberto mais antigos primeiro (FIFO) até
+-- o valor pedido, marcando como pago o que for totalmente consumido e
+-- reduzindo o valor do que for parcialmente consumido — nunca deixa
+-- consumir mais do que existe de saldo real.
+DROP FUNCTION IF EXISTS public.consumir_credito_cliente(uuid, numeric, uuid);
+CREATE OR REPLACE FUNCTION public.consumir_credito_cliente(
+  p_cliente_id uuid,
+  p_valor      numeric,
+  p_pedido_id  uuid DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f16$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_role text;
+  v_name text;
+  v_restante numeric := p_valor;
+  v_conta RECORD;
+  v_consumir numeric;
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
+
+  SELECT role INTO v_role FROM public.user_roles WHERE user_id = v_uid LIMIT 1;
+  IF v_role NOT IN ('admin','comercial') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão: requer role admin ou comercial');
+  END IF;
+
+  IF NOT public.check_rate_limit('consumir_credito_cliente') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Muitas requisições. Aguarde 1 minuto.');
+  END IF;
+
+  IF p_valor IS NULL OR p_valor <= 0 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Valor inválido');
+  END IF;
+
+  FOR v_conta IN
+    SELECT cf.id, cf.valor
+    FROM public.contas_financeiras cf
+    JOIN public.pedidos_comerciais pc ON pc.id = cf.pedido_id
+    WHERE pc.cliente_id = p_cliente_id
+      AND cf.categoria = 'credito_devolucao_cliente'
+      AND cf.status = 'aberto'
+    ORDER BY cf.data_emissao ASC, cf.created_at ASC
+    FOR UPDATE OF cf
+  LOOP
+    EXIT WHEN v_restante <= 0;
+    v_consumir := LEAST(v_conta.valor, v_restante);
+    IF v_consumir >= v_conta.valor THEN
+      UPDATE public.contas_financeiras SET status = 'pago', data_pagamento = CURRENT_DATE,
+        observacoes = COALESCE(observacoes || ' | ', '') || 'Usado no pedido ' || COALESCE(p_pedido_id::text, '—')
+      WHERE id = v_conta.id;
+    ELSE
+      UPDATE public.contas_financeiras SET valor = valor - v_consumir,
+        observacoes = COALESCE(observacoes || ' | ', '') || 'Uso parcial (R$ '||v_consumir::text||') no pedido ' || COALESCE(p_pedido_id::text, '—')
+      WHERE id = v_conta.id;
+    END IF;
+    v_restante := v_restante - v_consumir;
+  END LOOP;
+
+  IF v_restante > 0.01 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Cliente não tem crédito suficiente disponível para esse valor');
+  END IF;
+
+  SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, entity_id, details)
+  VALUES (v_uid, COALESCE(v_name,'Desconhecido'), 'consumir_credito_cliente', 'cliente', p_cliente_id,
+    jsonb_build_object('valor', p_valor, 'pedido_id', p_pedido_id));
+
+  RETURN jsonb_build_object('ok', true, 'valor_consumido', p_valor);
+END; $f16$;
+GRANT EXECUTE ON FUNCTION public.consumir_credito_cliente(uuid, numeric, uuid) TO authenticated;
 
 -- ── RLS: Qualidade também precisa VER os registros de devolução/troca (para
 -- listar o que está em análise e o histórico já decidido). Escrita continua
