@@ -1,31 +1,18 @@
 /**
  * LancamentoDiarioPanel — Aba "Diário" da Produção
  *
- * Lançamento de fim de turno: quem é responsável pela produção lança tudo o
- * que aconteceu no dia de uma vez só, em todas as 6 máquinas. Produção e
- * Situação NÃO são mais dois itens separados — situação é um detalhe DE
- * DENTRO do próprio lançamento de produção (exatamente como o assistente
- * completo do Controle já fazia: um apontamento carrega junto as paradas que
- * aconteceram durante aquele período). Isso usa o parâmetro `p_paradas` que
- * a RPC `criar_apontamento_ppi51` já aceitava, mas que esta tela nunca tinha
- * usado.
+ * Lançamento de fim de turno, ancorado nos dois turnos fixos da empresa:
+ *   1º Turno — 06:00 às 15:30 (9,5h)
+ *   2º Turno — 15:31 à 01:30 do dia seguinte (≈9,98h)
  *
- * Como funciona um bloco de lançamento:
- *  - Escolhe a MÁQUINA.
- *  - Se rodou alguma peça nesse período: escolhe a peça, quantidade e as
- *    horas TOTAIS do período (ex: 5h).
- *  - Dentro desse mesmo bloco, pode adicionar 0+ "situações" que aconteceram
- *    durante esse período (ex: 1h de Setup, 30min de Almoço) — elas ficam
- *    junto do mesmo lançamento, não em outro lugar.
- *  - Se o período foi só parada, sem nenhuma peça produzida (ex: máquina
- *    quebrada o dia todo), deixa a peça em branco — nesse caso a(s)
- *    situação(ões) são gravadas direto, sem precisar de uma peça-mãe.
- *  - Adiciona quantos blocos precisar, pra quantas máquinas precisar, e no
- *    final salva tudo de uma vez.
+ * Ao escolher o turno, a duração total já é conhecida — não precisa mais
+ * digitar "quantas horas rodou". As situações (Setup, Almoço, Manutenção...)
+ * ficam dentro do mesmo bloco de produção (não são um item separado) e o
+ * tempo produtivo é sempre calculado automaticamente subtraindo as situações
+ * do turno, ao vivo, conforme você vai adicionando.
  *
- * A hora de início/fim de cada bloco é calculada automaticamente pra trás a
- * partir de agora, empilhando as durações de cada máquina na ordem em que
- * foram adicionadas (o mais recente termina agora).
+ * Tudo numa janela só: lançamento do dia, gráficos, e os demonstrativos
+ * semanal e mensal ficam na mesma tela, sem abas separadas.
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -36,6 +23,7 @@ import {
 import {
   Zap, Coffee, RefreshCw, CheckCircle2, Clock,
   Package, Factory, Timer, TrendingUp, Plus, X, ListPlus, User, Loader2,
+  CalendarDays, CalendarRange, Gauge,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +32,23 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+
+// ── Turnos fixos ─────────────────────────────────────────────────────────────
+
+interface Turno { id: 1 | 2; label: string; inicioH: number; inicioM: number; fimH: number; fimM: number; duracaoH: number; }
+const TURNOS: Turno[] = [
+  { id: 1, label: "1º Turno", inicioH: 6,  inicioM: 0,  fimH: 15, fimM: 30, duracaoH: 9.5 },
+  { id: 2, label: "2º Turno", inicioH: 15, inicioM: 31, fimH: 1,  fimM: 30, duracaoH: +(9 + 59 / 60).toFixed(4) },
+];
+function turnoAtual(): 1 | 2 {
+  const h = new Date().getHours() + new Date().getMinutes() / 60;
+  if (h >= 6 && h < 15.5167) return 1;
+  return 2; // cobre 15:31–24:00 e 00:00–01:30; o intervalo 01:30–06:00 cai no 2º por padrão
+}
+function fmtTurnoHorario(t: Turno): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(t.inicioH)}:${p(t.inicioM)} às ${p(t.fimH)}:${p(t.fimM)}${t.id === 2 ? " (dia seg.)" : ""}`;
+}
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -54,34 +59,28 @@ interface MateriaPrima { id: string; codigo: string; descricao: string; lote_atu
 
 interface ApontamentoHoje {
   id: string; maquina_codigo: string | null; maquina: string; produto: string;
-  quantidade: number; qtde_plan_disp: number; horas_planejadas: number;
+  quantidade: number; qtde_plan_disp: number; horas_planejadas: number; turno: string;
   operador: string; created_at: string;
 }
-
 interface ParadaHoje {
   id: string; maquina: string; motivo: string; tipo: string;
   inicio: string; fim: string | null; duracao_min: number | null;
   operador: string; observacoes?: string | null; user_id?: string | null;
 }
-
-// Uma situação embutida dentro de um bloco (produção ou, se o bloco não tem
-// peça, uma situação "solta")
-interface SituacaoEmbutida {
-  id: string; tipoParadaId: string; horas: string; pecaSetup?: string;
-}
-
-// Um bloco de lançamento ainda não salvo, esperando na lista da sessão
+interface SituacaoEmbutida { id: string; tipoParadaId: string; horas: string; pecaSetup?: string; }
 interface Bloco {
-  id: string; maquina: string;
-  peca?: string; materiaId?: string; quantidade?: string; horas?: string; // presentes só se houve produção
+  id: string; maquina: string; turno: 1 | 2;
+  peca?: string; materiaId?: string; quantidade?: string; horas?: string;
   situacoes: SituacaoEmbutida[];
 }
+
+interface OeePeriodo { disponibilidade: number; performance: number; qualidade: number; oee: number; qtde_produzida: number; hr_planejadas: number; }
 
 const CORES_PIZZA = ["#22c55e", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#64748b", "#a855f7"];
 const OPERADOR_STORAGE_KEY = "diario_producao_operador";
 
 const lbl = "text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 block";
-const sel = "w-full h-10 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
+const sel = "w-full h-10 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring transition-shadow";
 
 const STATUS_MAQUINA: Record<string, { label: string; dot: string; text: string }> = {
   operando: { label: "Operando", dot: "bg-green-500", text: "text-green-700 dark:text-green-400" },
@@ -90,18 +89,27 @@ const STATUS_MAQUINA: Record<string, { label: string; dot: string; text: string 
   manutencao: { label: "Manutenção", dot: "bg-red-500", text: "text-red-700 dark:text-red-400" },
 };
 
-function turnoAtual(): string {
-  const h = new Date().getHours();
-  return h >= 6 && h < 14 ? "1º Turno" : h >= 14 && h < 22 ? "2º Turno" : "3º Turno";
-}
-function horaDecimal(d: Date): number {
-  return +(d.getHours() + d.getMinutes() / 60).toFixed(4);
-}
 function fmtHora(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 function minutosDecorridos(inicioIso: string): number {
   return Math.max(0, Math.round((Date.now() - new Date(inicioIso).getTime()) / 60000));
+}
+function horaNum(s: string): number {
+  return parseFloat((s || "0").replace(",", ".")) || 0;
+}
+function inicioSemanaISO(): string {
+  const d = new Date();
+  const dow = d.getDay(); // 0=domingo
+  const diffSegunda = dow === 0 ? 6 : dow - 1;
+  d.setDate(d.getDate() - diffSegunda);
+  return d.toISOString().split("T")[0];
+}
+function OeeCor(v: number): string {
+  return v >= 85 ? "text-green-600" : v >= 65 ? "text-amber-600" : "text-red-600";
+}
+function OeeBg(v: number): string {
+  return v >= 85 ? "bg-green-500" : v >= 65 ? "bg-amber-500" : "bg-red-500";
 }
 
 // ── Painel ───────────────────────────────────────────────────────────────────
@@ -120,8 +128,13 @@ export function LancamentoDiarioPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
 
-  // ── Montagem do bloco atual (ainda não adicionado à lista) ──────────────────
+  const [oeeSemana, setOeeSemana] = useState<OeePeriodo | null>(null);
+  const [oeeMes, setOeeMes]       = useState<OeePeriodo | null>(null);
+  const [loadingResumos, setLoadingResumos] = useState(true);
+
+  // ── Montagem do bloco atual ──────────────────────────────────────────────
   const [maquinaSel, setMaquinaSel] = useState("");
+  const [turnoSel, setTurnoSel] = useState<1 | 2>(turnoAtual());
   const [operador, setOperador] = useState(() => {
     try { return localStorage.getItem(OPERADOR_STORAGE_KEY) ?? ""; } catch { return ""; }
   });
@@ -129,8 +142,8 @@ export function LancamentoDiarioPanel() {
   const [materia, setMateria] = useState("");
   const [quantidade, setQuantidade] = useState("");
   const [horas, setHoras] = useState("");
+  const [horasEditadoManual, setHorasEditadoManual] = useState(false);
   const [situacoesTemp, setSituacoesTemp] = useState<SituacaoEmbutida[]>([]);
-  // mini-form pra adicionar UMA situação dentro do bloco atual
   const [novaSituacaoTipo, setNovaSituacaoTipo] = useState("");
   const [novaSituacaoHoras, setNovaSituacaoHoras] = useState("");
   const [novaSituacaoPeca, setNovaSituacaoPeca] = useState("");
@@ -153,7 +166,7 @@ export function LancamentoDiarioPanel() {
       supabase.from("tipo_parada_producao").select("id,nome,categoria").eq("ativo", true).order("id"),
       loadWithFallback<MateriaPrima>("materias_primas_producao", "materias_primas"),
       supabase.from("apontamentos_producao")
-        .select("id,maquina_codigo,maquina,produto,quantidade,qtde_plan_disp,horas_planejadas,operador,created_at")
+        .select("id,maquina_codigo,maquina,produto,quantidade,qtde_plan_disp,horas_planejadas,turno,operador,created_at")
         .eq("data_apontamento", dia).order("created_at", { ascending: false }),
       supabase.from("paradas_producao")
         .select("id,maquina,motivo,tipo,inicio,fim,duracao_min,operador,observacoes,user_id")
@@ -181,25 +194,76 @@ export function LancamentoDiarioPanel() {
     setLoading(false);
   }, [loadWithFallback]);
 
-  useEffect(() => { load(); }, [load]);
+  const loadResumos = useCallback(async () => {
+    setLoadingResumos(true);
+    const hojeD = new Date();
+    const iniSemana = inicioSemanaISO();
+    const mes = hojeD.getMonth() + 1, ano = hojeD.getFullYear();
+    try {
+      const [{ data: semana }, { data: mensal }] = await Promise.all([
+        (supabase.rpc as any)("calcular_oee", { p_data_ini: iniSemana, p_data_fim: hoje, p_maquina: null }),
+        (supabase.rpc as any)("resumo_mensal_producao", { p_mes: mes, p_ano: ano }),
+      ]);
+      if (semana) setOeeSemana(semana as OeePeriodo);
+      const geral = (mensal as { geral?: OeePeriodo } | null)?.geral;
+      if (geral) setOeeMes(geral);
+    } catch { /* silencioso — resumo é complementar */ }
+    setLoadingResumos(false);
+  }, [hoje]);
+
+  useEffect(() => { load(); loadResumos(); }, [load, loadResumos]);
 
   const tipoSetup = useMemo(
     () => tiposParada.find(t => t.nome.trim().toLowerCase() === "setup"),
     [tiposParada]
   );
   const novaSituacaoEhSetup = novaSituacaoTipo !== "" && Number(novaSituacaoTipo) === tipoSetup?.id;
+  const turnoAtualDef = TURNOS.find(t => t.id === turnoSel)!;
+
+  // ── Alocação do turno selecionado, pra máquina selecionada ─────────────────
+  // Quanto já foi lançado (salvo hoje + na lista pendente) nesse turno, pra
+  // mostrar quanto tempo ainda resta e sugerir automaticamente as horas do
+  // próximo bloco — é isso que elimina ter que digitar "horas totais" do zero.
+  const alocacaoTurno = useMemo(() => {
+    const turnoLabel = turnoAtualDef.label;
+    const jaSalvo = apontamentosHoje
+      .filter(a => (a.maquina_codigo || a.maquina) === maquinaSel && a.turno === turnoLabel)
+      .reduce((s, a) => s + (Number(a.horas_planejadas) || 0), 0);
+    const jaPendente = blocos
+      .filter(b => b.maquina === maquinaSel && b.turno === turnoSel)
+      .reduce((s, b) => {
+        if (b.peca) return s + horaNum(b.horas ?? "0");
+        return s + b.situacoes.reduce((ss, x) => ss + horaNum(x.horas), 0);
+      }, 0);
+    const usado = jaSalvo + jaPendente;
+    const disponivel = Math.max(0, turnoAtualDef.duracaoH - usado);
+    return { jaSalvo, jaPendente, usado, disponivel, total: turnoAtualDef.duracaoH };
+  }, [apontamentosHoje, blocos, maquinaSel, turnoSel, turnoAtualDef]);
+
+  // Sugere automaticamente as horas do bloco atual = tempo disponível no
+  // turno, a não ser que o usuário já tenha editado manualmente esse campo
+  useEffect(() => {
+    if (!horasEditadoManual && peca) {
+      setHoras(alocacaoTurno.disponivel > 0 ? alocacaoTurno.disponivel.toFixed(2).replace(/\.?0+$/, "") || "0" : "");
+    }
+  }, [alocacaoTurno.disponivel, peca, horasEditadoManual]);
+
+  // Tempo produtivo do bloco atual = horas do bloco − situações já
+  // adicionadas nele — calculado ao vivo, sem precisar de conta manual
+  const horasSituacoesTemp = situacoesTemp.reduce((s, x) => s + horaNum(x.horas), 0);
+  const horasProdutivasBloco = Math.max(0, horaNum(horas) - horasSituacoesTemp);
 
   function limparMiniFormSituacao() {
     setNovaSituacaoTipo(""); setNovaSituacaoHoras(""); setNovaSituacaoPeca("");
   }
   function limparBlocoAtual() {
-    setPeca(""); setMateria(""); setQuantidade(""); setHoras(""); setSituacoesTemp([]);
+    setPeca(""); setMateria(""); setQuantidade(""); setHoras(""); setHorasEditadoManual(false); setSituacoesTemp([]);
     limparMiniFormSituacao();
   }
 
   function adicionarSituacaoAoBloco() {
     if (!novaSituacaoTipo) { toast.error("Selecione o código de situação"); return; }
-    const h = parseFloat(novaSituacaoHoras.replace(",", ".")) || 0;
+    const h = horaNum(novaSituacaoHoras);
     if (h <= 0) { toast.error("Informe as horas dessa situação"); return; }
     if (novaSituacaoEhSetup && !novaSituacaoPeca) { toast.error("Selecione a peça que será produzida depois do setup"); return; }
     setSituacoesTemp(prev => [...prev, {
@@ -212,23 +276,21 @@ export function LancamentoDiarioPanel() {
     setSituacoesTemp(prev => prev.filter(s => s.id !== id));
   }
 
-  // ── Adiciona o bloco montado à lista da sessão ──────────────────────────────
   function adicionarBloco() {
     if (!maquinaSel) { toast.error("Selecione a máquina"); return; }
     const temProducao = !!peca;
     if (temProducao) {
       if (!quantidade || parseInt(quantidade) <= 0) { toast.error("Informe a quantidade produzida"); return; }
-      const h = parseFloat(horas.replace(",", ".")) || 0;
-      if (h <= 0) { toast.error("Informe as horas totais do período"); return; }
-      const horasSituacoes = situacoesTemp.reduce((s, x) => s + (parseFloat(x.horas.replace(",", ".")) || 0), 0);
-      if (horasSituacoes > h) { toast.error("As situações somadas não podem passar das horas totais do período"); return; }
+      const h = horaNum(horas);
+      if (h <= 0) { toast.error("Informe as horas do bloco"); return; }
+      if (horasSituacoesTemp > h) { toast.error("As situações somadas não podem passar das horas do bloco"); return; }
     } else if (situacoesTemp.length === 0) {
       toast.error("Sem peça selecionada, adicione ao menos uma situação (o período foi só parada)");
       return;
     }
 
     const bloco: Bloco = {
-      id: crypto.randomUUID(), maquina: maquinaSel,
+      id: crypto.randomUUID(), maquina: maquinaSel, turno: turnoSel,
       peca: temProducao ? peca : undefined,
       materiaId: temProducao ? (materia || undefined) : undefined,
       quantidade: temProducao ? quantidade : undefined,
@@ -237,7 +299,7 @@ export function LancamentoDiarioPanel() {
     };
     setBlocos(prev => [...prev, bloco]);
     limparBlocoAtual();
-    toast.success("Bloco adicionado à lista — continue lançando ou salve quando terminar");
+    toast.success("Bloco adicionado à lista");
   }
 
   function removerBloco(id: string) {
@@ -251,94 +313,85 @@ export function LancamentoDiarioPanel() {
 
     setSaving(true);
     const falharam: Bloco[] = [];
-    const agora = new Date();
 
-    const porMaquina = new Map<string, Bloco[]>();
-    for (const b of blocos) porMaquina.set(b.maquina, [...(porMaquina.get(b.maquina) ?? []), b]);
+    for (const bloco of blocos) {
+      const turnoDef = TURNOS.find(t => t.id === bloco.turno)!;
+      const agora = new Date();
+      // Horário fixo do turno vira o horário do lançamento (início/fim reais
+      // do turno), em vez de calcular pra trás a partir de "agora"
+      const inicioDec = turnoDef.inicioH + turnoDef.inicioM / 60;
+      const fimDec = turnoDef.fimH + turnoDef.fimM / 60;
+      const hBloco = bloco.peca
+        ? horaNum(bloco.horas ?? "0")
+        : bloco.situacoes.reduce((s, x) => s + horaNum(x.horas), 0);
 
-    for (const [maquina, itens] of porMaquina) {
-      let fimAtual = agora;
-      for (let i = itens.length - 1; i >= 0; i--) {
-        const bloco = itens[i];
-        // Duração desse bloco no tempo: se tem produção, usa as horas totais
-        // digitadas; se é só situação (sem peça), soma as situações.
-        const hBloco = bloco.peca
-          ? (parseFloat((bloco.horas ?? "0").replace(",", ".")) || 0)
-          : bloco.situacoes.reduce((s, x) => s + (parseFloat(x.horas.replace(",", ".")) || 0), 0);
-        const inicioDate = new Date(fimAtual.getTime() - hBloco * 3600000);
-        const fimDate = fimAtual;
-        fimAtual = inicioDate;
+      try {
+        if (bloco.peca) {
+          const pecaSel = pecas.find(pc => pc.codigo === bloco.peca);
+          const mp = materias.find(m => m.id === bloco.materiaId);
+          const qtde = parseInt(bloco.quantidade ?? "0") || 0;
+          const porHora = pecaSel?.pecas_por_hora ?? 0;
+          const horasSituacoes = bloco.situacoes.reduce((s, x) => s + horaNum(x.horas), 0);
+          const horasProdutivas = Math.max(0, hBloco - horasSituacoes);
+          const planDisp = horasProdutivas > 0 && porHora > 0 ? +(porHora * horasProdutivas).toFixed(2) : qtde;
 
-        try {
-          if (bloco.peca) {
-            const pecaSel = pecas.find(pc => pc.codigo === bloco.peca);
-            const mp = materias.find(m => m.id === bloco.materiaId);
-            const qtde = parseInt(bloco.quantidade ?? "0") || 0;
-            const porHora = pecaSel?.pecas_por_hora ?? 0;
-            const horasSituacoes = bloco.situacoes.reduce((s, x) => s + (parseFloat(x.horas.replace(",", ".")) || 0), 0);
-            const horasProdutivas = Math.max(0, hBloco - horasSituacoes);
-            const planDisp = horasProdutivas > 0 && porHora > 0 ? +(porHora * horasProdutivas).toFixed(2) : qtde;
-
-            const pParadas = bloco.situacoes.map(s => {
-              const tp = tiposParada.find(t => t.id === Number(s.tipoParadaId));
-              return {
-                tipo_id: Number(s.tipoParadaId),
-                tipo_nome: tp?.id === tipoSetup?.id ? `Setup — ${s.pecaSetup}` : (tp?.nome ?? "Situação"),
-                duracao_horas: parseFloat(s.horas.replace(",", ".")) || 0,
-              };
-            });
-
-            const args = {
-              p_data: hoje, p_turno: turnoAtual(),
-              p_maquina: maquina, p_equipamento: maquina,
-              p_produto: bloco.peca, p_descricao_produto: pecaSel?.descricao ?? bloco.peca,
-              p_qtde_por_hora: porHora, p_horas_planejadas: hBloco, p_qtde_plan_disp: planDisp,
-              p_qtde_produzida: qtde,
-              p_horario_inicio: horaDecimal(inicioDate), p_horario_fim: horaDecimal(fimDate),
-              p_cycle_time_min: qtde > 0 && horasProdutivas > 0 ? +((horasProdutivas * 60) / qtde).toFixed(4) : null,
-              p_lead_time_horas: hBloco || null,
-              p_lote: "", p_lote_mp: mp?.lote_atual ?? "", p_descricao_mp: mp?.descricao ?? "",
-              p_comprimento_mm: null, p_consumo_mp_metros: null,
-              p_operador: operador.trim(), p_paradas: pParadas, p_refugos: [],
+          const pParadas = bloco.situacoes.map(s => {
+            const tp = tiposParada.find(t => t.id === Number(s.tipoParadaId));
+            return {
+              tipo_id: Number(s.tipoParadaId),
+              tipo_nome: tp?.id === tipoSetup?.id ? `Setup — ${s.pecaSetup}` : (tp?.nome ?? "Situação"),
+              duracao_horas: horaNum(s.horas),
             };
-            const preview = {
-              seq_producao: 0, data_apontamento: hoje, turno: turnoAtual(),
-              maquina, maquina_codigo: maquina,
-              produto: bloco.peca, descricao_produto: pecaSel?.descricao,
-              qtde_por_hora: porHora, horas_planejadas: hBloco, qtde_plan_disp: planDisp,
-              quantidade: qtde, horario_inicio: horaDecimal(inicioDate), horario_fim: horaDecimal(fimDate),
-              lote: "(pendente)", operador: operador.trim(), status: "concluido",
-              created_at: fimDate.toISOString(),
+          });
+
+          const args = {
+            p_data: hoje, p_turno: turnoDef.label,
+            p_maquina: bloco.maquina, p_equipamento: bloco.maquina,
+            p_produto: bloco.peca, p_descricao_produto: pecaSel?.descricao ?? bloco.peca,
+            p_qtde_por_hora: porHora, p_horas_planejadas: hBloco, p_qtde_plan_disp: planDisp,
+            p_qtde_produzida: qtde,
+            p_horario_inicio: +inicioDec.toFixed(4), p_horario_fim: +fimDec.toFixed(4),
+            p_cycle_time_min: qtde > 0 && horasProdutivas > 0 ? +((horasProdutivas * 60) / qtde).toFixed(4) : null,
+            p_lead_time_horas: hBloco || null,
+            p_lote: "", p_lote_mp: mp?.lote_atual ?? "", p_descricao_mp: mp?.descricao ?? "",
+            p_comprimento_mm: null, p_consumo_mp_metros: null,
+            p_operador: operador.trim(), p_paradas: pParadas, p_refugos: [],
+          };
+          const preview = {
+            seq_producao: 0, data_apontamento: hoje, turno: turnoDef.label,
+            maquina: bloco.maquina, maquina_codigo: bloco.maquina,
+            produto: bloco.peca, descricao_produto: pecaSel?.descricao,
+            qtde_por_hora: porHora, horas_planejadas: hBloco, qtde_plan_disp: planDisp,
+            quantidade: qtde, horario_inicio: inicioDec, horario_fim: fimDec,
+            lote: "(pendente)", operador: operador.trim(), status: "concluido",
+            created_at: agora.toISOString(),
+          };
+          const { ok } = await saveRpcWithFallback("criar_apontamento_ppi51", args, "apontamentos", preview);
+          if (!ok) throw new Error("Falha ao gravar produção");
+        } else {
+          let fimSituacao = new Date(agora);
+          for (let j = bloco.situacoes.length - 1; j >= 0; j--) {
+            const s = bloco.situacoes[j];
+            const hs = horaNum(s.horas);
+            const inicioSituacao = new Date(fimSituacao.getTime() - hs * 3600000);
+            const tp = tiposParada.find(t => t.id === Number(s.tipoParadaId));
+            const ehSetup = tp?.id === tipoSetup?.id;
+            const motivo = ehSetup ? `Setup — ${s.pecaSetup}` : (tp?.nome ?? "Situação");
+            const parada = {
+              id: crypto.randomUUID(), maquina: bloco.maquina, motivo,
+              tipo: tp?.categoria === "operacional" || tp?.categoria === "setup" ? "planejada" : "nao_planejada",
+              inicio: inicioSituacao.toISOString(), fim: fimSituacao.toISOString(), duracao_min: Math.round(hs * 60),
+              operador: operador.trim(),
+              observacoes: ehSetup ? `Preparação para produzir ${s.pecaSetup}` : null,
+              user_id: user?.id,
             };
-            const { ok } = await saveRpcWithFallback("criar_apontamento_ppi51", args, "apontamentos", preview);
-            if (!ok) throw new Error("Falha ao gravar produção");
-          } else {
-            // Bloco sem produção: cada situação é gravada direto (não tem
-            // apontamento-mãe pra pendurar em apontamento_paradas)
-            let fimSituacao = fimDate;
-            for (let j = bloco.situacoes.length - 1; j >= 0; j--) {
-              const s = bloco.situacoes[j];
-              const hs = parseFloat(s.horas.replace(",", ".")) || 0;
-              const inicioSituacao = new Date(fimSituacao.getTime() - hs * 3600000);
-              const tp = tiposParada.find(t => t.id === Number(s.tipoParadaId));
-              const ehSetup = tp?.id === tipoSetup?.id;
-              const motivo = ehSetup ? `Setup — ${s.pecaSetup}` : (tp?.nome ?? "Situação");
-              const parada = {
-                id: crypto.randomUUID(), maquina, motivo,
-                tipo: tp?.categoria === "operacional" || tp?.categoria === "setup" ? "planejada" : "nao_planejada",
-                inicio: inicioSituacao.toISOString(), fim: fimSituacao.toISOString(), duracao_min: Math.round(hs * 60),
-                operador: operador.trim(),
-                observacoes: ehSetup ? `Preparação para produzir ${s.pecaSetup}` : null,
-                user_id: user?.id,
-              };
-              const { error } = await saveWithFallback("paradas_producao", "paradas", "INSERT", parada);
-              if (error) throw new Error("Falha ao gravar situação");
-              fimSituacao = inicioSituacao;
-            }
+            const { error } = await saveWithFallback("paradas_producao", "paradas", "INSERT", parada);
+            if (error) throw new Error("Falha ao gravar situação");
+            fimSituacao = inicioSituacao;
           }
-        } catch {
-          falharam.push(bloco);
         }
+      } catch {
+        falharam.push(bloco);
       }
     }
 
@@ -352,9 +405,10 @@ export function LancamentoDiarioPanel() {
       setBlocos(falharam);
     }
     load();
+    loadResumos();
   }
 
-  // ── Agregações do dia para os gráficos (só do que já foi salvo) ────────────
+  // ── Agregações do dia para os gráficos ─────────────────────────────────────
   const resumo = useMemo(() => {
     const horasProducao = apontamentosHoje.reduce((s, a) => s + (Number(a.horas_planejadas) || 0), 0);
     const totalPecas    = apontamentosHoje.reduce((s, a) => s + (a.quantidade || 0), 0);
@@ -386,7 +440,6 @@ export function LancamentoDiarioPanel() {
   }, [apontamentosHoje, paradasHoje]);
 
   const maquinaAtual = maquinas.find(m => m.codigo === maquinaSel);
-  const horasSituacoesTemp = situacoesTemp.reduce((s, x) => s + (parseFloat(x.horas.replace(",", ".")) || 0), 0);
 
   const blocosPorMaquina = useMemo(() => {
     const g = new Map<string, Bloco[]>();
@@ -395,12 +448,13 @@ export function LancamentoDiarioPanel() {
   }, [blocos]);
 
   function descricaoBloco(b: Bloco): string {
+    const turnoTxt = TURNOS.find(t => t.id === b.turno)!.label;
     if (b.peca) {
       const pecaSel = pecas.find(pc => pc.codigo === b.peca);
       const sits = b.situacoes.length > 0 ? ` + ${b.situacoes.length} situação(ões)` : "";
-      return `Produção — ${b.peca}${pecaSel ? ` (${pecaSel.descricao})` : ""} · ${b.quantidade} pç · ${b.horas}h${sits}`;
+      return `${turnoTxt} · ${b.peca}${pecaSel ? ` (${pecaSel.descricao})` : ""} · ${b.quantidade} pç · ${b.horas}h${sits}`;
     }
-    return b.situacoes.map(s => {
+    return `${turnoTxt} · ` + b.situacoes.map(s => {
       const tp = tiposParada.find(t => t.id === Number(s.tipoParadaId));
       const ehSetup = tp?.id === tipoSetup?.id;
       return `${ehSetup ? `Setup (${s.pecaSetup})` : tp?.nome ?? "Situação"} · ${s.horas}h`;
@@ -408,24 +462,20 @@ export function LancamentoDiarioPanel() {
   }
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-200">
+    <div className="space-y-5 animate-in fade-in duration-200">
       {/* Cabeçalho do dia */}
       <div className="flex items-center gap-2">
         <p className="text-sm font-semibold">
           {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
         </p>
-        <span className="text-[11px] text-muted-foreground">· {turnoAtual()}</span>
-        <button onClick={load} disabled={loading}
+        <span className="text-[11px] text-muted-foreground">· {TURNOS.find(t => t.id === turnoAtual())?.label} em curso</span>
+        <button onClick={() => { load(); loadResumos(); }} disabled={loading}
           className="ml-auto h-9 w-9 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40 transition-colors">
           <RefreshCw className={cn("h-4 w-4 text-muted-foreground", loading && "animate-spin")} />
         </button>
       </div>
 
-      <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 px-3 py-2 text-[11.5px] text-blue-800 dark:text-blue-300">
-        Lançamento de fim de turno: monte a lista com tudo que aconteceu no dia — a situação (setup, almoço, manutenção...) fica dentro do próprio bloco de produção, não separado. Salve tudo de uma vez no final.
-      </div>
-
-      {/* KPIs do dia (do que já foi salvo) */}
+      {/* KPIs do dia */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { Icon: Package,    label: "Peças hoje",  value: resumo.totalPecas.toLocaleString("pt-BR"), cor: "text-green-600",  bg: "bg-green-500/5 border-green-500/20" },
@@ -433,138 +483,195 @@ export function LancamentoDiarioPanel() {
           { Icon: TrendingUp, label: "Eficiência",  value: `${resumo.eficiencia.toFixed(1)}%`,        cor: resumo.eficiencia >= 95 ? "text-green-600" : resumo.eficiencia >= 80 ? "text-amber-600" : "text-red-600", bg: "bg-purple-500/5 border-purple-500/20" },
           { Icon: ListPlus,   label: "Na lista",    value: String(blocos.length),                     cor: blocos.length > 0 ? "text-blue-600" : "text-muted-foreground", bg: "bg-blue-500/5 border-blue-500/20" },
         ].map(k => (
-          <div key={k.label} className={cn("rounded-2xl border p-3 space-y-1", k.bg)}>
+          <div key={k.label} className={cn("rounded-2xl border p-3.5 space-y-1 transition-shadow hover:shadow-sm", k.bg)}>
             <div className="flex items-center gap-1.5">
               <k.Icon className={cn("h-3.5 w-3.5", k.cor)} />
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{k.label}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{k.label}</p>
             </div>
-            <p className={cn("text-lg font-bold", k.cor)}>{k.value}</p>
+            <p className={cn("text-xl font-bold tabular-nums", k.cor)}>{k.value}</p>
           </div>
         ))}
       </div>
 
       {/* Montagem do bloco */}
-      <div className="rounded-2xl border bg-card p-4 space-y-4">
-        <div>
-          <label className={lbl}>Máquina *</label>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-            {maquinas.map(m => {
-              const st = STATUS_MAQUINA[m.status] ?? STATUS_MAQUINA.operando;
-              const ativa = maquinaSel === m.codigo;
-              const qtdNaLista = blocos.filter(b => b.maquina === m.codigo).length;
-              return (
-                <button key={m.id} type="button" onClick={() => setMaquinaSel(m.codigo)}
-                  className={cn("relative flex flex-col items-center justify-center gap-0.5 h-16 rounded-xl border-2 transition-colors",
-                    ativa ? "border-primary bg-primary/5" : "border-input hover:bg-muted/30")}>
-                  <span className="text-sm font-bold">{m.codigo}</span>
-                  <span className="text-[9px] text-muted-foreground truncate max-w-full px-1">{m.nome}</span>
-                  <span className="absolute top-1.5 right-1.5 flex items-center gap-1">
-                    {qtdNaLista > 0 && <span className="text-[9px] font-bold text-blue-600 bg-blue-500/15 rounded-full h-3.5 w-3.5 flex items-center justify-center">{qtdNaLista}</span>}
-                    <span className={cn("h-1.5 w-1.5 rounded-full", st.dot)} />
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {maquinaAtual && (
-            <p className={cn("text-[11px] mt-1.5 font-medium", STATUS_MAQUINA[maquinaAtual.status]?.text)}>
-              {maquinaAtual.codigo} — {STATUS_MAQUINA[maquinaAtual.status]?.label ?? maquinaAtual.status}
-            </p>
-          )}
+      <div className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border/40 bg-muted/20">
+          <h3 className="text-[13px] font-bold flex items-center gap-2">
+            <ListPlus className="h-4 w-4 text-primary" /> Novo lançamento
+          </h3>
         </div>
 
-        <div>
-          <label className={lbl}><User className="h-3 w-3 inline -mt-0.5 mr-1" />Operador *</label>
-          <Input value={operador} onChange={e => setOperador(e.target.value)} className="h-10" placeholder="Nome do operador" />
-        </div>
-
-        <div className="rounded-xl border border-border/60 p-3 space-y-3">
-          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-            <Zap className="h-3.5 w-3.5 text-green-600" /> Produção neste período <span className="font-normal normal-case text-muted-foreground/70">(deixe a peça em "Nenhuma" se o período foi só parada)</span>
-          </p>
-          <div><label className={lbl}>Peça (o que está sendo produzido)</label>
-            <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
-              <option value="">Nenhuma — período só com situação/parada</option>
-              <optgroup label="Produtos de produção">
-                {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-              </optgroup>
-              <optgroup label="Componentes registrados">
-                {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-              </optgroup>
-            </select>
-          </div>
-          <div><label className={lbl}>Material usado</label>
-            <select value={materia} onChange={e => setMateria(e.target.value)} className={sel}>
-              <option value="">Nenhum / não informar</option>
-              {materias.map(m => <option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className={lbl}>Quantidade produzida {peca && "*"}</label>
-              <Input type="number" min="1" inputMode="numeric" value={quantidade}
-                onChange={e => setQuantidade(e.target.value)} className="h-10" placeholder="pç" />
-            </div>
-            <div><label className={lbl}>Horas totais do período {peca && "*"}</label>
-              <Input type="number" min="0" step="0.25" inputMode="decimal" value={horas}
-                onChange={e => setHoras(e.target.value)} className="h-10" placeholder="ex: 5" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-3 space-y-3">
-          <p className="text-[11px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
-            <Coffee className="h-3.5 w-3.5" /> Situações dentro desse período <span className="font-normal normal-case text-blue-700/70 dark:text-blue-400/70">(Setup, Almoço, Manutenção...)</span>
-          </p>
-
-          {situacoesTemp.length > 0 && (
-            <div className="space-y-1.5">
-              {situacoesTemp.map(s => {
-                const tp = tiposParada.find(t => t.id === Number(s.tipoParadaId));
-                const ehSetup = tp?.id === tipoSetup?.id;
+        <div className="p-5 space-y-5">
+          {/* Máquina */}
+          <div>
+            <label className={lbl}>Máquina *</label>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {maquinas.map(m => {
+                const st = STATUS_MAQUINA[m.status] ?? STATUS_MAQUINA.operando;
+                const ativa = maquinaSel === m.codigo;
+                const qtdNaLista = blocos.filter(b => b.maquina === m.codigo).length;
                 return (
-                  <div key={s.id} className="flex items-center gap-2 text-[12px] bg-card/70 rounded-lg px-2.5 py-1.5">
-                    <span className="flex-1 truncate">{ehSetup ? `Setup — peça ${s.pecaSetup}` : tp?.nome}</span>
-                    <span className="font-semibold shrink-0">{s.horas}h</span>
-                    <button type="button" onClick={() => removerSituacaoDoBloco(s.id)} className="text-muted-foreground hover:text-red-500 shrink-0">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <button key={m.id} type="button" onClick={() => setMaquinaSel(m.codigo)}
+                    className={cn("relative flex flex-col items-center justify-center gap-0.5 h-16 rounded-xl border-2 transition-all",
+                      ativa ? "border-primary bg-primary/5 shadow-sm" : "border-input hover:border-primary/30 hover:bg-muted/30")}>
+                    <span className="text-sm font-bold">{m.codigo}</span>
+                    <span className="text-[9px] text-muted-foreground truncate max-w-full px-1">{m.nome}</span>
+                    <span className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                      {qtdNaLista > 0 && <span className="text-[9px] font-bold text-blue-600 bg-blue-500/15 rounded-full h-3.5 w-3.5 flex items-center justify-center">{qtdNaLista}</span>}
+                      <span className={cn("h-1.5 w-1.5 rounded-full", st.dot)} />
+                    </span>
+                  </button>
                 );
               })}
-              {peca && <p className="text-[10px] text-muted-foreground">{horasSituacoesTemp.toFixed(2)}h de situação, dentro das {horas || "?"}h totais do período</p>}
             </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-2">
-            <select value={novaSituacaoTipo} onChange={e => setNovaSituacaoTipo(e.target.value)} className={cn(sel, "h-9")}>
-              <option value="">Código de situação...</option>
-              {tiposParada.map(t => <option key={t.id} value={t.id}>{String(t.id).padStart(2, "0")} — {t.nome}</option>)}
-            </select>
-            <Input type="number" min="0" step="0.25" inputMode="decimal" value={novaSituacaoHoras}
-              onChange={e => setNovaSituacaoHoras(e.target.value)} className="h-9" placeholder="Horas" />
+            {maquinaAtual && (
+              <p className={cn("text-[11px] mt-1.5 font-medium", STATUS_MAQUINA[maquinaAtual.status]?.text)}>
+                {maquinaAtual.codigo} — {STATUS_MAQUINA[maquinaAtual.status]?.label ?? maquinaAtual.status}
+              </p>
+            )}
           </div>
-          {novaSituacaoEhSetup && (
-            <select value={novaSituacaoPeca} onChange={e => setNovaSituacaoPeca(e.target.value)} className={cn(sel, "h-9")}>
-              <option value="">Peça que será produzida depois do setup...</option>
-              <optgroup label="Produtos de produção">
-                {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-              </optgroup>
-              <optgroup label="Componentes registrados">
-                {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-              </optgroup>
-            </select>
-          )}
-          <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 h-9" onClick={adicionarSituacaoAoBloco}>
-            <Plus className="h-3.5 w-3.5" /> Adicionar situação a este bloco
+
+          {/* Operador */}
+          <div>
+            <label className={lbl}><User className="h-3 w-3 inline -mt-0.5 mr-1" />Operador *</label>
+            <Input value={operador} onChange={e => setOperador(e.target.value)} className="h-10" placeholder="Nome do operador" />
+          </div>
+
+          {/* Turno — duração fixa, cálculo automático */}
+          <div>
+            <label className={lbl}>Turno *</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TURNOS.map(t => (
+                <button key={t.id} type="button" onClick={() => setTurnoSel(t.id)}
+                  className={cn("rounded-xl border-2 p-3 text-left transition-all",
+                    turnoSel === t.id ? "border-primary bg-primary/5" : "border-input hover:border-primary/30")}>
+                  <p className="text-[12px] font-bold">{t.label}</p>
+                  <p className="text-[10.5px] text-muted-foreground">{fmtTurnoHorario(t)}</p>
+                  <p className="text-[10px] text-muted-foreground/70">{t.duracaoH.toFixed(2).replace(/\.?0+$/, "")}h de duração</p>
+                </button>
+              ))}
+            </div>
+            {/* Barra de alocação do turno pra máquina selecionada */}
+            <div className="mt-2.5 rounded-xl border border-border/40 bg-muted/10 p-3 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Alocado neste turno — {maquinaSel || "—"}</span>
+                <span className="font-semibold">{alocacaoTurno.usado.toFixed(2).replace(/\.?0+$/, "")}h / {alocacaoTurno.total.toFixed(2).replace(/\.?0+$/, "")}h</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div className={cn("h-full rounded-full transition-all", alocacaoTurno.usado > alocacaoTurno.total ? "bg-red-500" : "bg-primary")}
+                  style={{ width: `${Math.min(100, (alocacaoTurno.usado / alocacaoTurno.total) * 100)}%` }} />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                {alocacaoTurno.disponivel > 0
+                  ? `${alocacaoTurno.disponivel.toFixed(2).replace(/\.?0+$/, "")}h ainda disponíveis neste turno`
+                  : "Turno totalmente alocado"}
+              </p>
+            </div>
+          </div>
+
+          {/* Produção */}
+          <div className="rounded-xl border border-border/60 p-3.5 space-y-3">
+            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5 text-green-600" /> Produção neste bloco <span className="font-normal normal-case text-muted-foreground/70">(deixe em "Nenhuma" se foi só parada)</span>
+            </p>
+            <div><label className={lbl}>Peça</label>
+              <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
+                <option value="">Nenhuma — período só com situação/parada</option>
+                <optgroup label="Produtos de produção">
+                  {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                </optgroup>
+                <optgroup label="Componentes registrados">
+                  {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                </optgroup>
+              </select>
+            </div>
+            {peca && (
+              <>
+                <div><label className={lbl}>Material usado</label>
+                  <select value={materia} onChange={e => setMateria(e.target.value)} className={sel}>
+                    <option value="">Nenhum / não informar</option>
+                    {materias.map(m => <option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className={lbl}>Quantidade produzida *</label>
+                    <Input type="number" min="1" inputMode="numeric" value={quantidade}
+                      onChange={e => setQuantidade(e.target.value)} className="h-10" placeholder="pç" />
+                  </div>
+                  <div><label className={lbl}>Horas do bloco * <span className="normal-case font-normal text-muted-foreground/70">(sugerido)</span></label>
+                    <Input type="number" min="0" step="0.25" inputMode="decimal" value={horas}
+                      onChange={e => { setHoras(e.target.value); setHorasEditadoManual(true); }} className="h-10" placeholder="ex: 5" />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Situações — dentro do mesmo bloco, cálculo automático */}
+          <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-3.5 space-y-3">
+            <p className="text-[11px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
+              <Coffee className="h-3.5 w-3.5" /> Situações dentro deste bloco <span className="font-normal normal-case text-blue-700/70 dark:text-blue-400/70">(Setup, Almoço, Manutenção...)</span>
+            </p>
+
+            {situacoesTemp.length > 0 && (
+              <div className="space-y-1.5">
+                {situacoesTemp.map(s => {
+                  const tp = tiposParada.find(t => t.id === Number(s.tipoParadaId));
+                  const ehSetup = tp?.id === tipoSetup?.id;
+                  return (
+                    <div key={s.id} className="flex items-center gap-2 text-[12px] bg-card/70 rounded-lg px-2.5 py-1.5">
+                      <span className="flex-1 truncate">{ehSetup ? `Setup — peça ${s.pecaSetup}` : tp?.nome}</span>
+                      <span className="font-semibold shrink-0">{s.horas}h</span>
+                      <button type="button" onClick={() => removerSituacaoDoBloco(s.id)} className="text-muted-foreground hover:text-red-500 shrink-0">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <select value={novaSituacaoTipo} onChange={e => setNovaSituacaoTipo(e.target.value)} className={cn(sel, "h-9")}>
+                <option value="">Código de situação...</option>
+                {tiposParada.map(t => <option key={t.id} value={t.id}>{String(t.id).padStart(2, "0")} — {t.nome}</option>)}
+              </select>
+              <Input type="number" min="0" step="0.25" inputMode="decimal" value={novaSituacaoHoras}
+                onChange={e => setNovaSituacaoHoras(e.target.value)} className="h-9" placeholder="Horas" />
+            </div>
+            {novaSituacaoEhSetup && (
+              <select value={novaSituacaoPeca} onChange={e => setNovaSituacaoPeca(e.target.value)} className={cn(sel, "h-9")}>
+                <option value="">Peça que será produzida depois do setup...</option>
+                <optgroup label="Produtos de produção">
+                  {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                </optgroup>
+                <optgroup label="Componentes registrados">
+                  {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
+                </optgroup>
+              </select>
+            )}
+            <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 h-9" onClick={adicionarSituacaoAoBloco}>
+              <Plus className="h-3.5 w-3.5" /> Adicionar situação a este bloco
+            </Button>
+
+            {/* Cálculo automático — sem conta manual */}
+            {peca && (
+              <div className="flex items-center justify-between rounded-lg bg-card/80 border border-border/40 px-3 py-2">
+                <span className="text-[11px] text-muted-foreground">Tempo produtivo (calculado automaticamente)</span>
+                <span className={cn("text-[13px] font-bold tabular-nums", horasProdutivasBloco > 0 ? "text-green-600" : "text-muted-foreground")}>
+                  {horaNum(horas).toFixed(2).replace(/\.?0+$/, "")}h − {horasSituacoesTemp.toFixed(2).replace(/\.?0+$/, "")}h = {horasProdutivasBloco.toFixed(2).replace(/\.?0+$/, "")}h
+                </span>
+              </div>
+            )}
+          </div>
+
+          <Button className="w-full gap-1.5 h-11" variant="outline" onClick={adicionarBloco} disabled={saving}>
+            <Plus className="h-4 w-4" /> Adicionar bloco à lista
           </Button>
         </div>
-
-        <Button className="w-full gap-1.5 h-11" variant="outline" onClick={adicionarBloco} disabled={saving}>
-          <Plus className="h-4 w-4" /> Adicionar bloco à lista
-        </Button>
       </div>
 
-      {/* Lista da sessão — tudo que ainda não foi salvo */}
+      {/* Lista da sessão */}
       {blocos.length > 0 && (
         <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -662,6 +769,20 @@ export function LancamentoDiarioPanel() {
         </div>
       </div>
 
+      {/* Demonstrativos — mesma tela, sem aba separada */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ResumoPeriodoCard
+          titulo="Demonstrativo da Semana" Icon={CalendarDays}
+          subtitulo={`Desde segunda-feira até hoje`}
+          dado={oeeSemana} loading={loadingResumos}
+        />
+        <ResumoPeriodoCard
+          titulo="Demonstrativo do Mês" Icon={CalendarRange}
+          subtitulo={new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+          dado={oeeMes} loading={loadingResumos}
+        />
+      </div>
+
       {/* Lançamentos do dia já salvos */}
       <div className="rounded-2xl border bg-card p-4 space-y-2">
         <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -678,7 +799,7 @@ export function LancamentoDiarioPanel() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{a.produto}</p>
-                  <p className="text-[11px] text-muted-foreground">{a.maquina_codigo || a.maquina} · {a.operador}</p>
+                  <p className="text-[11px] text-muted-foreground">{a.maquina_codigo || a.maquina} · {a.turno} · {a.operador}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="font-semibold text-sm text-green-600">{a.quantidade.toLocaleString("pt-BR")} pç</p>
@@ -689,6 +810,64 @@ export function LancamentoDiarioPanel() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Card de demonstrativo (semana/mês) ───────────────────────────────────────
+
+function ResumoPeriodoCard({ titulo, subtitulo, Icon, dado, loading }: {
+  titulo: string; subtitulo: string; Icon: React.ElementType; dado: OeePeriodo | null; loading: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Icon className="h-4 w-4 text-primary" />
+        </div>
+        <div>
+          <h3 className="text-[13px] font-bold">{titulo}</h3>
+          <p className="text-[10.5px] text-muted-foreground capitalize">{subtitulo}</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8 text-muted-foreground text-[12px] gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" /> Calculando...
+        </div>
+      ) : !dado || dado.hr_planejadas === 0 ? (
+        <p className="text-[12px] text-muted-foreground py-6 text-center">Sem lançamentos neste período</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="rounded-xl bg-muted/20 p-2.5">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Peças produzidas</p>
+              <p className="text-lg font-bold">{dado.qtde_produzida.toLocaleString("pt-BR")}</p>
+            </div>
+            <div className="rounded-xl bg-muted/20 p-2.5">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide flex items-center gap-1"><Gauge className="h-3 w-3" />OEE</p>
+              <p className={cn("text-lg font-bold", OeeCor(dado.oee))}>{dado.oee.toFixed(1)}%</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {[
+              { label: "Disponibilidade", v: dado.disponibilidade },
+              { label: "Performance", v: dado.performance },
+              { label: "Qualidade", v: dado.qualidade },
+            ].map(f => (
+              <div key={f.label} className="space-y-0.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground">{f.label}</span>
+                  <span className={cn("font-semibold", OeeCor(f.v))}>{f.v.toFixed(1)}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div className={cn("h-full rounded-full", OeeBg(f.v))} style={{ width: `${Math.min(100, f.v)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
