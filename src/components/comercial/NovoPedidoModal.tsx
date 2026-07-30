@@ -29,6 +29,26 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
   // Cliente
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clienteId, setClienteId] = useState(clienteFixo?.id ?? "");
+  const [saldoCliente, setSaldoCliente] = useState(0);
+
+  // Crédito em aberto do cliente por devoluções aprovadas — pra vendedora
+  // saber, na hora de montar o pedido, que o cliente já tem saldo a favor.
+  useEffect(() => {
+    if (!clienteId) { setSaldoCliente(0); return; }
+    let cancelled = false;
+    supabase
+      .from("contas_financeiras")
+      .select("valor, pedidos_comerciais!inner(cliente_id)")
+      .eq("categoria", "credito_devolucao_cliente")
+      .eq("status", "aberto")
+      .eq("pedidos_comerciais.cliente_id", clienteId)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const total = (data ?? []).reduce((s, r) => s + (Number(r.valor) || 0), 0);
+        setSaldoCliente(total);
+      });
+    return () => { cancelled = true; };
+  }, [clienteId]);
   const [clienteSearch, setClienteSearch] = useState(clienteFixo?.nome ?? "");
   const [showClienteDrop, setShowClienteDrop] = useState(false);
   const [novoClienteModal, setNovoClienteModal] = useState(false);
@@ -486,6 +506,11 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
             <button type="button" onClick={() => setNovoClienteModal(true)} className="flex items-center gap-1.5 text-[11px] text-violet-500 hover:text-violet-400 transition-colors">
               <Plus className="h-3 w-3" /> Cadastrar novo cliente
             </button>
+            {clienteId && saldoCliente > 0 && (
+              <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-500/10 border border-orange-500/25 rounded-lg px-2.5 py-1.5">
+                💰 Este cliente tem {saldoCliente.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} de crédito por devolução — combine com ele como abater
+              </div>
+            )}
           </div>
 
           {/* ── Adicionar Peça ── */}

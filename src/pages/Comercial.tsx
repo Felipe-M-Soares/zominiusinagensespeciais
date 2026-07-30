@@ -137,6 +137,45 @@ interface PedidoCardProps {
   onEditarPedido: (p: PedidoCompleto) => void;
 }
 
+// Sinaliza, no próprio pedido original, que parte (ou tudo) dele já voltou
+// por devolução/troca. A NF-e de venda já autorizada pelo SEFAZ não pode
+// ser alterada — por regra fiscal ela continua "ativa" com a quantidade
+// original —, então o jeito certo de não confundir ninguém é mostrar aqui,
+// na tela, que uma devolução/troca já foi aprovada para este pedido.
+function DevolucaoBadgePedido({ pedidoId }: { pedidoId: string }) {
+  const [info, setInfo] = useState<{ tipo: string; qtd: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("notas_devolucao_troca")
+      .select("tipo, itens, status_msg")
+      .eq("pedido_id", pedidoId)
+      .neq("status", "cancelada")
+      .then(({ data }) => {
+        if (cancelled || !data || data.length === 0) return;
+        // só conta as que a Qualidade já aprovou (ou que vieram do fluxo manual do Financeiro)
+        const aprovadas = data.filter(d => !(d.status_msg ?? "").startsWith("[QUALIDADE:em_analise]"));
+        if (aprovadas.length === 0) return;
+        const qtd = aprovadas.reduce((s, d) => {
+          const itens = (d.itens as { quantidade?: number }[]) ?? [];
+          return s + itens.reduce((si, it) => si + (it.quantidade ?? 0), 0);
+        }, 0);
+        setInfo({ tipo: aprovadas[0].tipo as string, qtd });
+      });
+    return () => { cancelled = true; };
+  }, [pedidoId]);
+
+  if (!info || info.qtd === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-500/10 border border-orange-500/25 rounded-lg px-2.5 py-1.5">
+      <RotateCcw className="h-3 w-3 shrink-0" />
+      {info.tipo === "devolucao" ? "Devolução" : "Troca"} registrada — {info.qtd} peça{info.qtd !== 1 ? "s" : ""} voltou{info.qtd !== 1 ? "aram" : ""} (NF original mantém os valores da venda por regra do SEFAZ)
+    </div>
+  );
+}
+
 function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar, onRemoverItemComercial, onEditarPedido }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
@@ -319,6 +358,8 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
               {s.label}
             </span>
           </div>
+
+          <DevolucaoBadgePedido pedidoId={pedido.id} />
 
           {/* ── Linha 2: Métricas (peças + desconto + data) ── */}
           <div className="flex items-center gap-2">
@@ -736,14 +777,15 @@ function CreditosClientesCard({ isAdmin, currentUserName }: { isAdmin: boolean; 
             vendedora_nome: (pc?.vendedora_nome as string) ?? null,
           };
         });
-        setCreditos(isAdmin ? mapped : mapped.filter(c => c.vendedora_nome === currentUserName));
+        setCreditos(isAdmin ? mapped : mapped.filter(c =>
+          (c.vendedora_nome ?? "").trim().toLowerCase() === (currentUserName ?? "").trim().toLowerCase()
+        ));
         setLoading(false);
       });
     return () => { cancelled = true; };
   }, [isAdmin, currentUserName]);
 
   if (loading) return null;
-  if (creditos.length === 0) return null;
 
   const totalAberto = creditos.filter(c => c.status === "aberto").reduce((s, c) => s + c.valor, 0);
 
@@ -762,7 +804,9 @@ function CreditosClientesCard({ isAdmin, currentUserName }: { isAdmin: boolean; 
         )}
       </div>
       <div className="divide-y divide-orange-500/10 max-h-64 overflow-y-auto">
-        {creditos.map(c => (
+        {creditos.length === 0 ? (
+          <p className="px-4 py-4 text-[11.5px] text-muted-foreground text-center">Nenhum crédito de devolução no momento</p>
+        ) : creditos.map(c => (
           <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
             <div className="min-w-0 flex-1">
               <p className="text-[12px] font-medium truncate">{c.cliente_nome ?? c.descricao}</p>

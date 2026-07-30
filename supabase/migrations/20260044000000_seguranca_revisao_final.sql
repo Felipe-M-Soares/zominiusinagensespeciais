@@ -480,7 +480,7 @@ BEGIN
       UPDATE public.stock_items SET quantity = quantity - v_qtd, updated_at = now() WHERE id = v_retrab_id;
       INSERT INTO public.stock_movements (stock_item_id, type, quantity, reason, lote, user_id, user_display_name)
       VALUES (v_retrab_id, 'saida', v_qtd,
-        'Devolução aprovada pela Qualidade — retorna ao estoque (NF devolução '||COALESCE(v_nota.numero, left(p_id::text,8))||')',
+        'Devolução aprovada pela Qualidade — retorna ao estoque (ref. NF venda '||COALESCE(v_nota.nf_original_numero,'s/nº')||', devolução #'||left(p_id::text,8)||')',
         v_lote, v_uid, (SELECT display_name FROM public.profiles WHERE user_id = v_uid));
 
       SELECT id INTO v_expedicao_id FROM public.stock_items WHERE device_id = v_device AND fase = 'expedicao' LIMIT 1;
@@ -491,7 +491,7 @@ BEGIN
       UPDATE public.stock_items SET quantity = quantity + v_qtd, updated_at = now() WHERE id = v_expedicao_id;
       INSERT INTO public.stock_movements (stock_item_id, type, quantity, reason, lote, user_id, user_display_name)
       VALUES (v_expedicao_id, 'entrada', v_qtd,
-        'Devolução aprovada pela Qualidade — mesmo lote da venda (NF devolução '||COALESCE(v_nota.numero, left(p_id::text,8))||')',
+        'Devolução aprovada pela Qualidade — mesmo lote da venda (ref. NF venda '||COALESCE(v_nota.nf_original_numero,'s/nº')||', devolução #'||left(p_id::text,8)||')',
         v_lote, v_uid, (SELECT display_name FROM public.profiles WHERE user_id = v_uid));
     END LOOP;
 
@@ -529,5 +529,5 @@ GRANT EXECUTE ON FUNCTION public.finalizar_analise_qualidade_devolucao(uuid, tex
 -- direto na tabela para a role qualidade. ────────────────────────────────────
 DROP POLICY IF EXISTS "notas_dev_troca_select" ON public.notas_devolucao_troca;
 CREATE POLICY "notas_dev_troca_select" ON public.notas_devolucao_troca FOR SELECT TO authenticated USING (
-  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin','financeiro','qualidade'))
+  EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('admin','financeiro','qualidade','comercial'))
 );
