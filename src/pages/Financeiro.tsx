@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { escHtml } from "@/lib/escHtml";
 import { formatBRL } from "@/lib/format";
+import { gerarDanfeHtml } from "@/lib/danfe";
 import { detectarUF, adaptarCFOP } from "@/lib/cfop";
 import { cn } from "@/lib/utils";
 import { friendlyError } from "@/lib/errorMessages";
@@ -506,178 +507,43 @@ function NFViewerModal({ pedido, onClose }: NFViewerModalProps) {
   }
 
   function viewDanfe() {
-    const esc = escHtml;
     const itensList = pedido?.itens ?? [];
-    const totalPecas = itensList.reduce((s, i) => s + i.quantidade, 0);
-    const totalValor = itensList.reduce((s, i) => s + i.quantidade * (i.valor_unitario ?? 0), 0);
-    const nfNum = pedido?.nota_fiscal ?? "—";
-    const emitidaEm = pedido?.nf_criada_em ? new Date(pedido.nf_criada_em).toLocaleString("pt-BR") : "—";
-    const chave = pedido?.chave_acesso_nfe ?? "";
-    const chaveFmt = chave.replace(/(.{4})/g, "$1 ").trim();
+    const nfNum = pedido?.nota_fiscal ?? "0";
+    const uf = detectarUF(pedido?.cliente_endereco) ?? undefined;
 
-    const itensRows = itensList.map((i, idx) => {
-      const vlr = (i.valor_unitario ?? 0);
-      const total = i.quantidade * vlr;
-      return `<tr>
-        <td class="c">${idx + 1}</td>
-        <td>${esc(i.device_model ?? "—")}</td>
-        <td class="c">UN</td>
-        <td class="r">${i.quantidade}</td>
-        <td class="r">R$ ${vlr.toFixed(2).replace(".",",")}</td>
-        <td class="r"><strong>R$ ${total.toFixed(2).replace(".",",")}</strong></td>
-      </tr>`;
-    }).join("");
+    const html = gerarDanfeHtml({
+      tipoOperacao: "saida",
+      naturezaOperacao: "VENDA DE MERCADORIA ADQUIRIDA OU RECEBIDA DE TERCEIROS",
+      numero: nfNum,
+      serie: "1",
+      chaveAcesso: pedido?.chave_acesso_nfe ?? null,
+      protocolo: pedido?.protocolo_sefaz ?? null,
+      dataEmissao: pedido?.nf_criada_em ?? pedido?.created_at ?? new Date().toISOString(),
+      dataSaida: pedido?.enviado_em ?? pedido?.nf_criada_em ?? null,
+      destinatario: {
+        nome: pedido?.cliente_nome ?? "—",
+        documento: pedido?.cliente_documento ?? null,
+        endereco: pedido?.cliente_endereco ?? null,
+        uf,
+        telefone: pedido?.cliente_telefone ?? null,
+      },
+      transportador: pedido?.transportadora ? { nome: pedido.transportadora } : null,
+      itens: itensList.map(i => ({
+        codigo: i.device_reference ?? i.device_id ?? undefined,
+        descricao: i.device_model ?? "Produto",
+        ncm: i.ncm,
+        cfop: i.cfop ?? i.cfop_padrao,
+        quantidade: i.quantidade,
+        valorUnitario: i.valor_unitario ?? 0,
+        aliqIpi: i.ipi_pct,
+      })),
+      valorFrete: pedido?.frete ?? 0,
+      observacoes: pedido?.observacoes ?? null,
+    });
 
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>DANFE — ${esc(nfNum)}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;background:#fff;padding:8mm}
-  .danfe{width:100%;max-width:210mm;margin:0 auto}
-  /* Cabeçalho */
-  .cabecalho{display:grid;grid-template-columns:40mm 1fr 55mm;border:1px solid #333;margin-bottom:2mm}
-  .cab-logo{padding:3mm;border-right:1px solid #333;display:flex;align-items:center;justify-content:center}
-  .cab-logo span{font-size:13pt;font-weight:900;color:#333;letter-spacing:-1px}
-  .cab-centro{padding:3mm;border-right:1px solid #333;text-align:center}
-  .cab-centro .danfe-title{font-size:12pt;font-weight:900;letter-spacing:2px;margin-bottom:1mm}
-  .cab-centro .doc-fiscal{font-size:7pt;color:#555;margin-bottom:2mm}
-  .cab-centro .nf-num{font-size:10pt;font-weight:700}
-  .cab-nfe{padding:3mm;font-size:7pt}
-  .cab-nfe .lbl{font-size:6pt;font-weight:700;text-transform:uppercase;color:#555}
-  .cab-nfe .val{font-size:8pt;font-weight:600;margin-bottom:2mm}
-  /* Chave */
-  .chave-box{border:1px solid #333;border-top:none;padding:2mm 3mm;display:grid;grid-template-columns:auto 1fr;gap:3mm;align-items:center;margin-bottom:2mm}
-  .chave-box .lbl{font-size:6pt;font-weight:700;text-transform:uppercase;color:#555;white-space:nowrap}
-  .chave-box .val{font-family:monospace;font-size:8pt;letter-spacing:1px;word-break:break-all}
-  /* Blocos */
-  .bloco{border:1px solid #ccc;margin-bottom:2mm}
-  .bloco-title{background:#f0f0f0;font-size:6.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:1.5mm 3mm;border-bottom:1px solid #ccc;color:#333}
-  .bloco-body{padding:2mm 3mm;display:grid;gap:1mm}
-  .bloco-row{display:grid;gap:4mm}
-  .col2{grid-template-columns:1fr 1fr}
-  .col3{grid-template-columns:1fr 1fr 1fr}
-  .col4{grid-template-columns:2fr 1fr 1fr 1fr}
-  .campo .lbl{font-size:6pt;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:0.5mm}
-  .campo .val{font-size:8.5pt;font-weight:600}
-  /* Tabela itens */
-  .itens-table{width:100%;border-collapse:collapse;font-size:8pt}
-  .itens-table th{background:#eee;font-size:6.5pt;text-transform:uppercase;padding:2mm 2mm;border:1px solid #ccc;font-weight:700;color:#333}
-  .itens-table td{padding:1.5mm 2mm;border:1px solid #ddd;vertical-align:top}
-  .itens-table tr:nth-child(even) td{background:#fafafa}
-  .c{text-align:center} .r{text-align:right}
-  /* Totais */
-  .totais{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2mm;margin-top:2mm}
-  .total-box{border:1px solid #ccc;padding:2mm 3mm;text-align:right}
-  .total-box .lbl{font-size:6pt;text-transform:uppercase;color:#555;font-weight:700}
-  .total-box .val{font-size:11pt;font-weight:900;color:#111}
-  .total-box.destaque{background:#111;color:#fff;border-color:#111}
-  .total-box.destaque .lbl{color:#aaa}
-  .total-box.destaque .val{color:#fff}
-  /* Footer */
-  .rodape{margin-top:3mm;border-top:1px solid #ccc;padding-top:2mm;font-size:7pt;color:#777;display:flex;justify-content:space-between}
-  @media print{body{padding:4mm}@page{margin:6mm}}
-</style></head>
-<body><div class="danfe">
-
-  <!-- Cabeçalho -->
-  <div class="cabecalho">
-    <div class="cab-logo"><span>ZOMINI</span></div>
-    <div class="cab-centro">
-      <div class="danfe-title">DANFE</div>
-      <div class="doc-fiscal">Documento Auxiliar da Nota Fiscal Eletrônica</div>
-      <div class="doc-fiscal">Entrada / Saída</div>
-      <div class="nf-num">Nº ${esc(nfNum)}</div>
-    </div>
-    <div class="cab-nfe">
-      <div class="lbl">Protocolo de Autorização</div>
-      <div class="val">${esc(pedido?.protocolo_sefaz ?? "—")}</div>
-      <div class="lbl">Data de Emissão</div>
-      <div class="val">${esc(emitidaEm)}</div>
-      <div class="lbl">Destinatário</div>
-      <div class="val">${esc(pedido?.cliente_nome ?? "—")}</div>
-    </div>
-  </div>
-
-  ${chave ? `<div class="chave-box">
-    <div class="lbl">Chave de<br>Acesso NF-e</div>
-    <div class="val">${esc(chaveFmt)}</div>
-  </div>` : ""}
-
-  <!-- Emitente -->
-  <div class="bloco">
-    <div class="bloco-title">Identificação do Emitente</div>
-    <div class="bloco-body">
-      <div class="bloco-row col2">
-        <div class="campo"><div class="lbl">Razão Social</div><div class="val">Zomini Usinagens Especiais</div></div>
-        <div class="campo"><div class="lbl">CNPJ</div><div class="val">—</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Destinatário -->
-  <div class="bloco">
-    <div class="bloco-title">Destinatário / Remetente</div>
-    <div class="bloco-body">
-      <div class="bloco-row col3">
-        <div class="campo"><div class="lbl">Nome / Razão Social</div><div class="val">${esc(pedido?.cliente_nome ?? "—")}</div></div>
-        <div class="campo"><div class="lbl">CPF / CNPJ</div><div class="val">${esc(pedido?.cliente_documento ?? "—")}</div></div>
-        <div class="campo"><div class="lbl">Telefone</div><div class="val">${esc(pedido?.cliente_telefone ?? "—")}</div></div>
-      </div>
-      <div class="bloco-row">
-        <div class="campo"><div class="lbl">Endereço</div><div class="val">${esc(pedido?.cliente_endereco ?? "—")}</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Itens -->
-  <div class="bloco">
-    <div class="bloco-title">Dados dos Produtos / Serviços</div>
-    <div class="bloco-body" style="padding:0">
-      <table class="itens-table">
-        <thead><tr>
-          <th class="c" style="width:8mm">#</th>
-          <th>Descrição do Produto</th>
-          <th class="c" style="width:10mm">Un.</th>
-          <th class="r" style="width:14mm">Qtd.</th>
-          <th class="r" style="width:22mm">Vlr. Unit.</th>
-          <th class="r" style="width:22mm">Vlr. Total</th>
-        </tr></thead>
-        <tbody>${itensRows}</tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Totais -->
-  <div class="totais">
-    <div class="total-box">
-      <div class="lbl">Total de Itens</div>
-      <div class="val">${totalPecas} un.</div>
-    </div>
-    <div class="total-box">
-      <div class="lbl">Frete</div>
-      <div class="val">R$ ${(pedido?.frete ?? 0).toFixed(2).replace(".",",")}</div>
-    </div>
-    <div class="total-box destaque">
-      <div class="lbl">Valor Total da NF</div>
-      <div class="val">R$ ${(totalValor + (pedido?.frete ?? 0)).toFixed(2).replace(".",",")}</div>
-    </div>
-  </div>
-
-  ${pedido?.observacoes ? `<div class="bloco" style="margin-top:2mm">
-    <div class="bloco-title">Informações Complementares</div>
-    <div class="bloco-body"><div class="campo"><div class="val" style="font-size:8pt">${esc(pedido.observacoes)}</div></div></div>
-  </div>` : ""}
-
-  <div class="rodape">
-    <span>Zomini Usinagens Especiais</span>
-    <span>${esc(nfNum)} · Emitida em ${esc(emitidaEm)}</span>
-  </div>
-
-</div></body></html>`;
     const w = window.open("", "_blank");
     if (!w) { toast.error("Popup bloqueado. Permita popups para visualizar a NF."); return; }
     w.document.open(); w.document.write(html); w.document.close();
-    setTimeout(() => { w.focus(); w.print(); }, 300);
   }
 
   return (

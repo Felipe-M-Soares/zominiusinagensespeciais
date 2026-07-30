@@ -11,7 +11,21 @@ export function HistoricoClienteModal({ clienteId, clientes, onClose }: {
 }) {
   const [pedidos, setPedidos] = useState<{ id: string; status: string; created_at: string; itens: { device_model?: string; quantidade: number }[] }[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saldo, setSaldo] = useState(0);
   const cliente = clientes.find(c => c.id === clienteId);
+
+  useEffect(() => {
+    if (!clienteId) return;
+    supabase
+      .from("contas_financeiras")
+      .select("valor, pedidos_comerciais!inner(cliente_id)")
+      .eq("categoria", "credito_devolucao_cliente")
+      .eq("status", "aberto")
+      .eq("pedidos_comerciais.cliente_id", clienteId)
+      .then(({ data }) => {
+        setSaldo((data ?? []).reduce((s, r) => s + (Number(r.valor) || 0), 0));
+      });
+  }, [clienteId]);
 
   useEffect(() => {
     if (!clienteId) return;
@@ -69,6 +83,11 @@ export function HistoricoClienteModal({ clienteId, clientes, onClose }: {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {saldo > 0 && (
+            <div className="flex items-center gap-1.5 text-[12px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-500/10 border border-orange-500/25 rounded-xl px-3 py-2 mb-1">
+              💰 Crédito de devolução disponível: {saldo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </div>
+          )}
           {loading && <div className="flex items-center justify-center py-10"><div className="h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}
           {!loading && pedidos.length === 0 && (
             <div className="text-center py-10 text-sm text-muted-foreground">Nenhum pedido encontrado</div>

@@ -177,7 +177,7 @@ function DevolucaoBadgePedido({ pedidoId, vendedoraId, isAdmin }: { pedidoId: st
   return (
     <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-500/10 border border-orange-500/25 rounded-lg px-2.5 py-1.5">
       <RotateCcw className="h-3 w-3 shrink-0" />
-      {info.tipo === "devolucao" ? "Devolução" : "Troca"} registrada — {info.qtd} peça{info.qtd !== 1 ? "s" : ""} {info.qtd !== 1 ? "voltaram" : "voltou"} (NF original mantém os valores da venda por regra do SEFAZ)
+      {info.tipo === "devolucao" ? "Devolução" : "Troca"} registrada — {info.qtd} peça{info.qtd !== 1 ? "s" : ""} {info.qtd !== 1 ? "voltaram" : "voltou"}
     </div>
   );
 }
@@ -745,96 +745,6 @@ function NotificacoesBell({ userId }: { userId: string }) {
   );
 }
 
-// ─── Créditos de clientes (devolução) — visível à vendedora ─────────────────
-// Toda devolução aprovada pela Qualidade gera um crédito ("saldo") do
-// cliente em contas_financeiras (categoria credito_devolucao_cliente),
-// vinculado ao pedido_id. A leitura dessa tabela já é liberada a qualquer
-// autenticado — aqui só filtramos pelos pedidos da própria vendedora.
-interface CreditoCliente {
-  id: string; descricao: string; valor: number; status: string;
-  data_emissao: string; nota_fiscal: string | null; pedido_id: string | null;
-  cliente_nome?: string; vendedora_nome?: string | null;
-}
-
-function CreditosClientesCard({ isAdmin, currentUserName }: { isAdmin: boolean; currentUserName: string | null }) {
-  const [creditos, setCreditos] = useState<CreditoCliente[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    supabase
-      .from("contas_financeiras")
-      .select("id, descricao, valor, status, data_emissao, nota_fiscal, pedido_id, pedidos_comerciais(vendedora_nome, clientes(nome))")
-      .eq("categoria", "credito_devolucao_cliente")
-      .order("data_emissao", { ascending: false })
-      .limit(100)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error || !data) { setCreditos([]); setLoading(false); return; }
-        const mapped: CreditoCliente[] = (data as Record<string, unknown>[]).map(r => {
-          const pc = r.pedidos_comerciais as Record<string, unknown> | null;
-          const cli = pc?.clientes as Record<string, unknown> | null;
-          return {
-            id: r.id as string, descricao: r.descricao as string, valor: Number(r.valor) || 0,
-            status: r.status as string, data_emissao: r.data_emissao as string,
-            nota_fiscal: r.nota_fiscal as string | null, pedido_id: r.pedido_id as string | null,
-            cliente_nome: (cli?.nome as string) ?? undefined,
-            vendedora_nome: (pc?.vendedora_nome as string) ?? null,
-          };
-        });
-        setCreditos(isAdmin ? mapped : mapped.filter(c =>
-          (c.vendedora_nome ?? "").trim().toLowerCase() === (currentUserName ?? "").trim().toLowerCase()
-        ));
-        setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [isAdmin, currentUserName]);
-
-  if (loading) return null;
-
-  const totalAberto = creditos.filter(c => c.status === "aberto").reduce((s, c) => s + c.valor, 0);
-
-  return (
-    <div className="rounded-2xl border border-orange-500/30 bg-orange-500/5 overflow-hidden">
-      <div className="px-4 py-3 border-b border-orange-500/20 flex items-center gap-2 flex-wrap">
-        <Undo2 className="h-4 w-4 text-orange-600" />
-        <p className="text-sm font-semibold">Saldo de clientes por devolução</p>
-        <span className="text-[11px] text-muted-foreground/60">
-          {isAdmin ? "todas as vendedoras" : "seus clientes"}
-        </span>
-        {totalAberto > 0 && (
-          <span className="ml-auto text-[12px] font-bold text-orange-600">
-            {totalAberto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} em aberto
-          </span>
-        )}
-      </div>
-      <div className="divide-y divide-orange-500/10 max-h-64 overflow-y-auto">
-        {creditos.length === 0 ? (
-          <p className="px-4 py-4 text-[11.5px] text-muted-foreground text-center">Nenhum crédito de devolução no momento</p>
-        ) : creditos.map(c => (
-          <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
-            <div className="min-w-0 flex-1">
-              <p className="text-[12px] font-medium truncate">{c.cliente_nome ?? c.descricao}</p>
-              <p className="text-[10px] text-muted-foreground truncate">
-                {c.nota_fiscal ? `NF ${c.nota_fiscal} · ` : ""}{new Date(c.data_emissao + "T12:00:00").toLocaleDateString("pt-BR")}
-                {isAdmin && c.vendedora_nome ? ` · ${c.vendedora_nome}` : ""}
-              </p>
-            </div>
-            <div className="text-right shrink-0">
-              <p className="text-[13px] font-bold text-orange-600">
-                {c.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-              </p>
-              <p className={cn("text-[9px] font-semibold uppercase", c.status === "aberto" ? "text-amber-600" : "text-muted-foreground")}>
-                {c.status === "aberto" ? "disponível" : c.status}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 
 
@@ -988,8 +898,6 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
           </div>
         </div>
       </div>
-
-      <CreditosClientesCard isAdmin={isAdmin} currentUserName={currentUserName} />
 
       {/* Ranking Vendedoras — só admin vê */}
       {isAdmin && (

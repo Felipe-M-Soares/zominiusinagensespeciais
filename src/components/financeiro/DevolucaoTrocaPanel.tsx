@@ -19,6 +19,7 @@ import { friendlyError } from "@/lib/errorMessages";
 import { cn } from "@/lib/utils";
 import { escHtml } from "@/lib/escHtml";
 import { formatBRL } from "@/lib/format";
+import { gerarDanfeHtml } from "@/lib/danfe";
 import {
   RefreshCw, PlusCircle, X, Search, Undo2, Repeat2, FileCheck2,
   Loader2, Trash2, Printer, ChevronRight, AlertTriangle, CheckCircle2,
@@ -395,46 +396,31 @@ function ViewerModal({ registro, onClose, onChanged, modoTeste }: { registro: No
   }
 
   function handleImprimir() {
-    const now = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
-    const rows = registro.itens.map((it, idx) => `<tr>
-      <td class="c-num">${idx+1}</td>
-      <td>${escHtml(it.descricao)}<br><span class="meta">NCM ${escHtml(it.ncm)} · CFOP ${escHtml(it.cfop)}</span></td>
-      <td class="c-qty">${it.quantidade}</td>
-      <td class="c-val">R$ ${(parseFloat(it.valorUnitario)||0).toFixed(2).replace(".",",")}</td>
-      <td class="c-val">R$ ${(it.quantidade * (parseFloat(it.valorUnitario)||0)).toFixed(2).replace(".",",")}</td>
-    </tr>`).join("");
-
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-      <title>${registro.tipo === "devolucao" ? "Devolução" : "Troca"} — ${escHtml(registro.cliente_nome)}</title>
-      <style>
-        *{box-sizing:border-box;margin:0;padding:0} body{font-family:Arial,sans-serif;padding:20px 24px;color:#111;font-size:11px}
-        h1{font-size:14px;text-transform:uppercase;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:10px}
-        .info{border:1px solid #bbb;padding:8px 10px;margin-bottom:8px;line-height:1.8}
-        .lbl{font-size:8px;text-transform:uppercase;color:#999;font-weight:700}
-        table{width:100%;border-collapse:collapse;margin-bottom:8px}
-        th{background:#f0f0f0;border:1px solid #bbb;padding:6px 7px;font-size:9px;text-transform:uppercase;text-align:left}
-        td{border:1px solid #ddd;padding:5px 7px;vertical-align:top}
-        .c-num{width:24px;text-align:center;color:#999} .c-qty{width:50px;text-align:center;font-weight:700}
-        .c-val{width:90px;text-align:right} .meta{font-size:8px;color:#999}
-        .totais{border:1px solid #bbb;padding:6px 10px;font-weight:800;font-size:12px;display:flex;justify-content:space-between}
-        @media print{@page{margin:15mm}}
-      </style></head><body>
-      <h1>NF-e de ${registro.tipo === "devolucao" ? "Devolução de Mercadoria" : "Troca de Mercadoria"}</h1>
-      <div class="info">
-        <span class="lbl">Cliente</span><br><strong>${escHtml(registro.cliente_nome)}</strong>
-        ${registro.cliente_documento ? ` — ${escHtml(registro.cliente_documento)}` : ""}<br>
-        ${registro.cliente_endereco ? escHtml(registro.cliente_endereco) + "<br>" : ""}
-        ${registro.nf_original_numero ? `NF original: <strong>${escHtml(registro.nf_original_numero)}</strong><br>` : ""}
-        ${registro.numero ? `Nº desta nota: <strong>${registro.tipo_nota.toUpperCase()}-${registro.numero.padStart(9,"0")}</strong><br>` : ""}
-        ${registro.chave_acesso ? `Chave de acesso: <span style="font-family:monospace;font-size:9px">${escHtml(registro.chave_acesso)}</span><br>` : ""}
-        Status: <strong>${STATUS_LABEL[registro.status]}</strong> — Emitido em ${now}<br>
-        Motivo: ${escHtml(registro.motivo)}
-      </div>
-      <table><thead><tr><th class="c-num">#</th><th>Item</th><th class="c-qty">Qtd.</th><th class="c-val">R$ Unit.</th><th class="c-val">Total</th></tr></thead>
-      <tbody>${rows}</tbody></table>
-      <div class="totais"><span>TOTAL</span><span>R$ ${registro.valor_total.toFixed(2).replace(".",",")}</span></div>
-      <script>window.onload=function(){window.print()}</script>
-      </body></html>`;
+    const html = gerarDanfeHtml({
+      tipoOperacao: "entrada",
+      naturezaOperacao: registro.tipo === "devolucao" ? "DEVOLUÇÃO DE VENDA DE MERCADORIA" : "TROCA DE MERCADORIA",
+      numero: registro.numero ?? "0",
+      serie: "2",
+      chaveAcesso: registro.chave_acesso ?? null,
+      protocolo: registro.protocolo_sefaz ?? null,
+      dataEmissao: new Date().toISOString(),
+      destinatario: {
+        nome: registro.cliente_nome,
+        documento: registro.cliente_documento ?? null,
+        endereco: registro.cliente_endereco ?? null,
+      },
+      itens: registro.itens.map(it => ({
+        descricao: it.descricao,
+        ncm: it.ncm,
+        cfop: it.cfop,
+        cst: it.cst,
+        quantidade: it.quantidade,
+        valorUnitario: parseFloat(it.valorUnitario) || 0,
+        aliqIcms: parseFloat(it.aliqICMS) || undefined,
+      })),
+      observacoes: `Status: ${STATUS_LABEL[registro.status]}${registro.nf_original_numero ? ` · NF original: ${registro.nf_original_numero}` : ""} · Motivo: ${registro.motivo}`,
+      faixaSuperior: registro.status !== "autorizada" ? "DOCUMENTO SEM VALOR FISCAL — AGUARDANDO AUTORIZAÇÃO DA SEFAZ" : null,
+    });
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); }
   }

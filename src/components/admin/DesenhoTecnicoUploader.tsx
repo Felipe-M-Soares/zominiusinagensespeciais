@@ -2,8 +2,8 @@
  * DesenhoTecnicoUploader — Upload em massa de desenhos técnicos (PDF) a partir
  * de um único arquivo .zip com pastas e subpastas.
  *
- * Para cada PDF dentro do zip, tenta casar com uma peça do banco em duas
- * etapas:
+ * Para cada PDF dentro do zip, tenta casar com uma ou mais peças do banco em
+ * três etapas:
  *   1. Correspondência EXATA — nome do próprio arquivo (sem extensão) ou de
  *      alguma pasta ancestral bate exatamente com a referência (ou modelo)
  *      cadastrado, ignorando acentos, maiúsculas/minúsculas, espaços, traços,
@@ -14,21 +14,40 @@
  *      por ela) — cobre casos como "UCEAR 4814 Rev02.pdf" ou "Desenho_UCEAR4814".
  *      Só aceita esse tipo de match quando ele aponta pra EXATAMENTE UMA peça
  *      (se mais de uma referência poderia bater, fica marcado como sem match
- *      pra não arriscar vincular o desenho errado). Esses casos aparecem
- *      marcados como "aproximado" na prévia, pra conferência antes de enviar.
+ *      pra não arriscar vincular o desenho errado).
+ *   3. Correspondência POR CONTEÚDO (fallback final) — cobre os "desenhos de
+ *      família": um único PDF documenta várias peças com a mesma forma, só
+ *      variando uma medida (ex: altura), e o desenho tem uma "Tabela de
+ *      dimensões variáveis" listando os códigos reais das peças (a peça em
+ *      si costuma ter um código só de "Código do Desenho", tipo "ERM 3516C",
+ *      que não bate com nenhuma referência cadastrada sozinho). Se o nome do
+ *      arquivo não casou com nada, o texto de dentro do PDF é lido (via
+ *      pdfjs) e cada referência/modelo cadastrado é procurado literalmente
+ *      nesse texto — se aparecer mais de um código da tabela, o MESMO PDF é
+ *      vinculado a TODAS as peças encontradas, não só a uma.
+ *
+ * Casos "aproximado" e "por conteúdo" aparecem marcados na prévia pra
+ * conferência antes de enviar.
  */
 
 import { useState, useCallback, useMemo, useRef } from "react";
 import JSZip from "jszip";
+import * as pdfjsLib from "pdfjs-dist";
 import {
   X, CheckCircle2, AlertTriangle, XCircle,
-  FileText, ArrowUpCircle, Loader2, FileArchive, Copy, Sparkles,
+  FileText, ArrowUpCircle, Loader2, FileArchive, Copy, Sparkles, Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
+
+// Worker do pdfjs — mesmo setup usado em DesenhoTecnicoViewer.tsx / ExcelStockImport.tsx
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 const MAX_ZIP_SIZE_MB = 1024;
 // Candidatos de nome com menos que isso (já normalizado) não entram na
@@ -46,10 +65,8 @@ interface FileResult {
   zipPath:    string;   // caminho completo dentro do zip, só pra exibição
   refName:    string;   // nome usado para o match (arquivo ou pasta)
   entry:      JSZip.JSZipObject;
-  deviceId?:  string;
-  reference?: string;
-  model?:     string;
-  fuzzy?:     boolean;  // true = correspondência aproximada (conferir antes de enviar)
+  devices:    Device[]; // 0 = sem match · 1 = normal · 2+ = desenho de família
+  matchMode?: "exato" | "aproximado" | "conteudo";
   status:     "pending" | "uploading" | "done" | "error" | "no_match" | "duplicate";
   error?:     string;
 }
@@ -76,7 +93,7 @@ function sanitizePath(name: string): string {
 }
 
 /** Tenta casar por nome do arquivo, depois por cada pasta ancestral — exato primeiro, aproximado como fallback. */
-function findMatch(zipPath: string, devices: Device[]): { device: Device; refName: string; fuzzy: boolean } | null {
+function findMatchByName(zipPath: string, devices: Device[]): { device: Device; refName: string; fuzzy: boolean } | null {
   const parts = zipPath.split("/").filter(Boolean);
   const fileName = parts[parts.length - 1];
   const candidates = [stemName(fileName), ...parts.slice(0, -1).reverse()];
@@ -104,6 +121,45 @@ function findMatch(zipPath: string, devices: Device[]): { device: Device; refNam
   }
 
   return null;
+}
+
+/**
+ * Extrai todo o texto de um PDF (via pdfjs) — usado só como fallback quando
+ * o nome do arquivo não bateu com nada. Funciona para PDFs "de verdade"
+ * (com camada de texto, como a maioria dos desenhos exportados de CAD); se o
+ * PDF for uma imagem escaneada sem texto, simplesmente não encontra nada e o
+ * arquivo continua marcado como "sem match" — sem quebrar o restante do envio.
+ */
+async function extrairTextoPdf(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let texto = "";
+  const maxPaginas = Math.min(pdf.numPages, 5); // desenhos técnicos raramente passam de 1-2 páginas
+  for (let p = 1; p <= maxPaginas; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    texto += content.items.map(it => ("str" in it ? it.str : "")).join(" ") + " ";
+  }
+  return texto;
+}
+
+/**
+ * Procura, dentro do texto já extraído do PDF, TODAS as referências/modelos
+ * cadastrados que aparecem literalmente ali — é assim que um "desenho de
+ * família" (uma peça-mãe com uma tabela de alturas/variações) acaba casando
+ * com várias peças ao mesmo tempo: os códigos da tabela aparecem no texto do
+ * PDF mesmo que o nome do arquivo seja só o código genérico do desenho.
+ */
+function findMatchesByContent(textoPdf: string, devices: Device[]): Device[] {
+  const textoNorm = norm(textoPdf);
+  if (!textoNorm) return [];
+  return devices.filter(d => {
+    const refNorm = norm(d.reference);
+    const modelNorm = norm(d.model);
+    const refHit = refNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(refNorm);
+    const modelHit = modelNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(modelNorm);
+    return refHit || modelHit;
+  });
 }
 
 interface Props {
@@ -153,28 +209,57 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
         return;
       }
 
+      const devicesTyped = devices as Device[];
       const usedDeviceIds = new Set<string>();
-      const fileResults: FileResult[] = entries.map(entry => {
-        const found = findMatch(entry.name, devices as Device[]);
-        if (!found) {
-          return { zipPath: entry.name, refName: stemName(entry.name.split("/").pop()!), entry, status: "no_match" as const };
+      const fileResults: FileResult[] = new Array(entries.length);
+
+      // Processa em lotes pequenos — a leitura de texto do PDF (fallback por
+      // conteúdo) é mais pesada que só olhar o nome do arquivo, então evita
+      // travar o navegador tentando ler muitos PDFs ao mesmo tempo.
+      const LOTE = 4;
+      for (let i = 0; i < entries.length; i += LOTE) {
+        const lote = entries.slice(i, i + LOTE);
+        const processados = await Promise.all(lote.map(async (entry, idx) => {
+          const nomeMatch = findMatchByName(entry.name, devicesTyped);
+          let encontrados: Device[] = [];
+          let matchMode: FileResult["matchMode"];
+
+          if (nomeMatch) {
+            encontrados = [nomeMatch.device];
+            matchMode = nomeMatch.fuzzy ? "aproximado" : "exato";
+          } else {
+            // Fallback: lê o texto de dentro do PDF e procura os códigos das
+            // peças ali — cobre os desenhos de família (uma peça-mãe com
+            // tabela de alturas/variações, onde o nome do arquivo é só o
+            // código genérico do desenho, não o de nenhuma peça específica).
+            try {
+              const blob = await entry.async("blob");
+              const texto = await extrairTextoPdf(blob);
+              const doConteudo = findMatchesByContent(texto, devicesTyped);
+              if (doConteudo.length > 0) { encontrados = doConteudo; matchMode = "conteudo"; }
+            } catch (e) {
+              logger.error(`Falha ao ler texto do PDF ${entry.name}:`, e);
+            }
+          }
+
+          const refName = stemName(entry.name.split("/").pop()!);
+          return { entry, refName, encontrados, matchMode, idxOriginal: i + idx };
+        }));
+
+        for (const { entry, refName, encontrados, matchMode, idxOriginal } of processados) {
+          if (encontrados.length === 0) {
+            fileResults[idxOriginal] = { zipPath: entry.name, refName, entry, devices: [], status: "no_match" };
+            continue;
+          }
+          const novos = encontrados.filter(d => !usedDeviceIds.has(d.id));
+          if (novos.length === 0) {
+            fileResults[idxOriginal] = { zipPath: entry.name, refName, entry, devices: encontrados, matchMode, status: "duplicate" };
+            continue;
+          }
+          novos.forEach(d => usedDeviceIds.add(d.id));
+          fileResults[idxOriginal] = { zipPath: entry.name, refName, entry, devices: novos, matchMode, status: "pending" };
         }
-        if (usedDeviceIds.has(found.device.id)) {
-          return {
-            zipPath: entry.name, refName: found.refName, entry,
-            deviceId: found.device.id, reference: found.device.reference, model: found.device.model,
-            fuzzy: found.fuzzy,
-            status: "duplicate" as const,
-          };
-        }
-        usedDeviceIds.add(found.device.id);
-        return {
-          zipPath: entry.name, refName: found.refName, entry,
-          deviceId: found.device.id, reference: found.device.reference, model: found.device.model,
-          fuzzy: found.fuzzy,
-          status: "pending" as const,
-        };
-      });
+      }
 
       fileResults.sort((a, b) => {
         if (a.status === b.status) return a.zipPath.localeCompare(b.zipPath);
@@ -196,7 +281,9 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
     const matched = results.filter(r => r.status === "pending");
     return {
       matched: matched.length,
-      fuzzy: matched.filter(r => r.fuzzy).length,
+      totalPecas: matched.reduce((s, r) => s + r.devices.length, 0),
+      fuzzy: matched.filter(r => r.matchMode === "aproximado").length,
+      conteudo: matched.filter(r => r.matchMode === "conteudo").length,
       noMatch: results.filter(r => r.status === "no_match").length,
       duplicate: results.filter(r => r.status === "duplicate").length,
       total: results.length,
@@ -217,18 +304,19 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
 
     async function uploadOne(item: FileResult): Promise<void> {
       const blob = await item.entry.async("blob");
-      const path = `${sanitizePath(item.reference!)}.pdf`;
+      for (const device of item.devices) {
+        const path = `${sanitizePath(device.reference)}.pdf`;
+        const { error: upErr } = await supabase.storage
+          .from("desenhos-tecnicos")
+          .upload(path, blob, { upsert: true, contentType: "application/pdf", cacheControl: "31536000" });
+        if (upErr) throw upErr;
 
-      const { error: upErr } = await supabase.storage
-        .from("desenhos-tecnicos")
-        .upload(path, blob, { upsert: true, contentType: "application/pdf", cacheControl: "31536000" });
-      if (upErr) throw upErr;
-
-      const { error: dbErr } = await supabase
-        .from("devices")
-        .update({ desenho_tecnico_path: path })
-        .eq("id", item.deviceId!);
-      if (dbErr) throw dbErr;
+        const { error: dbErr } = await supabase
+          .from("devices")
+          .update({ desenho_tecnico_path: path })
+          .eq("id", device.id);
+        if (dbErr) throw dbErr;
+      }
     }
 
     for (let i = 0; i < toUpload.length; i += PARALLEL) {
@@ -278,7 +366,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
             <div>
               <h3 className="font-semibold text-sm">Upload de Desenhos Técnicos (.zip)</h3>
               <p className="text-[11px] text-muted-foreground">
-                Casa cada PDF pelo nome do arquivo ou da pasta com a referência da peça
+                Casa pelo nome do arquivo/pasta ou, se não achar, procura os códigos dentro do próprio PDF
               </p>
             </div>
           </div>
@@ -318,7 +406,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-3 text-center">
                   <p className="text-xl font-bold text-green-600">{counts.matched}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Casaram</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Arquivos casaram</p>
                 </div>
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
                   <p className="text-xl font-bold text-amber-600">{counts.noMatch}</p>
@@ -329,6 +417,16 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">PDFs no zip</p>
                 </div>
               </div>
+              {counts.totalPecas > counts.matched && (
+                <p className="text-[11px] text-violet-600 flex items-center gap-1.5">
+                  <Layers className="h-3 w-3" /> {counts.totalPecas} peças serão vinculadas ao todo — alguns desenhos cobrem mais de uma peça (desenho de família).
+                </p>
+              )}
+              {counts.conteudo > 0 && (
+                <p className="text-[11px] text-violet-600 flex items-center gap-1.5">
+                  <Layers className="h-3 w-3" /> {counts.conteudo} desenho(s) casado(s) pelos códigos encontrados dentro do próprio PDF — confira antes de enviar.
+                </p>
+              )}
               {counts.fuzzy > 0 && (
                 <p className="text-[11px] text-amber-600 flex items-center gap-1.5">
                   <Sparkles className="h-3 w-3" /> {counts.fuzzy} correspondência(s) aproximada(s) — confira antes de enviar.
@@ -336,7 +434,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
               )}
               {counts.duplicate > 0 && (
                 <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                  <Copy className="h-3 w-3" /> {counts.duplicate} PDF(s) ignorado(s) por casar com uma peça que já recebeu outro arquivo neste envio.
+                  <Copy className="h-3 w-3" /> {counts.duplicate} PDF(s) ignorado(s) por casar só com peça(s) que já receberam outro arquivo neste envio.
                 </p>
               )}
 
@@ -348,20 +446,28 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                     r.status === "duplicate" && "bg-muted/20",
                     r.status === "done"      && "bg-green-500/5",
                     r.status === "error"     && "bg-red-500/5",
-                    r.fuzzy && r.status === "pending" && "bg-amber-500/5",
+                    r.status === "pending" && r.matchMode === "aproximado" && "bg-amber-500/5",
+                    r.status === "pending" && r.matchMode === "conteudo"  && "bg-violet-500/5",
                   )}>
                     <FileText className="h-4 w-4 text-muted-foreground/60 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="font-mono font-medium truncate" title={r.zipPath}>{r.zipPath}</p>
                       {r.status === "no_match" ? (
-                        <p className="text-amber-600 text-[10px]">Nenhuma peça com esta referência</p>
+                        <p className="text-amber-600 text-[10px]">Nenhuma peça encontrada (nem pelo nome, nem pelo conteúdo do PDF)</p>
                       ) : r.status === "duplicate" ? (
-                        <p className="text-muted-foreground text-[10px] truncate">Já casado por outro arquivo: {r.reference}</p>
+                        <p className="text-muted-foreground text-[10px] truncate">Já casado por outro arquivo: {r.devices.map(d => d.reference).join(", ")}</p>
                       ) : r.status === "error" ? (
                         <p className="text-red-500 text-[10px] truncate">{r.error}</p>
-                      ) : r.reference ? (
-                        <p className={cn("text-[10px] truncate", r.fuzzy ? "text-amber-600" : "text-muted-foreground")}>
-                          {r.fuzzy && "≈ "}{r.reference} · {r.model}{r.fuzzy && " (aproximado)"}
+                      ) : r.devices.length > 0 ? (
+                        <p className={cn(
+                          "text-[10px] truncate",
+                          r.matchMode === "aproximado" ? "text-amber-600" : r.matchMode === "conteudo" ? "text-violet-600" : "text-muted-foreground"
+                        )}>
+                          {r.matchMode === "aproximado" && "≈ "}
+                          {r.matchMode === "conteudo" && `${r.devices.length} peça${r.devices.length !== 1 ? "s" : ""} (desenho de família): `}
+                          {r.devices.map(d => d.reference).join(", ")}
+                          {r.matchMode === "aproximado" && " (aproximado)"}
+                          {r.matchMode === "conteudo" && " — achado dentro do PDF"}
                         </p>
                       ) : null}
                     </div>
@@ -391,7 +497,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                 : <ArrowUpCircle className="h-4 w-4" />}
               {uploading
                 ? "Enviando..."
-                : `Enviar ${counts.matched} desenho${counts.matched !== 1 ? "s" : ""}`}
+                : `Enviar ${counts.matched} desenho${counts.matched !== 1 ? "s" : ""} (${counts.totalPecas} peça${counts.totalPecas !== 1 ? "s" : ""})`}
             </Button>
           )}
 
