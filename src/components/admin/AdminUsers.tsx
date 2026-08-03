@@ -151,13 +151,13 @@ export function AdminUsers() {
 
   const applyRoleChange = async (userId: string, newRole: AppRole) => {
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
-    if (error) toast.error("Erro ao alterar função. Tente novamente.");
+    if (error) toast.error("Erro ao alterar função: " + error.message, { duration: 8000 });
     else { toast.success("Função atualizada"); fetchUsers(); }
   };
 
   const toggleApproval = async (userId: string, approve: boolean) => {
     const { error } = await supabase.from("profiles").update({ approved: approve }).eq("user_id", userId);
-    if (error) toast.error("Erro ao alterar aprovação. Tente novamente.");
+    if (error) toast.error("Erro ao alterar aprovação: " + error.message, { duration: 8000 });
     else { toast.success(approve ? "Usuário aprovado" : "Aprovação removida"); fetchUsers(); }
   };
 
@@ -167,7 +167,7 @@ export function AdminUsers() {
         .from("profiles")
         .update({ approved: false, blocked: true })
         .eq("user_id", userId);
-      if (profileErr) { toast.error("Erro ao bloquear usuário. Tente novamente."); return; }
+      if (profileErr) { toast.error("Erro ao bloquear usuário: " + profileErr.message, { duration: 8000 }); return; }
       toast.success(`Acesso de ${userLogin ?? "usuário"} bloqueado.`);
       fetchUsers();
     } catch (err) {
@@ -181,7 +181,7 @@ export function AdminUsers() {
       .from("profiles")
       .update({ blocked: false, approved: true })
       .eq("user_id", userId);
-    if (error) toast.error("Erro ao desbloquear. Tente novamente.");
+    if (error) toast.error("Erro ao desbloquear: " + error.message, { duration: 8000 });
     else { toast.success("Usuário desbloqueado e aprovado"); fetchUsers(); }
   };
 
@@ -197,9 +197,12 @@ export function AdminUsers() {
           new_password:   newPassword,
         },
       });
-      const errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
+      let errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
+      if (errMsg?.includes("Failed to send a request")) {
+        errMsg = "Não foi possível conectar à função 'admin-reset-password'. Publique/atualize as Edge Functions (supabase functions deploy) e tente de novo.";
+      }
       if (errMsg) {
-        toast.error("Erro ao redefinir senha: " + errMsg);
+        toast.error("Erro ao redefinir senha: " + errMsg, { duration: 8000 });
       } else {
         await supabase.from("profiles")
           .update({ must_change_password: true })
@@ -221,7 +224,7 @@ export function AdminUsers() {
         p_target_user_id: userId,
       });
       const errMsg = rpcErr?.message ?? (rpcData as { error?: string } | null)?.error ?? null;
-      if (errMsg) toast.error("Erro ao excluir: " + errMsg);
+      if (errMsg) toast.error("Erro ao excluir: " + errMsg, { duration: 8000 });
       else { toast.success("Conta excluída"); fetchUsers(); }
     } finally {
       setDeletingId(null);
@@ -248,9 +251,12 @@ export function AdminUsers() {
           role:         newUserRole,
         },
       });
-      const errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
+      let errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
+      if (errMsg?.includes("Failed to send a request")) {
+        errMsg = "Não foi possível conectar à função 'admin-create-user'. Publique/atualize as Edge Functions (supabase functions deploy) e tente de novo.";
+      }
       if (errMsg) {
-        toast.error("Erro ao criar conta: " + errMsg);
+        toast.error("Erro ao criar conta: " + errMsg, { duration: 8000 });
       } else {
         toast.success("Conta criada!");
         setCreateDialog(false);

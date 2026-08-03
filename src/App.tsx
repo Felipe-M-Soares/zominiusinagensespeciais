@@ -6,8 +6,43 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { AppShell } from "@/components/AppShell";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import type { AppRole } from "@/types/roles";
+
+/**
+ * PointerEventsWatchdog — correção do "app congelado, nenhum botão responde".
+ *
+ * Bug conhecido do Radix UI: ao combinar Dialog + AlertDialog + Select (como
+ * na tela Admin › Usuários, que tem os três em cada linha), fechar um modal
+ * pode deixar `pointer-events: none` PRESO no <body>. A partir daí a página
+ * inteira ignora cliques — parece que "nenhuma função funciona" — até dar F5.
+ *
+ * Este watchdog observa o style do <body>: se pointer-events ficou "none"
+ * mas NÃO existe nenhum modal Radix aberto, ele limpa o estilo na hora.
+ * Não interfere com modais abertos de verdade (eles têm data-state="open").
+ */
+function PointerEventsWatchdog() {
+  useEffect(() => {
+    const temModalAberto = () =>
+      !!document.querySelector(
+        '[data-state="open"][role="dialog"], [data-state="open"][role="alertdialog"], [data-radix-popper-content-wrapper]'
+      );
+
+    const limparSePreso = () => {
+      if (document.body.style.pointerEvents === "none" && !temModalAberto()) {
+        document.body.style.pointerEvents = "";
+      }
+    };
+
+    const observer = new MutationObserver(limparSePreso);
+    observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
+    // Cinto e suspensório: checa também num intervalo lento, cobrindo o caso
+    // do modal ser desmontado sem disparar mutation no style do body.
+    const timer = setInterval(limparSePreso, 1500);
+    return () => { observer.disconnect(); clearInterval(timer); };
+  }, []);
+  return null;
+}
 
 import Login from "./pages/Login";
 import SetPassword from "./pages/SetPassword";
@@ -92,6 +127,7 @@ function IndexRoute() {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      <PointerEventsWatchdog />
       <Sonner />
       <BrowserRouter future={{ v7_relativeSplatPath: true }}>
         <AuthProvider>

@@ -15,7 +15,7 @@
  * semanal e mensal ficam na mesma tela, sem abas separadas.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -23,7 +23,7 @@ import {
 import {
   Zap, Coffee, RefreshCw, CheckCircle2, Clock,
   Package, Factory, Timer, TrendingUp, Plus, X, ListPlus, User, Loader2,
-  CalendarDays, CalendarRange, Gauge,
+  CalendarDays, CalendarRange, Gauge, Search, ChevronDown, Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,6 +81,118 @@ const OPERADOR_STORAGE_KEY = "diario_producao_operador";
 
 const lbl = "text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 block";
 const sel = "w-full h-10 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring transition-shadow";
+
+/** Numerinho de etapa — guia visual do fluxo de preenchimento */
+function Step({ n }: { n: number }) {
+  return (
+    <span className="inline-flex items-center justify-center h-[18px] w-[18px] rounded-full bg-primary/15 text-primary text-[10px] font-bold mr-1.5 align-middle">
+      {n}
+    </span>
+  );
+}
+
+/**
+ * PecaCombobox — seletor de peça COM BUSCA.
+ * Substitui os <select> gigantes: com centenas de códigos, achar a peça
+ * rolando a lista era o maior atrito da tela. Agora é digitar 2-3 letras.
+ */
+function PecaCombobox({ pecas, value, onChange, noneLabel }: {
+  pecas: PecaOption[]; value: string; onChange: (v: string) => void; noneLabel?: string;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca]   = useState("");
+  const boxRef   = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selecionada = pecas.find(p => p.codigo === value);
+
+  const filtradas = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    const base = q
+      ? pecas.filter(p => p.codigo.toLowerCase().includes(q) || p.descricao.toLowerCase().includes(q))
+      : pecas;
+    return base.slice(0, 80); // nunca renderiza a lista inteira de uma vez
+  }, [busca, pecas]);
+
+  useEffect(() => {
+    if (!aberto) return;
+    inputRef.current?.focus();
+    const h = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setAberto(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [aberto]);
+
+  const escolher = (codigo: string) => { onChange(codigo); setAberto(false); setBusca(""); };
+
+  const grupos: Array<{ titulo: string; itens: PecaOption[] }> = [
+    { titulo: "Produtos de produção",     itens: filtradas.filter(p => p.origem === "producao") },
+    { titulo: "Componentes registrados",  itens: filtradas.filter(p => p.origem === "componente") },
+  ];
+
+  return (
+    <div ref={boxRef} className="relative">
+      <button type="button" onClick={() => setAberto(a => !a)}
+        className={cn(sel, "flex items-center gap-2 text-left")}>
+        {selecionada ? (
+          <span className="flex-1 truncate">
+            <span className="font-semibold">{selecionada.codigo}</span>
+            <span className="text-muted-foreground"> — {selecionada.descricao}</span>
+          </span>
+        ) : (
+          <span className="flex-1 truncate text-muted-foreground">{noneLabel ?? "Selecionar peça..."}</span>
+        )}
+        {value && (
+          <span role="button" tabIndex={0} className="text-muted-foreground hover:text-red-500 shrink-0"
+            onClick={e => { e.stopPropagation(); escolher(""); }}
+            onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); escolher(""); } }}>
+            <X className="h-3.5 w-3.5" />
+          </span>
+        )}
+        <ChevronDown className={cn("h-4 w-4 text-muted-foreground shrink-0 transition-transform", aberto && "rotate-180")} />
+      </button>
+
+      {aberto && (
+        <div className="absolute z-30 mt-1 w-full rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+          <div className="flex items-center gap-2 px-3 border-b border-border/40">
+            <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <input ref={inputRef} value={busca} onChange={e => setBusca(e.target.value)}
+              placeholder="Digite o código ou a descrição..."
+              className="w-full h-9 bg-transparent text-sm focus:outline-none" />
+          </div>
+          <div className="max-h-60 overflow-y-auto overscroll-contain">
+            {noneLabel && !busca && (
+              <button type="button" onClick={() => escolher("")}
+                className="w-full text-left px-3 py-2 text-[12.5px] text-muted-foreground hover:bg-muted/40">
+                {noneLabel}
+              </button>
+            )}
+            {filtradas.length === 0 && (
+              <p className="px-3 py-4 text-[12px] text-muted-foreground text-center">Nenhuma peça encontrada para "{busca}"</p>
+            )}
+            {grupos.map(g => g.itens.length > 0 && (
+              <div key={g.titulo}>
+                <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground/70 sticky top-0 bg-card">{g.titulo}</p>
+                {g.itens.map(p => (
+                  <button key={p.codigo} type="button" onClick={() => escolher(p.codigo)}
+                    className={cn("w-full text-left px-3 py-2 text-[12.5px] hover:bg-muted/40 flex items-center gap-2",
+                      p.codigo === value && "bg-primary/5")}>
+                    <span className="font-semibold shrink-0">{p.codigo}</span>
+                    <span className="text-muted-foreground truncate">{p.descricao}</span>
+                    {p.pecas_por_hora > 0 && (
+                      <span className="ml-auto text-[10px] text-muted-foreground/70 shrink-0">{p.pecas_por_hora} pç/h</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const STATUS_MAQUINA: Record<string, { label: string; dot: string; text: string }> = {
   operando: { label: "Operando", dot: "bg-green-500", text: "text-green-700 dark:text-green-400" },
@@ -504,7 +616,7 @@ export function LancamentoDiarioPanel() {
         <div className="p-5 space-y-5">
           {/* Máquina */}
           <div>
-            <label className={lbl}>Máquina *</label>
+            <label className={lbl}><Step n={1} />Máquina *</label>
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {maquinas.map(m => {
                 const st = STATUS_MAQUINA[m.status] ?? STATUS_MAQUINA.operando;
@@ -533,13 +645,13 @@ export function LancamentoDiarioPanel() {
 
           {/* Operador */}
           <div>
-            <label className={lbl}><User className="h-3 w-3 inline -mt-0.5 mr-1" />Operador *</label>
+            <label className={lbl}><Step n={2} /><User className="h-3 w-3 inline -mt-0.5 mr-1" />Operador *</label>
             <Input value={operador} onChange={e => setOperador(e.target.value)} className="h-10" placeholder="Nome do operador" />
           </div>
 
           {/* Turno — duração fixa, cálculo automático */}
           <div>
-            <label className={lbl}>Turno *</label>
+            <label className={lbl}><Step n={3} />Turno *</label>
             <div className="grid grid-cols-2 gap-2">
               {TURNOS.map(t => (
                 <button key={t.id} type="button" onClick={() => setTurnoSel(t.id)}
@@ -572,18 +684,11 @@ export function LancamentoDiarioPanel() {
           {/* Produção */}
           <div className="rounded-xl border border-border/60 p-3.5 space-y-3">
             <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-              <Zap className="h-3.5 w-3.5 text-green-600" /> Produção neste bloco <span className="font-normal normal-case text-muted-foreground/70">(deixe em "Nenhuma" se foi só parada)</span>
+              <Step n={4} /><Zap className="h-3.5 w-3.5 text-green-600" /> Produção neste bloco <span className="font-normal normal-case text-muted-foreground/70">(deixe em "Nenhuma" se foi só parada)</span>
             </p>
             <div><label className={lbl}>Peça</label>
-              <select value={peca} onChange={e => setPeca(e.target.value)} className={sel}>
-                <option value="">Nenhuma — período só com situação/parada</option>
-                <optgroup label="Produtos de produção">
-                  {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                </optgroup>
-                <optgroup label="Componentes registrados">
-                  {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                </optgroup>
-              </select>
+              <PecaCombobox pecas={pecas} value={peca} onChange={setPeca}
+                noneLabel="Nenhuma — período só com situação/parada" />
             </div>
             {peca && (
               <>
@@ -603,6 +708,32 @@ export function LancamentoDiarioPanel() {
                       onChange={e => { setHoras(e.target.value); setHorasEditadoManual(true); }} className="h-10" placeholder="ex: 5" />
                   </div>
                 </div>
+                {/* Meta ao vivo: quanto essa peça deveria render no tempo produtivo.
+                    O operador confere na hora se a quantidade digitada faz sentido. */}
+                {(() => {
+                  const pecaSelInfo = pecas.find(pc => pc.codigo === peca);
+                  const porHora = pecaSelInfo?.pecas_por_hora ?? 0;
+                  if (porHora <= 0 || horasProdutivasBloco <= 0) return null;
+                  const esperado = Math.round(porHora * horasProdutivasBloco);
+                  const qtdeNum = parseInt(quantidade) || 0;
+                  const efic = esperado > 0 && qtdeNum > 0 ? (qtdeNum / esperado) * 100 : null;
+                  return (
+                    <div className="flex items-center justify-between rounded-lg bg-muted/20 border border-border/40 px-3 py-2">
+                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                        <Target className="h-3 w-3" /> Esperado p/ {horasProdutivasBloco.toFixed(2).replace(/\.?0+$/, "")}h produtivas ({porHora} pç/h)
+                      </span>
+                      <span className="text-[12.5px] font-bold tabular-nums">
+                        ≈ {esperado.toLocaleString("pt-BR")} pç
+                        {efic !== null && (
+                          <span className={cn("ml-2 text-[11px] font-semibold",
+                            efic >= 95 ? "text-green-600" : efic >= 80 ? "text-amber-600" : "text-red-600")}>
+                            ({efic.toFixed(0)}%)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
@@ -610,7 +741,7 @@ export function LancamentoDiarioPanel() {
           {/* Situações — dentro do mesmo bloco, cálculo automático */}
           <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-3.5 space-y-3">
             <p className="text-[11px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
-              <Coffee className="h-3.5 w-3.5" /> Situações dentro deste bloco <span className="font-normal normal-case text-blue-700/70 dark:text-blue-400/70">(Setup, Almoço, Manutenção...)</span>
+              <Step n={5} /><Coffee className="h-3.5 w-3.5" /> Situações dentro deste bloco <span className="font-normal normal-case text-blue-700/70 dark:text-blue-400/70">(Setup, Almoço, Manutenção...)</span>
             </p>
 
             {situacoesTemp.length > 0 && (
@@ -640,15 +771,8 @@ export function LancamentoDiarioPanel() {
                 onChange={e => setNovaSituacaoHoras(e.target.value)} className="h-9" placeholder="Horas" />
             </div>
             {novaSituacaoEhSetup && (
-              <select value={novaSituacaoPeca} onChange={e => setNovaSituacaoPeca(e.target.value)} className={cn(sel, "h-9")}>
-                <option value="">Peça que será produzida depois do setup...</option>
-                <optgroup label="Produtos de produção">
-                  {pecas.filter(p => p.origem === "producao").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                </optgroup>
-                <optgroup label="Componentes registrados">
-                  {pecas.filter(p => p.origem === "componente").map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.descricao}</option>)}
-                </optgroup>
-              </select>
+              <PecaCombobox pecas={pecas} value={novaSituacaoPeca} onChange={setNovaSituacaoPeca}
+                noneLabel="Peça que será produzida depois do setup..." />
             )}
             <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 h-9" onClick={adicionarSituacaoAoBloco}>
               <Plus className="h-3.5 w-3.5" /> Adicionar situação a este bloco
@@ -803,13 +927,36 @@ export function LancamentoDiarioPanel() {
                 </div>
                 <div className="text-right shrink-0">
                   <p className="font-semibold text-sm text-green-600">{a.quantidade.toLocaleString("pt-BR")} pç</p>
-                  <p className="text-[10px] text-muted-foreground">{fmtHora(a.created_at)}</p>
+                  <p className="text-[10px] text-muted-foreground tabular-nums">
+                    {Number(a.horas_planejadas) > 0 && `${Number(a.horas_planejadas).toFixed(2).replace(/\.?0+$/, "")}h · `}{fmtHora(a.created_at)}
+                  </p>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Barra fixa de salvamento — acompanha a rolagem quando há blocos na lista */}
+      {blocos.length > 0 && (
+        <div className="sticky bottom-3 z-20 pt-1">
+          <div className="rounded-2xl border border-primary/30 bg-card/95 backdrop-blur shadow-lg px-4 py-3 flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] font-semibold truncate">
+                {blocos.length} bloco{blocos.length !== 1 ? "s" : ""} na lista
+              </p>
+              <p className="text-[10.5px] text-muted-foreground truncate">
+                {[...new Set(blocos.map(b => b.maquina))].join(", ")}
+              </p>
+            </div>
+            <Button className="gap-1.5 h-10 shrink-0" onClick={salvarTudo} disabled={saving}>
+              {saving
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</>
+                : <><CheckCircle2 className="h-4 w-4" /> Salvar tudo ({blocos.length})</>}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

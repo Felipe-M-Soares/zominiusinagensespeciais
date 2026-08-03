@@ -31,7 +31,11 @@
  */
 
 import { useState, useCallback, useMemo, useRef } from "react";
-import JSZip from "jszip";
+// zip.js lê o .zip DIRETO DO DISCO, entrada por entrada (BlobReader lê fatias
+// do arquivo sob demanda). O JSZip antigo carregava o zip INTEIRO na memória —
+// com zips grandes (centenas de MB / 1GB) isso estourava a RAM da aba e o app
+// crashava/fechava, principalmente em celular. Essa troca resolve o crash.
+import { ZipReader, BlobReader, BlobWriter, type FileEntry } from "@zip.js/zip.js";
 import * as pdfjsLib from "pdfjs-dist";
 import {
   X, CheckCircle2, AlertTriangle, XCircle,
@@ -50,6 +54,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 const MAX_ZIP_SIZE_MB = 1024;
+// PDFs maiores que isso não passam pela leitura de texto (fallback por
+// conteúdo) — extrair texto de PDFs gigantes é o que mais consome memória.
+const MAX_PDF_TEXT_MB = 20;
 // Candidatos de nome com menos que isso (já normalizado) não entram na
 // correspondência aproximada — evita casar "01" com qualquer peça que tenha
 // "01" em algum canto da referência.
@@ -64,7 +71,7 @@ interface Device {
 interface FileResult {
   zipPath:    string;   // caminho completo dentro do zip, só pra exibição
   refName:    string;   // nome usado para o match (arquivo ou pasta)
-  entry:      JSZip.JSZipObject;
+  entry:      FileEntry;
   devices:    Device[]; // 0 = sem match · 1 = normal · 2+ = desenho de família
   matchMode?: "exato" | "aproximado" | "conteudo";
   status:     "pending" | "uploading" | "done" | "error" | "no_match" | "duplicate";
@@ -133,14 +140,21 @@ function findMatchByName(zipPath: string, devices: Device[]): { device: Device; 
 async function extrairTextoPdf(blob: Blob): Promise<string> {
   const buf = await blob.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  let texto = "";
-  const maxPaginas = Math.min(pdf.numPages, 5); // desenhos técnicos raramente passam de 1-2 páginas
-  for (let p = 1; p <= maxPaginas; p++) {
-    const page = await pdf.getPage(p);
-    const content = await page.getTextContent();
-    texto += content.items.map(it => ("str" in it ? it.str : "")).join(" ") + " ";
+  try {
+    let texto = "";
+    const maxPaginas = Math.min(pdf.numPages, 5); // desenhos técnicos raramente passam de 1-2 páginas
+    for (let p = 1; p <= maxPaginas; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      texto += content.items.map(it => ("str" in it ? it.str : "")).join(" ") + " ";
+      page.cleanup();
+    }
+    return texto;
+  } finally {
+    // Libera a memória do documento — sem isso, ler dezenas de PDFs em
+    // sequência acumula buffers e derruba a aba.
+    await (pdf as unknown as { destroy(): Promise<void> }).destroy();
   }
-  return texto;
 }
 
 /**
@@ -170,6 +184,7 @@ interface Props {
 export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
   const [results,   setResults]   = useState<FileResult[]>([]);
   const [extracting, setExtracting] = useState(false);
+  const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [done,      setDone]      = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -185,12 +200,17 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
     }
 
     setExtracting(true);
+    setProgresso(null);
+    let zipReader: ZipReader<Blob> | null = null;
     try {
-      const zip = await JSZip.loadAsync(zipFile);
-      const entries = Object.values(zip.files).filter(e =>
-        !e.dir &&
-        /\.pdf$/i.test(e.name) &&
-        !e.name.split("/").some(seg => seg.startsWith("__MACOSX") || seg.startsWith("."))
+      // Lê SÓ o índice do zip (central directory) — o conteúdo dos PDFs
+      // continua no disco e é lido um por vez, sob demanda.
+      zipReader = new ZipReader(new BlobReader(zipFile));
+      const todas = await zipReader.getEntries();
+      const entries = todas.filter((e): e is FileEntry =>
+        !e.directory &&
+        /\.pdf$/i.test(e.filename) &&
+        !e.filename.split("/").some(seg => seg.startsWith("__MACOSX") || seg.startsWith("."))
       );
 
       if (entries.length === 0) {
@@ -213,52 +233,56 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
       const usedDeviceIds = new Set<string>();
       const fileResults: FileResult[] = new Array(entries.length);
 
-      // Processa em lotes pequenos — a leitura de texto do PDF (fallback por
-      // conteúdo) é mais pesada que só olhar o nome do arquivo, então evita
-      // travar o navegador tentando ler muitos PDFs ao mesmo tempo.
-      const LOTE = 4;
-      for (let i = 0; i < entries.length; i += LOTE) {
-        const lote = entries.slice(i, i + LOTE);
-        const processados = await Promise.all(lote.map(async (entry, idx) => {
-          const nomeMatch = findMatchByName(entry.name, devicesTyped);
-          let encontrados: Device[] = [];
-          let matchMode: FileResult["matchMode"];
-
-          if (nomeMatch) {
-            encontrados = [nomeMatch.device];
-            matchMode = nomeMatch.fuzzy ? "aproximado" : "exato";
-          } else {
-            // Fallback: lê o texto de dentro do PDF e procura os códigos das
-            // peças ali — cobre os desenhos de família (uma peça-mãe com
-            // tabela de alturas/variações, onde o nome do arquivo é só o
-            // código genérico do desenho, não o de nenhuma peça específica).
-            try {
-              const blob = await entry.async("blob");
-              const texto = await extrairTextoPdf(blob);
-              const doConteudo = findMatchesByContent(texto, devicesTyped);
-              if (doConteudo.length > 0) { encontrados = doConteudo; matchMode = "conteudo"; }
-            } catch (e) {
-              logger.error(`Falha ao ler texto do PDF ${entry.name}:`, e);
-            }
-          }
-
-          const refName = stemName(entry.name.split("/").pop()!);
-          return { entry, refName, encontrados, matchMode, idxOriginal: i + idx };
-        }));
-
-        for (const { entry, refName, encontrados, matchMode, idxOriginal } of processados) {
-          if (encontrados.length === 0) {
-            fileResults[idxOriginal] = { zipPath: entry.name, refName, entry, devices: [], status: "no_match" };
-            continue;
-          }
-          const novos = encontrados.filter(d => !usedDeviceIds.has(d.id));
-          if (novos.length === 0) {
-            fileResults[idxOriginal] = { zipPath: entry.name, refName, entry, devices: encontrados, matchMode, status: "duplicate" };
-            continue;
-          }
-          novos.forEach(d => usedDeviceIds.add(d.id));
-          fileResults[idxOriginal] = { zipPath: entry.name, refName, entry, devices: novos, matchMode, status: "pending" };
+      // 1ª passada — SÓ pelo nome (rápida, sem tocar no conteúdo dos PDFs).
+      const semMatchPorNome: number[] = [];
+      entries.forEach((entry, idx) => {
+        const nomeMatch = findMatchByName(entry.filename, devicesTyped);
+        const refName = stemName(entry.filename.split("/").pop()!);
+        if (nomeMatch) {
+          fileResults[idx] = {
+            zipPath: entry.filename, refName, entry,
+            devices: [nomeMatch.device],
+            matchMode: nomeMatch.fuzzy ? "aproximado" : "exato",
+            status: "pending",
+          };
+        } else {
+          fileResults[idx] = { zipPath: entry.filename, refName, entry, devices: [], status: "no_match" };
+          semMatchPorNome.push(idx);
         }
+      });
+
+      // 2ª passada — fallback por conteúdo, UM PDF POR VEZ, com progresso na
+      // tela e devolvendo o controle pra UI entre um e outro. Ler vários PDFs
+      // em paralelo era o segundo motivo do travamento em zips grandes.
+      const maxBytes = MAX_PDF_TEXT_MB * 1024 * 1024;
+      for (let k = 0; k < semMatchPorNome.length; k++) {
+        const idx = semMatchPorNome[k];
+        const entry = entries[idx];
+        setProgresso({ atual: k + 1, total: semMatchPorNome.length });
+        if ((entry.uncompressedSize ?? 0) > maxBytes) continue; // PDF grande demais pra ler texto
+        try {
+          const blob = await entry.getData(new BlobWriter("application/pdf"));
+          const texto = await extrairTextoPdf(blob);
+          const doConteudo = findMatchesByContent(texto, devicesTyped);
+          if (doConteudo.length > 0) {
+            fileResults[idx] = { ...fileResults[idx], devices: doConteudo, matchMode: "conteudo", status: "pending" };
+          }
+        } catch (e) {
+          logger.error(`Falha ao ler texto do PDF ${entry.filename}:`, e);
+        }
+        // Respira: deixa o navegador renderizar/responder entre PDFs.
+        await new Promise(r => setTimeout(r, 0));
+      }
+      setProgresso(null);
+
+      // 3ª passada — resolve duplicatas na ordem original (mesma regra de antes:
+      // a primeira ocorrência fica com a peça, as demais viram "duplicate").
+      for (const r of fileResults) {
+        if (r.status !== "pending") continue;
+        const novos = r.devices.filter(d => !usedDeviceIds.has(d.id));
+        if (novos.length === 0) { r.status = "duplicate"; continue; }
+        novos.forEach(d => usedDeviceIds.add(d.id));
+        r.devices = novos;
       }
 
       fileResults.sort((a, b) => {
@@ -273,7 +297,10 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
       logger.error("processZip error:", e);
       toast.error("Não foi possível ler o arquivo .zip. Verifique se não está corrompido.");
     } finally {
+      setProgresso(null);
       setExtracting(false);
+      // NÃO fecha o zipReader aqui: as entries continuam sendo lidas do disco
+      // na hora do upload. O reader não segura o conteúdo na memória.
     }
   }, []);
 
@@ -299,11 +326,12 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
     setUploading(true);
     setResults(prev => prev.map(r => r.status === "pending" ? { ...r, status: "uploading" } : r));
 
-    const PARALLEL = 6;
+    const PARALLEL = 3; // 3 uploads simultâneos — estável também em celular
     const errors = new Map<string, string>();
 
     async function uploadOne(item: FileResult): Promise<void> {
-      const blob = await item.entry.async("blob");
+      // Lê o PDF do zip só agora, direto do disco — um por vez dentro do lote.
+      const blob = await item.entry.getData(new BlobWriter("application/pdf"));
       for (const device of item.devices) {
         const path = `${sanitizePath(device.reference)}.pdf`;
         const { error: upErr } = await supabase.storage
@@ -391,7 +419,13 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                     : <FileArchive className="h-6 w-6 text-primary" />}
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold">{extracting ? "Lendo arquivo .zip..." : "Selecionar arquivo .zip"}</p>
+                  <p className="text-sm font-semibold">
+                    {extracting
+                      ? (progresso
+                          ? `Lendo conteúdo dos PDFs... ${progresso.atual}/${progresso.total}`
+                          : "Lendo índice do .zip...")
+                      : "Selecionar arquivo .zip"}
+                  </p>
                   <p className="text-[11px] text-muted-foreground mt-1">Pastas e subpastas são varridas automaticamente · até 1GB</p>
                   <p className="text-[10px] text-muted-foreground/70">Arquivos grandes podem levar alguns minutos para carregar — não feche esta tela</p>
                 </div>

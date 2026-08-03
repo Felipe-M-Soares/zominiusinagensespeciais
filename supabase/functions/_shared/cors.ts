@@ -1,17 +1,24 @@
 /**
  * CORS helper para Edge Functions.
  *
- * Produção:
- * - Configure ALLOWED_ORIGIN com domínios fixos separados por vírgula.
- * - Para previews da Vercel, use ALLOWED_ORIGIN_REGEX com uma expressão segura.
+ * IMPORTANTE (correção do erro "Failed to send a request to the Edge Function"):
+ * ──────────────────────────────────────────────────────────────────────────────
+ * A versão anterior devolvia `Access-Control-Allow-Origin: null` quando a origem
+ * não estava na allowlist (secret ALLOWED_ORIGIN). Como o secret raramente é
+ * atualizado com o domínio real do deploy (produção da Vercel, previews, novo
+ * domínio próprio...), o preflight OPTIONS falhava no navegador e TODAS as
+ * chamadas — criar conta, resetar senha, importar — quebravam com
+ * "Failed to send a request to the Edge Function".
  *
- * Exemplo:
- * ALLOWED_ORIGIN="https://zominiusinagensespeciais.vercel.app,https://app.seudominio.com.br"
- * ALLOWED_ORIGIN_REGEX="^https://zominiusinagensespeciais-[a-z0-9-]+\.vercel\.app$"
+ * A segurança destas funções NÃO depende de CORS: cada função valida o JWT do
+ * usuário e checa o role de admin no banco antes de fazer qualquer coisa.
+ * CORS aqui só precisa deixar o navegador conversar com a função.
  *
- * Desenvolvimento local:
- * - localhost e 127.0.0.1 são permitidos automaticamente.
- * - O fallback "*" foi removido para evitar exposição acidental em produção.
+ * Por isso agora o header sempre REFLETE a origem do request (ou "*" quando
+ * não há origem, ex: chamadas server-to-server). Se um dia quiser restringir,
+ * configure ALLOWED_ORIGIN — origens fora da lista passam a ser recusadas,
+ * mas só ative isso depois de garantir que o secret contém TODOS os domínios
+ * usados (produção + previews).
  */
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
@@ -27,7 +34,6 @@ function matchesAllowedRegex(origin: string, regexValue: string | null): boolean
   try {
     return new RegExp(regexValue).test(origin);
   } catch {
-    // Regex inválida não deve abrir CORS por acidente.
     return false;
   }
 }
@@ -38,20 +44,26 @@ export function getCorsHeaders(req: Request): Record<string, string> {
   const allowedList = splitOrigins(Deno.env.get("ALLOWED_ORIGIN"));
   const allowedRegex = Deno.env.get("ALLOWED_ORIGIN_REGEX");
 
+  // Modo restrito SÓ se ALLOWED_ORIGIN estiver configurado explicitamente.
+  const restrito = allowedList.length > 0 || !!allowedRegex;
+
   const isAllowed =
+    !restrito ||
     !origin ||
     LOCAL_ORIGIN.test(origin) ||
     allowedList.includes(originLower) ||
     matchesAllowedRegex(origin, allowedRegex);
 
-  const responseOrigin = isAllowed
-    ? (origin || allowedList[0] || "http://localhost:5173")
-    : "null";
+  // Nunca devolve "null" — se recusado, devolve a primeira origem da lista
+  // (o navegador bloqueia porque não bate, mas sem quebrar o preflight de
+  // origens legítimas por má configuração).
+  const responseOrigin = isAllowed ? (origin || "*") : (allowedList[0] || "*");
 
   return {
     "Access-Control-Allow-Origin": responseOrigin,
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
 }
