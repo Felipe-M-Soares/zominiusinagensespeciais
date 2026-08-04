@@ -584,22 +584,27 @@ $f_cr$;
 GRANT EXECUTE ON FUNCTION public.admin_clear_rastreabilidade() TO authenticated;
 
 -- ── admin_clear_financeiro ────────────────────────────────────────────────────
--- Apaga contas a pagar/receber (histórico financeiro); fornecedores, bancos e
--- pedidos comerciais/de compra permanecem intactos.
+-- Apaga contas a pagar/receber E as notas de devolução/troca (histórico
+-- financeiro completo); fornecedores, bancos e pedidos comerciais/de compra
+-- permanecem intactos. notas_devolucao_troca não tem FK com pedidos (vínculo
+-- solto por pedido_id), então nenhuma outra limpeza a alcançava — era por isso
+-- que "Apagar histórico" deixava as devoluções/trocas para trás.
 CREATE OR REPLACE FUNCTION public.admin_clear_financeiro()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_cf$
-DECLARE v_count integer; v_uid uuid := auth.uid(); v_name text;
+DECLARE v_count integer; v_count_dev integer; v_uid uuid := auth.uid(); v_name text;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_uid AND role = 'admin') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
   SELECT COUNT(*) INTO v_count FROM public.contas_financeiras;
   DELETE FROM public.contas_financeiras WHERE true;
+  SELECT COUNT(*) INTO v_count_dev FROM public.notas_devolucao_troca;
+  DELETE FROM public.notas_devolucao_troca WHERE true; -- WHERE true: satisfaz proteção contra DELETE sem filtro
   SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
   VALUES (v_uid, COALESCE(v_name, 'Desconhecido'), 'admin_clear_financeiro', 'contas_financeiras',
-    jsonb_build_object('deleted', v_count));
-  RETURN jsonb_build_object('ok', true, 'deleted', v_count);
+    jsonb_build_object('deleted', v_count, 'devolucoes_trocas_deleted', v_count_dev));
+  RETURN jsonb_build_object('ok', true, 'deleted', v_count + v_count_dev);
 END;
 $f_cf$;
 GRANT EXECUTE ON FUNCTION public.admin_clear_financeiro() TO authenticated;

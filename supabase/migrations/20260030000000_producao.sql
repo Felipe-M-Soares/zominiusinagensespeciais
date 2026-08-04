@@ -157,32 +157,32 @@ DROP POLICY IF EXISTS "prod_update" ON produtos_producao; CREATE POLICY "prod_up
 DROP POLICY IF EXISTS "prod_delete" ON produtos_producao; CREATE POLICY "prod_delete" ON produtos_producao FOR DELETE USING (public.get_my_role() = 'admin');
 
 DROP POLICY IF EXISTS "apon_select" ON apontamentos_producao; CREATE POLICY "apon_select" ON apontamentos_producao FOR SELECT USING (auth.uid() IS NOT NULL);
-DROP POLICY IF EXISTS "apon_insert" ON apontamentos_producao; CREATE POLICY "apon_insert" ON apontamentos_producao FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "apon_insert" ON apontamentos_producao; CREATE POLICY "apon_insert" ON apontamentos_producao FOR INSERT WITH CHECK (public.get_my_role() IN ('admin','producao'));
 DROP POLICY IF EXISTS "apon_update" ON apontamentos_producao; CREATE POLICY "apon_update" ON apontamentos_producao FOR UPDATE USING (auth.uid() = user_id OR public.get_my_role() IN ('admin','producao'));
 DROP POLICY IF EXISTS "apon_delete" ON apontamentos_producao; CREATE POLICY "apon_delete" ON apontamentos_producao FOR DELETE USING (public.get_my_role() = 'admin');
 
 DROP POLICY IF EXISTS "op_select" ON ordens_planejamento; CREATE POLICY "op_select" ON ordens_planejamento FOR SELECT USING (auth.uid() IS NOT NULL);
-DROP POLICY IF EXISTS "op_insert" ON ordens_planejamento; CREATE POLICY "op_insert" ON ordens_planejamento FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-DROP POLICY IF EXISTS "op_update" ON ordens_planejamento; CREATE POLICY "op_update" ON ordens_planejamento FOR UPDATE USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "op_insert" ON ordens_planejamento; CREATE POLICY "op_insert" ON ordens_planejamento FOR INSERT WITH CHECK (public.get_my_role() IN ('admin','producao'));
+DROP POLICY IF EXISTS "op_update" ON ordens_planejamento; CREATE POLICY "op_update" ON ordens_planejamento FOR UPDATE USING (public.get_my_role() IN ('admin','producao'));
 DROP POLICY IF EXISTS "op_delete" ON ordens_planejamento; CREATE POLICY "op_delete" ON ordens_planejamento FOR DELETE USING (public.get_my_role() = 'admin');
 
 DROP POLICY IF EXISTS "par_select" ON paradas_producao; CREATE POLICY "par_select" ON paradas_producao FOR SELECT USING (auth.uid() IS NOT NULL);
-DROP POLICY IF EXISTS "par_insert" ON paradas_producao; CREATE POLICY "par_insert" ON paradas_producao FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "par_insert" ON paradas_producao; CREATE POLICY "par_insert" ON paradas_producao FOR INSERT WITH CHECK (public.get_my_role() IN ('admin','producao'));
 DROP POLICY IF EXISTS "par_update" ON paradas_producao; CREATE POLICY "par_update" ON paradas_producao FOR UPDATE USING (auth.uid() = user_id OR public.get_my_role() IN ('admin','producao'));
 DROP POLICY IF EXISTS "par_delete" ON paradas_producao; CREATE POLICY "par_delete" ON paradas_producao FOR DELETE USING (public.get_my_role() = 'admin');
 
 DROP POLICY IF EXISTS "ref_select" ON refugos_producao; CREATE POLICY "ref_select" ON refugos_producao FOR SELECT USING (auth.uid() IS NOT NULL);
-DROP POLICY IF EXISTS "ref_insert" ON refugos_producao; CREATE POLICY "ref_insert" ON refugos_producao FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "ref_insert" ON refugos_producao; CREATE POLICY "ref_insert" ON refugos_producao FOR INSERT WITH CHECK (public.get_my_role() IN ('admin','producao'));
 DROP POLICY IF EXISTS "ref_update" ON refugos_producao; CREATE POLICY "ref_update" ON refugos_producao FOR UPDATE USING (auth.uid() = user_id OR public.get_my_role() IN ('admin','producao'));
 DROP POLICY IF EXISTS "ref_delete" ON refugos_producao; CREATE POLICY "ref_delete" ON refugos_producao FOR DELETE USING (public.get_my_role() = 'admin');
 
 DROP POLICY IF EXISTS "mp_select" ON materias_primas_producao; CREATE POLICY "mp_select" ON materias_primas_producao FOR SELECT USING (auth.uid() IS NOT NULL);
 DROP POLICY IF EXISTS "mp_insert" ON materias_primas_producao; CREATE POLICY "mp_insert" ON materias_primas_producao FOR INSERT WITH CHECK (public.get_my_role() IN ('admin','producao'));
-DROP POLICY IF EXISTS "mp_update" ON materias_primas_producao; CREATE POLICY "mp_update" ON materias_primas_producao FOR UPDATE USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "mp_update" ON materias_primas_producao; CREATE POLICY "mp_update" ON materias_primas_producao FOR UPDATE USING (public.get_my_role() IN ('admin','producao'));
 DROP POLICY IF EXISTS "mp_delete" ON materias_primas_producao; CREATE POLICY "mp_delete" ON materias_primas_producao FOR DELETE USING (public.get_my_role() = 'admin');
 
 DROP POLICY IF EXISTS "mov_select" ON movimentos_mp_producao; CREATE POLICY "mov_select" ON movimentos_mp_producao FOR SELECT USING (auth.uid() IS NOT NULL);
-DROP POLICY IF EXISTS "mov_insert" ON movimentos_mp_producao; CREATE POLICY "mov_insert" ON movimentos_mp_producao FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "mov_insert" ON movimentos_mp_producao; CREATE POLICY "mov_insert" ON movimentos_mp_producao FOR INSERT WITH CHECK (public.get_my_role() IN ('admin','producao'));
 DROP POLICY IF EXISTS "mov_delete" ON movimentos_mp_producao; CREATE POLICY "mov_delete" ON movimentos_mp_producao FOR DELETE USING (public.get_my_role() = 'admin');
 
 -- Triggers updated_at

@@ -3028,6 +3028,7 @@ export default function Financeiro() {
   const [filtroStatus,  setFiltroStatus]  = useState("pronto");
   const [sefazPedido,   setSefazPedido]   = useState<Pedido | null>(null);
   const [historicoOpen, setHistoricoOpen] = useState(false);
+  const [devolucoesKey, setDevolucoesKey] = useState(0); // remonta o painel de devoluções após "Apagar histórico"
   const [activeTab,     setActiveTab]     = useState<FinTab>("dashboard");
   // Sub-aba dentro de "Lançamentos" — unifica o que antes eram 3 abas
   // separadas (Compras Produção, Compras Empresa, Custos), todas usando o
@@ -3248,8 +3249,8 @@ export default function Financeiro() {
                 rpc="admin_clear_financeiro"
                 label="Apagar"
                 confirmTitle="Apagar histórico financeiro?"
-                confirmDescription="Apaga todas as contas a pagar e a receber. Fornecedores, bancos e pedidos comerciais são mantidos."
-                onCleared={() => { loadPedidos(); loadLancamentos(); }}
+                confirmDescription="Apaga todas as contas a pagar e a receber e todas as notas de devolução/troca. Fornecedores, bancos e pedidos comerciais são mantidos."
+                onCleared={() => { loadPedidos(); loadLancamentos(); setDevolucoesKey(k => k + 1); }}
                 className="h-8"
               />
             )}
@@ -3369,7 +3370,7 @@ export default function Financeiro() {
           </>
         )}
         {activeTab === "devolucoes" && (
-          <Suspense fallback={null}><DevolucaoTrocaPanelLazy modoTeste={modoTeste} /></Suspense>
+          <Suspense fallback={null}><DevolucaoTrocaPanelLazy key={devolucoesKey} modoTeste={modoTeste} /></Suspense>
         )}
         {activeTab === "fornecedores" && (
           <Suspense fallback={null}><FornecedoresPanel/></Suspense>
