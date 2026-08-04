@@ -2120,6 +2120,13 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
         </div>
       )}
 
+      {/* Toggle de ambiente fiscal e configuração SEFAZ: SOMENTE ADMIN.
+          Alternar homolog/produção muda o valor fiscal das notas do sistema
+          inteiro, e o card de configuração expõe nomes de secrets/funções —
+          usuários do Financeiro não precisam ver nada disso. O aviso "Modo
+          Homologação ativo" continua aparecendo nas telas de emissão. */}
+      {isAdmin && (
+      <>
       <div className={cn("rounded-2xl border p-4 flex items-start gap-3",
         modoTeste ? "border-orange-500/30 bg-orange-500/5" : "border-green-500/30 bg-green-500/5")}>
         <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
@@ -2174,6 +2181,8 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
           <TestTube2 className="h-3 w-3" />Testar Conexão SEFAZ
         </button>
       </div>
+      </>
+      )}
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">

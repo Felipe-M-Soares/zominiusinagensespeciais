@@ -149,7 +149,7 @@ export default function Processos() {
       </div>
       {tab === "ferramentas" && <FerramentasPanel ferramentas={ferramentas} loading={loadingFerramentas} onChange={fetchFerramentas} />}
       {tab === "fornecedores" && <FornecedoresPanel />}
-      {tab === "compras" && <PedidosCompraPanel />}
+      {tab === "compras" && <PedidosCompraPanel contexto="ferramentas" />}
       {tab === "faltas" && <FaltasPanel ferramentas={emFalta} onChange={() => { fetchFerramentas(); fetchPedidosAbertos(); }} />}
       {tab === "codigos" && <CodigosPanel />}
     </div></main>

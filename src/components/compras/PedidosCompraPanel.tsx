@@ -7,7 +7,12 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Fornecedor { id:string; razao_social:string; }
-interface MP { id:string; codigo:string; descricao:string; }
+// Item de catálogo do seletor — pode vir de matérias-primas (contexto Financeiro)
+// ou de ferramentas_cnc (contexto Processos: brocas, fresas, insertos...)
+interface CatalogoItem { id:string; codigo:string; descricao:string; custo_unitario?:number|null; }
+
+/** Contexto do painel: define QUAL catálogo o seletor de itens mostra */
+export type CompraContexto = "materiais" | "ferramentas";
 interface ItemForm { mp_id:string; descricao:string; quantidade:string; unidade:string; valor_unitario:string; }
 interface PedidoCompra {
   id:string; fornecedor_nome:string; status:string; data_pedido:string;
@@ -19,24 +24,38 @@ interface PedidoCompra {
 const STATUS_LABEL: Record<string,string> = { rascunho:"Rascunho", enviado:"Enviado", parcial:"Parcial", recebido:"Recebido", cancelado:"Cancelado" };
 const STATUS_COLOR: Record<string,string> = { rascunho:"text-muted-foreground bg-muted/30", enviado:"text-blue-600 bg-blue-500/10", parcial:"text-amber-600 bg-amber-500/10", recebido:"text-green-600 bg-green-500/10", cancelado:"text-red-600 bg-red-500/10" };
 
-function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>void }) {
+function NovoPedidoModal({ onClose, onSaved, contexto }: { onClose:()=>void; onSaved:()=>void; contexto:CompraContexto }) {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
-  const [mps, setMPs] = useState<MP[]>([]);
+  const [mps, setMPs] = useState<CatalogoItem[]>([]);
   const [form, setForm] = useState({ fornecedor_id:"", fornecedor_nome:"", data_previsao:"", observacoes:"" });
-  const [itens, setItens] = useState<ItemForm[]>([{ mp_id:"", descricao:"", quantidade:"", unidade:"m", valor_unitario:"" }]);
+  // Ferramentas são compradas por unidade; matéria-prima por metro (padrão antigo)
+  const unidadePadrao = contexto === "ferramentas" ? "un" : "m";
+  const [itens, setItens] = useState<ItemForm[]>([{ mp_id:"", descricao:"", quantidade:"", unidade:unidadePadrao, valor_unitario:"" }]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    const catalogo = contexto === "ferramentas"
+      // Processos: brocas, fresas, insertos, pastilhas, alargadores...
+      ? supabase.from("ferramentas_cnc").select("id,codigo,descricao,tipo,custo_unitario").order("codigo")
+          .then(({ data }) => (data ?? []).map(f => ({
+            id: f.id, codigo: f.codigo,
+            descricao: `${f.descricao}${f.tipo ? ` (${f.tipo})` : ""}`,
+            custo_unitario: f.custo_unitario,
+          })))
+      // Financeiro: matérias-primas
+      : supabase.from("materias_primas_producao").select("id,codigo,descricao").order("codigo")
+          .then(({ data }) => (data ?? []) as CatalogoItem[]);
+
     Promise.all([
       supabase.from("fornecedores").select("id,razao_social").eq("ativo",true).order("razao_social"),
-      supabase.from("materias_primas_producao").select("id,codigo,descricao").order("codigo"),
-    ]).then(([{data:f},{data:m}]) => {
+      catalogo,
+    ]).then(([{data:f}, itensCatalogo]) => {
       if(f) setFornecedores(f as Fornecedor[]);
-      if(m) setMPs(m as MP[]);
+      setMPs(itensCatalogo);
     });
-  }, []);
+  }, [contexto]);
 
-  function addItem() { setItens(i => [...i, { mp_id:"", descricao:"", quantidade:"", unidade:"m", valor_unitario:"" }]); }
+  function addItem() { setItens(i => [...i, { mp_id:"", descricao:"", quantidade:"", unidade:unidadePadrao, valor_unitario:"" }]); }
   function removeItem(i:number) { setItens(prev => prev.filter((_,idx) => idx !== i)); }
   function updateItem(i:number, k:string, v:string) { setItens(prev => prev.map((item,idx) => idx===i ? {...item,[k]:v} : item)); }
 
@@ -61,7 +80,9 @@ function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>v
 
     await supabase.from("pedido_compra_itens").insert(validItens.map(i => ({
       pedido_id: ped.id,
-      materia_prima_id: i.mp_id || null,
+      // FK aponta para materias_primas_producao — só vincula nesse contexto;
+      // ferramentas ficam registradas pela descrição (código + nome + tipo)
+      materia_prima_id: contexto === "materiais" ? (i.mp_id || null) : null,
       descricao: i.descricao,
       quantidade: parseFloat(i.quantidade),
       unidade: i.unidade,
@@ -112,9 +133,13 @@ function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>v
                     <select value={item.mp_id} onChange={e=>{
                       const mp=mps.find(m=>m.id===e.target.value);
                       updateItem(i,"mp_id",e.target.value);
-                      if(mp) updateItem(i,"descricao",`${mp.codigo} — ${mp.descricao}`);
+                      if(mp) {
+                        updateItem(i,"descricao",`${mp.codigo} — ${mp.descricao}`);
+                        // Ferramenta com custo cadastrado já sugere o valor unitário
+                        if(mp.custo_unitario != null && mp.custo_unitario > 0) updateItem(i,"valor_unitario",String(mp.custo_unitario));
+                      }
                     }} className={sel}>
-                      <option value="">Selecione a MP ou descreva manualmente</option>
+                      <option value="">{contexto === "ferramentas" ? "Selecione a ferramenta (broca, fresa...) ou descreva manualmente" : "Selecione a MP ou descreva manualmente"}</option>
                       {mps.map(m=><option key={m.id} value={m.id}>{m.codigo} — {m.descricao}</option>)}
                     </select>
                     <Input value={item.descricao} onChange={e=>updateItem(i,"descricao",e.target.value)} placeholder="Descrição do item" className="h-9 mt-1.5"/>
@@ -144,7 +169,7 @@ function NovoPedidoModal({ onClose, onSaved }: { onClose:()=>void; onSaved:()=>v
   );
 }
 
-export function PedidosCompraPanel() {
+export function PedidosCompraPanel({ contexto = "materiais" }: { contexto?: CompraContexto } = {}) {
   const [pedidos, setPedidos] = useState<PedidoCompra[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -221,7 +246,7 @@ export function PedidosCompraPanel() {
           ))}
         </div>
       )}
-      {modal && <NovoPedidoModal onClose={()=>setModal(false)} onSaved={load}/>}
+      {modal && <NovoPedidoModal contexto={contexto} onClose={()=>setModal(false)} onSaved={load}/>}
     </div>
   );
 }
