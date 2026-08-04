@@ -116,7 +116,7 @@ export function DesenhoTecnicoViewer({ path, title, onClose }: Props) {
       win.document.write(`
         <html>
           <head>
-            <title>Desenho técnico — ${title}</title>
+            <title>Desenho técnico — ${title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>
             <style>
               @page { size: A4 landscape; margin: 0; }
               html, body { margin: 0; padding: 0; background: #525659; }

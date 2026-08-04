@@ -45,8 +45,14 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl  = getRequiredEnv("SUPABASE_URL");
-    const supabaseAnon = getRequiredEnv("API_ANON_KEY");
-    const serviceKey   = getRequiredEnv("API_SERVICE_KEY");
+    // SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY são injetadas
+    // AUTOMATICAMENTE pelo Supabase em toda Edge Function — nenhuma
+    // configuração manual é necessária. Os nomes antigos (API_ANON_KEY /
+    // API_SERVICE_KEY) eram secrets manuais: em projeto novo eles não
+    // existiam e a função quebrava com 500 "Missing env". Ficam apenas
+    // como override opcional para quem já os tinha configurado.
+    const supabaseAnon = Deno.env.get("API_ANON_KEY")    ?? getRequiredEnv("SUPABASE_ANON_KEY");
+    const serviceKey   = Deno.env.get("API_SERVICE_KEY") ?? getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
 
     const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
     if (!token) {

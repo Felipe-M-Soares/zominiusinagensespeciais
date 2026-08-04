@@ -88,9 +88,13 @@ CREATE TABLE IF NOT EXISTS public.contas_financeiras (
     CHECK (status IN ('aberto','pago','vencido','cancelado')),
   categoria       text NOT NULL DEFAULT 'outros',
   -- Vínculos
-  pedido_id       uuid REFERENCES public.pedidos_comerciais(id),   -- conta a receber de venda
-  pedido_compra_id uuid REFERENCES public.pedidos_compra(id),       -- conta a pagar de compra
-  fornecedor_id   uuid REFERENCES public.fornecedores(id),
+  -- ON DELETE SET NULL: a conta financeira é dado fiscal e SOBREVIVE à
+  -- exclusão do pedido/fornecedor — apenas perde o vínculo. Sem isso, o
+  -- padrão RESTRICT bloqueava "Apagar histórico comercial" com
+  -- "violates foreign key constraint contas_financeiras_pedido_id_fkey".
+  pedido_id       uuid REFERENCES public.pedidos_comerciais(id) ON DELETE SET NULL, -- conta a receber de venda
+  pedido_compra_id uuid REFERENCES public.pedidos_compra(id)    ON DELETE SET NULL, -- conta a pagar de compra
+  fornecedor_id   uuid REFERENCES public.fornecedores(id)       ON DELETE SET NULL,
   nota_fiscal     text,
   banco_id        uuid REFERENCES public.financeiro_contas_bancarias(id),
   observacoes     text,
@@ -178,13 +182,15 @@ CREATE TABLE IF NOT EXISTS public.rastreabilidade_pos_venda (
   pedido_item_id  uuid REFERENCES public.pedido_itens(id) ON DELETE SET NULL,
   stock_item_id   uuid REFERENCES public.stock_items(id) ON DELETE SET NULL,
   lote            text NOT NULL,
-  device_id       uuid REFERENCES public.devices(id),
+  -- ON DELETE SET NULL: registro de recall ANVISA nunca é apagado; device_ref/
+  -- device_model/udi_di ficam gravados em texto, então o vínculo pode cair.
+  device_id       uuid REFERENCES public.devices(id) ON DELETE SET NULL,
   device_ref      text NOT NULL,
   device_model    text NOT NULL,
   udi_di          text,
   quantidade      integer NOT NULL,
   -- Destinação clínica (para ANVISA)
-  cliente_id      uuid REFERENCES public.clientes(id),
+  cliente_id      uuid REFERENCES public.clientes(id) ON DELETE SET NULL, -- cliente_nome fica em texto
   cliente_nome    text NOT NULL,
   clinica         text,      -- nome da clínica/hospital
   cirurgiao       text,      -- nome do profissional
@@ -248,6 +254,73 @@ BEGIN
   ALTER TABLE public.rastreabilidade_pos_venda
     ADD CONSTRAINT rastreabilidade_pos_venda_stock_item_id_fkey
     FOREIGN KEY (stock_item_id) REFERENCES public.stock_items(id) ON DELETE SET NULL;
+
+  -- device_id FK — sem ON DELETE bloqueava excluir dispositivo no Admin que
+  -- já tivesse rastreabilidade (dados do device ficam em texto no registro)
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'rastreabilidade_pos_venda_device_id_fkey'
+      AND table_name = 'rastreabilidade_pos_venda'
+  ) THEN
+    ALTER TABLE public.rastreabilidade_pos_venda
+      DROP CONSTRAINT rastreabilidade_pos_venda_device_id_fkey;
+  END IF;
+  ALTER TABLE public.rastreabilidade_pos_venda
+    ADD CONSTRAINT rastreabilidade_pos_venda_device_id_fkey
+    FOREIGN KEY (device_id) REFERENCES public.devices(id) ON DELETE SET NULL;
+
+  -- cliente_id FK — mesmo caso (cliente_nome fica gravado em texto)
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'rastreabilidade_pos_venda_cliente_id_fkey'
+      AND table_name = 'rastreabilidade_pos_venda'
+  ) THEN
+    ALTER TABLE public.rastreabilidade_pos_venda
+      DROP CONSTRAINT rastreabilidade_pos_venda_cliente_id_fkey;
+  END IF;
+  ALTER TABLE public.rastreabilidade_pos_venda
+    ADD CONSTRAINT rastreabilidade_pos_venda_cliente_id_fkey
+    FOREIGN KEY (cliente_id) REFERENCES public.clientes(id) ON DELETE SET NULL;
+
+  -- ── contas_financeiras: FKs sem ON DELETE (padrão RESTRICT) bloqueavam
+  --    "Apagar histórico comercial" e exclusões de pedido de compra/fornecedor
+  --    com erro "violates foreign key constraint". A conta é dado fiscal e
+  --    sobrevive; só o vínculo é desfeito (SET NULL).
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'contas_financeiras_pedido_id_fkey'
+      AND table_name = 'contas_financeiras'
+  ) THEN
+    ALTER TABLE public.contas_financeiras
+      DROP CONSTRAINT contas_financeiras_pedido_id_fkey;
+  END IF;
+  ALTER TABLE public.contas_financeiras
+    ADD CONSTRAINT contas_financeiras_pedido_id_fkey
+    FOREIGN KEY (pedido_id) REFERENCES public.pedidos_comerciais(id) ON DELETE SET NULL;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'contas_financeiras_pedido_compra_id_fkey'
+      AND table_name = 'contas_financeiras'
+  ) THEN
+    ALTER TABLE public.contas_financeiras
+      DROP CONSTRAINT contas_financeiras_pedido_compra_id_fkey;
+  END IF;
+  ALTER TABLE public.contas_financeiras
+    ADD CONSTRAINT contas_financeiras_pedido_compra_id_fkey
+    FOREIGN KEY (pedido_compra_id) REFERENCES public.pedidos_compra(id) ON DELETE SET NULL;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'contas_financeiras_fornecedor_id_fkey'
+      AND table_name = 'contas_financeiras'
+  ) THEN
+    ALTER TABLE public.contas_financeiras
+      DROP CONSTRAINT contas_financeiras_fornecedor_id_fkey;
+  END IF;
+  ALTER TABLE public.contas_financeiras
+    ADD CONSTRAINT contas_financeiras_fornecedor_id_fkey
+    FOREIGN KEY (fornecedor_id) REFERENCES public.fornecedores(id) ON DELETE SET NULL;
 END;
 $$;
 

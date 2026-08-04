@@ -77,6 +77,28 @@ function PasswordStrengthInput({ value, onChange }: { value: string; onChange: (
   );
 }
 
+/**
+ * Extrai a mensagem de erro REAL de uma chamada de Edge Function.
+ * Quando a função responde 4xx/5xx, o supabase.functions.invoke devolve só
+ * "Edge Function returned a non-2xx status code" — a mensagem verdadeira
+ * (ex: "Apenas administradores...", "Missing env: ...") fica no corpo da
+ * resposta, dentro de error.context. Esta função vai buscá-la lá.
+ */
+async function extrairErroFuncao(
+  error: { message?: string; context?: unknown } | null,
+  data: { error?: string } | null,
+): Promise<string | null> {
+  if (!error) return data?.error ?? null;
+  const ctx = (error as { context?: unknown }).context;
+  if (ctx instanceof Response) {
+    try {
+      const body = await ctx.clone().json() as { error?: string; message?: string };
+      if (body?.error || body?.message) return body.error ?? body.message ?? null;
+    } catch { /* corpo não é JSON — usa a mensagem genérica mesmo */ }
+  }
+  return error.message ?? "Erro ao chamar função";
+}
+
 export function AdminUsers() {
   const [users, setUsers]     = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,7 +219,7 @@ export function AdminUsers() {
           new_password:   newPassword,
         },
       });
-      let errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
+      let errMsg = await extrairErroFuncao(error, data as { error?: string } | null);
       if (errMsg?.includes("Failed to send a request")) {
         errMsg = "Não foi possível conectar à função 'admin-reset-password'. Publique/atualize as Edge Functions (supabase functions deploy) e tente de novo.";
       }
@@ -251,7 +273,7 @@ export function AdminUsers() {
           role:         newUserRole,
         },
       });
-      let errMsg = error?.message ?? (data as { error?: string } | null)?.error ?? null;
+      let errMsg = await extrairErroFuncao(error, data as { error?: string } | null);
       if (errMsg?.includes("Failed to send a request")) {
         errMsg = "Não foi possível conectar à função 'admin-create-user'. Publique/atualize as Edge Functions (supabase functions deploy) e tente de novo.";
       }
