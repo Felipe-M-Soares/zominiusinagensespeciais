@@ -1,5 +1,5 @@
 // Service Worker mínimo para PWA instalável
-const CACHE = "zomini-v1";
+const CACHE = "zomini-v2"; // v2: nova logo/ícones Zomini — força limpar cache antigo
 const PRECACHE = ["/", "/index.html"];
 
 self.addEventListener("install", (e) => {

@@ -69,7 +69,7 @@ export default function Sobre() {
         </Card>
 
         <p className="text-center text-[11px] text-muted-foreground flex items-center justify-center gap-1">
-          <ExternalLink className="h-3 w-3" /> Concept Usinagens Especiais
+          <ExternalLink className="h-3 w-3" /> Zomini Usinagens Especiais
         </p>
       </main>
     </div>

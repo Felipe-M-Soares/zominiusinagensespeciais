@@ -216,27 +216,39 @@ export function useStock(search: string) {
     return () => { ref.current++; }; // cancela cargas em voo ao desmontar
   }, [search, loadItems]);
 
-  // Recarrega quando o usuário volta à aba após 60s de ausência.
+  // Recarrega quando o usuário volta à aba. TTL curto (era 5 min pra buscas
+  // sem filtro) — tempo longo demais fazia o contador de peças por fase
+  // (badge da aba Expedição etc.) ficar com número desatualizado por vários
+  // minutos se a pessoa saísse pra outra tela (ex: Comercial, cancelar um
+  // pedido) e voltasse rápido pro Estoque.
   useEffect(() => {
     function handleVisibility() {
       if (document.visibilityState !== "visible") return;
-      // Cache de 5 min para queries sem filtro, 60s para buscas
-    const ttl = search ? 60_000 : 300_000;
-    if (Date.now() - lastLoadRef.current < ttl) return;
+      const ttl = search ? 15_000 : 30_000;
+      if (Date.now() - lastLoadRef.current < ttl) return;
       loadItems(search);
     }
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [search, loadItems]);
 
-  // Realtime: recarrega a lista de itens quando quantity muda (movimentação de outro usuário)
+  // Realtime: recarrega a lista de itens quando algo muda em stock_items OU
+  // em pedidos_comerciais (ex: cancelamento devolve peça separada pra
+  // expedição — mexe nas duas tabelas). Ouve todos os eventos (não só
+  // UPDATE) por segurança — o importante é nunca deixar os contadores por
+  // fase (badges da StockNav) desatualizados depois de uma ação em outra tela.
   // Usa debounce implícito via genRef — se chegar múltiplos eventos seguidos, só roda o último.
   useEffect(() => {
     const channel = supabase
       .channel(`usestock-items-${instanceId}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "stock_items" },
+        { event: "*", schema: "public", table: "stock_items" },
+        () => { loadItems(search); }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "pedidos_comerciais" },
         () => { loadItems(search); }
       )
       .subscribe();
