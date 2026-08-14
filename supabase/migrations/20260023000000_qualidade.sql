@@ -50,10 +50,22 @@ ALTER TABLE public.devices
 
 -- ── 2. Campos de regularização da empresa (Fase 1) ────────────────────────────
 -- Guardam se a empresa tem os pré-requisitos necessários para peticionar
+-- DEFAULT true: toda peça cadastrada no app já é considerada regularizada
+-- pela empresa (LF/AFE/BPF) — evita que reimportar/recadastrar uma peça
+-- (ex: depois de excluir e reimportar o catálogo) a faça aparecer como
+-- "irregular" de novo em Qualidade > Pipeline, já que nem o formulário de
+-- cadastro manual nem a importação em massa preenchem esses campos.
 ALTER TABLE public.devices
-  ADD COLUMN IF NOT EXISTS empresa_lf          boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS empresa_afe         boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS empresa_bpf         boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS empresa_lf          boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS empresa_afe         boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS empresa_bpf         boolean NOT NULL DEFAULT true;
+
+-- Garante o novo default também numa tabela que já existia antes desta
+-- migration (ADD COLUMN IF NOT EXISTS acima não altera o default de uma
+-- coluna já criada).
+ALTER TABLE public.devices ALTER COLUMN empresa_lf  SET DEFAULT true;
+ALTER TABLE public.devices ALTER COLUMN empresa_afe SET DEFAULT true;
+ALTER TABLE public.devices ALTER COLUMN empresa_bpf SET DEFAULT true;
 
 -- Para peças já cadastradas (todas aprovadas antes), marcar empresa como ok
 UPDATE public.devices
@@ -80,9 +92,13 @@ ALTER TABLE public.devices
 -- notificado       → notificação concedida (classe I/II)
 -- registrado       → registro concedido (classe III/IV)
 -- cancelado        → registro ou notificação cancelado
+-- DEFAULT 'registrado' (não 'pendente'): mesma lógica do empresa_lf/afe/bpf
+-- acima — toda peça nova entra já como regularizada, não pendente.
 ALTER TABLE public.devices
-  ADD COLUMN IF NOT EXISTS status_regularizacao text NOT NULL DEFAULT 'pendente'
+  ADD COLUMN IF NOT EXISTS status_regularizacao text NOT NULL DEFAULT 'registrado'
     CHECK (status_regularizacao IN ('pendente','em_processo','notificado','registrado','cancelado'));
+
+ALTER TABLE public.devices ALTER COLUMN status_regularizacao SET DEFAULT 'registrado';
 
 -- Atualiza peças já cadastradas que têm anvisa_registration
 UPDATE public.devices
