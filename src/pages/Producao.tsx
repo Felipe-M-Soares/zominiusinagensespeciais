@@ -118,7 +118,10 @@ export default function Producao() {
         <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <Factory className="h-4 w-4 text-primary shrink-0" />
-            <h1 className="text-sm font-semibold">Produção</h1>
+            <div>
+              <h1 className="text-sm font-semibold leading-tight">Produção</h1>
+              <p className="hidden sm:block text-[10px] text-muted-foreground leading-tight">Controle industrial · apontamento, paradas, refugo e planejamento</p>
+            </div>
           </div>
           <div className="flex items-center gap-1.5">
             {isAdmin && (

@@ -7,7 +7,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  User, Search, X, Plus, ShoppingCart, Package, Receipt, Truck, Star, AlertCircle,
+  User, Search, X, Plus, ShoppingCart, Package, Receipt, Truck, Star, AlertCircle, ChevronDown,
 } from "lucide-react";
 import { criarPedidoComReserva } from "@/lib/pedidoUtils";
 import { ClienteModal } from "@/components/comercial/ClienteModal";
@@ -76,6 +76,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
   const [usarEnderecoCliente, setUsarEnderecoCliente] = useState(true);
   const [precoMap, setPrecoMap] = useState<Record<string, number>>({});
   const [resumoOpen, setResumoOpen] = useState(false); // popup com o total do pedido
+  const [mostrarOpcoes, setMostrarOpcoes] = useState(false); // pagamento/endereço/frete/obs recolhidos por padrão — deixa o fluxo principal (cliente → peças) mais rápido
 
   // Carrega favoritas do usuário atual
   useEffect(() => {
@@ -160,6 +161,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
     }
     setPecaSearch(""); setAutocomplete([]); setShowAutocomp(false);
     setSelectedPeca(null); setQtd(1); setDescontoItemAtual(0); setResumoOpen(false);
+    setMostrarOpcoes(!!editarPedido); // editando: abre já mostrando pagamento/endereço/frete pra revisão
     loadClientes();
     loadPrecos();
   }, [open, clienteFixo, duplicarDe]);
@@ -760,6 +762,45 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
             </div>
           )}
 
+          {/* ── Mais opções (pagamento, endereço, frete, observações) ──
+               Recolhido por padrão — a maioria dos pedidos usa os padrões
+               (endereço do cliente, sem frete). Mostra só um resumo em chips
+               quando tem algo preenchido, sem precisar abrir pra conferir. */}
+          <div className="rounded-xl border border-border/40 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setMostrarOpcoes(v => !v)}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 text-left hover:bg-muted/20 transition-colors"
+            >
+              <span className="text-[12px] font-semibold text-muted-foreground">
+                Pagamento, entrega e observações
+              </span>
+              <div className="flex items-center gap-1.5">
+                {!mostrarOpcoes && (
+                  <div className="flex items-center gap-1 flex-wrap justify-end">
+                    {formaPagamento && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 font-medium">
+                        {formaPagamento === "cartao_credito" ? `${parcelas}x` : formaPagamento.replace("_", " ")}
+                      </span>
+                    )}
+                    {!usarEnderecoCliente && enderecoEntrega && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">outro endereço</span>
+                    )}
+                    {frete > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium">frete R$ {frete.toFixed(0)}</span>
+                    )}
+                    {obs.trim() && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">obs.</span>
+                    )}
+                  </div>
+                )}
+                <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform shrink-0", mostrarOpcoes && "rotate-180")} />
+              </div>
+            </button>
+
+            {mostrarOpcoes && (
+              <div className="p-3.5 pt-1 space-y-4 border-t border-border/30">
+
           {/* ── Forma de Pagamento ── */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Forma de Pagamento</label>
@@ -862,6 +903,10 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
               rows={2}
               className="w-full rounded-xl border border-border/50 bg-background text-sm px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
             />
+          </div>
+
+              </div>
+            )}
           </div>
         </div>
 

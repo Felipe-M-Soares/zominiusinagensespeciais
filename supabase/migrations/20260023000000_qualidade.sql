@@ -262,3 +262,128 @@ BEGIN
   RAISE NOTICE 'Regularização: % de % devices em fase 5', fase5, total;
 END;
 $f01$;
+-- =============================================================================
+-- AUDITORIA DE CONFORMIDADE GS1/ANVISA
+-- =============================================================================
+--
+-- Contexto regulatório (conferido em fev/2026, RDC 591/2021 + RDC 884/2024 +
+-- IN 426/2026 — SIUD):
+--
+--   OBRIGAÇÃO 1 — Rótulo com UDI físico (embalagem/dispositivo)
+--     Classe IV: obrigatório desde 10/07/2025
+--     Classe III: obrigatório desde 10/01/2026  ← JÁ VALE, peça de implante
+--                 dentário normalmente é Classe III
+--     Classe II: obrigatório a partir de 10/01/2027
+--     Classe I: obrigatório a partir de 10/01/2028
+--
+--   OBRIGAÇÃO 2 — Transmissão dos dados ao SIUD (base de dados nacional)
+--     Prazo contado a partir de 01/03/2026 (vigência da IN 426/2026):
+--     Classe IV: até 01/09/2029 · Classe III: até ~03/2030 · Classe II/I: depois
+--
+--   São DUAS obrigações com prazos bem diferentes — o rótulo já é urgente pra
+--   Classe III/IV, o envio ao SIUD ainda tem alguns anos de prazo. O app não
+--   distinguia isso, tratava tudo dentro da mesma "Fase 4/5" do pipeline.
+--
+-- O que esta migration faz:
+--   1. Função de validação de dígito verificador GTIN (padrão GS1, módulo 10)
+--      — detecta GTIN/UDI-DI com erro de digitação (dígito verificador errado).
+--   2. View de alertas de conformidade — identifica peças que dizem estar
+--      "registradas"/"notificadas" mas NÃO têm o número de registro/notificação
+--      real preenchido (só o texto do status, sem o dado que comprova),
+--      peças com GTIN com dígito verificador inválido, e peças Classe III/IV
+--      com rótulo UDI ainda não confirmado (rotulo_udi_ok = false) — que é a
+--      obrigação que JÁ está valendo, não a do SIUD.
+--   3. NÃO mexe no fase_atual nem no status "regularizado" das peças já
+--      cadastradas — a regra de "toda peça nova já entra regularizada" que
+--      foi pedida antes continua valendo. Isto aqui é um painel de alertas
+--      POR CIMA, pra mostrar o que falta de fato sem reverter esse
+--      comportamento.
+-- =============================================================================
+
+-- ── 1. Validação de dígito verificador GTIN (GS1, módulo 10) ─────────────────
+CREATE OR REPLACE FUNCTION public.gtin_check_digit_valido(p_gtin text)
+RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE AS $f_gtin$
+DECLARE
+  v_digits    text;
+  v_len       int;
+  v_sum       int := 0;
+  v_digit     int;
+  v_weight    int;
+  v_check     int;
+  v_expected  int;
+BEGIN
+  IF p_gtin IS NULL THEN RETURN NULL; END IF;
+  v_digits := regexp_replace(p_gtin, '[^0-9]', '', 'g');
+  v_len := length(v_digits);
+
+  -- GTIN válido tem 8, 12, 13 ou 14 dígitos. Fora isso, não dá pra validar
+  -- dígito verificador (provavelmente não é um GTIN GS1 — pode ser um código
+  -- interno usado como UDI-DI de outra forma).
+  IF v_len NOT IN (8, 12, 13, 14) THEN RETURN NULL; END IF;
+
+  v_expected := substring(v_digits FROM v_len FOR 1)::int;
+  v_sum := 0;
+  FOR i IN 1..(v_len - 1) LOOP
+    v_digit  := substring(v_digits FROM i FOR 1)::int;
+    -- peso alterna 3/1 a partir do dígito mais à direita (excluindo o verificador)
+    v_weight := CASE WHEN (v_len - i) % 2 = 1 THEN 3 ELSE 1 END;
+    v_sum := v_sum + v_digit * v_weight;
+  END LOOP;
+  v_check := (10 - (v_sum % 10)) % 10;
+
+  RETURN v_check = v_expected;
+END;
+$f_gtin$;
+
+-- ── 2. View de alertas de conformidade GS1/ANVISA ────────────────────────────
+CREATE OR REPLACE VIEW public.devices_alertas_conformidade AS
+SELECT
+  d.id,
+  d.model,
+  d.reference,
+  d.risk_class,
+  d.status_regularizacao,
+  d.anvisa_registration,
+  d.udi_di,
+  d.gtin,
+  d.rotulo_udi_ok,
+  d.siud_transmitido_em,
+  -- Alerta 1: status diz "registrado"/"notificado" mas não tem o número real
+  (d.status_regularizacao IN ('registrado', 'notificado')
+    AND (d.anvisa_registration IS NULL OR trim(d.anvisa_registration) = ''))
+    AS status_sem_numero_registro,
+  -- Alerta 2: GTIN com dígito verificador inválido (típico de erro de digitação)
+  (d.gtin IS NOT NULL AND public.gtin_check_digit_valido(d.gtin) = false)
+    AS gtin_digito_invalido,
+  (d.udi_di IS NOT NULL AND public.gtin_check_digit_valido(d.udi_di) = false)
+    AS udi_di_digito_invalido,
+  -- Alerta 3 (o mais urgente): Classe III/IV precisa ter rótulo UDI pronto —
+  -- essa obrigação já está valendo (RDC 591/2021 + RDC 884/2024), diferente
+  -- do envio ao SIUD que ainda tem prazo até 2029/2030.
+  (d.risk_class IN ('III', 'IV') AND NOT d.rotulo_udi_ok)
+    AS rotulo_udi_pendente_classe_urgente,
+  CASE
+    WHEN d.risk_class = 'IV'  THEN 'Rótulo UDI obrigatório desde 10/07/2025'
+    WHEN d.risk_class = 'III' THEN 'Rótulo UDI obrigatório desde 10/01/2026'
+    WHEN d.risk_class = 'II'  THEN 'Rótulo UDI obrigatório a partir de 10/01/2027'
+    WHEN d.risk_class = 'I'   THEN 'Rótulo UDI obrigatório a partir de 10/01/2028'
+    ELSE 'Classe de risco não definida'
+  END AS prazo_rotulo_udi_legal,
+  -- GTIN igual ao UDI-DI (copiado automaticamente numa correção anterior) —
+  -- normal quando GS1 é a agência emissora escolhida, mas vale conferir se
+  -- bate mesmo com o que foi emitido oficialmente, não é garantido pra 100%
+  -- dos casos.
+  (d.gtin IS NOT NULL AND d.gtin = d.udi_di) AS gtin_igual_udi_di
+FROM public.devices d
+WHERE
+  (d.status_regularizacao IN ('registrado', 'notificado') AND (d.anvisa_registration IS NULL OR trim(d.anvisa_registration) = ''))
+  OR (d.gtin IS NOT NULL AND public.gtin_check_digit_valido(d.gtin) = false)
+  OR (d.udi_di IS NOT NULL AND public.gtin_check_digit_valido(d.udi_di) = false)
+  OR (d.risk_class IN ('III', 'IV') AND NOT d.rotulo_udi_ok);
+
+GRANT SELECT ON public.devices_alertas_conformidade TO authenticated;
+
+-- Índice de apoio pra RLS + filtros por status/classe usados na view acima.
+CREATE INDEX IF NOT EXISTS idx_devices_conformidade
+  ON public.devices (risk_class, status_regularizacao, rotulo_udi_ok);

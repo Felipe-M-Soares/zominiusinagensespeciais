@@ -575,6 +575,15 @@ export function LancamentoDiarioPanel() {
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
+      {/* Explica a diferença pra Controle — as duas telas registram
+          apontamento de produção, mas servem pra fluxos diferentes. */}
+      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 flex items-start gap-2">
+        <Zap className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          <strong className="text-foreground">Lançamento rápido de turno</strong> — você escolhe o turno e a duração já é calculada. Precisa registrar por máquina/hora, com paradas e refugos detalhados (igual à planilha PPI-51)? Use a aba <strong className="text-foreground">Controle</strong>.
+        </p>
+      </div>
+
       {/* Cabeçalho do dia */}
       <div className="flex items-center gap-2">
         <p className="text-sm font-semibold">

@@ -144,6 +144,27 @@ function calcGTIN13Check(digits12: string): string {
   return String((10 - (sum % 10)) % 10);
 }
 
+/**
+ * Valida o dígito verificador de um GTIN (padrão GS1, módulo 10) — aceita
+ * GTIN-8, GTIN-12, GTIN-13 ou GTIN-14. Retorna null se a string não tem um
+ * tamanho válido de GTIN (não dá pra validar — pode ser um código interno
+ * usado como UDI-DI por outra convenção).
+ */
+function validarGtinCheckDigit(raw: string): boolean | null {
+  const digits = raw.replace(/\D/g, "");
+  if (![8, 12, 13, 14].includes(digits.length)) return null;
+  const n = digits.length;
+  const expected = Number(digits[n - 1]);
+  let sum = 0;
+  for (let i = 1; i < n; i++) {
+    const digit = Number(digits[i - 1]);
+    const weight = (n - i) % 2 === 1 ? 3 : 1;
+    sum += digit * weight;
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return check === expected;
+}
+
 // ─── Barra de Progresso de Fase ───────────────────────────────────────────────
 
 function FaseProgress({ fase }: { fase: FaseNum }) {
@@ -395,6 +416,9 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                 <option value="registrado">Registrado — registro concedido</option>
                 <option value="cancelado">Cancelado</option>
               </select>
+              {(form.status_regularizacao === "registrado" || form.status_regularizacao === "notificado") && !form.anvisa_registration.trim() && (
+                <p className="text-[10px] text-red-500 mt-1">⚠ Status diz "{form.status_regularizacao}" mas não tem o número de registro/notificação preenchido abaixo — não tem como comprovar perante a ANVISA sem esse número.</p>
+              )}
             </Field>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Número do processo (Solicita)">
@@ -483,6 +507,9 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                   placeholder="7890001000012"
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
+                {form.gtin && validarGtinCheckDigit(form.gtin) === false && (
+                  <p className="text-[10px] text-red-500 mt-1">⚠ Dígito verificador inválido — confira se o GTIN foi digitado certo (padrão GS1, módulo 10).</p>
+                )}
               </Field>
               <Field label="UDI-DI">
                 <input value={form.udi_di}
@@ -490,8 +517,16 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
                   placeholder="Igual ao GTIN (padrão GS1)"
                   className="w-full h-9 rounded-xl border border-border/50 bg-background px-3 text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
+                {form.udi_di && validarGtinCheckDigit(form.udi_di) === false && (
+                  <p className="text-[10px] text-red-500 mt-1">⚠ Dígito verificador inválido — confira se o UDI-DI foi digitado certo.</p>
+                )}
               </Field>
             </div>
+            {form.risk_class && (form.risk_class === "III" || form.risk_class === "IV") && !form.rotulo_udi_ok && (
+              <p className="text-[10px] text-amber-600 bg-amber-500/10 rounded-lg px-2.5 py-1.5">
+                ⚠ Classe {form.risk_class}: rótulo com UDI já é <strong>obrigatório desde {form.risk_class === "IV" ? "10/07/2025" : "10/01/2026"}</strong> (RDC 591/2021 + RDC 884/2024) — diferente do envio ao SIUD, que ainda tem prazo até 2029/2030.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Toggle value={form.rotulo_udi_ok}
                 onChange={v => setForm(f => ({ ...f, rotulo_udi_ok: v }))}

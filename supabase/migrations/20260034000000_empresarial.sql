@@ -437,6 +437,47 @@ CREATE TRIGGER trg_criar_conta_receber
   AFTER UPDATE OF status ON public.pedidos_comerciais
   FOR EACH ROW EXECUTE FUNCTION public.criar_conta_receber_nfe();
 
+-- ── Trigger: cria conta a PAGAR quando pedido de compra é recebido ───────────
+-- Faltava o espelho do trigger acima: fazer uma compra de matéria-prima
+-- nunca gerava nada em "contas a pagar" — o financeiro não tinha visibilidade
+-- nenhuma do que devia aos fornecedores, só do que tinha a receber dos
+-- clientes. Mesmo padrão do trigger de conta a receber.
+CREATE OR REPLACE FUNCTION public.criar_conta_pagar_compra()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f02b$
+BEGIN
+  -- Só cria quando o status muda PARA 'recebido' (mercadoria já chegou —
+  -- é quando a dívida com o fornecedor de fato existe) e ainda não existe
+  -- uma conta a pagar pra esse pedido de compra (evita duplicar se o
+  -- status oscilar entre 'parcial' e 'recebido' mais de uma vez).
+  IF NEW.status = 'recebido' AND OLD.status != 'recebido' AND NEW.valor_total > 0 THEN
+    IF NOT EXISTS (SELECT 1 FROM public.contas_financeiras WHERE pedido_compra_id = NEW.id) THEN
+      INSERT INTO public.contas_financeiras (
+        tipo, descricao, valor, data_emissao, data_vencimento,
+        status, categoria, pedido_compra_id, fornecedor_id, nota_fiscal, created_by
+      ) VALUES (
+        'pagar',
+        'Compra — ' || NEW.fornecedor_nome || COALESCE(' — NF ' || NEW.nota_fiscal_entrada, ''),
+        NEW.valor_total,
+        COALESCE(NEW.data_recebimento, CURRENT_DATE),
+        COALESCE(NEW.data_recebimento, CURRENT_DATE) + INTERVAL '30 days',
+        'aberto',
+        'compra',
+        NEW.id,
+        NEW.fornecedor_id,
+        NEW.nota_fiscal_entrada,
+        NEW.created_by
+      );
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$f02b$;
+
+DROP TRIGGER IF EXISTS trg_criar_conta_pagar ON public.pedidos_compra;
+CREATE TRIGGER trg_criar_conta_pagar
+  AFTER UPDATE OF status ON public.pedidos_compra
+  FOR EACH ROW EXECUTE FUNCTION public.criar_conta_pagar_compra();
+
 -- ── Trigger: rastreabilidade pós-venda quando pedido vai para 'enviado' ───────
 CREATE OR REPLACE FUNCTION public.criar_rastreabilidade_pos_venda()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f03$

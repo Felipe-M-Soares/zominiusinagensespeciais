@@ -3,31 +3,38 @@
  * de um único arquivo .zip com pastas e subpastas.
  *
  * Para cada PDF dentro do zip, tenta casar com uma ou mais peças do banco em
- * três etapas:
+ * QUATRO etapas:
  *   1. Correspondência EXATA — nome do próprio arquivo (sem extensão) ou de
- *      alguma pasta ancestral bate exatamente com a referência (ou modelo)
- *      cadastrado, ignorando acentos, maiúsculas/minúsculas, espaços, traços,
- *      underscores e pontuação (ex: "UCEAR-4814", "ucear_4814" e "UCEAR 4814"
- *      são todos tratados como o mesmo texto).
- *   2. Correspondência APROXIMADA (fallback) — se nada bateu exato, verifica
- *      se o nome do arquivo/pasta CONTÉM a referência cadastrada (ou é contido
- *      por ela) — cobre casos como "UCEAR 4814 Rev02.pdf" ou "Desenho_UCEAR4814".
- *      Só aceita esse tipo de match quando ele aponta pra EXATAMENTE UMA peça
- *      (se mais de uma referência poderia bater, fica marcado como sem match
- *      pra não arriscar vincular o desenho errado).
- *   3. Correspondência POR CONTEÚDO (fallback final) — cobre os "desenhos de
- *      família": um único PDF documenta várias peças com a mesma forma, só
- *      variando uma medida (ex: altura), e o desenho tem uma "Tabela de
- *      dimensões variáveis" listando os códigos reais das peças (a peça em
- *      si costuma ter um código só de "Código do Desenho", tipo "ERM 3516C",
- *      que não bate com nenhuma referência cadastrada sozinho). Se o nome do
- *      arquivo não casou com nada, o texto de dentro do PDF é lido (via
- *      pdfjs) e cada referência/modelo cadastrado é procurado literalmente
- *      nesse texto — se aparecer mais de um código da tabela, o MESMO PDF é
- *      vinculado a TODAS as peças encontradas, não só a uma.
+ *      alguma pasta ancestral bate exatamente com a referência, modelo ou
+ *      código interno cadastrado, ignorando acentos, maiúsculas/minúsculas,
+ *      espaços, traços, underscores e pontuação (ex: "UCEAR-4814",
+ *      "ucear_4814" e "UCEAR 4814" são todos tratados como o mesmo texto).
+ *   2. FAMÍLIA POR ALTURA — mesmo esquema já usado no upload de imagens (ver
+ *      DeviceImageUploader.tsx): o nome do arquivo é a base do código, sem o
+ *      dígito de altura/variante, que aparece só nas peças cadastradas, no
+ *      FINAL do trecho numérico. Ex: arquivo "PIM 4818N" cobre as peças
+ *      "PIM 48181N", "PIM 48182N" ... "PIM 48186N" — mesmas letras antes e
+ *      depois dos números, dígitos da peça começam com os dígitos do arquivo.
+ *      Um único PDF é vinculado a TODAS as peças da família de uma vez.
+ *   3. Correspondência APROXIMADA (fallback) — se nada bateu nas etapas
+ *      acima, verifica se o nome do arquivo/pasta CONTÉM a referência
+ *      cadastrada (ou é contido por ela) — cobre casos como
+ *      "UCEAR 4814 Rev02.pdf" ou "Desenho_UCEAR4814". Só aceita esse tipo de
+ *      match quando ele aponta pra EXATAMENTE UMA peça (se mais de uma
+ *      referência poderia bater, fica marcado como sem match pra não
+ *      arriscar vincular o desenho errado).
+ *   4. Correspondência POR CONTEÚDO (fallback final) — cobre os "desenhos de
+ *      família" que não seguem o padrão numérico da etapa 2: o desenho tem
+ *      uma "Tabela de dimensões variáveis" listando os códigos reais das
+ *      peças (a peça em si costuma ter um código só de "Código do Desenho",
+ *      tipo "ERM 3516C", que não bate com nenhuma referência cadastrada
+ *      sozinho). Se o nome do arquivo não casou com nada, o texto de dentro
+ *      do PDF é lido (via pdfjs) e cada referência/modelo cadastrado é
+ *      procurado literalmente nesse texto — se aparecer mais de um código da
+ *      tabela, o MESMO PDF é vinculado a TODAS as peças encontradas.
  *
- * Casos "aproximado" e "por conteúdo" aparecem marcados na prévia pra
- * conferência antes de enviar.
+ * Casos "família", "aproximado" e "por conteúdo" aparecem marcados na prévia
+ * pra conferência antes de enviar.
  */
 
 import { useState, useCallback, useMemo, useRef } from "react";
@@ -102,7 +109,7 @@ interface FileResult {
   refName:    string;   // nome usado para o match (arquivo ou pasta)
   entry:      FileEntry;
   devices:    Device[]; // 0 = sem match · 1 = normal · 2+ = desenho de família
-  matchMode?: "exato" | "aproximado" | "conteudo";
+  matchMode?: "exato" | "familia" | "aproximado" | "conteudo";
   status:     "pending" | "uploading" | "done" | "error" | "no_match" | "duplicate" | "ja_enviado";
   error?:     string;
 }
@@ -177,23 +184,79 @@ function buildDeviceIndex(devices: Device[]): DeviceIndex {
   return { list, exactMap };
 }
 
-/** Tenta casar por nome do arquivo, depois por cada pasta ancestral — exato primeiro, aproximado como fallback. */
-function findMatchByName(zipPath: string, index: DeviceIndex): { device: Device; refName: string; fuzzy: boolean } | null {
+/** Extrai (letras)(dígitos)(letras) de um código já normalizado — ex: "pim48181n" → {prefix:"pim", digits:"48181", suffix:"n"}. */
+function parseCodeParts(normStr: string): { prefix: string; digits: string; suffix: string } | null {
+  const m = normStr.match(/^([a-z]*)(\d+)([a-z]*)$/);
+  if (!m) return null;
+  return { prefix: m[1], digits: m[2], suffix: m[3] };
+}
+
+/**
+ * Família por altura — mesmo esquema já usado no upload de imagens (ver
+ * DeviceImageUploader.tsx): o candidato (nome do arquivo/pasta) é a BASE do
+ * código, sem o dígito de altura/variante — esse dígito extra existe só nas
+ * peças cadastradas, sempre no FINAL do trecho numérico, com as mesmas
+ * letras antes e depois. Ex: candidato "pim4818n" cobre "pim48181n",
+ * "pim48182n" ... "pim48186n" (dígitos da peça começam com os do arquivo).
+ */
+function findFamilyByHeight(candNorm: string, index: DeviceIndex): Device[] {
+  const cand = parseCodeParts(candNorm);
+  if (!cand || !cand.digits) return [];
+  const found: Device[] = [];
+  for (const { device, refNorm } of index.list) {
+    const dp = parseCodeParts(refNorm);
+    if (!dp) continue;
+    if (
+      dp.prefix === cand.prefix &&
+      dp.suffix === cand.suffix &&
+      dp.digits.length > cand.digits.length &&
+      dp.digits.startsWith(cand.digits)
+    ) {
+      found.push(device);
+    }
+  }
+  return found;
+}
+
+/** Tenta casar por nome do arquivo, depois por cada pasta ancestral — só correspondência EXATA. */
+function findExactMatch(zipPath: string, index: DeviceIndex): { device: Device; refName: string } | null {
   const parts = zipPath.split("/").filter(Boolean);
   const fileName = parts[parts.length - 1];
   const candidates = [stemName(fileName), ...parts.slice(0, -1).reverse()];
 
-  // Etapa 1: correspondência exata (referência, modelo ou código interno, normalizados) — O(1) via Map.
+  // correspondência exata (referência, modelo ou código interno, normalizados) — O(1) via Map.
   for (const candidate of candidates) {
     const candNorm = norm(candidate);
     if (!candNorm) continue;
     const match = index.exactMap.get(candNorm);
-    if (match) return { device: match, refName: candidate, fuzzy: false };
+    if (match) return { device: match, refName: candidate };
   }
+  return null;
+}
 
-  // Etapa 2: correspondência aproximada — só aceita se apontar pra uma única peça
-  // (só referência/modelo — código interno costuma ser curto/genérico
-  // demais pra correspondência aproximada com segurança).
+/** Tenta achar uma família por altura em cada candidato (arquivo, depois pastas ancestrais). */
+function findFamilyMatch(zipPath: string, index: DeviceIndex): { devices: Device[]; refName: string } | null {
+  const parts = zipPath.split("/").filter(Boolean);
+  const fileName = parts[parts.length - 1];
+  const candidates = [stemName(fileName), ...parts.slice(0, -1).reverse()];
+
+  for (const candidate of candidates) {
+    const candNorm = norm(candidate);
+    if (!candNorm || candNorm.length < MIN_FUZZY_LEN) continue;
+    const familia = findFamilyByHeight(candNorm, index);
+    if (familia.length > 0) return { devices: familia, refName: candidate };
+  }
+  return null;
+}
+
+/** Correspondência aproximada (fallback) — só aceita se apontar pra uma única peça. */
+function findFuzzyMatch(zipPath: string, index: DeviceIndex): { device: Device; refName: string } | null {
+  const parts = zipPath.split("/").filter(Boolean);
+  const fileName = parts[parts.length - 1];
+  const candidates = [stemName(fileName), ...parts.slice(0, -1).reverse()];
+
+  // só referência/modelo — código interno costuma ser curto/genérico demais
+  // pra correspondência aproximada com segurança.
   for (const candidate of candidates) {
     const candNorm = norm(candidate);
     if (!candNorm || candNorm.length < MIN_FUZZY_LEN) continue;
@@ -206,11 +269,11 @@ function findMatchByName(zipPath: string, index: DeviceIndex): { device: Device;
         if (matches.length > 1) break; // já sabemos que não é único, pode parar cedo
       }
     }
-    if (matches.length === 1) return { device: matches[0], refName: candidate, fuzzy: true };
+    if (matches.length === 1) return { device: matches[0], refName: candidate };
   }
-
   return null;
 }
+
 
 /**
  * Extrai todo o texto de um PDF (via pdfjs) — usado só como fallback quando
@@ -345,22 +408,44 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
         const chunk = entries.slice(start, start + NOME_CHUNK);
         chunk.forEach((entry, offset) => {
           const idx = start + offset;
-          const nomeMatch = findMatchByName(entry.filename, deviceIndex);
           const refName = stemName(entry.filename.split("/").pop()!);
-          if (nomeMatch) {
-            // Peça já tem desenho técnico de um envio anterior — não precisa
-            // reenviar de novo a cada vez que o zip é processado.
-            const jaTemDesenho = !!nomeMatch.device.desenho_tecnico_path;
+
+          const exato = findExactMatch(entry.filename, deviceIndex);
+          if (exato) {
+            const jaTemDesenho = !!exato.device.desenho_tecnico_path;
             fileResults[idx] = {
-              zipPath: entry.filename, refName, entry,
-              devices: [nomeMatch.device],
-              matchMode: nomeMatch.fuzzy ? "aproximado" : "exato",
+              zipPath: entry.filename, refName: exato.refName, entry,
+              devices: [exato.device], matchMode: "exato",
               status: jaTemDesenho ? "ja_enviado" : "pending",
             };
-          } else {
-            fileResults[idx] = { zipPath: entry.filename, refName, entry, devices: [], status: "no_match" };
-            semMatchPorNome.push(idx);
+            return;
           }
+
+          const familia = findFamilyMatch(entry.filename, deviceIndex);
+          if (familia) {
+            const pendentes = familia.devices.filter(d => !d.desenho_tecnico_path);
+            fileResults[idx] = {
+              zipPath: entry.filename, refName: familia.refName, entry,
+              devices: pendentes.length > 0 ? pendentes : familia.devices,
+              matchMode: "familia",
+              status: pendentes.length > 0 ? "pending" : "ja_enviado",
+            };
+            return;
+          }
+
+          const aproximado = findFuzzyMatch(entry.filename, deviceIndex);
+          if (aproximado) {
+            const jaTemDesenho = !!aproximado.device.desenho_tecnico_path;
+            fileResults[idx] = {
+              zipPath: entry.filename, refName: aproximado.refName, entry,
+              devices: [aproximado.device], matchMode: "aproximado",
+              status: jaTemDesenho ? "ja_enviado" : "pending",
+            };
+            return;
+          }
+
+          fileResults[idx] = { zipPath: entry.filename, refName, entry, devices: [], status: "no_match" };
+          semMatchPorNome.push(idx);
         });
         if (start + NOME_CHUNK < entries.length) await new Promise(r => setTimeout(r, 0));
       }
@@ -453,6 +538,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
       matched: matched.length,
       totalPecas: matched.reduce((s, r) => s + r.devices.length, 0),
       fuzzy: matched.filter(r => r.matchMode === "aproximado").length,
+      familia: matched.filter(r => r.matchMode === "familia").length,
       conteudo: matched.filter(r => r.matchMode === "conteudo").length,
       noMatch: results.filter(r => r.status === "no_match").length,
       duplicate: results.filter(r => r.status === "duplicate").length,
@@ -601,6 +687,11 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                   <Layers className="h-3 w-3" /> {counts.totalPecas} peças serão vinculadas ao todo — alguns desenhos cobrem mais de uma peça (desenho de família).
                 </p>
               )}
+              {counts.familia > 0 && (
+                <p className="text-[11px] text-blue-600 flex items-center gap-1.5">
+                  <Layers className="h-3 w-3" /> {counts.familia} desenho(s) casado(s) por família de altura (mesmo código-base, dígito de altura na peça) — confira antes de enviar.
+                </p>
+              )}
               {counts.conteudo > 0 && (
                 <p className="text-[11px] text-violet-600 flex items-center gap-1.5">
                   <Layers className="h-3 w-3" /> {counts.conteudo} desenho(s) casado(s) pelos códigos encontrados dentro do próprio PDF — confira antes de enviar.
@@ -632,6 +723,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                     r.status === "done"      && "bg-green-500/5",
                     r.status === "error"     && "bg-red-500/5",
                     r.status === "pending" && r.matchMode === "aproximado" && "bg-amber-500/5",
+                    r.status === "pending" && r.matchMode === "familia"   && "bg-blue-500/5",
                     r.status === "pending" && r.matchMode === "conteudo"  && "bg-violet-500/5",
                   )}>
                     <FileText className="h-4 w-4 text-muted-foreground/60 shrink-0" />
@@ -648,9 +740,10 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                       ) : r.devices.length > 0 ? (
                         <p className={cn(
                           "text-[10px] truncate",
-                          r.matchMode === "aproximado" ? "text-amber-600" : r.matchMode === "conteudo" ? "text-violet-600" : "text-muted-foreground"
+                          r.matchMode === "aproximado" ? "text-amber-600" : r.matchMode === "familia" ? "text-blue-600" : r.matchMode === "conteudo" ? "text-violet-600" : "text-muted-foreground"
                         )}>
                           {r.matchMode === "aproximado" && "≈ "}
+                          {r.matchMode === "familia" && `${r.devices.length} peça${r.devices.length !== 1 ? "s" : ""} (família de altura): `}
                           {r.matchMode === "conteudo" && `${r.devices.length} peça${r.devices.length !== 1 ? "s" : ""} (desenho de família): `}
                           {r.devices.map(d => d.reference).join(", ")}
                           {r.matchMode === "aproximado" && " (aproximado)"}

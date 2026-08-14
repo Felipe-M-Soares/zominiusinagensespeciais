@@ -884,6 +884,14 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
+      {/* Explica a diferença pra Diário — mesma lógica do aviso lá. */}
+      <div className="rounded-xl border border-green-500/20 bg-green-500/5 px-3 py-2 flex items-start gap-2">
+        <ClipboardList className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          <strong className="text-foreground">Apontamento detalhado</strong> — formulário completo por máquina/produto/turno, igual à planilha PPI-51 (paradas, refugos e consumo de matéria-prima múltiplos). Pra um lançamento rápido de fim de turno, use a aba <strong className="text-foreground">Diário</strong>.
+        </p>
+      </div>
+
       {/* Header com data */}
       <div className="flex items-center gap-3 flex-wrap">
         <input

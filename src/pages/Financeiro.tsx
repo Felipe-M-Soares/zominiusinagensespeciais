@@ -835,7 +835,7 @@ function SefazModal({
                   : <CheckSquare className="h-3.5 w-3.5 text-green-600 shrink-0 mt-0.5" />}
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
                   {modoTeste
-                    ? <><strong>Homologação</strong>: nota simulada sem valor fiscal. Altere em <strong>Bancos &amp; Integração</strong>.</>
+                    ? <><strong>Homologação</strong>: nota simulada sem valor fiscal. Altere no topo desta aba (NF-e / SEFAZ).</>
                     : <><strong>Produção</strong>: esta nota terá valor fiscal real e será transmitida ao SEFAZ.</>}
                 </p>
               </div>
@@ -1955,7 +1955,81 @@ function PainelDashboard({ pedidos, lancamentos }: { pedidos: Pedido[]; lancamen
 
 // ─── PainelBancos ────────────────────────────────────────────────────────────
 
-function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; onToggleModoTeste: () => void }) {
+/**
+ * Config de ambiente fiscal + SEFAZ — SOMENTE ADMIN. Alternar homolog/
+ * produção muda o valor fiscal das notas do sistema inteiro, e o card de
+ * configuração expõe nomes de secrets/funções — usuários do Financeiro não
+ * precisam ver nada disso. O aviso "Modo Homologação ativo" continua
+ * aparecendo nas telas de emissão.
+ *
+ * Antes ficava dentro da aba "Bancos" (não fazia muito sentido — é config de
+ * emissão de nota fiscal, não de conta bancária). Agora mora aqui, dentro da
+ * própria aba "NF-e / SEFAZ".
+ */
+function SefazConfigPanel({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; onToggleModoTeste: () => void }) {
+  const { isAdmin } = useAuth();
+  if (!isAdmin) return null;
+  return (
+    <div className="space-y-3">
+      <div className={cn("rounded-2xl border p-4 flex items-start gap-3",
+        modoTeste ? "border-orange-500/30 bg-orange-500/5" : "border-green-500/30 bg-green-500/5")}>
+        <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
+          modoTeste ? "bg-orange-500/10" : "bg-green-500/10")}>
+          <TestTube2 className={cn("h-5 w-5", modoTeste ? "text-orange-500" : "text-green-600")} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-bold leading-snug">{modoTeste ? "Modo Homologação (Teste)" : "Modo Produção"}</p>
+            <button type="button" onClick={onToggleModoTeste}
+              className={cn("h-4 w-7 sm:h-5 sm:w-10 min-w-[28px] sm:min-w-[40px] rounded-full transition-colors relative shrink-0 mt-0.5",
+                modoTeste ? "bg-orange-500" : "bg-muted/50")}>
+              <span className={cn("absolute top-0.5 h-3 w-3 sm:h-4 sm:w-4 rounded-full bg-background shadow transition-all duration-200",
+                modoTeste ? "left-[calc(100%-14px)] sm:left-[calc(100%-18px)]" : "left-0.5")} />
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            {modoTeste
+              ? "Notas simuladas — sem valor fiscal. Ideal para testes."
+              : "Notas com valor fiscal real, transmitidas ao SEFAZ."}
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-2">
+        <div className="flex items-center gap-2 mb-2">
+          <Send className="h-4 w-4 text-violet-500" />
+          <p className="text-sm font-bold">Configuração SEFAZ</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
+          {[
+            ["Edge Function", "sefaz-emitir (Supabase)"],
+            ["Ambiente",      "SEFAZ_TP_AMB=2 (homolog) / 1 (produção)"],
+            ["Certificado",   "SEFAZ_CERT_PFX (base64 do A1)"],
+            ["CNPJ Emitente", "SEFAZ_CNPJ"],
+            ["Numeração NF",  "Automática via get_next_nf_number()"],
+            ["Envio XML",     "Automático após autorização"],
+          ].map(([k, v]) => (
+            <div key={k} className="flex items-start gap-1.5 py-0.5 text-muted-foreground">
+              <span className="shrink-0">•</span>
+              <span><strong className="text-foreground">{k}:</strong> <code className="text-violet-500 text-[10px]">{v}</code></span>
+            </div>
+          ))}
+        </div>
+        <button type="button"
+          onClick={async () => {
+            toast.info("Testando conexão com SEFAZ…");
+            await new Promise(r => setTimeout(r, 1200));
+            toast.success("[TESTE] Conexão simulada com sucesso.");
+          }}
+          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/30 text-violet-600 text-[11px] font-medium hover:bg-violet-500/10 transition-colors mt-2">
+          <TestTube2 className="h-3 w-3" />Testar Conexão SEFAZ
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PainelBancos() {
   const { isAdmin } = useAuth();
   const [contas,    setContas]    = useState<ContaBancaria[]>([]);
   const [loading,   setLoading]   = useState(true);
@@ -2120,69 +2194,10 @@ function PainelBancos({ modoTeste, onToggleModoTeste }: { modoTeste: boolean; on
         </div>
       )}
 
-      {/* Toggle de ambiente fiscal e configuração SEFAZ: SOMENTE ADMIN.
-          Alternar homolog/produção muda o valor fiscal das notas do sistema
-          inteiro, e o card de configuração expõe nomes de secrets/funções —
-          usuários do Financeiro não precisam ver nada disso. O aviso "Modo
-          Homologação ativo" continua aparecendo nas telas de emissão. */}
-      {isAdmin && (
-      <>
-      <div className={cn("rounded-2xl border p-4 flex items-start gap-3",
-        modoTeste ? "border-orange-500/30 bg-orange-500/5" : "border-green-500/30 bg-green-500/5")}>
-        <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
-          modoTeste ? "bg-orange-500/10" : "bg-green-500/10")}>
-          <TestTube2 className={cn("h-5 w-5", modoTeste ? "text-orange-500" : "text-green-600")} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-bold leading-snug">{modoTeste ? "Modo Homologação (Teste)" : "Modo Produção"}</p>
-            <button type="button" onClick={onToggleModoTeste}
-              className={cn("h-4 w-7 sm:h-5 sm:w-10 min-w-[28px] sm:min-w-[40px] rounded-full transition-colors relative shrink-0 mt-0.5",
-                modoTeste ? "bg-orange-500" : "bg-muted/50")}>
-              <span className={cn("absolute top-0.5 h-3 w-3 sm:h-4 sm:w-4 rounded-full bg-background shadow transition-all duration-200",
-                modoTeste ? "left-[calc(100%-14px)] sm:left-[calc(100%-18px)]" : "left-0.5")} />
-            </button>
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            {modoTeste
-              ? "Notas simuladas — sem valor fiscal. Ideal para testes."
-              : "Notas com valor fiscal real, transmitidas ao SEFAZ."}
-          </p>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-2">
-        <div className="flex items-center gap-2 mb-2">
-          <Send className="h-4 w-4 text-violet-500" />
-          <p className="text-sm font-bold">Configuração SEFAZ</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
-          {[
-            ["Edge Function", "sefaz-emitir (Supabase)"],
-            ["Ambiente",      "SEFAZ_TP_AMB=2 (homolog) / 1 (produção)"],
-            ["Certificado",   "SEFAZ_CERT_PFX (base64 do A1)"],
-            ["CNPJ Emitente", "SEFAZ_CNPJ"],
-            ["Numeração NF",  "Automática via get_next_nf_number()"],
-            ["Envio XML",     "Automático após autorização"],
-          ].map(([k, v]) => (
-            <div key={k} className="flex items-start gap-1.5 py-0.5 text-muted-foreground">
-              <span className="shrink-0">•</span>
-              <span><strong className="text-foreground">{k}:</strong> <code className="text-violet-500 text-[10px]">{v}</code></span>
-            </div>
-          ))}
-        </div>
-        <button type="button"
-          onClick={async () => {
-            toast.info("Testando conexão com SEFAZ…");
-            await new Promise(r => setTimeout(r, 1200));
-            toast.success("[TESTE] Conexão simulada com sucesso.");
-          }}
-          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/30 text-violet-600 text-[11px] font-medium hover:bg-violet-500/10 transition-colors mt-2">
-          <TestTube2 className="h-3 w-3" />Testar Conexão SEFAZ
-        </button>
-      </div>
-      </>
-      )}
+      {/* Configuração de ambiente fiscal e SEFAZ agora fica na aba "NF-e /
+          SEFAZ" (ver <SefazConfigPanel/> mais abaixo neste arquivo) — estava
+          aqui em Bancos antes, o que não fazia muito sentido: é config de
+          emissão de nota fiscal, não de conta bancária. */}
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -3039,6 +3054,7 @@ export default function Financeiro() {
   const [historicoOpen, setHistoricoOpen] = useState(false);
   const [devolucoesKey, setDevolucoesKey] = useState(0); // remonta o painel de devoluções após "Apagar histórico"
   const [activeTab,     setActiveTab]     = useState<FinTab>("dashboard");
+  const [comprasSubView, setComprasSubView] = useState<"fornecedores" | "pedidos">("fornecedores");
   // Sub-aba dentro de "Lançamentos" — unifica o que antes eram 3 abas
   // separadas (Compras Produção, Compras Empresa, Custos), todas usando o
   // mesmo componente PainelLancamentos só com tipo diferente.
@@ -3216,9 +3232,8 @@ export default function Financeiro() {
     { id: "dashboard",    label: "Dashboard",        icon: BarChart2   },
     { id: "nfe",          label: "NF-e / SEFAZ",     icon: FileCheck2, badge: prontos },
     { id: "devolucoes",   label: "Devoluções/Trocas", icon: Repeat2    },
-    { id: "fluxo",        label: "Fluxo de Caixa",   icon: TrendingUp  },
-    { id: "fornecedores", label: "Fornecedores",      icon: Building2   },
-    { id: "compras",      label: "Pedidos Compra",    icon: ShoppingCart},
+    { id: "fluxo",        label: "Contas & Fluxo de Caixa", icon: TrendingUp  },
+    { id: "fornecedores", label: "Compras",           icon: Building2   },
     { id: "lancamentos",  label: "Lançamentos",       icon: Zap         },
     { id: "bancos",       label: "Bancos",            icon: Landmark    },
     { id: "precos",       label: "Tabela de Preços",  icon: Tag         },
@@ -3297,6 +3312,7 @@ export default function Financeiro() {
 
         {activeTab === "nfe" && (
           <>
+            <SefazConfigPanel modoTeste={modoTeste} onToggleModoTeste={toggleModoTeste} />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { label: "Aguardando NF", value: prontos,   icon: Receipt,     color: "#10b981" },
@@ -3382,10 +3398,27 @@ export default function Financeiro() {
           <Suspense fallback={null}><DevolucaoTrocaPanelLazy key={devolucoesKey} modoTeste={modoTeste} /></Suspense>
         )}
         {activeTab === "fornecedores" && (
-          <Suspense fallback={null}><FornecedoresPanel/></Suspense>
-        )}
-        {activeTab === "compras" && (
-          <Suspense fallback={null}><PedidosCompraPanel/></Suspense>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setComprasSubView("fornecedores")}
+                className={cn("flex-1 h-9 rounded-xl text-[12px] font-semibold border transition-all flex items-center justify-center gap-1.5",
+                  comprasSubView === "fornecedores"
+                    ? "bg-violet-600 text-white border-violet-600"
+                    : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50")}>
+                <Building2 size={14} />Fornecedores
+              </button>
+              <button type="button" onClick={() => setComprasSubView("pedidos")}
+                className={cn("flex-1 h-9 rounded-xl text-[12px] font-semibold border transition-all flex items-center justify-center gap-1.5",
+                  comprasSubView === "pedidos"
+                    ? "bg-violet-600 text-white border-violet-600"
+                    : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50")}>
+                <ShoppingCart size={14} />Pedidos de Compra
+              </button>
+            </div>
+            <Suspense fallback={null}>
+              {comprasSubView === "fornecedores" ? <FornecedoresPanel/> : <PedidosCompraPanel/>}
+            </Suspense>
+          </div>
         )}
         {activeTab === "lancamentos" && (
           <div className="space-y-4">
@@ -3440,11 +3473,11 @@ export default function Financeiro() {
                 <Landmark size={20} className="text-emerald-600" />
               </div>
               <div>
-                <h2 className="text-base font-bold">Bancos &amp; Integração SEFAZ</h2>
-                <p className="text-[12px] text-muted-foreground">Contas bancárias, webhooks e ambiente de emissão fiscal</p>
+                <h2 className="text-base font-bold">Bancos</h2>
+                <p className="text-[12px] text-muted-foreground">Contas bancárias e webhooks de pagamento</p>
               </div>
             </div>
-            <PainelBancos modoTeste={modoTeste} onToggleModoTeste={toggleModoTeste} />
+            <PainelBancos />
           </div>
         )}
         {activeTab === "precos" && (
@@ -3470,8 +3503,8 @@ export default function Financeiro() {
                 <TrendingUp size={20} className="text-emerald-600" />
               </div>
               <div>
-                <h2 className="text-base font-bold">Fluxo de Caixa</h2>
-                <p className="text-[12px] text-muted-foreground">Análise de entradas/saídas, aging de inadimplência e projeção</p>
+                <h2 className="text-base font-bold">Contas & Fluxo de Caixa</h2>
+                <p className="text-[12px] text-muted-foreground">Contas a pagar e a receber, aging de inadimplência e projeção</p>
               </div>
             </div>
             <FluxoCaixaPanelLazy />

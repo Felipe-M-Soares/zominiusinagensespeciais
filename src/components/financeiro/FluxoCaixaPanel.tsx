@@ -15,7 +15,7 @@ import { formatBRL } from "@/lib/format";
 import {
   TrendingUp, TrendingDown, AlertTriangle, RefreshCw,
   BarChart3, Clock, DollarSign, Download, User, CheckCircle2,
-  XCircle, AlertCircle, ChevronDown, ChevronUp, Search,
+  XCircle, AlertCircle, ChevronDown, ChevronUp, Search, Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,9 +33,10 @@ interface Conta {
   observacoes: string | null;
   pedido_id: string | null;
   fornecedor_id: string | null;
-  // Joined via pedido
+  // Joined via pedido / fornecedor
   cliente_nome?: string;
   cliente_id?: string;
+  fornecedor_nome?: string;
 }
 
 const BRL = formatBRL;
@@ -52,7 +53,7 @@ function diasAtraso(vencimento: string): number {
 }
 
 // ── Tipos de visualização ─────────────────────────────────────────────────────
-type Vis = "fluxo" | "clientes" | "aging" | "projecao";
+type Vis = "fluxo" | "clientes" | "fornecedores" | "aging" | "projecao";
 
 // ── Fluxo de caixa mensal ─────────────────────────────────────────────────────
 function FluxoCaixa({ contas }: { contas: Conta[] }) {
@@ -123,18 +124,23 @@ interface ClienteResumo {
   contas: Conta[];
 }
 
-function ControlePagamentos({ contas }: { contas: Conta[] }) {
+function ControlePagamentos({ contas, tipo = "receber" }: { contas: Conta[]; tipo?: "pagar" | "receber" }) {
   const [search, setSearch] = useState("");
   const [filtro, setFiltro] = useState<"todos" | "devedores" | "quitados" | "vencidos">("todos");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [baixando, setBaixando] = useState<string | null>(null);
 
-  // Agrupa contas a receber por cliente (extraído da descrição ou pedido)
+  const isPagar = tipo === "pagar";
+  const rotulo = isPagar
+    ? { entidade: "Fornecedores", entidadeSingular: "fornecedor", comDivida: "Fornecedores a Pagar", verboAberto: "a pagar", verboQuitado: "Pago", buscaPlaceholder: "Buscar fornecedor...", vazio: "Nenhum fornecedor encontrado", baixaTitulo: "Registrar baixa (pagamento efetuado)", baixaToast: (n: string) => `Baixa registrada para ${n}` }
+    : { entidade: "Clientes", entidadeSingular: "cliente", comDivida: "Clientes com Dívida", verboAberto: "em aberto", verboQuitado: "Quitado", buscaPlaceholder: "Buscar cliente...", vazio: "Nenhum cliente encontrado", baixaTitulo: "Registrar baixa (pagamento recebido)", baixaToast: (n: string) => `Baixa registrada para ${n}` };
+
+  // Agrupa contas (a receber por cliente, a pagar por fornecedor)
   const clientes = useMemo<ClienteResumo[]>(() => {
     const map: Record<string, ClienteResumo> = {};
-    for (const c of contas.filter(c => c.tipo === "receber")) {
-      // Extrai nome do cliente da descrição (ex: "NF-e 001 — João Silva")
-      const nome = c.cliente_nome || c.descricao.split("—")[1]?.trim() || c.descricao;
+    for (const c of contas.filter(c => c.tipo === tipo)) {
+      // Extrai nome da descrição como fallback (ex: "NF-e 001 — João Silva")
+      const nome = (isPagar ? c.fornecedor_nome : c.cliente_nome) || c.descricao.split("—")[1]?.trim() || c.descricao;
       if (!map[nome]) {
         map[nome] = { nome, totalReceber: 0, totalVencido: 0, totalPago: 0,
                       quantAberto: 0, quantVencido: 0, quantPago: 0, contas: [] };
@@ -153,7 +159,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
       }
     }
     return Object.values(map).sort((a, b) => b.totalVencido - a.totalVencido || b.totalReceber - a.totalReceber);
-  }, [contas]);
+  }, [contas, tipo, isPagar]);
 
   const filtered = useMemo(() => {
     let rows = clientes;
@@ -172,7 +178,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
     totalVencido: clientes.reduce((s, c) => s + c.totalVencido, 0),
   }), [clientes]);
 
-  async function registrarBaixa(contaId: string, clienteNome: string) {
+  async function registrarBaixa(contaId: string, nome: string) {
     setBaixando(contaId);
     const { error } = await supabase
       .from("contas_financeiras")
@@ -180,7 +186,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
       .eq("id", contaId);
     setBaixando(null);
     if (error) { toast.error(error.message); return; }
-    toast.success(`Baixa registrada para ${clienteNome}`);
+    toast.success(rotulo.baixaToast(nome));
   }
 
   function statusIcon(c: Conta) {
@@ -191,10 +197,10 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
 
   return (
     <div className="space-y-4">
-      {/* KPIs clientes */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
-          <p className="text-[10px] text-muted-foreground">Clientes com Dívida</p>
+          <p className="text-[10px] text-muted-foreground">{rotulo.comDivida}</p>
           <p className="text-xl font-black text-red-600">{totais.devedores}</p>
           <p className="text-[10px] text-muted-foreground">{BRL(totais.totalAberto)} em aberto</p>
         </div>
@@ -204,12 +210,12 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
           <p className="text-[10px] text-muted-foreground">{BRL(totais.totalVencido)} vencido</p>
         </div>
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-          <p className="text-[10px] text-muted-foreground">Clientes Quitados</p>
+          <p className="text-[10px] text-muted-foreground">{rotulo.entidade} Quitados</p>
           <p className="text-xl font-black text-emerald-600">{totais.quitados}</p>
           <p className="text-[10px] text-muted-foreground">sem pendências</p>
         </div>
         <div className="rounded-xl border border-border/40 bg-card p-3">
-          <p className="text-[10px] text-muted-foreground">Total Clientes</p>
+          <p className="text-[10px] text-muted-foreground">Total {rotulo.entidade}</p>
           <p className="text-xl font-black text-foreground">{clientes.length}</p>
           <p className="text-[10px] text-muted-foreground">com movimentação</p>
         </div>
@@ -220,7 +226,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
         <div className="relative flex-1 min-w-[140px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar cliente..."
+            placeholder={rotulo.buscaPlaceholder}
             className="w-full pl-8 pr-3 h-8 text-[12px] rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
         </div>
         {(["todos","devedores","vencidos","quitados"] as const).map(f => (
@@ -232,12 +238,12 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
         ))}
       </div>
 
-      {/* Lista de clientes */}
+      {/* Lista */}
       <div className="space-y-2">
         {filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground">
             <User className="h-8 w-8 opacity-20" />
-            <p className="text-sm">Nenhum cliente encontrado</p>
+            <p className="text-sm">{rotulo.vazio}</p>
           </div>
         )}
         {filtered.map(cl => {
@@ -249,7 +255,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
             : "border-emerald-500/20 bg-emerald-500/5";
           return (
             <div key={cl.nome} className={cn("rounded-2xl border overflow-hidden", statusCor)}>
-              {/* Header do cliente */}
+              {/* Header */}
               <button
                 type="button"
                 onClick={() => setExpanded(isExp ? null : cl.nome)}
@@ -272,7 +278,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
                     )}
                     {cl.quantAberto > 0 && (
                       <span className="text-amber-600 font-medium flex items-center gap-0.5">
-                        <AlertCircle className="h-3 w-3" /> {cl.quantAberto} em aberto · {BRL(cl.totalReceber - cl.totalVencido)}
+                        <AlertCircle className="h-3 w-3" /> {cl.quantAberto} {rotulo.verboAberto} · {BRL(cl.totalReceber - cl.totalVencido)}
                       </span>
                     )}
                     {cl.quantPago > 0 && (
@@ -288,14 +294,14 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
                       {BRL(cl.totalReceber)}
                     </p>
                   ) : (
-                    <p className="text-sm font-bold text-emerald-600">Quitado</p>
+                    <p className="text-sm font-bold text-emerald-600">{rotulo.verboQuitado}</p>
                   )}
                   {isExp ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground ml-auto mt-0.5" />
                           : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto mt-0.5" />}
                 </div>
               </button>
 
-              {/* Detalhes das contas do cliente */}
+              {/* Detalhes das contas */}
               {isExp && (
                 <div className="border-t border-border/20 divide-y divide-border/20">
                   {cl.contas.sort((a, b) => {
@@ -326,7 +332,7 @@ function ControlePagamentos({ contas }: { contas: Conta[] }) {
                         <button
                           onClick={() => registrarBaixa(c.id, cl.nome)}
                           disabled={baixando === c.id}
-                          title="Registrar baixa (pagamento recebido)"
+                          title={rotulo.baixaTitulo}
                           className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-600 transition-colors disabled:opacity-50 shrink-0"
                         >
                           {baixando === c.id
@@ -460,20 +466,24 @@ export function FluxoCaixaPanel() {
           pedido:pedidos_comerciais(
             cliente_id,
             cliente:clientes(id, nome)
-          )
+          ),
+          fornecedor:fornecedores(id, nome)
         `)
         .order("data_vencimento");
       if (error) throw error;
 
-      // Flattens cliente info
+      // Flattens cliente/fornecedor info
       const mapped = ((data ?? []) as any[]).map(c => {
         const pedido = Array.isArray(c.pedido) ? c.pedido[0] : c.pedido;
         const cliente = Array.isArray(pedido?.cliente) ? pedido?.cliente[0] : pedido?.cliente;
+        const fornecedor = Array.isArray(c.fornecedor) ? c.fornecedor[0] : c.fornecedor;
         return {
           ...c,
           cliente_nome: cliente?.nome ?? null,
           cliente_id: cliente?.id ?? null,
+          fornecedor_nome: fornecedor?.nome ?? null,
           pedido: undefined,
+          fornecedor: undefined,
         } as Conta;
       });
       setContas(mapped);
@@ -500,10 +510,11 @@ export function FluxoCaixaPanel() {
   }
 
   const TABS: { id: Vis; label: string; Icon: typeof BarChart3 }[] = [
-    { id: "clientes", label: "Clientes",    Icon: User       },
-    { id: "fluxo",    label: "Fluxo Mensal",Icon: BarChart3  },
-    { id: "aging",    label: "Inadimplência",Icon: Clock     },
-    { id: "projecao", label: "Projeção 30d", Icon: TrendingUp},
+    { id: "clientes",     label: "A Receber (Clientes)",    Icon: User       },
+    { id: "fornecedores", label: "A Pagar (Fornecedores)",  Icon: Building2  },
+    { id: "fluxo",        label: "Fluxo Mensal",            Icon: BarChart3  },
+    { id: "aging",        label: "Inadimplência",           Icon: Clock      },
+    { id: "projecao",     label: "Projeção 30d",            Icon: TrendingUp },
   ];
 
   if (loading) return (
@@ -533,10 +544,11 @@ export function FluxoCaixaPanel() {
         </div>
       </div>
 
-      {vis === "clientes"  && <ControlePagamentos contas={contas} />}
-      {vis === "fluxo"     && <FluxoCaixa contas={contas} />}
-      {vis === "aging"     && <AgingReport contas={contas} />}
-      {vis === "projecao"  && <ProjecaoSaldo contas={contas} />}
+      {vis === "clientes"     && <ControlePagamentos contas={contas} tipo="receber" />}
+      {vis === "fornecedores" && <ControlePagamentos contas={contas} tipo="pagar" />}
+      {vis === "fluxo"        && <FluxoCaixa contas={contas} />}
+      {vis === "aging"        && <AgingReport contas={contas} />}
+      {vis === "projecao"     && <ProjecaoSaldo contas={contas} />}
     </div>
   );
 }
