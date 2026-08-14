@@ -61,19 +61,21 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const MAX_ZIP_SIZE_MB = 3072; // 3GB
 // PDFs maiores que isso não passam pela leitura de texto (fallback por
 // conteúdo) — extrair texto de PDFs gigantes é o que mais consome memória.
-// Baixado de 20 pra 10 e depois pra 5: mesmo um PDF "pequeno" em MB pode ter
-// muito conteúdo vetorial pro pdf.js processar (comum em desenho técnico
-// exportado de CAD), e isso pesa mais na memória do que o tamanho do
-// arquivo em si sugere. Mesmo com o limite de 10MB + trava de 800 arquivos,
-// a aba ainda travava por volta do arquivo ~600 — baixado mais ainda.
-const MAX_PDF_TEXT_MB = 5;
+// Ajustado de 20 pra 10 pra 5 pra evitar o travamento, mas 5MB acabou
+// excluindo exatamente os "desenhos de família" (uma peça-mãe com tabela de
+// variações, tipo "ERM 3516C") que o fallback por conteúdo existe pra
+// tratar — esses desenhos tendem a ser mais pesados que um desenho de peça
+// única. Voltado pra 25MB: a proteção real contra travamento agora é o
+// orçamento de memória por sessão abaixo (mais robusto que só limitar por
+// arquivo), somado ao limite de páginas e às pausas mais frequentes.
+const MAX_PDF_TEXT_MB = 25;
 // Trava de segurança adicional: soma o tamanho (descomprimido) de tudo que
 // já foi lido por conteúdo nesta sessão. Mais confiável que só contar
 // arquivos, porque o que derruba a aba é a quantidade de memória usada, não
-// a quantidade de arquivos — 300 PDFs pesados derrubam a aba tão rápido
-// quanto 3000 leves. Passado esse total, para e marca o resto como "sem
+// a quantidade de arquivos — poucos PDFs pesados derrubam a aba tão rápido
+// quanto milhares leves. Passado esse total, para e marca o resto como "sem
 // correspondência" (dá pra enviar o que já casou e rodar de novo depois).
-const MAX_BYTES_CONTEUDO_POR_SESSAO = 150 * 1024 * 1024; // 150MB
+const MAX_BYTES_CONTEUDO_POR_SESSAO = 300 * 1024 * 1024; // 300MB
 // Trava de segurança pro fallback por conteúdo: ler texto de milhares de
 // PDFs em sequência (decodificar + parsear com pdf.js) é a etapa mais
 // pesada do processo — é isso que trava/derruba a aba em zips com muitos
@@ -91,6 +93,7 @@ interface Device {
   id: string;
   reference: string;
   model: string;
+  internal_code: string | null;
 }
 
 interface FileResult {
@@ -125,7 +128,7 @@ function sanitizePath(name: string): string {
 }
 
 interface DeviceIndex {
-  list: { device: Device; refNorm: string; modelNorm: string }[];
+  list: { device: Device; refNorm: string; modelNorm: string; codeNorm: string }[];
   exactMap: Map<string, Device>;
 }
 
@@ -140,17 +143,23 @@ interface DeviceIndex {
  * (como um zip de ~1-2GB de desenhos técnicos costuma ter), isso virava
  * dezenas de milhões de operações de string síncronas — exatamente o que
  * travava a aba durante a leitura do zip, não o tamanho do arquivo em si.
+ *
+ * Compara também contra internal_code — muitos desenhos técnicos são
+ * arquivados pelo código interno da peça, não pela referência/modelo do
+ * catálogo, e isso ficava de fora da comparação antes.
  */
 function buildDeviceIndex(devices: Device[]): DeviceIndex {
   const list = devices.map(d => ({
     device: d,
     refNorm: norm(d.reference),
     modelNorm: norm(d.model),
+    codeNorm: norm(d.internal_code ?? ""),
   }));
   const exactMap = new Map<string, Device>();
-  for (const { device, refNorm, modelNorm } of list) {
+  for (const { device, refNorm, modelNorm, codeNorm } of list) {
     if (refNorm && !exactMap.has(refNorm)) exactMap.set(refNorm, device);
     if (modelNorm && !exactMap.has(modelNorm)) exactMap.set(modelNorm, device);
+    if (codeNorm && !exactMap.has(codeNorm)) exactMap.set(codeNorm, device);
   }
   return { list, exactMap };
 }
@@ -161,7 +170,7 @@ function findMatchByName(zipPath: string, index: DeviceIndex): { device: Device;
   const fileName = parts[parts.length - 1];
   const candidates = [stemName(fileName), ...parts.slice(0, -1).reverse()];
 
-  // Etapa 1: correspondência exata (referência ou modelo, normalizados) — O(1) via Map.
+  // Etapa 1: correspondência exata (referência, modelo ou código interno, normalizados) — O(1) via Map.
   for (const candidate of candidates) {
     const candNorm = norm(candidate);
     if (!candNorm) continue;
@@ -174,10 +183,11 @@ function findMatchByName(zipPath: string, index: DeviceIndex): { device: Device;
     const candNorm = norm(candidate);
     if (!candNorm || candNorm.length < MIN_FUZZY_LEN) continue;
     const matches: Device[] = [];
-    for (const { device, refNorm, modelNorm } of index.list) {
-      const refHit = refNorm.length >= MIN_FUZZY_LEN && (candNorm.includes(refNorm) || refNorm.includes(candNorm));
+    for (const { device, refNorm, modelNorm, codeNorm } of index.list) {
+      const refHit  = refNorm.length  >= MIN_FUZZY_LEN && (candNorm.includes(refNorm)  || refNorm.includes(candNorm));
       const modelHit = modelNorm.length >= MIN_FUZZY_LEN && (candNorm.includes(modelNorm) || modelNorm.includes(candNorm));
-      if (refHit || modelHit) {
+      const codeHit = codeNorm.length  >= MIN_FUZZY_LEN && (candNorm.includes(codeNorm)  || codeNorm.includes(candNorm));
+      if (refHit || modelHit || codeHit) {
         matches.push(device);
         if (matches.length > 1) break; // já sabemos que não é único, pode parar cedo
       }
@@ -231,10 +241,11 @@ function findMatchesByContent(textoPdf: string, index: DeviceIndex): Device[] {
   const textoNorm = norm(textoPdf);
   if (!textoNorm) return [];
   const found: Device[] = [];
-  for (const { device, refNorm, modelNorm } of index.list) {
+  for (const { device, refNorm, modelNorm, codeNorm } of index.list) {
     const refHit = refNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(refNorm);
     const modelHit = modelNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(modelNorm);
-    if (refHit || modelHit) found.push(device);
+    const codeHit = codeNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(codeNorm);
+    if (refHit || modelHit || codeHit) found.push(device);
   }
   return found;
 }
@@ -295,7 +306,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
         for (let from = 0; ; from += DEVICES_PAGE) {
           const { data: page, error: pageErr } = await supabase
             .from("devices")
-            .select("id, reference, model")
+            .select("id, reference, model, internal_code")
             .range(from, from + DEVICES_PAGE - 1);
           if (pageErr) {
             toast.error("Erro ao buscar componentes do banco.");
