@@ -37,6 +37,17 @@ DECLARE
   v_backup_id    uuid;
   v_max_backups  int := 30;  -- retenção: mantém só os 30 mais recentes
 BEGIN
+  -- SECURITY: esta função é chamada tanto pelo pg_cron (contexto de sistema,
+  -- sem sessão de usuário — auth.uid() é NULL) quanto diretamente via RPC
+  -- pelo botão "Fazer backup agora" (tela /admin, adminOnly no frontend).
+  -- Sem esta checagem, qualquer usuário autenticado de qualquer role podia
+  -- chamar supabase.rpc('run_scheduled_backup') direto e forçar uma
+  -- execução fora do agendamento normal. Bloqueia apenas chamadas
+  -- autenticadas de não-admin; deixa passar o cron (sem sessão) normalmente.
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN
+    RETURN jsonb_build_object('ok', false, 'motivo', 'Acesso negado: apenas administradores podem executar o backup manualmente.');
+  END IF;
+
   SELECT * INTO v_cfg FROM public.backup_configs LIMIT 1;
   IF v_cfg IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'motivo', 'backup_configs vazia — nenhum schedule definido');

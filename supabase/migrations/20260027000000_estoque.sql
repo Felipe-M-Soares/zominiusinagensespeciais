@@ -170,13 +170,13 @@ DROP POLICY IF EXISTS "recebimento_insert" ON public.recebimento_materiais;
 DROP POLICY IF EXISTS "recebimento_update" ON public.recebimento_materiais;
 DROP POLICY IF EXISTS "recebimento_delete" ON public.recebimento_materiais;
 DROP POLICY IF EXISTS "recebimento_select" ON public.recebimento_materiais;
-CREATE POLICY "recebimento_select" ON public.recebimento_materiais FOR SELECT USING (public.is_approved_user());
+CREATE POLICY "recebimento_select" ON public.recebimento_materiais FOR SELECT TO authenticated USING (public.is_approved_user());
 DROP POLICY IF EXISTS "recebimento_insert" ON public.recebimento_materiais;
-CREATE POLICY "recebimento_insert" ON public.recebimento_materiais FOR INSERT WITH CHECK (public.is_approved_user());
+CREATE POLICY "recebimento_insert" ON public.recebimento_materiais FOR INSERT TO authenticated WITH CHECK (public.is_approved_user());
 DROP POLICY IF EXISTS "recebimento_update" ON public.recebimento_materiais;
-CREATE POLICY "recebimento_update" ON public.recebimento_materiais FOR UPDATE USING (public.is_approved_user());
+CREATE POLICY "recebimento_update" ON public.recebimento_materiais FOR UPDATE TO authenticated USING (public.is_approved_user());
 DROP POLICY IF EXISTS "recebimento_delete" ON public.recebimento_materiais;
-CREATE POLICY "recebimento_delete" ON public.recebimento_materiais FOR DELETE USING (public.is_admin_user());
+CREATE POLICY "recebimento_delete" ON public.recebimento_materiais FOR DELETE TO authenticated USING (public.is_admin_user());
 
 -- ── Índices ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_stock_items_device_id   ON public.stock_items(device_id);
@@ -193,17 +193,40 @@ CREATE INDEX IF NOT EXISTS idx_recebimento_lote        ON public.recebimento_mat
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── increment_stock_quantity ──────────────────────────────────────────────────
+-- SECURITY: esta função não tinha NENHUMA checagem de autenticação/role —
+-- qualquer usuário autenticado (independente do role) podia chamar o RPC
+-- diretamente e inflar/zerar a quantidade de qualquer item de estoque.
+-- Adicionada a mesma checagem de role usada nas demais RPCs de escrita de
+-- estoque (can_write_stock). Função não é usada pelo frontend atualmente,
+-- mas fica protegida caso volte a ser usada ou seja chamada diretamente via API.
 CREATE OR REPLACE FUNCTION public.increment_stock_quantity(p_item_id uuid, p_qty integer)
-RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $f01$
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f01$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Não autenticado';
+  END IF;
+  IF NOT public.can_write_stock() THEN
+    RAISE EXCEPTION 'Sem permissão para movimentar estoque.';
+  END IF;
   UPDATE public.stock_items SET quantity = quantity + p_qty, updated_at = now() WHERE id = p_item_id;
+END;
 $f01$;
 GRANT EXECUTE ON FUNCTION public.increment_stock_quantity TO authenticated;
 
 -- ── reserve_stock ─────────────────────────────────────────────────────────────
+-- SECURITY: também não tinha checagem de autenticação/role — apenas o GRANT
+-- a "authenticated" barrava usuários anônimos, mas qualquer usuário logado,
+-- de qualquer role (produção, qualidade, financeiro...), podia reservar
+-- estoque de qualquer item. Adicionada a mesma checagem de role usada nas
+-- demais RPCs de escrita de estoque.
 CREATE OR REPLACE FUNCTION public.reserve_stock(p_item_id uuid, p_qty integer)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f02$
 DECLARE v_updated integer;
 BEGIN
+  IF auth.uid() IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
+  IF NOT public.can_write_stock() THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão para reservar estoque.');
+  END IF;
   UPDATE public.stock_items
   SET quantity_reserved = quantity_reserved + p_qty
   WHERE id = p_item_id AND (quantity - quantity_reserved) >= p_qty;
@@ -468,17 +491,21 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created    ON public.audit_log (created
 -- Admins vêem tudo; usuários vêem suas próprias ações
 DROP POLICY IF EXISTS "audit_log_admin_select" ON public.audit_log;
 CREATE POLICY "audit_log_admin_select" ON public.audit_log
-  FOR SELECT USING (
+  FOR SELECT TO authenticated USING (
     EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')
   );
 
 DROP POLICY IF EXISTS "audit_log_self_select" ON public.audit_log;
 CREATE POLICY "audit_log_self_select" ON public.audit_log
-  FOR SELECT USING (user_id = auth.uid());
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
 
+-- SECURITY: exige que o user_id gravado seja o do próprio usuário autenticado
+-- (ou NULL) — evita que qualquer autenticado forje entradas de auditoria em
+-- nome de outra pessoa (ex.: user_id de um admin) para adulterar o histórico.
 DROP POLICY IF EXISTS "audit_log_insert" ON public.audit_log;
 CREATE POLICY "audit_log_insert" ON public.audit_log
-  FOR INSERT WITH CHECK (true);
+  FOR INSERT TO authenticated
+  WITH CHECK (user_id IS NULL OR user_id = auth.uid());
 
 -- ── admin_clear_audit_log ─────────────────────────────────────────────────────
 -- Apaga o log de auditoria (aba "Auditoria" em Admin.tsx). Não afeta nenhum

@@ -343,49 +343,49 @@ ALTER TABLE public.metas_producao ENABLE ROW LEVEL SECURITY;
 -- ── RLS Policies ─────────────────────────────────────────────────────────────
 -- Fornecedores
 DROP POLICY IF EXISTS "forn_select" ON public.fornecedores;
-CREATE POLICY "forn_select" ON public.fornecedores FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "forn_select" ON public.fornecedores FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "forn_write" ON public.fornecedores;
-CREATE POLICY "forn_write"  ON public.fornecedores FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro'));
+CREATE POLICY "forn_write"  ON public.fornecedores FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','estoque','financeiro'));
 
 -- Pedidos de compra
 DROP POLICY IF EXISTS "pc_select" ON public.pedidos_compra;
-CREATE POLICY "pc_select" ON public.pedidos_compra FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "pc_select" ON public.pedidos_compra FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "pc_write" ON public.pedidos_compra;
-CREATE POLICY "pc_write"  ON public.pedidos_compra FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro'));
+CREATE POLICY "pc_write"  ON public.pedidos_compra FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','estoque','financeiro'));
 DROP POLICY IF EXISTS "pci_select" ON public.pedido_compra_itens;
-CREATE POLICY "pci_select" ON public.pedido_compra_itens FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "pci_select" ON public.pedido_compra_itens FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "pci_write" ON public.pedido_compra_itens;
-CREATE POLICY "pci_write"  ON public.pedido_compra_itens FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro'));
+CREATE POLICY "pci_write"  ON public.pedido_compra_itens FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','estoque','financeiro'));
 
 -- Contas
 DROP POLICY IF EXISTS "cf_select" ON public.contas_financeiras;
-CREATE POLICY "cf_select" ON public.contas_financeiras FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "cf_select" ON public.contas_financeiras FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "cf_write" ON public.contas_financeiras;
-CREATE POLICY "cf_write"  ON public.contas_financeiras FOR ALL USING (public.get_my_role() IN ('admin','financeiro'));
+CREATE POLICY "cf_write"  ON public.contas_financeiras FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','financeiro'));
 
 -- Ferramentas
 DROP POLICY IF EXISTS "ferr_select" ON public.ferramentas_cnc;
-CREATE POLICY "ferr_select" ON public.ferramentas_cnc FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "ferr_select" ON public.ferramentas_cnc FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "ferr_write" ON public.ferramentas_cnc;
-CREATE POLICY "ferr_write"  ON public.ferramentas_cnc FOR ALL USING (public.get_my_role() IN ('admin','producao'));
+CREATE POLICY "ferr_write"  ON public.ferramentas_cnc FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','producao'));
 
 -- Certificados
 DROP POLICY IF EXISTS "cert_select" ON public.certificados;
-CREATE POLICY "cert_select" ON public.certificados FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "cert_select" ON public.certificados FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "cert_write" ON public.certificados;
-CREATE POLICY "cert_write"  ON public.certificados FOR ALL USING (public.get_my_role() IN ('admin','qualidade'));
+CREATE POLICY "cert_write"  ON public.certificados FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','qualidade'));
 
 -- Rastreabilidade
 DROP POLICY IF EXISTS "rastr_select" ON public.rastreabilidade_pos_venda;
-CREATE POLICY "rastr_select" ON public.rastreabilidade_pos_venda FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "rastr_select" ON public.rastreabilidade_pos_venda FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "rastr_write" ON public.rastreabilidade_pos_venda;
-CREATE POLICY "rastr_write"  ON public.rastreabilidade_pos_venda FOR ALL USING (public.get_my_role() IN ('admin','qualidade','comercial'));
+CREATE POLICY "rastr_write"  ON public.rastreabilidade_pos_venda FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','qualidade','comercial'));
 
 -- Metas
 DROP POLICY IF EXISTS "metas_select" ON public.metas_producao;
-CREATE POLICY "metas_select" ON public.metas_producao FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "metas_select" ON public.metas_producao FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "metas_write" ON public.metas_producao;
-CREATE POLICY "metas_write"  ON public.metas_producao FOR ALL USING (public.get_my_role() IN ('admin','producao'));
+CREATE POLICY "metas_write"  ON public.metas_producao FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','producao'));
 
 -- ── GRANTs ────────────────────────────────────────────────────────────────────
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.fornecedores             TO authenticated;
@@ -493,6 +493,16 @@ DECLARE
   v_mes_ini    date := date_trunc('month', v_hoje)::date;
   v_result     jsonb;
 BEGIN
+  -- SECURITY: este dashboard expõe faturamento mensal e contas a pagar/receber
+  -- (dados financeiros da empresa). A tela que o consome (/admin) já é
+  -- adminOnly no frontend (ver RoleGuard em App.tsx), mas a RPC em si não
+  -- checava role nenhuma — qualquer usuário autenticado (produção, estoque,
+  -- comercial...) podia chamar supabase.rpc('dashboard_gerencial') direto e
+  -- ler os números financeiros. Replicando aqui a mesma regra do frontend.
+  IF NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'Acesso negado: apenas administradores podem ver o dashboard gerencial.';
+  END IF;
+
   SELECT jsonb_build_object(
     -- ESTOQUE
     'estoque_intermediario_qty',  (SELECT COALESCE(SUM(quantity),0) FROM stock_items WHERE fase='intermediaria'),

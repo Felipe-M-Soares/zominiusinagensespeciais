@@ -406,7 +406,7 @@ ALTER TABLE public.peca_favoritas ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "favoritas_self" ON public.peca_favoritas;
 CREATE POLICY "favoritas_self" ON public.peca_favoritas
-  FOR ALL USING (user_id = auth.uid());
+  FOR ALL TO authenticated USING (user_id = auth.uid());
 
 -- ── RPC: resolve NCM por device_id (usado pelo botão "Sugerir NCM" no frontend) ──
 CREATE OR REPLACE FUNCTION public.resolve_ncm_device_by_id(p_device_id uuid)

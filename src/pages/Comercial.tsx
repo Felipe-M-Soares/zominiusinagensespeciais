@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
+import { useConfirmEnter } from "@/hooks/useConfirmEnter";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -1166,6 +1167,30 @@ export default function Comercial() {
     }
   }
 
+  async function handleRemoverItemConfirm() {
+    if (!removerItemPendente) return;
+    const { item, pedido } = removerItemPendente;
+    // Remove da UI imediatamente (otimista)
+    setPedidos(prev => prev.map(p => p.id === pedido.id
+      ? { ...p, itens: p.itens.filter(i => i.id !== item.id) }
+      : p
+    ));
+    setRemoverItemPendente(null);
+    // RPC atômica: libera a reserva e, se a peça já tinha sido
+    // separada pro embarque (lotes_separados), devolve a
+    // quantidade física pra expedição também — não só a reserva.
+    const { data, error } = await supabase.rpc("remove_pedido_item", {
+      p_pedido_item_id: item.id,
+    });
+    const result = data as { ok?: boolean; error?: string } | null;
+    if (error || result?.ok === false) {
+      toast.error(result?.error ?? error?.message ?? "Erro ao remover peça do pedido.");
+      loadPedidos(); // desfaz o otimista, recarrega estado real
+      return;
+    }
+    toast.success(`${item.device_model} removida do pedido.`);
+  }
+
   async function handleDeleteCliente() {
     if (!deleteCliente) return;
     setDeletingCliente(true);
@@ -1255,6 +1280,11 @@ export default function Comercial() {
       badgeText: "text-emerald-600 dark:text-emerald-400",
     },
   ];
+
+  // Enter confirma os modais abaixo, igual ao clique no mouse.
+  useConfirmEnter(!!cancelarPedido, handleCancelar, cancelando);
+  useConfirmEnter(!!removerItemPendente, handleRemoverItemConfirm, false);
+  useConfirmEnter(!!deleteCliente, handleDeleteCliente, deletingCliente);
 
   return (
     <div className="flex flex-col h-full bg-transparent">
@@ -1537,23 +1567,7 @@ export default function Comercial() {
             <p className="text-[12px] text-muted-foreground">{removerItemPendente.item.quantidade} un. voltam ao estoque disponível.</p>
             <div className="flex gap-2">
               <button type="button" onClick={() => setRemoverItemPendente(null)} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
-              <button type="button" onClick={async () => {
-                const { item, pedido } = removerItemPendente;
-                // Remove da UI imediatamente (otimista)
-                setPedidos(prev => prev.map(p => p.id === pedido.id
-                  ? { ...p, itens: p.itens.filter(i => i.id !== item.id) }
-                  : p
-                ));
-                setRemoverItemPendente(null);
-                // Persiste
-                await supabase.from("pedido_itens").delete().eq("id", item.id);
-                // Libera reserva via RPC SECURITY DEFINER (contorna RLS para role comercial)
-                await supabase.rpc("release_item_reservation", {
-                  p_stock_item_id: item.stock_item_id,
-                  p_quantity: item.quantidade,
-                });
-                toast.success(`${item.device_model} removida do pedido.`);
-              }} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors flex items-center justify-center gap-1.5">
+              <button type="button" onClick={handleRemoverItemConfirm} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors flex items-center justify-center gap-1.5">
                 <X className="h-3.5 w-3.5" /> Remover
               </button>
             </div>

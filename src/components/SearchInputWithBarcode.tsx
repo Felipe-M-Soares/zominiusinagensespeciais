@@ -19,6 +19,29 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { ScanBarcode, X, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Leitores de código de barras configurados pra ler GS1-128/DataMatrix
+ * costumam devolver o código já com o AI (Application Identifier) GS1 na
+ * frente — ex: "(01)07891234567895" ou, dependendo do leitor/etiqueta,
+ * mais Application Identifiers colados em seguida (validade, lote, série):
+ * "(01)07891234567895(17)251231(10)LOTE123".
+ *
+ * O AI "01" = GTIN e tem tamanho FIXO de 14 dígitos, então dá pra extrair
+ * exatamente o GTIN e ignorar o resto (validade/lote/série não interessam
+ * pra busca por referência/GTIN). Cobre tanto a forma com parênteses quanto
+ * a forma "crua" que alguns leitores mandam sem parênteses (só "01" + 14
+ * dígitos, ancorado no início/fim da string pra não cortar por engano um
+ * código que só começa com "01" por coincidência).
+ */
+export function extractGs1Gtin(raw: string): string {
+  const trimmed = raw.trim();
+  const comParenteses = trimmed.match(/^\(01\)(\d{14})/);
+  if (comParenteses) return comParenteses[1];
+  const semParenteses = trimmed.match(/^01(\d{14})$/);
+  if (semParenteses) return semParenteses[1];
+  return trimmed;
+}
+
 interface Props {
   value?: string;
   onChange?: (v: string) => void;
@@ -63,9 +86,10 @@ export function SearchInputWithBarcode({
   }, [onChange, debounceMs]);
 
   function handleChange(v: string) {
-    setLocalValue(v);
-    emit(v);
-    if (!v.trim()) onSearch?.("");
+    const limpo = extractGs1Gtin(v);
+    setLocalValue(limpo);
+    emit(limpo);
+    if (!limpo.trim()) onSearch?.("");
   }
 
   function handleClear() {
@@ -78,7 +102,7 @@ export function SearchInputWithBarcode({
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      onSearch?.(localValue.trim());
+      onSearch?.(extractGs1Gtin(localValue));
     }
     if (e.key === "Escape") handleClear();
   }

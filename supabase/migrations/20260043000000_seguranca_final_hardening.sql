@@ -163,9 +163,19 @@ CREATE POLICY "audit_log_insert" ON public.audit_log
   );
 
 -- Contas/backup do sistema: policies defensivas caso as tabelas existam no banco.
+-- SECURITY: as policies antigas "stock_backups_select" (SELECT liberado a
+-- qualquer usuário aprovado) e "stock_backups_write_admin" (de
+-- 20260027000000_estoque.sql) nunca foram removidas quando esta migration
+-- restringiu o acesso a admin. Como policies permissivas do Postgres são
+-- combinadas com OR, a policy antiga mais aberta continuava valendo e
+-- qualquer usuário aprovado conseguia ler todos os backups (inventário,
+-- dispositivos, histórico de movimentações) mesmo depois deste hardening.
+-- Removidas aqui para que só a policy admin-only tenha efeito.
 DO $$
 BEGIN
   IF to_regclass('public.stock_backups') IS NOT NULL THEN
+    EXECUTE 'DROP POLICY IF EXISTS "stock_backups_select" ON public.stock_backups';
+    EXECUTE 'DROP POLICY IF EXISTS "stock_backups_write_admin" ON public.stock_backups';
     EXECUTE 'DROP POLICY IF EXISTS "stock_backups_admin_only" ON public.stock_backups';
     EXECUTE 'CREATE POLICY "stock_backups_admin_only" ON public.stock_backups FOR ALL TO authenticated USING (public.has_any_role(ARRAY[''admin'']::public.app_role[])) WITH CHECK (public.has_any_role(ARRAY[''admin'']::public.app_role[]))';
   END IF;

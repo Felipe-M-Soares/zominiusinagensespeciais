@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, memo } from "react";
+import { useConfirmEnter } from "@/hooks/useConfirmEnter";
 import { displayLote } from "@/lib/lote";
 import {
   Package,
@@ -1817,6 +1818,7 @@ function RetornarPedidoModal({ pedido, onClose, onSuccess }: RetornarPedidoModal
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { if (pedido) setMotivo(""); }, [pedido]);
+  useConfirmEnter(!!pedido, handleRetornar, saving);
 
   if (!pedido) return null;
 
@@ -1903,24 +1905,23 @@ function RemoverItemModal({ pedido, item, onClose, onSuccess }: RemoverItemModal
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
 
+  useConfirmEnter(!!(pedido && item), handleRemover, saving);
+
   if (!pedido || !item) return null;
 
   async function handleRemover() {
     if (!pedido || !item) return;
     setSaving(true);
     try {
-      // Remove todos os pedido_itens desse stock_item no pedido
-      const { error } = await supabase
-        .from("pedido_itens")
-        .delete()
-        .in("id", item.ids);
-      if (error) throw error;
-
-      // Libera reserva via RPC SECURITY DEFINER (contorna RLS para role estoque/comercial)
-      await supabase.rpc("release_item_reservation", {
-        p_stock_item_id: item.stock_item_id,
-        p_quantity: item.quantidade,
-      });
+      // RPC atômica por item — libera a reserva e, se a peça já tinha sido
+      // separada pro embarque (lotes_separados), devolve a quantidade física
+      // pra expedição também (não só release_item_reservation, que só
+      // cuidava da reserva e deixava a parte já separada "perdida").
+      for (const id of item.ids) {
+        const { data, error } = await supabase.rpc("remove_pedido_item", { p_pedido_item_id: id });
+        const result = data as { ok?: boolean; error?: string } | null;
+        if (error || result?.ok === false) throw new Error(result?.error ?? error?.message ?? "Erro ao remover item.");
+      }
 
       // Calcula novo total do pedido para notificação
       const { data: itensRestantes } = await supabase
@@ -2761,6 +2762,7 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     w.document.open(); w.document.write(html); w.document.close();
   }
 
+  useConfirmEnter(!!cancelarPedido, handleCancelar, cancelando);
 
   return (
     <div className="space-y-4">

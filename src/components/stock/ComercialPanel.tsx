@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useConfirmEnter } from "@/hooks/useConfirmEnter";
 import { displayLote } from "@/lib/lote";
 import {
   ShoppingBag,
@@ -1617,6 +1618,9 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     setDeleteCliente(null);
     loadClientes();
   }
+
+  useConfirmEnter(!!cancelarPedido, handleCancelar, cancelando);
+  useConfirmEnter(!!deleteCliente, handleDeleteCliente, deletingCliente);
 
   return (
     <div className="space-y-4">

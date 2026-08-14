@@ -431,15 +431,15 @@ CREATE POLICY "notif_update" ON public.notificacoes
 -- ── producao ──────────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "apon_update" ON apontamentos_producao;
 CREATE POLICY "apon_update" ON apontamentos_producao
-  FOR UPDATE USING ((select auth.uid()) = user_id OR public.get_my_role() IN ('admin','producao'));
+  FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id OR public.get_my_role() IN ('admin','producao'));
 
 DROP POLICY IF EXISTS "par_update" ON paradas_producao;
 CREATE POLICY "par_update" ON paradas_producao
-  FOR UPDATE USING ((select auth.uid()) = user_id OR public.get_my_role() IN ('admin','producao'));
+  FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id OR public.get_my_role() IN ('admin','producao'));
 
 DROP POLICY IF EXISTS "ref_update" ON refugos_producao;
 CREATE POLICY "ref_update" ON refugos_producao
-  FOR UPDATE USING ((select auth.uid()) = user_id OR public.get_my_role() IN ('admin','producao'));
+  FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id OR public.get_my_role() IN ('admin','producao'));
 
 -- Policies que usam auth.uid() IS NOT NULL → trocar por autenticação via role
 DROP POLICY IF EXISTS "maq_select"  ON maquinas_producao;
@@ -458,24 +458,24 @@ DROP POLICY IF EXISTS "mp_update"   ON materias_primas_producao;
 DROP POLICY IF EXISTS "mov_select"  ON movimentos_mp_producao;
 DROP POLICY IF EXISTS "mov_insert"  ON movimentos_mp_producao;
 
-CREATE POLICY "maq_select"  ON maquinas_producao     FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "maq_select"  ON maquinas_producao     FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "prod_select" ON public.produtos_producao;
-CREATE POLICY "prod_select" ON produtos_producao      FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "prod_select" ON produtos_producao      FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "apon_select" ON public.apontamentos_producao;
-CREATE POLICY "apon_select" ON apontamentos_producao  FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "apon_select" ON apontamentos_producao  FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 DROP POLICY IF EXISTS "apon_insert" ON public.apontamentos_producao;
-CREATE POLICY "apon_insert" ON apontamentos_producao  FOR INSERT WITH CHECK ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "op_select"   ON ordens_planejamento    FOR SELECT USING ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "op_insert"   ON ordens_planejamento    FOR INSERT WITH CHECK ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "op_update"   ON ordens_planejamento    FOR UPDATE USING ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "par_select"  ON paradas_producao       FOR SELECT USING ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "par_insert"  ON paradas_producao       FOR INSERT WITH CHECK ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "ref_select"  ON refugos_producao       FOR SELECT USING ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "ref_insert"  ON refugos_producao       FOR INSERT WITH CHECK ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "mp_select"   ON materias_primas_producao  FOR SELECT USING ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "mp_update"   ON materias_primas_producao  FOR UPDATE USING ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "mov_select"  ON movimentos_mp_producao FOR SELECT USING ((select auth.uid()) IS NOT NULL);
-CREATE POLICY "mov_insert"  ON movimentos_mp_producao FOR INSERT WITH CHECK ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "apon_insert" ON apontamentos_producao  FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "op_select"   ON ordens_planejamento    FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "op_insert"   ON ordens_planejamento    FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "op_update"   ON ordens_planejamento    FOR UPDATE TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "par_select"  ON paradas_producao       FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "par_insert"  ON paradas_producao       FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "ref_select"  ON refugos_producao       FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "ref_insert"  ON refugos_producao       FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "mp_select"   ON materias_primas_producao  FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "mp_update"   ON materias_primas_producao  FOR UPDATE TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "mov_select"  ON movimentos_mp_producao FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "mov_insert"  ON movimentos_mp_producao FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 20260026000000_security_advisor_final.sql
@@ -521,18 +521,18 @@ CREATE POLICY "fin_contas_write" ON public.financeiro_contas_bancarias
 -- ── 1C. audit_log ─────────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "audit_log_admin_select" ON public.audit_log;
 CREATE POLICY "audit_log_admin_select" ON public.audit_log
-  FOR SELECT USING (
+  FOR SELECT TO authenticated USING (
     EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = (select auth.uid()) AND role = 'admin')
   );
 
 DROP POLICY IF EXISTS "audit_log_self_select" ON public.audit_log;
 CREATE POLICY "audit_log_self_select" ON public.audit_log
-  FOR SELECT USING (user_id = (select auth.uid()));
+  FOR SELECT TO authenticated USING (user_id = (select auth.uid()));
 
 -- ── 1D. rate_limit_log ────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "rate_limit_self" ON public.rate_limit_log;
 CREATE POLICY "rate_limit_self" ON public.rate_limit_log
-  FOR SELECT USING (user_id = (select auth.uid()));
+  FOR SELECT TO authenticated USING (user_id = (select auth.uid()));
 
 DROP POLICY IF EXISTS "rate_limit_insert" ON public.rate_limit_log;
 CREATE POLICY "rate_limit_insert" ON public.rate_limit_log
@@ -548,7 +548,7 @@ CREATE POLICY "comentarios_insert" ON public.pedido_comentarios
 -- ── 1F. peca_favoritas ────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "favoritas_self" ON public.peca_favoritas;
 CREATE POLICY "favoritas_self" ON public.peca_favoritas
-  FOR ALL USING (user_id = (select auth.uid()));
+  FOR ALL TO authenticated USING (user_id = (select auth.uid()));
 
 -- ── 2. Funções com search_path mutável — adicionar SET search_path = public ──
 
@@ -712,12 +712,22 @@ REVOKE ALL ON FUNCTION public.admin_delete_user(uuid)                   FROM ano
 -- Remove registros com mais de 90 dias para evitar crescimento ilimitado
 CREATE OR REPLACE FUNCTION public.cleanup_audit_log()
 RETURNS void
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $f01$
+BEGIN
+  -- SECURITY: chamada tanto pelo pg_cron (sem auth.uid()) quanto, antes
+  -- desta correção, diretamente via RPC por qualquer usuário autenticado —
+  -- que podia forçar a limpeza antecipada do audit_log fora do agendamento.
+  -- Bloqueia chamada interativa de não-admin; deixa o cron passar normalmente.
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN
+    RETURN;
+  END IF;
+
   DELETE FROM public.audit_log
   WHERE created_at < now() - INTERVAL '90 days';
+END;
 $f01$;
 
 GRANT EXECUTE ON FUNCTION public.cleanup_audit_log() TO authenticated;
@@ -1140,6 +1150,16 @@ DECLARE
   v_real_name text;
 BEGIN
   IF v_real_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
+
+  -- SECURITY: mesma checagem de role usada nas demais RPCs de escrita de
+  -- estoque (add_device_to_stock_rpc, ensure_stock_item_fase, etc.) —
+  -- estava faltando aqui, permitindo que qualquer usuário autenticado
+  -- (independente do role: produção, qualidade, financeiro...) alterasse
+  -- quantidade de estoque via chamada direta ao RPC.
+  IF NOT public.can_write_stock() THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão para movimentar estoque.');
+  END IF;
+
   IF NOT public.check_rate_limit('stock_movement_atomic') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Muitas requisições. Aguarde alguns segundos.');
   END IF;

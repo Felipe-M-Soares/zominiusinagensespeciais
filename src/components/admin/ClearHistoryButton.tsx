@@ -4,6 +4,7 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useConfirmEnter } from "@/hooks/useConfirmEnter";
 
 type AdminClearRpc =
   | "admin_clear_stock_movements"
@@ -79,6 +80,8 @@ export function ClearHistoryButton({
     closeModal();
     onCleared?.();
   }
+
+  useConfirmEnter(confirmOpen, handleClear, clearing || typed !== "EXCLUIR");
 
   return (
     <>

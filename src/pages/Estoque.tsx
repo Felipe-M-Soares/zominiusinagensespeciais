@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { useConfirmEnter } from "@/hooks/useConfirmEnter";
 import { useAuth } from "@/hooks/useAuth";
 import { useStock } from "@/hooks/useStock";
 import type { StockItem } from "@/hooks/useStock";
@@ -646,22 +647,32 @@ export default function Estoque() {
   async function clearAllHistory() {
     setClearingHist(true);
     try {
-      // Apaga rastreabilidade (FK para pedido_itens)
-      const { error: e0 } = await supabase.from("rastreabilidade_pos_venda").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (e0) throw e0;
-      // Apaga itens dos pedidos
-      const { error: e1 } = await supabase.from("pedido_itens").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (e1) throw e1;
-      // Apaga pedidos
-      const { error: e2 } = await supabase.from("pedidos_comerciais").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (e2) throw e2;
-      // Apaga movimentos de estoque
-      const { error: e3 } = await supabase.from("stock_movements").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (e3) throw e3;
+      // IMPORTANTE: NÃO apaga rastreabilidade_pos_venda — são dados de
+      // rastreabilidade/validação ANVISA (lote → cliente/recall) e devem
+      // sobreviver à limpeza de histórico, igual às demais rotinas de
+      // limpeza do app (ver admin_clear_comercial no banco). A versão
+      // anterior deste botão apagava essa tabela direto do client, fazendo
+      // as peças "perderem" a validação ANVISA sempre que o histórico
+      // completo era apagado — corrigido aqui.
+      //
+      // Usa as RPCs seguras (admin-only, com auditoria) em vez de DELETE
+      // direto do client — mesmo padrão já usado no restante do app.
+      const { data: comercialData, error: eComercial } = await supabase.rpc("admin_clear_comercial");
+      const comercialResult = comercialData as { ok?: boolean; error?: string } | null;
+      if (eComercial || comercialResult?.ok === false) {
+        throw new Error(comercialResult?.error ?? eComercial?.message ?? "Erro ao apagar pedidos comerciais.");
+      }
+
+      const { data: movData, error: eMov } = await supabase.rpc("admin_clear_stock_movements");
+      const movResult = movData as { ok?: boolean; error?: string } | null;
+      if (eMov || movResult?.ok === false) {
+        throw new Error(movResult?.error ?? eMov?.message ?? "Erro ao apagar movimentações de estoque.");
+      }
+
       // Zera quantidades mas MANTÉM os stock_items (peças regularizadas ficam com qty=0)
       const { error: e4 } = await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
       if (e4) throw e4;
-      toast.success("Histórico apagado. Peças cadastradas mantidas com saldo zerado.");
+      toast.success("Histórico apagado. Peças cadastradas e validações ANVISA mantidas, com saldo zerado.");
       setClearHistConfirm(false);
       refetch();
     } catch (err: unknown) {
@@ -915,6 +926,26 @@ export default function Estoque() {
       setResetting(false);
     }
   }
+
+  async function handleDeleteItemConfirm() {
+    if (!deleteItem) return;
+    setDeleting(true);
+    const result = await deleteStockItem(deleteItem.id);
+    setDeleting(false);
+    if (result.ok) {
+      toast.success("Peça removida do estoque.", { description: deleteItem.device.model });
+      setDeleteItem(null);
+      refetch();
+    } else {
+      toast.error("Erro ao remover peça. Tente novamente.");
+    }
+  }
+
+  // Enter confirma os modais abaixo, igual ao clique no mouse.
+  useConfirmEnter(!!resetItem, handleResetItem, resetting);
+  useConfirmEnter(clearHistConfirm, clearAllHistory, clearingHist);
+  useConfirmEnter(deleteAllOpen, handleDeleteAll, deletingAll || deleteAllTyped !== "EXCLUIR");
+  useConfirmEnter(!!deleteItem, handleDeleteItemConfirm, deleting);
 
   // Loading state — mostra skeleton enquanto estoque carrega
   if (loading && allItems.length === 0) return <PageSkeleton />;
@@ -1564,19 +1595,7 @@ export default function Estoque() {
                 type="button"
                 className="flex-1 h-10 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors flex items-center justify-center gap-2"
                 disabled={deleting}
-                onClick={async () => {
-                  if (!deleteItem) return;
-                  setDeleting(true);
-                  const result = await deleteStockItem(deleteItem.id);
-                  setDeleting(false);
-                  if (result.ok) {
-                    toast.success("Peça removida do estoque.", { description: deleteItem.device.model });
-                    setDeleteItem(null);
-                    refetch();
-                  } else {
-                    toast.error("Erro ao remover peça. Tente novamente.");
-                  }
-                }}
+                onClick={handleDeleteItemConfirm}
               >
                 {deleting
                   ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -1600,7 +1619,7 @@ export default function Estoque() {
             <div>
               <p className="text-sm font-bold text-destructive">Apagar todo o histórico?</p>
               <p className="text-[12px] text-muted-foreground mt-1">
-                Isso vai apagar <strong>todos os movimentos</strong>, pedidos comerciais e zerar o estoque de todas as peças. Esta ação <strong>não pode ser desfeita</strong>.
+                Isso vai apagar <strong>todos os movimentos</strong>, pedidos comerciais e zerar o estoque de todas as peças. A validação/rastreabilidade ANVISA das peças <strong>é mantida</strong>. Esta ação <strong>não pode ser desfeita</strong>.
               </p>
             </div>
           </div>

@@ -53,7 +53,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
-const MAX_ZIP_SIZE_MB = 1024;
+// Limite alto o suficiente pra zips de várias centenas de PDFs (alguns GB).
+// zip.js lê o índice + cada entrada sob demanda (não carrega o zip inteiro
+// na RAM), então o tamanho do arquivo em si não é o gargalo — o gargalo
+// real era o algoritmo de correspondência (ver normalização pré-computada
+// abaixo), já corrigido.
+const MAX_ZIP_SIZE_MB = 3072; // 3GB
 // PDFs maiores que isso não passam pela leitura de texto (fallback por
 // conteúdo) — extrair texto de PDFs gigantes é o que mais consome memória.
 const MAX_PDF_TEXT_MB = 20;
@@ -99,17 +104,48 @@ function sanitizePath(name: string): string {
     .trim();
 }
 
+interface DeviceIndex {
+  list: { device: Device; refNorm: string; modelNorm: string }[];
+  exactMap: Map<string, Device>;
+}
+
+/**
+ * Pré-computa a normalização de cada peça UMA VEZ (não a cada comparação) e
+ * monta um mapa para correspondência exata em O(1).
+ *
+ * Antes disso, findMatchByName chamava norm() — que faz normalize("NFD") +
+ * replace por regex, ambos relativamente caros — para CADA peça do catálogo
+ * a CADA candidato de nome de arquivo/pasta, repetido para cada PDF do zip.
+ * Com um catálogo de milhares de peças e um zip com milhares de desenhos
+ * (como um zip de ~1-2GB de desenhos técnicos costuma ter), isso virava
+ * dezenas de milhões de operações de string síncronas — exatamente o que
+ * travava a aba durante a leitura do zip, não o tamanho do arquivo em si.
+ */
+function buildDeviceIndex(devices: Device[]): DeviceIndex {
+  const list = devices.map(d => ({
+    device: d,
+    refNorm: norm(d.reference),
+    modelNorm: norm(d.model),
+  }));
+  const exactMap = new Map<string, Device>();
+  for (const { device, refNorm, modelNorm } of list) {
+    if (refNorm && !exactMap.has(refNorm)) exactMap.set(refNorm, device);
+    if (modelNorm && !exactMap.has(modelNorm)) exactMap.set(modelNorm, device);
+  }
+  return { list, exactMap };
+}
+
 /** Tenta casar por nome do arquivo, depois por cada pasta ancestral — exato primeiro, aproximado como fallback. */
-function findMatchByName(zipPath: string, devices: Device[]): { device: Device; refName: string; fuzzy: boolean } | null {
+function findMatchByName(zipPath: string, index: DeviceIndex): { device: Device; refName: string; fuzzy: boolean } | null {
   const parts = zipPath.split("/").filter(Boolean);
   const fileName = parts[parts.length - 1];
   const candidates = [stemName(fileName), ...parts.slice(0, -1).reverse()];
 
-  // Etapa 1: correspondência exata (referência ou modelo, normalizados)
+  // Etapa 1: correspondência exata (referência ou modelo, normalizados) — O(1) via Map.
   for (const candidate of candidates) {
     const candNorm = norm(candidate);
     if (!candNorm) continue;
-    const match = devices.find(d => norm(d.reference) === candNorm || norm(d.model) === candNorm);
+    const match = index.exactMap.get(candNorm);
     if (match) return { device: match, refName: candidate, fuzzy: false };
   }
 
@@ -117,13 +153,15 @@ function findMatchByName(zipPath: string, devices: Device[]): { device: Device; 
   for (const candidate of candidates) {
     const candNorm = norm(candidate);
     if (!candNorm || candNorm.length < MIN_FUZZY_LEN) continue;
-    const matches = devices.filter(d => {
-      const refNorm = norm(d.reference);
-      const modelNorm = norm(d.model);
+    const matches: Device[] = [];
+    for (const { device, refNorm, modelNorm } of index.list) {
       const refHit = refNorm.length >= MIN_FUZZY_LEN && (candNorm.includes(refNorm) || refNorm.includes(candNorm));
       const modelHit = modelNorm.length >= MIN_FUZZY_LEN && (candNorm.includes(modelNorm) || modelNorm.includes(candNorm));
-      return refHit || modelHit;
-    });
+      if (refHit || modelHit) {
+        matches.push(device);
+        if (matches.length > 1) break; // já sabemos que não é único, pode parar cedo
+      }
+    }
     if (matches.length === 1) return { device: matches[0], refName: candidate, fuzzy: true };
   }
 
@@ -164,16 +202,16 @@ async function extrairTextoPdf(blob: Blob): Promise<string> {
  * com várias peças ao mesmo tempo: os códigos da tabela aparecem no texto do
  * PDF mesmo que o nome do arquivo seja só o código genérico do desenho.
  */
-function findMatchesByContent(textoPdf: string, devices: Device[]): Device[] {
+function findMatchesByContent(textoPdf: string, index: DeviceIndex): Device[] {
   const textoNorm = norm(textoPdf);
   if (!textoNorm) return [];
-  return devices.filter(d => {
-    const refNorm = norm(d.reference);
-    const modelNorm = norm(d.model);
+  const found: Device[] = [];
+  for (const { device, refNorm, modelNorm } of index.list) {
     const refHit = refNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(refNorm);
     const modelHit = modelNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(modelNorm);
-    return refHit || modelHit;
-  });
+    if (refHit || modelHit) found.push(device);
+  }
+  return found;
 }
 
 interface Props {
@@ -219,37 +257,61 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
         return;
       }
 
-      const { data: devices, error } = await supabase
-        .from("devices")
-        .select("id, reference, model");
-
-      if (error || !devices) {
-        toast.error("Erro ao buscar componentes do banco.");
-        setExtracting(false);
-        return;
+      // Busca o catálogo INTEIRO paginando — um único select() sem range()
+      // é limitado pelo Supabase/PostgREST (por padrão, 1000 linhas por
+      // requisição). Como o catálogo de peças é maior que isso (por isso é
+      // paginado em outros lugares do app, ver useDevices.ts), um select()
+      // simples aqui deixava peças de fora silenciosamente — desenhos delas
+      // NUNCA batiam com nada, não importa o quão bem nomeado o arquivo
+      // estivesse. Buscando tudo em páginas resolve isso.
+      const devicesTyped: Device[] = [];
+      {
+        const DEVICES_PAGE = 1000;
+        for (let from = 0; ; from += DEVICES_PAGE) {
+          const { data: page, error: pageErr } = await supabase
+            .from("devices")
+            .select("id, reference, model")
+            .range(from, from + DEVICES_PAGE - 1);
+          if (pageErr) {
+            toast.error("Erro ao buscar componentes do banco.");
+            setExtracting(false);
+            return;
+          }
+          if (!page || page.length === 0) break;
+          devicesTyped.push(...(page as Device[]));
+          if (page.length < DEVICES_PAGE) break;
+        }
       }
-
-      const devicesTyped = devices as Device[];
+      const deviceIndex = buildDeviceIndex(devicesTyped);
       const usedDeviceIds = new Set<string>();
       const fileResults: FileResult[] = new Array(entries.length);
 
-      // 1ª passada — SÓ pelo nome (rápida, sem tocar no conteúdo dos PDFs).
+      // 1ª passada — SÓ pelo nome (rápida: normalização pré-computada + Map
+      // para correspondência exata). Processada em lotes com um respiro
+      // entre eles para a aba não ficar "não responde" em zips com muitos
+      // arquivos, mesmo essa etapa já sendo bem mais rápida que antes.
       const semMatchPorNome: number[] = [];
-      entries.forEach((entry, idx) => {
-        const nomeMatch = findMatchByName(entry.filename, devicesTyped);
-        const refName = stemName(entry.filename.split("/").pop()!);
-        if (nomeMatch) {
-          fileResults[idx] = {
-            zipPath: entry.filename, refName, entry,
-            devices: [nomeMatch.device],
-            matchMode: nomeMatch.fuzzy ? "aproximado" : "exato",
-            status: "pending",
-          };
-        } else {
-          fileResults[idx] = { zipPath: entry.filename, refName, entry, devices: [], status: "no_match" };
-          semMatchPorNome.push(idx);
-        }
-      });
+      const NOME_CHUNK = 200;
+      for (let start = 0; start < entries.length; start += NOME_CHUNK) {
+        const chunk = entries.slice(start, start + NOME_CHUNK);
+        chunk.forEach((entry, offset) => {
+          const idx = start + offset;
+          const nomeMatch = findMatchByName(entry.filename, deviceIndex);
+          const refName = stemName(entry.filename.split("/").pop()!);
+          if (nomeMatch) {
+            fileResults[idx] = {
+              zipPath: entry.filename, refName, entry,
+              devices: [nomeMatch.device],
+              matchMode: nomeMatch.fuzzy ? "aproximado" : "exato",
+              status: "pending",
+            };
+          } else {
+            fileResults[idx] = { zipPath: entry.filename, refName, entry, devices: [], status: "no_match" };
+            semMatchPorNome.push(idx);
+          }
+        });
+        if (start + NOME_CHUNK < entries.length) await new Promise(r => setTimeout(r, 0));
+      }
 
       // 2ª passada — fallback por conteúdo, UM PDF POR VEZ, com progresso na
       // tela e devolvendo o controle pra UI entre um e outro. Ler vários PDFs
@@ -263,7 +325,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
         try {
           const blob = await entry.getData(new BlobWriter("application/pdf"));
           const texto = await extrairTextoPdf(blob);
-          const doConteudo = findMatchesByContent(texto, devicesTyped);
+          const doConteudo = findMatchesByContent(texto, deviceIndex);
           if (doConteudo.length > 0) {
             fileResults[idx] = { ...fileResults[idx], devices: doConteudo, matchMode: "conteudo", status: "pending" };
           }
@@ -426,7 +488,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                           : "Lendo índice do .zip...")
                       : "Selecionar arquivo .zip"}
                   </p>
-                  <p className="text-[11px] text-muted-foreground mt-1">Pastas e subpastas são varridas automaticamente · até 1GB</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Pastas e subpastas são varridas automaticamente · até 3GB</p>
                   <p className="text-[10px] text-muted-foreground/70">Arquivos grandes podem levar alguns minutos para carregar — não feche esta tela</p>
                 </div>
               </button>

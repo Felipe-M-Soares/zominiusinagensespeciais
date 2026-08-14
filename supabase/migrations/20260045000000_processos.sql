@@ -14,19 +14,19 @@
 
 DROP POLICY IF EXISTS "ferr_write" ON public.ferramentas_cnc;
 CREATE POLICY "ferr_write" ON public.ferramentas_cnc
-  FOR ALL USING (public.get_my_role() IN ('admin','producao','processos'));
+  FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','producao','processos'));
 
 DROP POLICY IF EXISTS "forn_write" ON public.fornecedores;
 CREATE POLICY "forn_write" ON public.fornecedores
-  FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro','processos'));
+  FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','estoque','financeiro','processos'));
 
 DROP POLICY IF EXISTS "pc_write" ON public.pedidos_compra;
 CREATE POLICY "pc_write" ON public.pedidos_compra
-  FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro','processos','producao'));
+  FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','estoque','financeiro','processos','producao'));
 
 DROP POLICY IF EXISTS "pci_write" ON public.pedido_compra_itens;
 CREATE POLICY "pci_write" ON public.pedido_compra_itens
-  FOR ALL USING (public.get_my_role() IN ('admin','estoque','financeiro','processos','producao'));
+  FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','estoque','financeiro','processos','producao'));
 
 -- ── 2. Biblioteca de programas CNC (aba "Códigos") ───────────────────────────
 
@@ -49,10 +49,10 @@ CREATE TRIGGER trg_programas_cnc_updated_at BEFORE UPDATE ON public.programas_cn
 
 DROP POLICY IF EXISTS "prog_cnc_select" ON public.programas_cnc;
 CREATE POLICY "prog_cnc_select" ON public.programas_cnc
-  FOR SELECT USING ((select auth.uid()) IS NOT NULL);
+  FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 
 DROP POLICY IF EXISTS "prog_cnc_write" ON public.programas_cnc;
 CREATE POLICY "prog_cnc_write" ON public.programas_cnc
-  FOR ALL USING (public.get_my_role() IN ('admin','producao','processos'));
+  FOR ALL TO authenticated USING (public.get_my_role() IN ('admin','producao','processos'));
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.programas_cnc TO authenticated;
