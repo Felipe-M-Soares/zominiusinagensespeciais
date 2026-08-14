@@ -144,13 +144,28 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
       return;
     }
 
-    const { data: devices, error } = await supabase
-      .from("devices")
-      .select("id, reference, model");
-
-    if (error || !devices) {
-      toast.error("Erro ao buscar componentes do banco");
-      return;
+    // Busca o catálogo INTEIRO paginando — um select() sem range() é limitado
+    // pelo Supabase/PostgREST (1000 linhas por padrão). Mesmo bug que existia
+    // no upload de desenhos técnicos: catálogo maior que isso perdia peças
+    // silenciosamente da comparação. order("id") garante ordem estável entre
+    // páginas (sem isso o Postgres não garante não pular/repetir linhas).
+    const devices: Device[] = [];
+    {
+      const DEVICES_PAGE = 1000;
+      for (let from = 0; ; from += DEVICES_PAGE) {
+        const { data: page, error } = await supabase
+          .from("devices")
+          .select("id, reference, model")
+          .order("id")
+          .range(from, from + DEVICES_PAGE - 1);
+        if (error) {
+          toast.error("Erro ao buscar componentes do banco");
+          return;
+        }
+        if (!page || page.length === 0) break;
+        devices.push(...(page as Device[]));
+        if (page.length < DEVICES_PAGE) break;
+      }
     }
 
     // Deduplica por nome de arquivo — mesmo arquivo em múltiplas subpastas
@@ -163,7 +178,7 @@ export function DeviceImageUploader({ onClose, onDone }: Props) {
 
       if (seen.has(fileNorm)) continue; // já processado
 
-      const matched = findMatches(fileNorm, devices as Device[]);
+      const matched = findMatches(fileNorm, devices);
 
       seen.set(fileNorm, {
         file,

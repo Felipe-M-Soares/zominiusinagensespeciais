@@ -383,6 +383,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
           const { data: page, error: pageErr } = await supabase
             .from("devices")
             .select("id, reference, model, internal_code, desenho_tecnico_path")
+            .order("id")
             .range(from, from + DEVICES_PAGE - 1);
           if (pageErr) {
             toast.error("Erro ao buscar componentes do banco.");

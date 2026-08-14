@@ -103,6 +103,18 @@ CREATE TABLE IF NOT EXISTS public.contas_financeiras (
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE public.contas_financeiras ENABLE ROW LEVEL SECURITY;
+
+-- PERFORMANCE: a tabela nunca teve nenhum índice. FluxoCaixaPanel.tsx faz
+-- ORDER BY data_vencimento na tabela inteira (sem filtro/paginação) toda vez
+-- que a tela abre, e agora que "Contas a Pagar" existe também (antes só
+-- tinha "a receber"), o volume de linhas tende a crescer mais rápido.
+CREATE INDEX IF NOT EXISTS idx_contas_financeiras_vencimento
+  ON public.contas_financeiras (data_vencimento);
+CREATE INDEX IF NOT EXISTS idx_contas_financeiras_tipo_status
+  ON public.contas_financeiras (tipo, status);
+CREATE INDEX IF NOT EXISTS idx_contas_financeiras_pedido_compra
+  ON public.contas_financeiras (pedido_compra_id) WHERE pedido_compra_id IS NOT NULL;
+
 DROP TRIGGER IF EXISTS trg_contas_updated_at ON public.contas_financeiras;
 CREATE TRIGGER trg_contas_updated_at BEFORE UPDATE ON public.contas_financeiras
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
