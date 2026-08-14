@@ -94,6 +94,7 @@ interface Device {
   reference: string;
   model: string;
   internal_code: string | null;
+  desenho_tecnico_path: string | null;
 }
 
 interface FileResult {
@@ -102,7 +103,7 @@ interface FileResult {
   entry:      FileEntry;
   devices:    Device[]; // 0 = sem match · 1 = normal · 2+ = desenho de família
   matchMode?: "exato" | "aproximado" | "conteudo";
-  status:     "pending" | "uploading" | "done" | "error" | "no_match" | "duplicate";
+  status:     "pending" | "uploading" | "done" | "error" | "no_match" | "duplicate" | "ja_enviado";
   error?:     string;
 }
 
@@ -306,7 +307,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
         for (let from = 0; ; from += DEVICES_PAGE) {
           const { data: page, error: pageErr } = await supabase
             .from("devices")
-            .select("id, reference, model, internal_code")
+            .select("id, reference, model, internal_code, desenho_tecnico_path")
             .range(from, from + DEVICES_PAGE - 1);
           if (pageErr) {
             toast.error("Erro ao buscar componentes do banco.");
@@ -335,11 +336,14 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
           const nomeMatch = findMatchByName(entry.filename, deviceIndex);
           const refName = stemName(entry.filename.split("/").pop()!);
           if (nomeMatch) {
+            // Peça já tem desenho técnico de um envio anterior — não precisa
+            // reenviar de novo a cada vez que o zip é processado.
+            const jaTemDesenho = !!nomeMatch.device.desenho_tecnico_path;
             fileResults[idx] = {
               zipPath: entry.filename, refName, entry,
               devices: [nomeMatch.device],
               matchMode: nomeMatch.fuzzy ? "aproximado" : "exato",
-              status: "pending",
+              status: jaTemDesenho ? "ja_enviado" : "pending",
             };
           } else {
             fileResults[idx] = { zipPath: entry.filename, refName, entry, devices: [], status: "no_match" };
@@ -370,7 +374,14 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
           const texto = await extrairTextoPdf(blob);
           const doConteudo = findMatchesByContent(texto, deviceIndex);
           if (doConteudo.length > 0) {
-            fileResults[idx] = { ...fileResults[idx], devices: doConteudo, matchMode: "conteudo", status: "pending" };
+            // Mesma checagem do match por nome: não reprocessa peças que já
+            // têm desenho técnico enviado de uma sessão anterior.
+            const pendentes = doConteudo.filter(d => !d.desenho_tecnico_path);
+            if (pendentes.length > 0) {
+              fileResults[idx] = { ...fileResults[idx], devices: pendentes, matchMode: "conteudo", status: "pending" };
+            } else {
+              fileResults[idx] = { ...fileResults[idx], devices: doConteudo, matchMode: "conteudo", status: "ja_enviado" };
+            }
           }
           bytesProcessados += tamanho;
         } catch (e) {
@@ -407,7 +418,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
 
       fileResults.sort((a, b) => {
         if (a.status === b.status) return a.zipPath.localeCompare(b.zipPath);
-        const order = { pending: 0, duplicate: 1, no_match: 2, uploading: 3, done: 4, error: 5 };
+        const order = { pending: 0, duplicate: 1, ja_enviado: 1, no_match: 2, uploading: 3, done: 4, error: 5 };
         return order[a.status] - order[b.status];
       });
 
@@ -433,6 +444,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
       conteudo: matched.filter(r => r.matchMode === "conteudo").length,
       noMatch: results.filter(r => r.status === "no_match").length,
       duplicate: results.filter(r => r.status === "duplicate").length,
+      jaEnviado: results.filter(r => r.status === "ja_enviado").length,
       total: results.length,
       done: results.filter(r => r.status === "done").length,
       errors: results.filter(r => r.status === "error").length,
@@ -496,6 +508,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
     if (s === "error")      return <XCircle className="h-4 w-4 text-red-500" />;
     if (s === "no_match")   return <AlertTriangle className="h-4 w-4 text-amber-500" />;
     if (s === "duplicate")  return <Copy className="h-4 w-4 text-muted-foreground" />;
+    if (s === "ja_enviado") return <CheckCircle2 className="h-4 w-4 text-muted-foreground" />;
   };
 
   function resetar() {
@@ -591,6 +604,11 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                   <Copy className="h-3 w-3" /> {counts.duplicate} PDF(s) ignorado(s) por casar só com peça(s) que já receberam outro arquivo neste envio.
                 </p>
               )}
+              {counts.jaEnviado > 0 && (
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3 w-3" /> {counts.jaEnviado} PDF(s) ignorado(s) — a peça já tem desenho técnico enviado (não reenvia automaticamente).
+                </p>
+              )}
 
               <div className="rounded-xl border border-border/40 overflow-hidden divide-y divide-border/20 max-h-72 overflow-y-auto">
                 {results.map((r, i) => (
@@ -598,6 +616,7 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                     "flex items-center gap-3 px-3 py-2 text-[12px]",
                     r.status === "no_match"  && "bg-amber-500/5",
                     r.status === "duplicate" && "bg-muted/20",
+                    r.status === "ja_enviado" && "bg-muted/20",
                     r.status === "done"      && "bg-green-500/5",
                     r.status === "error"     && "bg-red-500/5",
                     r.status === "pending" && r.matchMode === "aproximado" && "bg-amber-500/5",
@@ -610,6 +629,8 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
                         <p className="text-amber-600 text-[10px]">Nenhuma peça encontrada (nem pelo nome, nem pelo conteúdo do PDF)</p>
                       ) : r.status === "duplicate" ? (
                         <p className="text-muted-foreground text-[10px] truncate">Já casado por outro arquivo: {r.devices.map(d => d.reference).join(", ")}</p>
+                      ) : r.status === "ja_enviado" ? (
+                        <p className="text-muted-foreground text-[10px] truncate">Peça já tem desenho enviado: {r.devices.map(d => d.reference).join(", ")}</p>
                       ) : r.status === "error" ? (
                         <p className="text-red-500 text-[10px] truncate">{r.error}</p>
                       ) : r.devices.length > 0 ? (
