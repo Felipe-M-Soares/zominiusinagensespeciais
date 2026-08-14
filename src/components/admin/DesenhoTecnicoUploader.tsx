@@ -61,10 +61,19 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const MAX_ZIP_SIZE_MB = 3072; // 3GB
 // PDFs maiores que isso não passam pela leitura de texto (fallback por
 // conteúdo) — extrair texto de PDFs gigantes é o que mais consome memória.
-// Baixado de 20 pra 10: mesmo um PDF "pequeno" em MB pode ter muito
-// conteúdo vetorial pro pdf.js processar, e isso pesa mais na memória do
-// que o tamanho do arquivo em si sugere.
-const MAX_PDF_TEXT_MB = 10;
+// Baixado de 20 pra 10 e depois pra 5: mesmo um PDF "pequeno" em MB pode ter
+// muito conteúdo vetorial pro pdf.js processar (comum em desenho técnico
+// exportado de CAD), e isso pesa mais na memória do que o tamanho do
+// arquivo em si sugere. Mesmo com o limite de 10MB + trava de 800 arquivos,
+// a aba ainda travava por volta do arquivo ~600 — baixado mais ainda.
+const MAX_PDF_TEXT_MB = 5;
+// Trava de segurança adicional: soma o tamanho (descomprimido) de tudo que
+// já foi lido por conteúdo nesta sessão. Mais confiável que só contar
+// arquivos, porque o que derruba a aba é a quantidade de memória usada, não
+// a quantidade de arquivos — 300 PDFs pesados derrubam a aba tão rápido
+// quanto 3000 leves. Passado esse total, para e marca o resto como "sem
+// correspondência" (dá pra enviar o que já casou e rodar de novo depois).
+const MAX_BYTES_CONTEUDO_POR_SESSAO = 150 * 1024 * 1024; // 150MB
 // Trava de segurança pro fallback por conteúdo: ler texto de milhares de
 // PDFs em sequência (decodificar + parsear com pdf.js) é a etapa mais
 // pesada do processo — é isso que trava/derruba a aba em zips com muitos
@@ -72,7 +81,7 @@ const MAX_PDF_TEXT_MB = 10;
 // mesma sessão, para de tentar por conteúdo e marca o resto como
 // "sem correspondência" — o usuário consegue enviar o que já casou e
 // rodar de novo pro restante, em vez de perder tudo com a aba fechando.
-const MAX_PDFS_CONTEUDO_POR_SESSAO = 800;
+const MAX_PDFS_CONTEUDO_POR_SESSAO = 400;
 // Candidatos de nome com menos que isso (já normalizado) não entram na
 // correspondência aproximada — evita casar "01" com qualquer peça que tenha
 // "01" em algum canto da referência.
@@ -188,10 +197,15 @@ function findMatchByName(zipPath: string, index: DeviceIndex): { device: Device;
  */
 async function extrairTextoPdf(blob: Blob): Promise<string> {
   const buf = await blob.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pdf = await pdfjsLib.getDocument({
+    data: buf,
+    disableFontFace: true, // só lemos texto, nunca renderizamos — não precisa montar as fontes
+    disableAutoFetch: true,
+    disableStream: true,
+  }).promise;
   try {
     let texto = "";
-    const maxPaginas = Math.min(pdf.numPages, 5); // desenhos técnicos raramente passam de 1-2 páginas
+    const maxPaginas = Math.min(pdf.numPages, 2); // desenhos técnicos raramente passam de 1-2 páginas
     for (let p = 1; p <= maxPaginas; p++) {
       const page = await pdf.getPage(p);
       const content = await page.getTextContent();
@@ -329,12 +343,17 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
       // em paralelo era o segundo motivo do travamento em zips grandes.
       const maxBytes = MAX_PDF_TEXT_MB * 1024 * 1024;
       const alvoConteudo = semMatchPorNome.slice(0, MAX_PDFS_CONTEUDO_POR_SESSAO);
-      const cortouPorLimite = semMatchPorNome.length > MAX_PDFS_CONTEUDO_POR_SESSAO;
+      let bytesProcessados = 0;
+      let paradaPorOrcamento = false;
+      let processadosEfetivo = 0;
       for (let k = 0; k < alvoConteudo.length; k++) {
+        if (bytesProcessados >= MAX_BYTES_CONTEUDO_POR_SESSAO) { paradaPorOrcamento = true; break; }
         const idx = alvoConteudo[k];
         const entry = entries[idx];
+        processadosEfetivo = k + 1;
         setProgresso({ atual: k + 1, total: alvoConteudo.length });
-        if ((entry.uncompressedSize ?? 0) > maxBytes) continue; // PDF grande demais pra ler texto
+        const tamanho = entry.uncompressedSize ?? 0;
+        if (tamanho > maxBytes) continue; // PDF grande demais pra ler texto
         try {
           const blob = await entry.getData(new BlobWriter("application/pdf"));
           const texto = await extrairTextoPdf(blob);
@@ -342,18 +361,24 @@ export function DesenhoTecnicoUploader({ onClose, onDone }: Props) {
           if (doConteudo.length > 0) {
             fileResults[idx] = { ...fileResults[idx], devices: doConteudo, matchMode: "conteudo", status: "pending" };
           }
+          bytesProcessados += tamanho;
         } catch (e) {
           logger.error(`Falha ao ler texto do PDF ${entry.filename}:`, e);
         }
         // Respira: deixa o navegador renderizar/responder entre PDFs. A cada
-        // 25 arquivos, uma pausa mais longa — dá tempo real do motor JS
-        // rodar o garbage collector antes de acumular memória demais.
-        await new Promise(r => setTimeout(r, (k + 1) % 25 === 0 ? 150 : 0));
+        // 8 arquivos, uma pausa mais longa — dá tempo real do motor JS
+        // rodar o garbage collector antes de acumular memória demais (o
+        // intervalo de 25 arquivos ainda travava a aba em lotes grandes).
+        await new Promise(r => setTimeout(r, (k + 1) % 8 === 0 ? 250 : 0));
       }
       setProgresso(null);
+      const cortouPorLimite = semMatchPorNome.length > processadosEfetivo;
       if (cortouPorLimite) {
+        const motivo = paradaPorOrcamento
+          ? "muita memória usada nesta leva (PDFs pesados)"
+          : "muitos arquivos sem nome batendo com o catálogo";
         toast.warning(
-          `Processados ${alvoConteudo.length} de ${semMatchPorNome.length} PDFs sem nome batendo com o catálogo. ` +
+          `Processados ${processadosEfetivo} de ${semMatchPorNome.length} PDFs (parou por ${motivo}). ` +
           `Envie os que já casaram e rode o upload de novo pra continuar o restante — evita travar a aba num lote só desse tamanho.`,
           { duration: 10000 }
         );
