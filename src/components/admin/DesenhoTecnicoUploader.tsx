@@ -148,6 +148,14 @@ interface DeviceIndex {
  * Compara também contra internal_code — muitos desenhos técnicos são
  * arquivados pelo código interno da peça, não pela referência/modelo do
  * catálogo, e isso ficava de fora da comparação antes.
+ *
+ * IMPORTANTE: internal_code só entra na correspondência EXATA, e só quando
+ * é único no catálogo (se duas ou mais peças compartilham o mesmo código
+ * interno normalizado, nenhuma delas entra no mapa — evita vincular o
+ * desenho errado por causa de um código genérico repetido). Não entra na
+ * correspondência aproximada — diferente de referência/modelo, código
+ * interno costuma ser mais curto/genérico, e permitir correspondência
+ * aproximada nele estava casando peças completamente diferentes.
  */
 function buildDeviceIndex(devices: Device[]): DeviceIndex {
   const list = devices.map(d => ({
@@ -157,10 +165,14 @@ function buildDeviceIndex(devices: Device[]): DeviceIndex {
     codeNorm: norm(d.internal_code ?? ""),
   }));
   const exactMap = new Map<string, Device>();
+  const codeCount = new Map<string, number>();
+  for (const { codeNorm } of list) {
+    if (codeNorm) codeCount.set(codeNorm, (codeCount.get(codeNorm) ?? 0) + 1);
+  }
   for (const { device, refNorm, modelNorm, codeNorm } of list) {
     if (refNorm && !exactMap.has(refNorm)) exactMap.set(refNorm, device);
     if (modelNorm && !exactMap.has(modelNorm)) exactMap.set(modelNorm, device);
-    if (codeNorm && !exactMap.has(codeNorm)) exactMap.set(codeNorm, device);
+    if (codeNorm && codeCount.get(codeNorm) === 1 && !exactMap.has(codeNorm)) exactMap.set(codeNorm, device);
   }
   return { list, exactMap };
 }
@@ -180,15 +192,16 @@ function findMatchByName(zipPath: string, index: DeviceIndex): { device: Device;
   }
 
   // Etapa 2: correspondência aproximada — só aceita se apontar pra uma única peça
+  // (só referência/modelo — código interno costuma ser curto/genérico
+  // demais pra correspondência aproximada com segurança).
   for (const candidate of candidates) {
     const candNorm = norm(candidate);
     if (!candNorm || candNorm.length < MIN_FUZZY_LEN) continue;
     const matches: Device[] = [];
-    for (const { device, refNorm, modelNorm, codeNorm } of index.list) {
+    for (const { device, refNorm, modelNorm } of index.list) {
       const refHit  = refNorm.length  >= MIN_FUZZY_LEN && (candNorm.includes(refNorm)  || refNorm.includes(candNorm));
       const modelHit = modelNorm.length >= MIN_FUZZY_LEN && (candNorm.includes(modelNorm) || modelNorm.includes(candNorm));
-      const codeHit = codeNorm.length  >= MIN_FUZZY_LEN && (candNorm.includes(codeNorm)  || codeNorm.includes(candNorm));
-      if (refHit || modelHit || codeHit) {
+      if (refHit || modelHit) {
         matches.push(device);
         if (matches.length > 1) break; // já sabemos que não é único, pode parar cedo
       }
@@ -242,11 +255,10 @@ function findMatchesByContent(textoPdf: string, index: DeviceIndex): Device[] {
   const textoNorm = norm(textoPdf);
   if (!textoNorm) return [];
   const found: Device[] = [];
-  for (const { device, refNorm, modelNorm, codeNorm } of index.list) {
+  for (const { device, refNorm, modelNorm } of index.list) {
     const refHit = refNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(refNorm);
     const modelHit = modelNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(modelNorm);
-    const codeHit = codeNorm.length >= MIN_FUZZY_LEN && textoNorm.includes(codeNorm);
-    if (refHit || modelHit || codeHit) found.push(device);
+    if (refHit || modelHit) found.push(device);
   }
   return found;
 }
