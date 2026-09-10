@@ -1115,7 +1115,7 @@ export const SCHEDULE_LABELS: Record<BackupSchedule, string> = {
 export async function getBackupConfig(): Promise<BackupConfig | null> {
   const { data } = await supabase
     .from("backup_configs")
-    .select("*")
+    .select("id, schedule, last_backup, updated_at")
     .maybeSingle();
   return data as BackupConfig | null;
 }

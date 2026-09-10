@@ -50,10 +50,10 @@ export function MetasPanel() {
     const fim = new Date(ano,mes,0).toISOString().split("T")[0];
     const per = periodoSemestre(semestre, ano);
     const[{data:m},{data:oee},{data:maq},{data:ms},{data:oeeSem}] = await Promise.all([
-      supabase.from("metas_producao").select("*").eq("mes",mes).eq("ano",ano).order("maquina_codigo"),
+      supabase.from("metas_producao").select("id, mes, ano, maquina_codigo, meta_pecas, meta_oee_pct, meta_disponibilidade_pct, meta_qualidade_pct").eq("mes",mes).eq("ano",ano).order("maquina_codigo"),
       (supabase.rpc as any)("calcular_oee",{p_data_ini:ini,p_data_fim:fim,p_maquina:null}),
       supabase.from("maquinas_producao").select("codigo").order("codigo"),
-      supabase.from("metas_producao").select("*").eq("ano",ano).eq("mes",semestre===1?1:7).eq("maquina_codigo",META_SEMESTRE_CODIGO).maybeSingle(),
+      supabase.from("metas_producao").select("id, mes, ano, maquina_codigo, meta_pecas, meta_oee_pct, meta_disponibilidade_pct, meta_qualidade_pct").eq("ano",ano).eq("mes",semestre===1?1:7).eq("maquina_codigo",META_SEMESTRE_CODIGO).maybeSingle(),
       (supabase.rpc as any)("calcular_oee",{p_data_ini:per.ini,p_data_fim:per.fim,p_maquina:null}),
     ]);
     // A linha 'SEMESTRE' é uma convenção interna — não aparece na lista mensal

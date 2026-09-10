@@ -690,7 +690,7 @@ const PipelinePanel = memo(function PipelinePanel() {
       while (true) {
         const { data: page, error } = await supabase
           .from("devices_regularizacao")
-          .select("*")
+          .select("id, model, reference, risk_class, regime, status_regularizacao, empresa_lf, empresa_afe, empresa_bpf, anvisa_registration, numero_processo_anvisa, data_registro_anvisa, data_vencimento_anvisa, udi_di, gtin, siud_transmitido_em, rotulo_udi_ok, classification_code, brand_name, updated_at, fase_atual, dias_ate_vencer")
           .lt("fase_atual", 5)
           .order("fase_atual", { ascending: true })
           .order("model", { ascending: true })

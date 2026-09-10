@@ -286,7 +286,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
     setLoading(true);
     const { data, error } = await supabase
       .from("recebimento_materiais")
-      .select("*")
+      .select("id, lote, quantity, descricao, fornecedor, status, user_id, user_display_name, retirado_por, retirado_em, created_at")
       .order("created_at", { ascending: false });
     setLoading(false);
     if (error) {

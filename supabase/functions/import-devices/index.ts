@@ -431,7 +431,7 @@ Deno.serve(async (req) => {
       if (deleteError) {
         log.error("import-devices", "replace_all delete error:", deleteError.message);
         return new Response(JSON.stringify({
-          error: "Erro ao limpar catálogo antes da importação: " + deleteError.message
+          error: "Erro ao limpar catálogo antes da importação. Nenhum dado foi alterado."
         }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -457,7 +457,7 @@ Deno.serve(async (req) => {
         if (wasReplaceAll) {
           // Catálogo já foi deletado e a importação falhou — informa claramente
           return new Response(JSON.stringify({
-            error: `Falha no batch ${i / BATCH + 1}. O catálogo pode estar incompleto. Reimporte novamente. Detalhe: ${error.message}`
+            error: `Falha no lote ${i / BATCH + 1}. O catálogo pode estar incompleto. Reimporte novamente.`
           }), {
             status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });

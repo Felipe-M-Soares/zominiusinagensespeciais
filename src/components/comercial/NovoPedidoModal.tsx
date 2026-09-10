@@ -208,7 +208,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
   }
 
   async function loadClientes() {
-    const { data } = await supabase.from("clientes").select("*").order("nome");
+    const { data } = await supabase.from("clientes").select("id, nome, documento, telefone, email, endereco, observacoes, created_at, cep, logradouro, numero, bairro, municipio, uf").order("nome");
     setClientes((data as Cliente[]) ?? []);
   }
 

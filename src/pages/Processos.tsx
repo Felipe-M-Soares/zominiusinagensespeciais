@@ -107,7 +107,7 @@ export default function Processos() {
 
   const fetchFerramentas = useCallback(async () => {
     setLoadingFerramentas(true);
-    const { data, error } = await supabase.from("ferramentas_cnc").select("*").order("codigo");
+    const { data, error } = await supabase.from("ferramentas_cnc").select("id, codigo, descricao, tipo, maquina_codigo, vida_util_pecas, vida_util_horas, pecas_produzidas, horas_uso, status, ultima_troca, fornecedor_id, custo_unitario, observacoes").order("codigo");
     if (error) { logger.error("fetchFerramentas error:", error.message); toast.error("Erro ao carregar ferramentas."); }
     else setFerramentas((data ?? []) as Ferramenta[]);
     setLoadingFerramentas(false);
@@ -432,7 +432,7 @@ function CodigosPanel() {
 
   const fetchProgramas = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("programas_cnc").select("*").order("nome");
+    const { data, error } = await supabase.from("programas_cnc").select("id, nome, maquina_codigo, linguagem, conteudo, updated_at").order("nome");
     if (error) { logger.error("fetchProgramas error:", error.message); toast.error("Erro ao carregar programas."); }
     else {
       const list = (data ?? []) as Programa[];

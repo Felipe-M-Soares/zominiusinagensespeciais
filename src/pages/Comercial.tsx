@@ -1117,7 +1117,7 @@ export default function Comercial() {
   const loadClientes = useCallback(async () => {
     setLoadingClientes(true);
     try {
-      const { data, error } = await supabase.from("clientes").select("*").order("nome");
+      const { data, error } = await supabase.from("clientes").select("id, nome, documento, telefone, email, endereco, observacoes, created_at, cep, logradouro, numero, bairro, municipio, uf").order("nome");
       if (error) { toast.error("Erro ao carregar clientes.", {
         action: { label: "Tentar novamente", onClick: loadClientes }
       }); return; }

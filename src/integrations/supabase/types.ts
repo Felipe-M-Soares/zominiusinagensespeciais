@@ -2638,6 +2638,10 @@ export type Database = {
         }
         Returns: Json
       }
+      remove_pedido_item: {
+        Args: { p_pedido_item_id: string }
+        Returns: Json
+      }
       release_item_reservation: {
         Args: { p_quantity: number; p_stock_item_id: string }
         Returns: undefined

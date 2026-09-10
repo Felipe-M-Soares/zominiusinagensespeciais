@@ -88,7 +88,7 @@ export function FornecedoresPanel() {
 
   const load = useCallback(async()=>{
     setLoading(true);
-    const{data}=await supabase.from("fornecedores").select("*").eq("ativo",true).order("razao_social");
+    const{data}=await supabase.from("fornecedores").select("id, razao_social, nome_fantasia, cnpj, telefone, email, contato, cidade, uf, categoria, prazo_entrega_dias, ativo").eq("ativo",true).order("razao_social");
     if(data) setItems(data as Fornecedor[]);
     setLoading(false);
   },[]);

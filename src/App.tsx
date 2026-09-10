@@ -10,16 +10,11 @@ import { lazy, Suspense, useEffect } from "react";
 import type { AppRole } from "@/types/roles";
 
 /**
- * PointerEventsWatchdog — correção do "app congelado, nenhum botão responde".
- *
- * Bug conhecido do Radix UI: ao combinar Dialog + AlertDialog + Select (como
- * na tela Admin › Usuários, que tem os três em cada linha), fechar um modal
- * pode deixar `pointer-events: none` PRESO no <body>. A partir daí a página
- * inteira ignora cliques — parece que "nenhuma função funciona" — até dar F5.
- *
- * Este watchdog observa o style do <body>: se pointer-events ficou "none"
- * mas NÃO existe nenhum modal Radix aberto, ele limpa o estilo na hora.
- * Não interfere com modais abertos de verdade (eles têm data-state="open").
+ * PointerEventsWatchdog — corrige um bug conhecido do Radix UI: combinar
+ * Dialog + AlertDialog + Select pode deixar `pointer-events: none` preso no
+ * <body> ao fechar um modal, travando cliques na página inteira. Observa o
+ * <body> e limpa o estilo quando não há modal Radix de fato aberto. Ver
+ * CHANGELOG.md.
  */
 function PointerEventsWatchdog() {
   useEffect(() => {

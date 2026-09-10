@@ -99,7 +99,7 @@ export function DevolucaoTrocaQualidadePanel() {
     setLoading(true);
     const { data, error } = await supabase
       .from("notas_devolucao_troca")
-      .select("*")
+      .select("id, tipo, pedido_id, cliente_nome, nf_original_numero, motivo, itens, valor_total, status, status_msg, numero, tipo_nota, created_at")
       .like("status_msg", "[QUALIDADE:%")
       .order("created_at", { ascending: false })
       .limit(200);

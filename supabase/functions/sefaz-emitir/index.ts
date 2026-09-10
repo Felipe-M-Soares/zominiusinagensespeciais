@@ -1,30 +1,8 @@
 /**
  * supabase/functions/sefaz-emitir/index.ts
  *
- * Edge Function — Integração SEFAZ NF-e / NFC-e
- * Assinatura digital: Web Crypto API nativa do Deno (RSA-SHA1 conforme SEFAZ)
- * Ambiente padrão: Homologação (SEFAZ_TP_AMB=2)
- *
- * Deploy:
- *   supabase functions deploy sefaz-emitir
- *
- * Secrets obrigatórios (supabase secrets set KEY=VALUE):
- *   SEFAZ_PFX_BASE64   → certificado A1 em base64  (base64 -i cert.pfx)
- *   SEFAZ_PFX_SENHA    → senha do .pfx
- *   SEFAZ_CNPJ         → 14 dígitos sem pontuação
- *   SEFAZ_RAZAO_SOCIAL
- *   SEFAZ_IE           → inscrição estadual (ou ISENTO)
- *   SEFAZ_UF           → UF emitente  ex: SP
- *   SEFAZ_C_MUN        → código IBGE  ex: 3550308
- *   SEFAZ_MUNICIPIO
- *   SEFAZ_LOGRADOURO
- *   SEFAZ_NUMERO
- *   SEFAZ_BAIRRO
- *   SEFAZ_CEP          → 8 dígitos sem hífen
- *   SEFAZ_CRT          → 1=Simples Nacional | 3=Regime Normal
- *   SEFAZ_TP_AMB       → 2=Homologação | 1=Produção
- *   ALLOWED_ORIGIN     → domínio do frontend (ou * para dev)
- *   DEBUG              → true para logar XML de resposta
+ * Edge Function — Integração SEFAZ NF-e / NFC-e. Ver README.md deste
+ * diretório para a lista de secrets obrigatórios e instruções de deploy.
  */
 
 import { getCorsHeaders } from "../_shared/cors.ts";

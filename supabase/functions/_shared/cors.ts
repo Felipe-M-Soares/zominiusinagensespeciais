@@ -1,24 +1,14 @@
 /**
  * CORS helper para Edge Functions.
  *
- * IMPORTANTE (correção do erro "Failed to send a request to the Edge Function"):
- * ──────────────────────────────────────────────────────────────────────────────
- * A versão anterior devolvia `Access-Control-Allow-Origin: null` quando a origem
- * não estava na allowlist (secret ALLOWED_ORIGIN). Como o secret raramente é
- * atualizado com o domínio real do deploy (produção da Vercel, previews, novo
- * domínio próprio...), o preflight OPTIONS falhava no navegador e TODAS as
- * chamadas — criar conta, resetar senha, importar — quebravam com
- * "Failed to send a request to the Edge Function".
+ * Sem ALLOWED_ORIGIN configurado, reflete a origem da requisição (ou "*"
+ * sem origem, ex.: chamadas server-to-server) — nunca "null", que quebraria
+ * o preflight. A segurança destas funções não depende do CORS: cada uma
+ * valida o JWT e o papel do usuário no banco antes de agir.
  *
- * A segurança destas funções NÃO depende de CORS: cada função valida o JWT do
- * usuário e checa o role de admin no banco antes de fazer qualquer coisa.
- * CORS aqui só precisa deixar o navegador conversar com a função.
- *
- * Por isso agora o header sempre REFLETE a origem do request (ou "*" quando
- * não há origem, ex: chamadas server-to-server). Se um dia quiser restringir,
- * configure ALLOWED_ORIGIN — origens fora da lista passam a ser recusadas,
- * mas só ative isso depois de garantir que o secret contém TODOS os domínios
- * usados (produção + previews).
+ * Para restringir, configure ALLOWED_ORIGIN com todos os domínios usados
+ * (produção + previews) — origens fora da lista passam a ser recusadas.
+ * Ver CHANGELOG.md para o histórico desta decisão.
  */
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 

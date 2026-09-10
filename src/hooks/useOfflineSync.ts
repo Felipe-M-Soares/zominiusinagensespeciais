@@ -318,6 +318,11 @@ export function useOfflineSync() {
   ): Promise<T[]> {
     if (navigator.onLine) {
       try {
+        // select("*") é proposital aqui: loadWithFallback é genérico (usado por
+        // ~9 painéis de produção) e grava o registro completo no cache local
+        // (IndexedDB) para uso offline — restringir colunas quebraria o cache
+        // para quem não passar uma query customizada. Chamadores que precisam
+        // de menos campos já podem usar o parâmetro `query` para isso.
         let q = supabase.from(supabaseTable as never).select("*");
         if (query) q = query(q as never) as never;
         const { data, error } = await q;

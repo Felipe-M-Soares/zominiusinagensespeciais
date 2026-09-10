@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { log } from "../_shared/log.ts";
+import { checkRateLimitByIp } from "../_shared/rateLimit.ts";
 
 // CODE-006: Validate env vars at startup
 function getRequiredEnv(key: string): string {
@@ -23,24 +24,6 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Rate limiting: 10 resets por hora por IP
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const rateLimitKey = `reset:${ip}`;
-  const rateLimitStore = (globalThis as Record<string, unknown>).__rlStore as Map<string, { count: number; reset: number }> | undefined
-    ?? new Map<string, { count: number; reset: number }>();
-  (globalThis as Record<string, unknown>).__rlStore = rateLimitStore;
-  const now = Date.now();
-  const rl = rateLimitStore.get(rateLimitKey) ?? { count: 0, reset: now + 3600_000 };
-  if (now > rl.reset) { rl.count = 0; rl.reset = now + 3600_000; }
-  rl.count++;
-  rateLimitStore.set(rateLimitKey, rl);
-  if (rl.count > 10) {
-    return new Response(JSON.stringify({ error: "Muitas tentativas. Tente novamente em 1 hora." }), {
-      status: 429,
-      headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "3600" },
-    });
-  }
-
   try {
     // CODE-006: Validate env vars early with informative error
     let supabaseUrl: string, supabaseAnonKey: string, serviceRoleKey: string;
@@ -53,6 +36,16 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Erro de configuração do servidor" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Rate limiting persistente: 10 resets por hora por IP (tabela rate_limit_log)
+    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    if (!(await checkRateLimitByIp(adminClient, ip, "admin_reset_password"))) {
+      return new Response(JSON.stringify({ error: "Muitas tentativas. Tente novamente em 1 hora." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "3600" },
       });
     }
 
@@ -80,7 +73,6 @@ Deno.serve(async (req) => {
     }
 
     // VULN-002 FIX: Now that user.id is cryptographically verified, role check is trustworthy
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: roleData } = await adminClient
       .from("user_roles")
       .select("role")

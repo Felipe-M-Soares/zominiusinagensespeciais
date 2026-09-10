@@ -1,19 +1,11 @@
 /**
  * supabase/functions/sefaz-emitir-devolucao/index.ts
  *
- * Edge Function — Emissão de NF-e de Devolução de Mercadoria / Troca
- * Mesma infraestrutura de assinatura/transmissão de supabase/functions/sefaz-emitir
- * (Web Crypto API nativa do Deno, RSA-SHA1 conforme SEFAZ), adaptada para:
- *   - tpNF configurável (0=entrada — devolução recebida do cliente,
- *                        1=saída  — envio da mercadoria de troca)
- *   - bloco <NFref><refNFe> referenciando a chave de acesso da NF-e original
- *     (obrigatório para o SEFAZ associar a devolução/troca à venda anterior)
- *
- * Deploy:
- *   supabase functions deploy sefaz-emitir-devolucao
- *
- * Usa os MESMOS secrets já configurados para sefaz-emitir (certificado A1,
- * CNPJ, endereço do emitente etc.) — não precisa configurar nada de novo.
+ * Edge Function — Emissão de NF-e de Devolução de Mercadoria / Troca.
+ * Mesma infraestrutura de assinatura/transmissão de sefaz-emitir, adaptada
+ * com tpNF configurável (0=entrada, 1=saída) e bloco <NFref><refNFe>
+ * referenciando a chave de acesso da NF-e original (exigido pelo SEFAZ).
+ * Usa os mesmos secrets de sefaz-emitir — ver README.md daquele diretório.
  */
 
 import { getCorsHeaders } from "../_shared/cors.ts";
