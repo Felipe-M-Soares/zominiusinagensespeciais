@@ -6,6 +6,7 @@ import { fetchDevicesPage } from "@/lib/supabaseUtils";
 import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
 import { DeviceImageUploader } from "@/components/admin/DeviceImageUploader";
 import { DesenhoTecnicoUploader } from "@/components/admin/DesenhoTecnicoUploader";
+import { MidiaManagerModal } from "@/components/admin/MidiaManagerModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,7 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert, FileImage, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert, FileImage, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { logger } from "@/lib/logger";
@@ -78,6 +79,8 @@ const emptyDevice: Omit<TablesInsert<"devices">, "id" | "created_at" | "updated_
 export function AdminDevices() {
   const [imgUploaderOpen, setImgUploaderOpen] = useState(false);
   const [desenhoUploaderOpen, setDesenhoUploaderOpen] = useState(false);
+  const [imgManagerOpen, setImgManagerOpen] = useState(false);
+  const [desenhoManagerOpen, setDesenhoManagerOpen] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
@@ -542,22 +545,42 @@ export function AdminDevices() {
             {importing ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
             {importing ? "Importando..." : "Importar"}
           </Button>
-          <Button
-            variant="outline"
-            className="gap-1.5 border-violet-500/40 text-violet-600 hover:bg-violet-500/10"
-            onClick={() => setImgUploaderOpen(true)}
-          >
-            <FileImage className="h-4 w-4" />
-            Imagens
-          </Button>
-          <Button
-            variant="outline"
-            className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
-            onClick={() => setDesenhoUploaderOpen(true)}
-          >
-            <FileText className="h-4 w-4" />
-            Desenhos
-          </Button>
+          <div className="flex items-center rounded-md border border-violet-500/40 overflow-hidden">
+            <Button
+              variant="ghost"
+              className="gap-1.5 text-violet-600 hover:bg-violet-500/10 rounded-none h-9 border-0"
+              onClick={() => setImgUploaderOpen(true)}
+            >
+              <FileImage className="h-4 w-4" />
+              Imagens
+            </Button>
+            <button
+              type="button"
+              title="Gerenciar / excluir imagens já enviadas"
+              onClick={() => setImgManagerOpen(true)}
+              className="h-9 w-8 flex items-center justify-center text-violet-600/70 hover:text-destructive hover:bg-destructive/10 border-l border-violet-500/30 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="flex items-center rounded-md border border-primary/40 overflow-hidden">
+            <Button
+              variant="ghost"
+              className="gap-1.5 text-primary hover:bg-primary/10 rounded-none h-9 border-0"
+              onClick={() => setDesenhoUploaderOpen(true)}
+            >
+              <FileText className="h-4 w-4" />
+              Desenhos
+            </Button>
+            <button
+              type="button"
+              title="Gerenciar / excluir desenhos técnicos já enviados"
+              onClick={() => setDesenhoManagerOpen(true)}
+              className="h-9 w-8 flex items-center justify-center text-primary/70 hover:text-destructive hover:bg-destructive/10 border-l border-primary/30 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <Button
             variant="outline"
             className="text-destructive border-destructive/40 hover:bg-destructive/10"
@@ -776,6 +799,20 @@ export function AdminDevices() {
         <DesenhoTecnicoUploader
           onClose={() => setDesenhoUploaderOpen(false)}
           onDone={() => setDesenhoUploaderOpen(false)}
+        />
+      )}
+      {imgManagerOpen && (
+        <MidiaManagerModal
+          tipo="imagem"
+          onClose={() => setImgManagerOpen(false)}
+          onChanged={() => fetchDevices(debouncedSearch, page)}
+        />
+      )}
+      {desenhoManagerOpen && (
+        <MidiaManagerModal
+          tipo="desenho"
+          onClose={() => setDesenhoManagerOpen(false)}
+          onChanged={() => fetchDevices(debouncedSearch, page)}
         />
       )}
     </>

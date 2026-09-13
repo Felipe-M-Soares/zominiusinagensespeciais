@@ -138,6 +138,7 @@ export type Database = {
           maquina: string
           maquina_codigo: string | null
           operador: string
+          ordem_id: string | null
           produto: string
           qtde_plan_disp: number
           qtde_por_hora: number
@@ -172,6 +173,7 @@ export type Database = {
           maquina: string
           maquina_codigo?: string | null
           operador: string
+          ordem_id?: string | null
           produto: string
           qtde_plan_disp?: number
           qtde_por_hora?: number
@@ -206,6 +208,7 @@ export type Database = {
           maquina?: string
           maquina_codigo?: string | null
           operador?: string
+          ordem_id?: string | null
           produto?: string
           qtde_plan_disp?: number
           qtde_por_hora?: number
@@ -1357,6 +1360,89 @@ export type Database = {
           },
         ]
       }
+      nao_conformidades: {
+        Row: {
+          id: string
+          numero: string
+          setor_origem: Database["public"]["Enums"]["app_role"]
+          aberto_por: string
+          aberto_por_nome: string | null
+          titulo: string
+          descricao: string
+          envolve_peca: boolean
+          device_id: string | null
+          lote: string | null
+          quantidade_afetada: number | null
+          status: string
+          decisao: string | null
+          numero_decisao: string | null
+          analise_qualidade: string | null
+          acao_corretiva: string | null
+          decidido_por: string | null
+          decidido_por_nome: string | null
+          decidido_em: string | null
+          encerrado_em: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          numero?: string
+          setor_origem: Database["public"]["Enums"]["app_role"]
+          aberto_por: string
+          aberto_por_nome?: string | null
+          titulo: string
+          descricao: string
+          envolve_peca?: boolean
+          device_id?: string | null
+          lote?: string | null
+          quantidade_afetada?: number | null
+          status?: string
+          decisao?: string | null
+          numero_decisao?: string | null
+          analise_qualidade?: string | null
+          acao_corretiva?: string | null
+          decidido_por?: string | null
+          decidido_por_nome?: string | null
+          decidido_em?: string | null
+          encerrado_em?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          setor_origem?: Database["public"]["Enums"]["app_role"]
+          aberto_por?: string
+          aberto_por_nome?: string | null
+          titulo?: string
+          descricao?: string
+          envolve_peca?: boolean
+          device_id?: string | null
+          lote?: string | null
+          quantidade_afetada?: number | null
+          status?: string
+          decisao?: string | null
+          numero_decisao?: string | null
+          analise_qualidade?: string | null
+          acao_corretiva?: string | null
+          decidido_por?: string | null
+          decidido_por_nome?: string | null
+          decidido_em?: string | null
+          encerrado_em?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nao_conformidades_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ordens_planejamento: {
         Row: {
           capacidade: number | null
@@ -1369,6 +1455,7 @@ export type Database = {
           prioridade: string
           produto: string
           quantidade: number
+          quantidade_produzida: number
           status: string
           turno: string
           updated_at: string
@@ -1385,6 +1472,7 @@ export type Database = {
           prioridade?: string
           produto: string
           quantidade?: number
+          quantidade_produzida?: number
           status?: string
           turno?: string
           updated_at?: string
@@ -1401,6 +1489,7 @@ export type Database = {
           prioridade?: string
           produto?: string
           quantidade?: number
+          quantidade_produzida?: number
           status?: string
           turno?: string
           updated_at?: string
@@ -2432,6 +2521,17 @@ export type Database = {
         Args: { p_device_id: string }
         Returns: undefined
       }
+      abrir_nao_conformidade: {
+        Args: {
+          p_titulo: string
+          p_descricao: string
+          p_envolve_peca?: boolean
+          p_device_id?: string | null
+          p_lote?: string | null
+          p_quantidade_afetada?: number | null
+        }
+        Returns: Json
+      }
       admin_clear_audit_log: { Args: never; Returns: Json }
       admin_clear_comercial: { Args: never; Returns: Json }
       admin_clear_financeiro: { Args: never; Returns: Json }
@@ -2475,6 +2575,14 @@ export type Database = {
         Returns: boolean
       }
       cleanup_audit_log: { Args: never; Returns: undefined }
+      decidir_nao_conformidade: {
+        Args: { p_id: string; p_decisao: string; p_analise: string }
+        Returns: Json
+      }
+      encerrar_nao_conformidade: {
+        Args: { p_id: string; p_acao_corretiva: string }
+        Returns: Json
+      }
       criar_apontamento_ppi51: {
         Args: {
           p_comprimento_mm: number | null
@@ -2492,6 +2600,7 @@ export type Database = {
           p_lote_mp: string
           p_maquina: string
           p_operador: string
+          p_ordem_id?: string | null
           p_paradas?: Json
           p_produto: string
           p_qtde_plan_disp: number

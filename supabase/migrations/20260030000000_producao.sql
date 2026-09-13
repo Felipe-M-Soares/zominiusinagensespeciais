@@ -236,7 +236,19 @@ ALTER TABLE public.apontamentos_producao
   ADD COLUMN IF NOT EXISTS lote_mp           text,
   ADD COLUMN IF NOT EXISTS descricao_mp      text,
   ADD COLUMN IF NOT EXISTS comprimento_mm    numeric(8,3),
-  ADD COLUMN IF NOT EXISTS consumo_mp_metros numeric(12,3);
+  ADD COLUMN IF NOT EXISTS consumo_mp_metros numeric(12,3),
+  -- FIX (usabilidade/realidade do chão de fábrica): liga o apontamento à
+  -- Ordem de Produção planejada (aba Planejamento), quando houver uma aberta
+  -- pra essa máquina/produto. Sem isso, o que é planejado e o que é
+  -- realmente produzido viviam em telas completamente desconectadas.
+  ADD COLUMN IF NOT EXISTS ordem_id          uuid REFERENCES public.ordens_planejamento(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_apontamentos_ordem ON public.apontamentos_producao(ordem_id);
+
+-- FIX: acumulador de progresso real da OP — permite comparar planejado vs.
+-- produzido e fechar a ordem automaticamente quando a meta é atingida.
+ALTER TABLE public.ordens_planejamento
+  ADD COLUMN IF NOT EXISTS quantidade_produzida integer NOT NULL DEFAULT 0;
 
 -- Sequence para Nº Sequência Produção
 CREATE SEQUENCE IF NOT EXISTS public.seq_apontamento_producao
@@ -428,6 +440,14 @@ ON CONFLICT (codigo) DO UPDATE SET
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 -- ── RPC: apontamento atômico completo ─────────────────────────────────────────
+-- FIX: a assinatura ganhou um parâmetro novo (p_ordem_id) — sem o DROP,
+-- CREATE OR REPLACE cria um SEGUNDO overload em vez de substituir o
+-- original, e chamadas via RPC (supabase.rpc) ficam ambíguas.
+DROP FUNCTION IF EXISTS public.criar_apontamento_ppi51(
+  date, text, text, text, text, text, numeric, numeric, numeric, integer,
+  numeric, numeric, numeric, numeric, text, text, text, numeric, numeric,
+  text, jsonb, jsonb
+);
 CREATE OR REPLACE FUNCTION public.criar_apontamento_ppi51(
   p_data               date,
   p_turno              text,
@@ -450,7 +470,8 @@ CREATE OR REPLACE FUNCTION public.criar_apontamento_ppi51(
   p_consumo_mp_metros  numeric,
   p_operador           text,
   p_paradas            jsonb DEFAULT '[]',
-  p_refugos            jsonb DEFAULT '[]'
+  p_refugos            jsonb DEFAULT '[]',
+  p_ordem_id           uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -461,6 +482,8 @@ DECLARE
   v_seq  integer;
   v_id   uuid;
   v_lote text;
+  v_qtde_refugo_total integer;
+  v_ordem RECORD;
 BEGIN
   IF (select auth.uid()) IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado');
@@ -474,6 +497,18 @@ BEGIN
          WHEN p_turno LIKE '2%' THEN '2'
          ELSE '3' END || '-' || lpad(v_seq::text, 2, '0'));
 
+  -- Validação: se a OP foi informada, precisa existir e não estar cancelada/concluída.
+  IF p_ordem_id IS NOT NULL THEN
+    SELECT * INTO v_ordem FROM public.ordens_planejamento WHERE id = p_ordem_id FOR UPDATE;
+    IF NOT FOUND THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'Ordem de produção não encontrada.');
+    END IF;
+    IF v_ordem.status IN ('concluida','cancelada') THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'Esta ordem de produção já está ' ||
+        CASE WHEN v_ordem.status = 'concluida' THEN 'concluída' ELSE 'cancelada' END || '.');
+    END IF;
+  END IF;
+
   INSERT INTO public.apontamentos_producao (
     id, seq_producao, data_apontamento, turno,
     maquina, maquina_codigo, equipamento, grupo,
@@ -482,7 +517,7 @@ BEGIN
     quantidade, horario_inicio, horario_fim,
     cycle_time_min, lead_time_horas,
     lote, lote_mp, descricao_mp, comprimento_mm, consumo_mp_metros,
-    operador, status, inicio, user_id
+    operador, status, inicio, user_id, ordem_id
   ) VALUES (
     v_id, v_seq, p_data, p_turno,
     p_maquina, p_maquina, p_equipamento, 'TORNO CNC',
@@ -491,7 +526,7 @@ BEGIN
     p_qtde_produzida, p_horario_inicio, p_horario_fim,
     p_cycle_time_min, p_lead_time_horas,
     v_lote, p_lote_mp, p_descricao_mp, p_comprimento_mm, p_consumo_mp_metros,
-    p_operador, 'concluido', p_horario_inicio::text, (select auth.uid())
+    p_operador, 'concluido', p_horario_inicio::text, (select auth.uid()), p_ordem_id
   );
 
   INSERT INTO public.apontamento_paradas (apontamento_id, tipo_parada_id, tipo_parada_nome, duracao_horas)
@@ -504,11 +539,34 @@ BEGIN
   FROM jsonb_array_elements(p_refugos) r
   WHERE (r->>'quantidade')::integer > 0;
 
-  RETURN jsonb_build_object('ok', true, 'id', v_id, 'seq', v_seq, 'lote', v_lote);
+  SELECT COALESCE(SUM((r->>'quantidade')::integer), 0) INTO v_qtde_refugo_total
+  FROM jsonb_array_elements(p_refugos) r;
+
+  -- FIX: fecha o loop planejamento → execução. A OP acumula o que já foi
+  -- realmente produzido (peças boas) e passa sozinha de "planejada" para
+  -- "em_producao" no primeiro apontamento, e para "concluida" quando a
+  -- quantidade acumulada atinge a meta planejada.
+  IF p_ordem_id IS NOT NULL THEN
+    UPDATE public.ordens_planejamento
+    SET quantidade_produzida = quantidade_produzida + p_qtde_produzida,
+        status = CASE
+          WHEN quantidade_produzida + p_qtde_produzida >= quantidade THEN 'concluida'
+          WHEN status = 'planejada' THEN 'em_producao'
+          ELSE status
+        END,
+        updated_at = now()
+    WHERE id = p_ordem_id;
+  END IF;
+
+  RETURN jsonb_build_object('ok', true, 'id', v_id, 'seq', v_seq, 'lote', v_lote, 'qtde_refugo', v_qtde_refugo_total);
 END;
 $f01$;
 
-GRANT EXECUTE ON FUNCTION public.criar_apontamento_ppi51 TO authenticated;
+GRANT EXECUTE ON FUNCTION public.criar_apontamento_ppi51(
+  date, text, text, text, text, text, numeric, numeric, numeric, integer,
+  numeric, numeric, numeric, numeric, text, text, text, numeric, numeric,
+  text, jsonb, jsonb, uuid
+) TO authenticated;
 
 -- ── RPC: OEE real por período e máquina ───────────────────────────────────────
 -- v2: além das paradas/refugos lançados dentro do assistente completo do

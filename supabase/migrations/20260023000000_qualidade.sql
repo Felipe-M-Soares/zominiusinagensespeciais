@@ -387,3 +387,239 @@ GRANT SELECT ON public.devices_alertas_conformidade TO authenticated;
 -- Índice de apoio pra RLS + filtros por status/classe usados na view acima.
 CREATE INDEX IF NOT EXISTS idx_devices_conformidade
   ON public.devices (risk_class, status_regularizacao, rotulo_udi_ok);
+-- ── 2) Módulo de Não Conformidade ─────────────────────────────────────────────
+
+CREATE SEQUENCE IF NOT EXISTS public.nc_numero_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS public.ocorrencia_numero_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS public.rnc_numero_seq START 1;
+
+CREATE TABLE IF NOT EXISTS public.nao_conformidades (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  numero              text NOT NULL UNIQUE,
+
+  setor_origem        app_role NOT NULL,
+  aberto_por          uuid NOT NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  aberto_por_nome     text,
+
+  titulo              text NOT NULL,
+  descricao           text NOT NULL,
+
+  -- Rastreabilidade — mesmo esquema usado no resto do app (peça + lote)
+  envolve_peca        boolean NOT NULL DEFAULT false,
+  device_id           uuid REFERENCES public.devices(id) ON DELETE SET NULL,
+  lote                text,
+  quantidade_afetada  integer,
+
+  status              text NOT NULL DEFAULT 'aberta'
+                      CHECK (status IN ('aberta','em_analise','decidida','encerrada')),
+
+  -- Decisão da Qualidade: Ocorrência (registro simples) ou RNC (formal)
+  decisao             text CHECK (decisao IN ('ocorrencia','rnc')),
+  numero_decisao      text,
+  analise_qualidade   text,
+  acao_corretiva      text,
+  decidido_por        uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  decidido_por_nome   text,
+  decidido_em         timestamptz,
+  encerrado_em        timestamptz,
+
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_nao_conformidades_status ON public.nao_conformidades(status);
+CREATE INDEX IF NOT EXISTS idx_nao_conformidades_device ON public.nao_conformidades(device_id);
+CREATE INDEX IF NOT EXISTS idx_nao_conformidades_aberto_por ON public.nao_conformidades(aberto_por);
+
+DROP TRIGGER IF EXISTS trg_nao_conformidades_updated_at ON public.nao_conformidades;
+CREATE TRIGGER trg_nao_conformidades_updated_at
+  BEFORE UPDATE ON public.nao_conformidades
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.nao_conformidades ENABLE ROW LEVEL SECURITY;
+
+-- Qualquer usuário aprovado vê as NCs que abriu; Qualidade/Admin vê todas.
+DROP POLICY IF EXISTS "nc_select" ON public.nao_conformidades;
+CREATE POLICY "nc_select" ON public.nao_conformidades
+  FOR SELECT TO authenticated
+  USING (
+    aberto_por = (select auth.uid())
+    OR public.get_my_role() IN ('admin','qualidade')
+  );
+
+-- Inserção sempre via RPC (abrir_nao_conformidade) — bloqueia INSERT direto
+-- para garantir numero/setor/aberto_por definidos pelo servidor.
+DROP POLICY IF EXISTS "nc_insert_bloqueado" ON public.nao_conformidades;
+CREATE POLICY "nc_insert_bloqueado" ON public.nao_conformidades
+  FOR INSERT TO authenticated WITH CHECK (false);
+
+-- Atualização sempre via RPC (decidir/encerrar) — só Qualidade/Admin.
+DROP POLICY IF EXISTS "nc_update_bloqueado" ON public.nao_conformidades;
+CREATE POLICY "nc_update_bloqueado" ON public.nao_conformidades
+  FOR UPDATE TO authenticated
+  USING (public.get_my_role() IN ('admin','qualidade'))
+  WITH CHECK (public.get_my_role() IN ('admin','qualidade'));
+
+-- ── RPC: abrir uma Não Conformidade (qualquer setor) ─────────────────────────
+CREATE OR REPLACE FUNCTION public.abrir_nao_conformidade(
+  p_titulo             text,
+  p_descricao          text,
+  p_envolve_peca       boolean DEFAULT false,
+  p_device_id          uuid DEFAULT NULL,
+  p_lote               text DEFAULT NULL,
+  p_quantidade_afetada integer DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $nc01$
+DECLARE
+  v_uid       uuid := auth.uid();
+  v_role      text;
+  v_nome      text;
+  v_titulo    text;
+  v_descricao text;
+  v_numero    text;
+  v_id        uuid;
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado.'); END IF;
+  IF NOT public.is_approved_user() THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Usuário sem aprovação de acesso.');
+  END IF;
+  IF NOT public.check_rate_limit('abrir_nao_conformidade') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Muitos envios recentes. Tente novamente em alguns minutos.');
+  END IF;
+
+  v_titulo := trim(coalesce(p_titulo, ''));
+  IF char_length(v_titulo) < 3 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Informe um título.');
+  END IF;
+  v_descricao := trim(coalesce(p_descricao, ''));
+  IF char_length(v_descricao) < 10 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Descreva a não conformidade com mais detalhes.');
+  END IF;
+  IF p_envolve_peca AND p_device_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Selecione a peça envolvida.');
+  END IF;
+
+  SELECT role::text INTO v_role FROM public.user_roles WHERE user_id = v_uid LIMIT 1;
+  SELECT display_name INTO v_nome FROM public.profiles WHERE user_id = v_uid;
+
+  v_numero := 'NC-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('public.nc_numero_seq')::text, 4, '0');
+
+  INSERT INTO public.nao_conformidades (
+    numero, setor_origem, aberto_por, aberto_por_nome,
+    titulo, descricao, envolve_peca, device_id, lote, quantidade_afetada
+  ) VALUES (
+    v_numero, COALESCE(v_role, 'estoque')::app_role, v_uid, COALESCE(v_nome, 'Desconhecido'),
+    left(v_titulo, 200), left(v_descricao, 4000), COALESCE(p_envolve_peca, false),
+    CASE WHEN p_envolve_peca THEN p_device_id ELSE NULL END,
+    NULLIF(left(trim(coalesce(p_lote,'')), 100), ''),
+    p_quantidade_afetada
+  ) RETURNING id INTO v_id;
+
+  -- Notifica todos os usuários de Qualidade (e admins) sobre a nova NC.
+  INSERT INTO public.notificacoes (user_id, tipo, titulo, mensagem)
+  SELECT ur.user_id, 'nova_nao_conformidade', 'Nova não conformidade: ' || v_numero,
+         v_titulo || ' — aberta por ' || COALESCE(v_nome, 'um usuário')
+  FROM public.user_roles ur WHERE ur.role IN ('qualidade','admin');
+
+  RETURN jsonb_build_object('ok', true, 'id', v_id, 'numero', v_numero);
+END;
+$nc01$;
+GRANT EXECUTE ON FUNCTION public.abrir_nao_conformidade(text, text, boolean, uuid, text, integer) TO authenticated;
+
+-- ── RPC: Qualidade decide entre Ocorrência ou RNC ─────────────────────────────
+CREATE OR REPLACE FUNCTION public.decidir_nao_conformidade(
+  p_id       uuid,
+  p_decisao  text,       -- 'ocorrencia' | 'rnc'
+  p_analise  text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $nc02$
+DECLARE
+  v_uid          uuid := auth.uid();
+  v_role         text;
+  v_nome         text;
+  v_status       text;
+  v_numero_dec   text;
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado.'); END IF;
+  SELECT role::text INTO v_role FROM public.user_roles WHERE user_id = v_uid LIMIT 1;
+  IF v_role NOT IN ('qualidade','admin') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão: requer Qualidade ou Admin.');
+  END IF;
+  IF NOT public.check_rate_limit('decidir_nao_conformidade') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Muitas requisições. Aguarde alguns segundos.');
+  END IF;
+  IF p_decisao NOT IN ('ocorrencia','rnc') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Decisão inválida.');
+  END IF;
+
+  SELECT status INTO v_status FROM public.nao_conformidades WHERE id = p_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Não conformidade não encontrada.'); END IF;
+  IF v_status = 'encerrada' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Esta não conformidade já está encerrada.');
+  END IF;
+
+  SELECT display_name INTO v_nome FROM public.profiles WHERE user_id = v_uid;
+
+  IF p_decisao = 'ocorrencia' THEN
+    v_numero_dec := 'OC-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('public.ocorrencia_numero_seq')::text, 4, '0');
+  ELSE
+    v_numero_dec := 'RNC-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('public.rnc_numero_seq')::text, 4, '0');
+  END IF;
+
+  UPDATE public.nao_conformidades SET
+    status            = 'decidida',
+    decisao           = p_decisao,
+    numero_decisao    = v_numero_dec,
+    analise_qualidade = left(trim(coalesce(p_analise,'')), 4000),
+    decidido_por      = v_uid,
+    decidido_por_nome = COALESCE(v_nome, 'Desconhecido'),
+    decidido_em       = now()
+  WHERE id = p_id;
+
+  -- Avisa quem abriu a NC sobre a decisão.
+  INSERT INTO public.notificacoes (user_id, pedido_id, tipo, titulo, mensagem)
+  SELECT nc.aberto_por, NULL, 'nc_decidida',
+         'Sua não conformidade virou ' || upper(p_decisao) || ': ' || v_numero_dec,
+         'A Qualidade analisou a NC ' || nc.numero || ' e abriu ' ||
+         CASE WHEN p_decisao = 'ocorrencia' THEN 'uma Ocorrência' ELSE 'uma RNC' END || ' (' || v_numero_dec || ').'
+  FROM public.nao_conformidades nc WHERE nc.id = p_id;
+
+  RETURN jsonb_build_object('ok', true, 'numero_decisao', v_numero_dec);
+END;
+$nc02$;
+GRANT EXECUTE ON FUNCTION public.decidir_nao_conformidade(uuid, text, text) TO authenticated;
+
+-- ── RPC: encerrar a NC após ação corretiva ────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.encerrar_nao_conformidade(
+  p_id              uuid,
+  p_acao_corretiva  text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $nc03$
+DECLARE
+  v_uid    uuid := auth.uid();
+  v_role   text;
+  v_status text;
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado.'); END IF;
+  SELECT role::text INTO v_role FROM public.user_roles WHERE user_id = v_uid LIMIT 1;
+  IF v_role NOT IN ('qualidade','admin') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão: requer Qualidade ou Admin.');
+  END IF;
+  IF NOT public.check_rate_limit('encerrar_nao_conformidade') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Muitas requisições. Aguarde alguns segundos.');
+  END IF;
+
+  SELECT status INTO v_status FROM public.nao_conformidades WHERE id = p_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Não conformidade não encontrada.'); END IF;
+  IF v_status <> 'decidida' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'É preciso decidir (Ocorrência/RNC) antes de encerrar.');
+  END IF;
+
+  UPDATE public.nao_conformidades SET
+    status          = 'encerrada',
+    acao_corretiva  = left(trim(coalesce(p_acao_corretiva,'')), 4000),
+    encerrado_em    = now()
+  WHERE id = p_id;
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$nc03$;
+GRANT EXECUTE ON FUNCTION public.encerrar_nao_conformidade(uuid, text) TO authenticated;
+
