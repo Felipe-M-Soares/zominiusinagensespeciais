@@ -24,6 +24,7 @@ import {
   Zap, Coffee, RefreshCw, CheckCircle2, Clock,
   Package, Factory, Timer, TrendingUp, Plus, X, ListPlus, User, Loader2,
   CalendarDays, CalendarRange, Gauge, Search, ChevronDown, Target,
+  ShieldAlert, ClipboardList, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,7 +56,12 @@ function fmtTurnoHorario(t: Turno): string {
 interface Maquina    { id: string; codigo: string; nome: string; status: string; }
 interface PecaOption { codigo: string; descricao: string; pecas_por_hora: number; origem: "producao" | "componente"; }
 interface TipoParada { id: number; nome: string; categoria: string; }
+interface TipoRefugo { id: number; nome: string; }
 interface MateriaPrima { id: string; codigo: string; descricao: string; lote_atual?: string | null; unidade: string; }
+interface OrdemAberta {
+  id: string; numero: string; produto: string; maquina: string;
+  quantidade: number; quantidade_produzida: number; status: string;
+}
 
 interface ApontamentoHoje {
   id: string; maquina_codigo: string | null; maquina: string; produto: string;
@@ -68,10 +74,13 @@ interface ParadaHoje {
   operador: string; observacoes?: string | null; user_id?: string | null;
 }
 interface SituacaoEmbutida { id: string; tipoParadaId: string; horas: string; pecaSetup?: string; }
+interface RefugoEmbutido { id: string; tipoRefugoId: string; quantidade: string; }
 interface Bloco {
   id: string; maquina: string; turno: 1 | 2;
   peca?: string; materiaId?: string; quantidade?: string; horas?: string;
   situacoes: SituacaoEmbutida[];
+  refugos: RefugoEmbutido[];
+  ordemId?: string;
 }
 
 interface OeePeriodo { disponibilidade: number; performance: number; qualidade: number; oee: number; qtde_produzida: number; hr_planejadas: number; }
@@ -207,6 +216,13 @@ function fmtHora(iso: string): string {
 function minutosDecorridos(inicioIso: string): number {
   return Math.max(0, Math.round((Date.now() - new Date(inicioIso).getTime()) / 60000));
 }
+/** Data/hora REAL do fim do turno de hoje (turno 2 termina no dia seguinte). */
+function fimTurnoReal(turnoDef: Turno, turnoId: 1 | 2): Date {
+  const d = new Date();
+  d.setHours(turnoDef.fimH, turnoDef.fimM, 0, 0);
+  if (turnoId === 2) d.setDate(d.getDate() + 1);
+  return d;
+}
 function horaNum(s: string): number {
   return parseFloat((s || "0").replace(",", ".")) || 0;
 }
@@ -224,6 +240,69 @@ function OeeBg(v: number): string {
   return v >= 85 ? "bg-green-500" : v >= 65 ? "bg-amber-500" : "bg-red-500";
 }
 
+/**
+ * AbrirNcRapidaButton — atalho pra abrir uma Não Conformidade direto do
+ * refugo lançado no Diário, sem sair da tela. A maioria das NCs realmente
+ * vem daqui: peça reprovada na inspeção durante a usinagem. Tenta achar o
+ * device correspondente (pelo código interno) pra manter a mesma
+ * rastreabilidade usada no resto do app; se não achar, abre mesmo assim,
+ * descrevendo a peça em texto.
+ */
+function AbrirNcRapidaButton({ peca, pecaDescricao, quantidade, motivos }: {
+  peca: string; pecaDescricao?: string; quantidade: number; motivos: string;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState<string | null>(null);
+
+  async function abrir() {
+    if (enviando || quantidade <= 0) return;
+    setEnviando(true);
+    try {
+      const { data: device } = await supabase
+        .from("devices").select("id").eq("internal_code", peca).maybeSingle();
+
+      const titulo = `Refugo na usinagem — ${peca}`;
+      const descricao = `Peça refugada durante a produção (${peca}${pecaDescricao ? ` — ${pecaDescricao}` : ""}). ` +
+        `Quantidade: ${quantidade}. Motivo(s) apontado(s) no turno: ${motivos || "não especificado"}.`;
+
+      const { data, error } = await supabase.rpc("abrir_nao_conformidade", {
+        p_titulo: titulo,
+        p_descricao: descricao,
+        p_envolve_peca: !!device?.id,
+        p_device_id: device?.id ?? null,
+        p_quantidade_afetada: quantidade,
+      });
+      const result = data as { ok?: boolean; error?: string; numero?: string } | null;
+      if (error || result?.ok === false) {
+        toast.error(result?.error ?? "Erro ao abrir não conformidade.");
+        return;
+      }
+      setEnviado(result?.numero ?? null);
+      toast.success(`Não conformidade ${result?.numero ?? ""} aberta para a Qualidade.`);
+    } catch {
+      toast.error("Erro ao abrir não conformidade.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (enviado) {
+    return (
+      <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium px-1">
+        <CheckCircle2 className="h-3.5 w-3.5" /> NC {enviado} aberta para a Qualidade
+      </div>
+    );
+  }
+
+  return (
+    <Button type="button" variant="outline" size="sm" onClick={abrir} disabled={enviando}
+      className="w-full gap-1.5 h-9 border-orange-500/30 text-orange-700 dark:text-orange-400 hover:bg-orange-500/10">
+      {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+      Abrir Não Conformidade sobre este refugo
+    </Button>
+  );
+}
+
 // ── Painel ───────────────────────────────────────────────────────────────────
 
 export function LancamentoDiarioPanel() {
@@ -233,7 +312,9 @@ export function LancamentoDiarioPanel() {
   const [maquinas, setMaquinas]       = useState<Maquina[]>([]);
   const [pecas, setPecas]             = useState<PecaOption[]>([]);
   const [tiposParada, setTiposParada] = useState<TipoParada[]>([]);
+  const [tiposRefugo, setTiposRefugo] = useState<TipoRefugo[]>([]);
   const [materias, setMaterias]       = useState<MateriaPrima[]>([]);
+  const [ordensAbertas, setOrdensAbertas] = useState<OrdemAberta[]>([]);
 
   const [apontamentosHoje, setApontamentosHoje] = useState<ApontamentoHoje[]>([]);
   const [paradasHoje, setParadasHoje]           = useState<ParadaHoje[]>([]);
@@ -260,6 +341,19 @@ export function LancamentoDiarioPanel() {
   const [novaSituacaoHoras, setNovaSituacaoHoras] = useState("");
   const [novaSituacaoPeca, setNovaSituacaoPeca] = useState("");
 
+  // FIX (realidade do chão de fábrica): refugo é parte normal de qualquer
+  // turno de usinagem — omitir esse campo (como a versão anterior fazia,
+  // sempre enviando refugo zero) maquiava o rendimento real. Mesmo mini-form
+  // usado pelas situações, mas pra peças refugadas dentro do bloco.
+  const [refugosTemp, setRefugosTemp] = useState<RefugoEmbutido[]>([]);
+  const [novoRefugoTipo, setNovoRefugoTipo] = useState("");
+  const [novoRefugoQtd, setNovoRefugoQtd] = useState("");
+
+  // FIX: liga o lançamento a uma Ordem de Produção real (aba Planejamento)
+  // quando houver uma aberta pra essa máquina — sem isso, o que é planejado
+  // e o que é produzido de fato nunca se encontravam.
+  const [ordemSel, setOrdemSel] = useState("");
+
   const [blocos, setBlocos] = useState<Bloco[]>([]);
 
   useEffect(() => {
@@ -271,11 +365,12 @@ export function LancamentoDiarioPanel() {
   const load = useCallback(async () => {
     setLoading(true);
     const dia = new Date().toISOString().split("T")[0];
-    const [maqRes, prodRes, devRes, tpRes, mpRes, apRes, parRes] = await Promise.all([
+    const [maqRes, prodRes, devRes, tpRes, trRes, mpRes, apRes, parRes, ordRes] = await Promise.all([
       loadWithFallback<Maquina>("maquinas_producao", "maquinas"),
       supabase.from("produtos_producao").select("codigo,descricao,pecas_por_hora").eq("ativo", true).order("codigo"),
       supabase.from("devices").select("internal_code,model,reference").eq("ativo", true).order("internal_code"),
       supabase.from("tipo_parada_producao").select("id,nome,categoria").eq("ativo", true).order("id"),
+      supabase.from("tipo_refugo_producao").select("id,nome").order("id"),
       loadWithFallback<MateriaPrima>("materias_primas_producao", "materias_primas"),
       supabase.from("apontamentos_producao")
         .select("id,maquina_codigo,maquina,produto,quantidade,qtde_plan_disp,horas_planejadas,turno,operador,created_at")
@@ -283,6 +378,9 @@ export function LancamentoDiarioPanel() {
       supabase.from("paradas_producao")
         .select("id,maquina,motivo,tipo,inicio,fim,duracao_min,operador,observacoes,user_id")
         .gte("inicio", `${dia}T00:00:00`).order("inicio", { ascending: false }),
+      supabase.from("ordens_planejamento")
+        .select("id,numero,produto,maquina,quantidade,quantidade_produzida,status")
+        .in("status", ["planejada", "em_producao"]).order("created_at", { ascending: true }),
     ]);
 
     const maqOrdenadas = maqRes.sort((a, b) => a.codigo.localeCompare(b.codigo));
@@ -298,9 +396,11 @@ export function LancamentoDiarioPanel() {
     setPecas([...doProducao, ...componentes]);
 
     if (tpRes.data) setTiposParada(tpRes.data as TipoParada[]);
+    if (trRes.data) setTiposRefugo(trRes.data as TipoRefugo[]);
     setMaterias(mpRes.sort((a, b) => a.codigo.localeCompare(b.codigo)));
     if (apRes.data) setApontamentosHoje(apRes.data as ApontamentoHoje[]);
     if (parRes.data) setParadasHoje(parRes.data as ParadaHoje[]);
+    if (ordRes.data) setOrdensAbertas(ordRes.data as OrdemAberta[]);
 
     setMaquinaSel(prev => prev || maqOrdenadas[0]?.codigo || "");
     setLoading(false);
@@ -331,6 +431,25 @@ export function LancamentoDiarioPanel() {
   );
   const novaSituacaoEhSetup = novaSituacaoTipo !== "" && Number(novaSituacaoTipo) === tipoSetup?.id;
   const turnoAtualDef = TURNOS.find(t => t.id === turnoSel)!;
+
+  // OPs em aberto pra máquina selecionada — é isso que conecta o que foi
+  // planejado (aba Planejamento) com o que está sendo realmente produzido.
+  const ordensDaMaquina = useMemo(
+    () => ordensAbertas.filter(o => o.maquina === maquinaSel),
+    [ordensAbertas, maquinaSel]
+  );
+  const ordemAtual = ordensDaMaquina.find(o => o.id === ordemSel);
+
+  // Trocar de máquina invalida a OP escolhida (era de outra máquina)
+  useEffect(() => { setOrdemSel(""); }, [maquinaSel]);
+
+  // Selecionar uma OP preenche a peça automaticamente — o operador não
+  // precisa procurar de novo algo que já estava planejado.
+  useEffect(() => {
+    if (!ordemAtual) return;
+    const match = pecas.find(p => p.codigo === ordemAtual.produto);
+    if (match) setPeca(match.codigo);
+  }, [ordemAtual, pecas]);
 
   // ── Alocação do turno selecionado, pra máquina selecionada ─────────────────
   // Quanto já foi lançado (salvo hoje + na lista pendente) nesse turno, pra
@@ -368,9 +487,24 @@ export function LancamentoDiarioPanel() {
   function limparMiniFormSituacao() {
     setNovaSituacaoTipo(""); setNovaSituacaoHoras(""); setNovaSituacaoPeca("");
   }
+  function limparMiniFormRefugo() {
+    setNovoRefugoTipo(""); setNovoRefugoQtd("");
+  }
   function limparBlocoAtual() {
-    setPeca(""); setMateria(""); setQuantidade(""); setHoras(""); setHorasEditadoManual(false); setSituacoesTemp([]);
-    limparMiniFormSituacao();
+    setPeca(""); setMateria(""); setQuantidade(""); setHoras(""); setHorasEditadoManual(false);
+    setSituacoesTemp([]); setRefugosTemp([]); setOrdemSel("");
+    limparMiniFormSituacao(); limparMiniFormRefugo();
+  }
+
+  function adicionarRefugoAoBloco() {
+    if (!novoRefugoTipo) { toast.error("Selecione o motivo do refugo"); return; }
+    const q = parseInt(novoRefugoQtd) || 0;
+    if (q <= 0) { toast.error("Informe a quantidade refugada"); return; }
+    setRefugosTemp(prev => [...prev, { id: crypto.randomUUID(), tipoRefugoId: novoRefugoTipo, quantidade: novoRefugoQtd }]);
+    limparMiniFormRefugo();
+  }
+  function removerRefugoDoBloco(id: string) {
+    setRefugosTemp(prev => prev.filter(r => r.id !== id));
   }
 
   function adicionarSituacaoAoBloco() {
@@ -408,6 +542,8 @@ export function LancamentoDiarioPanel() {
       quantidade: temProducao ? quantidade : undefined,
       horas: temProducao ? horas : undefined,
       situacoes: situacoesTemp,
+      refugos: temProducao ? refugosTemp : [],
+      ordemId: temProducao ? (ordemSel || undefined) : undefined,
     };
     setBlocos(prev => [...prev, bloco]);
     limparBlocoAtual();
@@ -456,6 +592,16 @@ export function LancamentoDiarioPanel() {
             };
           });
 
+          // FIX: refugo real do bloco, em vez de sempre mandar vazio.
+          const pRefugos = bloco.refugos.map(r => {
+            const tr = tiposRefugo.find(t => t.id === Number(r.tipoRefugoId));
+            return {
+              tipo_id: Number(r.tipoRefugoId),
+              tipo_nome: tr?.nome ?? "Refugo",
+              quantidade: parseInt(r.quantidade) || 0,
+            };
+          });
+
           const args = {
             p_data: hoje, p_turno: turnoDef.label,
             p_maquina: bloco.maquina, p_equipamento: bloco.maquina,
@@ -467,7 +613,8 @@ export function LancamentoDiarioPanel() {
             p_lead_time_horas: hBloco || null,
             p_lote: "", p_lote_mp: mp?.lote_atual ?? "", p_descricao_mp: mp?.descricao ?? "",
             p_comprimento_mm: null, p_consumo_mp_metros: null,
-            p_operador: operador.trim(), p_paradas: pParadas, p_refugos: [],
+            p_operador: operador.trim(), p_paradas: pParadas, p_refugos: pRefugos,
+            p_ordem_id: bloco.ordemId || null,
           };
           const preview = {
             seq_producao: 0, data_apontamento: hoje, turno: turnoDef.label,
@@ -481,7 +628,15 @@ export function LancamentoDiarioPanel() {
           const { ok } = await saveRpcWithFallback("criar_apontamento_ppi51", args, "apontamentos", preview);
           if (!ok) throw new Error("Falha ao gravar produção");
         } else {
-          let fimSituacao = new Date(agora);
+          // FIX (realidade do chão de fábrica): antes, o horário de início/fim
+          // das paradas era calculado pra trás a partir de "agora" (o momento
+          // em que o operador clica em Salvar). Se o lançamento do 1º turno
+          // só é feito à noite (ou no dia seguinte), as paradas apareciam com
+          // horário totalmente errado — ex.: uma parada das 9h da manhã
+          // registrada como se tivesse sido às 18h. Agora ancora no horário
+          // REAL de fim do turno escolhido, não no relógio de quem está
+          // digitando.
+          let fimSituacao = fimTurnoReal(turnoDef, bloco.turno);
           for (let j = bloco.situacoes.length - 1; j >= 0; j--) {
             const s = bloco.situacoes[j];
             const hs = horaNum(s.horas);
@@ -564,7 +719,11 @@ export function LancamentoDiarioPanel() {
     if (b.peca) {
       const pecaSel = pecas.find(pc => pc.codigo === b.peca);
       const sits = b.situacoes.length > 0 ? ` + ${b.situacoes.length} situação(ões)` : "";
-      return `${turnoTxt} · ${b.peca}${pecaSel ? ` (${pecaSel.descricao})` : ""} · ${b.quantidade} pç · ${b.horas}h${sits}`;
+      const refugoQtd = b.refugos.reduce((s, r) => s + (parseInt(r.quantidade) || 0), 0);
+      const refugoTxt = refugoQtd > 0 ? ` · ${refugoQtd} refugada(s)` : "";
+      const ordem = b.ordemId ? ordensAbertas.find(o => o.id === b.ordemId) : undefined;
+      const opTxt = ordem ? ` · OP ${ordem.numero}` : "";
+      return `${turnoTxt} · ${b.peca}${pecaSel ? ` (${pecaSel.descricao})` : ""} · ${b.quantidade} pç · ${b.horas}h${refugoTxt}${sits}${opTxt}`;
     }
     return `${turnoTxt} · ` + b.situacoes.map(s => {
       const tp = tiposParada.find(t => t.id === Number(s.tipoParadaId));
@@ -580,7 +739,7 @@ export function LancamentoDiarioPanel() {
       <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 flex items-start gap-2">
         <Zap className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
         <p className="text-[11px] text-muted-foreground leading-relaxed">
-          <strong className="text-foreground">Lançamento rápido de turno</strong> — você escolhe o turno e a duração já é calculada. Precisa registrar por máquina/hora, com paradas e refugos detalhados (igual à planilha PPI-51)? Use a aba <strong className="text-foreground">Controle</strong>.
+          <strong className="text-foreground">Lançamento rápido de turno</strong> — você escolhe o turno e a duração já é calculada, com refugo e Ordem de Produção vinculados. Precisa de controle hora a hora, com matéria-prima e consumo detalhado (igual à planilha PPI-51)? Use a aba <strong className="text-foreground">Controle</strong>.
         </p>
       </div>
 
@@ -695,6 +854,36 @@ export function LancamentoDiarioPanel() {
             <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
               <Step n={4} /><Zap className="h-3.5 w-3.5 text-green-600" /> Produção neste bloco <span className="font-normal normal-case text-muted-foreground/70">(deixe em "Nenhuma" se foi só parada)</span>
             </p>
+
+            {/* FIX: liga o apontamento a uma Ordem de Produção real, quando
+                houver uma planejada pra essa máquina — fecha o loop entre o
+                que foi planejado e o que está sendo produzido de fato. */}
+            {ordensDaMaquina.length > 0 && (
+              <div>
+                <label className={lbl}><ClipboardList className="h-3 w-3 inline -mt-0.5 mr-1" />Ordem de Produção (opcional)</label>
+                <select value={ordemSel} onChange={e => setOrdemSel(e.target.value)} className={sel}>
+                  <option value="">Sem OP vinculada — lançamento avulso</option>
+                  {ordensDaMaquina.map(o => (
+                    <option key={o.id} value={o.id}>
+                      {o.numero} — {o.produto} ({o.quantidade_produzida}/{o.quantidade} pç)
+                    </option>
+                  ))}
+                </select>
+                {ordemAtual && (
+                  <div className="mt-1.5 rounded-lg bg-violet-500/5 border border-violet-500/20 px-3 py-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-muted-foreground">Progresso da {ordemAtual.numero}</span>
+                      <span className="font-semibold">{ordemAtual.quantidade_produzida} / {ordemAtual.quantidade} pç</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                      <div className="h-full rounded-full bg-violet-500 transition-all"
+                        style={{ width: `${Math.min(100, (ordemAtual.quantidade_produzida / Math.max(1, ordemAtual.quantidade)) * 100)}%` }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div><label className={lbl}>Peça</label>
               <PecaCombobox pecas={pecas} value={peca} onChange={setPeca}
                 noneLabel="Nenhuma — período só com situação/parada" />
@@ -746,6 +935,56 @@ export function LancamentoDiarioPanel() {
               </>
             )}
           </div>
+
+          {/* Refugo — dentro do mesmo bloco de produção.
+              FIX: antes esse campo simplesmente não existia aqui (o Diário
+              sempre mandava refugo zero pro banco). Toda usinagem real tem
+              alguma perda; omitir isso maquiava o rendimento do turno. */}
+          {peca && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-3.5 space-y-3">
+              <p className="text-[11px] font-bold text-red-700 dark:text-red-400 uppercase tracking-wide flex items-center gap-1.5">
+                <ShieldAlert className="h-3.5 w-3.5" /> Refugo deste bloco <span className="font-normal normal-case text-red-700/70 dark:text-red-400/70">(peças perdidas na inspeção/usinagem — deixe vazio se não houve)</span>
+              </p>
+
+              {refugosTemp.length > 0 && (
+                <div className="space-y-1.5">
+                  {refugosTemp.map(r => {
+                    const tr = tiposRefugo.find(t => t.id === Number(r.tipoRefugoId));
+                    return (
+                      <div key={r.id} className="flex items-center gap-2 text-[12px] bg-card/70 rounded-lg px-2.5 py-1.5">
+                        <span className="flex-1 truncate">{tr?.nome ?? "Refugo"}</span>
+                        <span className="font-semibold shrink-0">{r.quantidade} pç</span>
+                        <button type="button" onClick={() => removerRefugoDoBloco(r.id)} className="text-muted-foreground hover:text-red-500 shrink-0">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <select value={novoRefugoTipo} onChange={e => setNovoRefugoTipo(e.target.value)} className={cn(sel, "h-9")}>
+                  <option value="">Motivo do refugo...</option>
+                  {tiposRefugo.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                </select>
+                <Input type="number" min="0" inputMode="numeric" value={novoRefugoQtd}
+                  onChange={e => setNovoRefugoQtd(e.target.value)} className="h-9" placeholder="Quantidade" />
+              </div>
+              <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 h-9 border-red-500/30 text-red-700 dark:text-red-400 hover:bg-red-500/10" onClick={adicionarRefugoAoBloco}>
+                <Plus className="h-3.5 w-3.5" /> Adicionar refugo a este bloco
+              </Button>
+
+              {refugosTemp.length > 0 && (
+                <AbrirNcRapidaButton
+                  peca={peca}
+                  pecaDescricao={pecas.find(pc => pc.codigo === peca)?.descricao}
+                  quantidade={refugosTemp.reduce((s, r) => s + (parseInt(r.quantidade) || 0), 0)}
+                  motivos={refugosTemp.map(r => tiposRefugo.find(t => t.id === Number(r.tipoRefugoId))?.nome).filter(Boolean).join(", ")}
+                />
+              )}
+            </div>
+          )}
 
           {/* Situações — dentro do mesmo bloco, cálculo automático */}
           <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-3.5 space-y-3">
