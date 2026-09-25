@@ -2,53 +2,19 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiWm9taW5pIFVzaW5hZ2VucyBFc3BlY2lhaXMiLCJzaG9ydF9uYW1lIjoiWm9taW5pIiwiaWNvbnMiOlt7InNyYyI6Ii9hbmRyb2lkLWNocm9tZS0xOTJ4MTkyLnBuZyIsInNpemVzIjoiMTkyeDE5MiIsInR5cGUiOiJpbWFnZS9wbmcifSx7InNyYyI6Ii9hbmRyb2lkLWNocm9tZS01MTJ4NTEyLnBuZyIsInNpemVzIjoiNTEyeDUxMiIsInR5cGUiOiJpbWFnZS9wbmcifV0sInRoZW1lX2NvbG9yIjoiIzBhMGEwYSIsImJhY2tncm91bmRfY29sb3IiOiIjMGEwYTBhIiwiZGlzcGxheSI6InN0YW5kYWxvbmUifQ==" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
-    <!-- Preconnect para Supabase e Google Fonts - reduz latência DNS/TLS -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="dns-prefetch" href="https://lvbilwznflyyiuxfhjyb.supabase.co" />
-    <meta name="theme-color" content="#0a0a0a" />
-    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#e0201b" />
+    <meta name="description" content="Mamacos Voip: servidores, canais, chat em tempo real, voz e vídeo." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Zomini" />
-    <meta name="robots" content="noindex, nofollow" />
-    <!-- PERF: preconnect reduz latência ao carregar fontes do Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- NOTA: Content-Security-Policy autoritativa está em vercel.json (HTTP header).
-         Meta CSP foi removida — conflitava com vercel.json e tinha font-src incorreto.
-         frame-ancestors só funciona via HTTP header, não via meta tag. -->
-    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
-    <!-- Aplica tema antes do React montar para evitar flash de tema errado -->
-    <script>
-      (function () {
-        try {
-          var t = localStorage.getItem("theme");
-          var dark =
-            t === "dark" ||
-            ((!t || t === "system") &&
-              window.matchMedia("(prefers-color-scheme: dark)").matches);
-          if (dark) document.documentElement.classList.add("dark");
-        } catch (e) {}
-      })();
-    </script>
-    <title>Zomini Usinagens Especiais</title>
-    <meta name="description" content="Base de dados de dispositivos dentários - Conformidade ANVISA" />
-    <meta name="author" content="Zomini Usinagens Especiais" />
-    <meta property="og:title" content="Zomini Usinagens Especiais" />
-    <meta property="og:description" content="Base de dados de dispositivos médicos - Conformidade ANVISA" />
-    <meta property="og:type" content="website" />
+    <title>Mamacos Voip</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-  
-</body>
+  </body>
 </html>
