@@ -127,8 +127,8 @@ export function AdminUsers() {
     setLoading(true);
     try {
       const [{ data: profiles, error: pErr }, { data: roles, error: rErr }] = await Promise.all([
-        supabase.from("profiles").select("user_id, display_name, login, created_at, approved, blocked, must_change_password"),
-        supabase.from("user_roles").select("user_id, role"),
+        supabase.from("profiles").select("*"),
+        supabase.from("user_roles").select("*"),
       ]);
       if (controller.signal.aborted) return;
       if (pErr || rErr) { toast.error("Erro ao carregar usuários"); return; }

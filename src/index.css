@@ -1,171 +1,391 @@
-@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
-@import "tailwindcss";
+/* PERF-004 FIX: Consolidado de 13 imports separados para 1 único request ao Google Fonts.
+   Fontes removidas (nunca usadas no CSS/componentes): Roboto, Libre Caslon, Roboto Mono,
+   Lora, Space Mono, Source Sans Pro, Source Serif Pro, Source Code Pro.
+   Fontes mantidas: Inter (body), Space Grotesk (display/headings), Lato (font-sans),
+   EB Garamond (font-serif), Fira Code (font-mono). */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Lato:wght@400;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Fira+Code:wght@400;700&display=swap');
 
-/* ============================================================
-   Tema padrão — "Vermelho" (identidade da marca Mamacos Voip).
-   Tailwind v4 gera as classes utilitárias (bg-discord-blurple, etc.)
-   referenciando estas variáveis via var(...), então trocar o valor
-   delas em runtime (veja os blocos [data-theme] mais abaixo) já basta
-   pra retemar o app inteiro — nenhum componente precisa saber que
-   temas existem.
-   ============================================================ */
-@theme {
-  --color-discord-dark: #0f0e10;
-  --color-discord-darker: #09090a;
-  --color-discord-sidebar: #171516;
-  --color-discord-channels: #1c1a1c;
-  --color-discord-lighter: #29262a;
-  --color-discord-blurple: #e0201b;
-  --color-discord-green: #3ba55c;
-  --color-discord-text: #f3efee;
-  --color-discord-text-muted: #a39a9c;
 
-  --font-display: 'Rajdhani', 'Inter', sans-serif;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Tema "Azul" — o clássico, pra quem preferir a cara mais neutra */
-/* Tema "Clássico" — paleta e tipografia calcadas na versão atual do
-   Discord (não os tons mais antigos de 2020), pra quem quer a cara mais
-   parecida possível com o app original. Também troca a fonte de
-   destaque: a Rajdhani condensada é bonita pra logo/identidade da
-   marca, mas o Discord de verdade usa a MESMA família em tudo (só varia
-   o peso) — então aqui --font-display vira a mesma sans-serif do corpo
-   do texto, e cada componente que já usa `font-display` (cabeçalhos de
-   canal, nome de servidor, títulos de modal) muda de cara sozinho, sem
-   precisar tocar em nenhum desses 18 arquivos. */
-[data-theme='azul'] {
-  --color-discord-dark: #232428;
-  --color-discord-darker: #1e1f22;
-  --color-discord-sidebar: #2b2d31;
-  --color-discord-channels: #313338;
-  --color-discord-lighter: #383a40;
-  --color-discord-blurple: #5865f2;
-  --color-discord-green: #23a55a;
-  --color-discord-text: #f2f3f5;
-  --color-discord-text-muted: #949ba4;
-  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
+@layer base {
+  :root {
+    --background: 0 0% 96%;
+    --foreground: 0 0% 9%;
 
-/* Tema "Roxo Meia-noite" */
-[data-theme='roxo'] {
-  --color-discord-dark: #14121f;
-  --color-discord-darker: #0c0a15;
-  --color-discord-sidebar: #1e1a2e;
-  --color-discord-channels: #241f38;
-  --color-discord-lighter: #322b4a;
-  --color-discord-blurple: #8b5cf6;
-  --color-discord-green: #3ba55c;
-  --color-discord-text: #e8e4f2;
-  --color-discord-text-muted: #9891ab;
-}
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 9%;
 
-body {
-  margin: 0;
-  font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  background-color: var(--color-discord-dark);
-}
+    --popover: 0 0% 89%;
+    --popover-foreground: 0 0% 9%;
 
-/* Utilitários de marca — brilho ao redor de elementos importantes
-   (logo, botão principal, ícone de servidor ativo). Usa color-mix
-   pra herdar a cor de acento do tema atual automaticamente. */
-.brand-glow {
-  box-shadow: 0 0 28px 0 color-mix(in srgb, var(--color-discord-blurple) 55%, transparent);
-}
+    --primary: 197 100% 50%;
+    --primary-foreground: 0 0% 100%;
 
-.brand-glow-sm {
-  box-shadow: 0 0 14px 0 color-mix(in srgb, var(--color-discord-blurple) 45%, transparent);
-}
+    --secondary: 197 25% 26%;
+    --secondary-foreground: 0 0% 98%;
 
-/* Botões modernos e reutilizáveis — usados nos CTAs principais do app */
-.btn-primary {
-  background: linear-gradient(135deg, var(--color-discord-blurple), color-mix(in srgb, var(--color-discord-blurple) 75%, black));
-  color: white;
-  font-weight: 600;
-  border-radius: 0.5rem;
-  box-shadow: 0 2px 8px 0 color-mix(in srgb, var(--color-discord-blurple) 35%, transparent);
-  transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
-}
-.btn-primary:hover:not(:disabled) {
-  filter: brightness(1.1);
-  box-shadow: 0 4px 16px 0 color-mix(in srgb, var(--color-discord-blurple) 50%, transparent);
-  transform: translateY(-1px);
-}
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-  filter: brightness(0.95);
-}
-.btn-primary:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+    --muted: 0 0% 90%;
+    --muted-foreground: 0 0% 35%;
 
-.btn-secondary {
-  background: var(--color-discord-lighter);
-  color: var(--color-discord-text);
-  font-weight: 500;
-  border-radius: 0.5rem;
-  transition: background-color 0.15s ease, transform 0.12s ease;
-}
-.btn-secondary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-discord-lighter) 80%, white);
-  transform: translateY(-1px);
-}
-.btn-secondary:active:not(:disabled) {
-  transform: translateY(0);
-}
+    --accent: 197 100% 92%;
+    --accent-foreground: 197 100% 30%;
 
-.btn-danger {
-  background: linear-gradient(135deg, #dc2626, #991b1b);
-  color: white;
-  font-weight: 600;
-  border-radius: 0.5rem;
-  box-shadow: 0 2px 8px 0 rgba(220, 38, 38, 0.3);
-  transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
-}
-.btn-danger:hover:not(:disabled) {
-  filter: brightness(1.1);
-  box-shadow: 0 4px 16px 0 rgba(220, 38, 38, 0.45);
-  transform: translateY(-1px);
-}
-.btn-danger:active:not(:disabled) {
-  transform: translateY(0);
-}
+    --destructive: 0 88% 50%;
+    --destructive-foreground: 0 85% 97%;
 
-.font-display {
-  font-family: var(--font-display);
-  letter-spacing: 0.02em;
-}
+    --border: 0 0% 80%;
+    --input: 0 0% 80%;
+    --ring: 197 100% 50%;
 
-/* Scrollbar discreta, combina com o visual escuro em qualquer tema */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background-color: var(--color-discord-lighter);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in srgb, var(--color-discord-lighter) 70%, white);
-}
+    --radius: 0.625rem;
 
-/* Entrada suave — mensagem nova, toast, item de lista aparecendo.
-   Sutil de propósito: um movimento pequeno demais pra "chamar
-   atenção" errada, só o suficiente pra não parecer que o conteúdo
-   simplesmente "piscou" na tela do nada. */
-@keyframes fade-slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 197 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 197 25% 26%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 80%;
+    --sidebar-ring: 197 100% 50%;
+
+    --success: 152 80% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 96% 50%;
+    --warning-foreground: 0 0% 100%;
+    --brand: 197 70% 58%;
+    --brand-foreground: 0 0% 100%;
+
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --chart-1: 197 100% 58%;
+    --chart-2: 197 90% 68%;
+    --chart-3: 197 85% 45%;
+    --chart-4: 197 100% 50%;
+    --chart-5: 280 70% 55%;
+    --sidebar: 0 0% 98%;
+    --font-sans: 'Lato', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+    --font-serif: 'EB Garamond', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+    --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
+    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
+    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
+    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    --tracking-normal: 0em;
+    --spacing: 0.25rem;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  .dark {
+    --background: 0 0% 9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 14%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 25%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 197 100% 60%;
+    --primary-foreground: 197 100% 8%;
+    --secondary: 197 22% 44%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 45%;
+    --muted-foreground: 0 0% 98%;
+    --accent: 197 95% 20%;
+    --accent-foreground: 197 100% 74%;
+    --destructive: 0 90% 65%;
+    --destructive-foreground: 0 85% 97%;
+    --border: 0 0% 32%;
+    --input: 0 0% 32%;
+    --ring: 197 100% 60%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 197 100% 60%;
+    --sidebar-primary-foreground: 197 100% 8%;
+    --sidebar-accent: 197 100% 70%;
+    --sidebar-accent-foreground: 197 90% 18%;
+    --sidebar-border: 0 0% 32%;
+    --sidebar-ring: 197 100% 60%;
+    --chart-1: 197 100% 68%;
+    --chart-2: 197 90% 78%;
+    --chart-3: 197 90% 60%;
+    --chart-4: 197 100% 60%;
+    --chart-5: 280 75% 65%;
+    --sidebar: 0 0% 14%;
+    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
+    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
+    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
+    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
+    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
   }
 }
-.animate-fade-slide-in {
-  animation: fade-slide-in 0.15s ease-out;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply text-foreground;
+    font-family: var(--font-body);
+
+    /* Mesh gradient — light mode
+       Base neutra do tema + 4 orbs ciano (cor primária do projeto) nos cantos.
+       background-attachment: fixed cria efeito parallax: o padrão não rola com a página. */
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 50% / 0.16) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 50% / 0.13) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(190 100% 65% / 0.10) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(280  70% 60% / 0.07) 0%, transparent 55%);
+    background-attachment: fixed;
+    background-size: 100% 100%;
+    min-height: 100vh;
+  }
+
+  /* Dark mode — orbs um pouco mais vivos sobre fundo escuro */
+  .dark body {
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 60% / 0.20) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 60% / 0.16) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(190 100% 70% / 0.11) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(280  75% 65% / 0.09) 0%, transparent 55%);
+    background-attachment: fixed;
+    background-size: 100% 100%;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+/* Oculta o botão nativo de revelar senha do browser (Edge/Chrome/IE) */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear,
+input[type="password"]::-webkit-contacts-auto-fill-button,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MODO DE IMPRESSÃO — Pedidos, NF-e, Ordens de Produção
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media print {
+  /* Oculta elementos de navegação e UI */
+  header,
+  nav,
+  [data-no-print],
+  .no-print,
+  button:not([data-print-show]),
+  .toast-container {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+    line-height: 1.4;
+  }
+
+  /* Remove backgrounds coloridos */
+  .bg-background,
+  .bg-card,
+  [class*="bg-primary"],
+  [class*="bg-muted"],
+  [class*="bg-secondary"] {
+    background: white !important;
+  }
+
+  /* Garante que borders apareçam na impressão */
+  .border,
+  [class*="border-"] {
+    border-color: #ccc !important;
+  }
+
+  /* Textos ficam pretos na impressão */
+  [class*="text-primary"],
+  [class*="text-muted"],
+  [class*="text-foreground"] {
+    color: black !important;
+  }
+
+  /* Quebra de página automática para OP e pedidos */
+  .print-page-break {
+    page-break-after: always;
+  }
+
+  /* Área de impressão ocupa folha inteira */
+  .print-container {
+    max-width: 100% !important;
+    padding: 1cm !important;
+    margin: 0 !important;
+  }
+
+  /* Tabelas na impressão */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th, td {
+    border: 1px solid #ccc;
+    padding: 4pt 8pt;
+    text-align: left;
+  }
+
+  th {
+    background: #f5f5f5 !important;
+    font-weight: bold;
+  }
+}
+
+/* App shell: full-height layout */
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Subtle scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted)); }
+
+/* Sidebar nav tooltip fix */
+.sidebar-tooltip {
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE — Safe areas, touch targets, scroll improvements
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Safe area para notch e home indicator no iOS/Android */
+:root {
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+}
+
+/* Topbar mobile considera notch */
+@media (max-width: 767px) {
+  /* Touch targets mínimos de 44px */
+  button, a, [role="button"] {
+    min-height: 36px;
+  }
+
+  /* Remove tap highlight no iOS */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Smooth scrolling em listas longas */
+  .overflow-y-auto, .overflow-y-scroll, main {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Impede zoom em inputs no iOS (font-size < 16px causa zoom) */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Tabelas horizontalmente scrolláveis no mobile */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Safe area no header mobile */
+.mobile-header-safe {
+  padding-top: max(0.625rem, env(safe-area-inset-top));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+/* Safe area no bottom do drawer mobile */
+.mobile-drawer-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* ── Notificações (toast) no mobile: pílula compacta só com ícone colorido ──
+   No celular o toast com texto ficava sobrepondo os botões de confirmação
+   fixos no rodapé dos modais. Em vez de mostrar o texto completo (como no
+   desktop), no mobile mostramos só um ícone pequeno, colorido e redondo, no
+   topo da tela — fora da área dos botões. Tocar no ícone revela o texto por
+   alguns segundos, para quem precisar confirmar a mensagem exata. */
+.toaster-mobile-compact [data-sonner-toast] {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 64px !important;
+  padding: 8px !important;
+  border-radius: 999px !important;
+  gap: 0 !important;
+  justify-content: center !important;
+  align-items: center !important;
+  box-shadow: 0 4px 16px -2px hsl(0 0% 0% / 0.18) !important;
+  cursor: pointer;
+  transition: max-width 0.25s ease, padding 0.25s ease, border-radius 0.25s ease;
+}
+
+.toaster-mobile-compact [data-sonner-toast] [data-content] {
+  display: none !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast] [data-icon] {
+  margin: 0 !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast] [data-close-button] {
+  display: none !important;
+}
+
+/* Estado expandido (após tocar no ícone): volta a virar um cartão com texto */
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap {
+  max-width: 92vw !important;
+  width: calc(100vw - 32px) !important;
+  padding: 12px 14px !important;
+  border-radius: 14px !important;
+  gap: 10px !important;
+  justify-content: flex-start !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap [data-content] {
+  display: block !important;
+}
+
+
+/* Mobile: mantém ações do toast clicáveis, mas sem exibir o texto "Ver" dentro da pílula. */
+.toaster-mobile-compact [data-sonner-toast] [data-button],
+.toaster-mobile-compact [data-sonner-toast] button[data-button] {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  color: transparent !important;
+  background: transparent !important;
+}
+
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap [data-button],
+.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap button[data-button] {
+  opacity: 0 !important;
 }

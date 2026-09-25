@@ -40,7 +40,7 @@ export function RastreabilidadePanel() {
     const q = sanitizeQuery(search);
     const { data, error } = await supabase
       .from("rastreabilidade_pos_venda")
-      .select("id, lote, device_ref, device_model, udi_di, quantidade, cliente_nome, clinica, cirurgiao, paciente_codigo, data_envio, status_recall, observacoes, pedido_id, cliente_id")
+      .select("*")
       .or(`lote.ilike.%${q}%,device_ref.ilike.%${q}%,device_model.ilike.%${q}%,cliente_nome.ilike.%${q}%,udi_di.ilike.%${q}%`)
       .order("data_envio", { ascending: false })
       .limit(100);

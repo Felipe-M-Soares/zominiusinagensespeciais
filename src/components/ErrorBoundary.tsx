@@ -1,61 +1,70 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, type ReactNode, type ErrorInfo } from "react";
+import { logger } from "@/lib/logger";
 
 interface Props {
-  children: ReactNode
+  children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface State {
-  error: Error | null
-  errorInfo: string | null
+  hasError: boolean;
+  error: Error | null;
 }
 
+/**
+ * ErrorBoundary global — captura erros de render antes que derrubem toda a aplicação.
+ * Sem este componente, qualquer exceção em um componente React durante o render
+ * propaga para cima e desmonta a árvore inteira, deixando o usuário com tela branca.
+ *
+ * Uso: envolver o <App /> em main.tsx com <ErrorBoundary>
+ */
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, errorInfo: null }
-
-  static getDerivedStateFromError(error: Error): Partial<State> {
-    return { error }
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false, error: null };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    this.setState({ errorInfo: errorInfo.componentStack ?? null })
-    // eslint-disable-next-line no-console
-    console.error('Erro capturado pelo ErrorBoundary:', error, errorInfo)
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
   }
 
-  handleReload = () => {
-    window.location.reload()
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // logger.error já envia ao Sentry quando VITE_SENTRY_DSN está
+    // configurado (ver src/lib/logger.ts) — sem essa variável, cai no
+    // console normalmente, sem quebrar nada.
+    logger.error("[ErrorBoundary] Uncaught render error:", error, info.componentStack);
   }
 
   render() {
-    if (this.state.error) {
-      const details = `${this.state.error.message}\n\n${this.state.error.stack ?? ''}\n\n${this.state.errorInfo ?? ''}`
+    if (this.state.hasError) {
+      if (this.props.fallback) return this.props.fallback;
+
       return (
-        <div className="min-h-screen bg-discord-darker flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-discord-dark rounded-xl shadow-2xl border border-red-900/40 p-6">
-            <h1 className="text-lg font-bold text-white mb-2">Algo quebrou</h1>
-            <p className="text-sm text-discord-text-muted mb-4">
-              Isso não deveria ter acontecido. Copia os detalhes abaixo e manda pra quem cuida do app — sem
-              isso, ninguém consegue saber o que deu errado.
+        <div className="min-h-screen flex items-center justify-center bg-background px-4">
+          <div className="text-center space-y-4 max-w-md">
+            <h1 className="text-2xl font-semibold text-foreground">Algo deu errado</h1>
+            <p className="text-sm text-muted-foreground">
+              Ocorreu um erro inesperado. Tente recarregar a página.
             </p>
-            <pre className="bg-discord-darker rounded-lg p-3 text-xs text-red-400 font-mono overflow-auto max-h-64 whitespace-pre-wrap mb-4">
-              {details}
-            </pre>
-            <div className="flex gap-2">
-              <button
-                onClick={() => navigator.clipboard.writeText(details)}
-                className="flex-1 py-2.5 rounded btn-secondary text-sm"
-              >
-                Copiar detalhes
-              </button>
-              <button onClick={this.handleReload} className="flex-1 py-2.5 rounded btn-primary text-sm">
-                Recarregar o app
-              </button>
-            </div>
+            {/* SECURITY: exibe detalhes do erro apenas em desenvolvimento.
+                Em produção, error.message pode vazar caminhos internos,
+                nomes de variáveis e mensagens de bibliotecas terceiras. */}
+            {import.meta.env.DEV && this.state.error?.message && (
+              <p className="text-xs text-muted-foreground font-mono bg-muted px-3 py-2 rounded-lg text-left break-all">
+                {this.state.error.message}
+              </p>
+            )}
+            <button
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              Recarregar página
+            </button>
           </div>
         </div>
-      )
+      );
     }
 
-    return this.props.children
+    return this.props.children;
   }
 }

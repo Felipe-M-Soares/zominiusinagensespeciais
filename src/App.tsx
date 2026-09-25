@@ -1,90 +1,163 @@
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
-import { PresenceProvider } from './context/PresenceContext'
-import { FriendsProvider } from './context/FriendsContext'
-import { GroupConversationsProvider } from './context/GroupConversationsContext'
-import { ThemeProvider } from './context/ThemeContext'
-import { ErrorBoundary } from './components/ErrorBoundary'
-import { ProtectedRoute } from './components/ProtectedRoute'
-import { ConnectionBanner } from './components/ui/ConnectionBanner'
-import { UpdateStatusBadge } from './components/ui/UpdateStatusBadge'
-import { ScreenSharePicker } from './components/ui/ScreenSharePicker'
-import { FriendRequestToast } from './components/ui/FriendRequestToast'
-import { TitleBar } from './components/layout/TitleBar'
-import { Login } from './pages/Login'
-import { ForgotPassword } from './pages/ForgotPassword'
-import { ResetPassword } from './pages/ResetPassword'
-import { Register } from './pages/Register'
-import { MainLayout } from './pages/MainLayout'
-import { InviteRedirect } from './pages/InviteRedirect'
-import { PrivacyPolicy } from './pages/legal/PrivacyPolicy'
-import { TermsOfService } from './pages/legal/TermsOfService'
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { LoadingScreen } from "@/components/LoadingScreen";
+import { AppShell } from "@/components/AppShell";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { lazy, Suspense, useEffect } from "react";
+import type { AppRole } from "@/types/roles";
 
-// Dentro do app desktop, o documento é servido por um protocolo próprio
-// (app://bundle/index.html), então o "caminho" real da URL não é "/"
-// como o BrowserRouter espera — isso fazia nenhuma rota bater e a tela
-// ficar em branco. HashRouter usa a parte depois do "#" pra decidir a
-// rota, o que funciona independente de qual seja o caminho real do
-// documento. No site (Vercel), continua tudo em BrowserRouter normal.
-const Router = window.electronAPI?.isElectron ? HashRouter : BrowserRouter
+/**
+ * PointerEventsWatchdog — correção do "app congelado, nenhum botão responde".
+ *
+ * Bug conhecido do Radix UI: ao combinar Dialog + AlertDialog + Select (como
+ * na tela Admin › Usuários, que tem os três em cada linha), fechar um modal
+ * pode deixar `pointer-events: none` PRESO no <body>. A partir daí a página
+ * inteira ignora cliques — parece que "nenhuma função funciona" — até dar F5.
+ *
+ * Este watchdog observa o style do <body>: se pointer-events ficou "none"
+ * mas NÃO existe nenhum modal Radix aberto, ele limpa o estilo na hora.
+ * Não interfere com modais abertos de verdade (eles têm data-state="open").
+ */
+function PointerEventsWatchdog() {
+  useEffect(() => {
+    const temModalAberto = () =>
+      !!document.querySelector(
+        '[data-state="open"][role="dialog"], [data-state="open"][role="alertdialog"], [data-radix-popper-content-wrapper]'
+      );
 
-function App() {
-  return (
-    <ErrorBoundary>
-    <ThemeProvider>
-      <Router>
-        <AuthProvider>
-          <PresenceProvider>
-          <FriendsProvider>
-          <GroupConversationsProvider>
-          {/* Coluna vertical: barra de título (só existe dentro do
-              Electron — TitleBar.tsx se auto-anula no site) em cima, e
-              o resto do app ocupando o espaço que sobrar. Sem isso, uma
-              página com h-screen (como o MainLayout) ficaria mais alta
-              que o espaço restante depois da barra de título, cortando
-              o fundo da tela pra fora da área visível. */}
-          <div className="h-screen w-screen flex flex-col overflow-hidden">
-            <TitleBar />
-            <div className="flex-1 min-h-0 relative overflow-y-auto">
-              <ConnectionBanner />
-              <UpdateStatusBadge />
-              <ScreenSharePicker />
-              <FriendRequestToast />
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/esqueci-senha" element={<ForgotPassword />} />
-                <Route path="/redefinir-senha" element={<ResetPassword />} />
-                <Route path="/cadastro" element={<Register />} />
-                <Route path="/privacidade" element={<PrivacyPolicy />} />
-                <Route path="/termos" element={<TermsOfService />} />
-                <Route
-                  path="/convite/:code"
-                  element={
-                    <ProtectedRoute>
-                      <InviteRedirect />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/"
-                  element={
-                    <ProtectedRoute>
-                      <MainLayout />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </div>
-          </div>
-        </GroupConversationsProvider>
-        </FriendsProvider>
-        </PresenceProvider>
-        </AuthProvider>
-      </Router>
-    </ThemeProvider>
-    </ErrorBoundary>
-  )
+    const limparSePreso = () => {
+      if (document.body.style.pointerEvents === "none" && !temModalAberto()) {
+        document.body.style.pointerEvents = "";
+      }
+    };
+
+    const observer = new MutationObserver(limparSePreso);
+    observer.observe(document.body, { attributes: true, attributeFilter: ["style"] });
+    // Cinto e suspensório: checa também num intervalo lento, cobrindo o caso
+    // do modal ser desmontado sem disparar mutation no style do body.
+    const timer = setInterval(limparSePreso, 1500);
+    return () => { observer.disconnect(); clearInterval(timer); };
+  }, []);
+  return null;
 }
 
-export default App
+import Login from "./pages/Login";
+import SetPassword from "./pages/SetPassword";
+import PendingApproval from "./pages/PendingApproval";
+import NotFound from "./pages/NotFound";
+
+const Index       = lazy(() => import("./pages/Index"));
+const Admin       = lazy(() => import("./pages/Admin"));
+const Manual      = lazy(() => import("./pages/Manuals"));
+const Guia        = lazy(() => import("./pages/Guia"));
+const Sobre       = lazy(() => import("./pages/Sobre"));
+const Estoque     = lazy(() => import("./pages/Estoque"));
+const Comercial   = lazy(() => import("./pages/Comercial"));
+const Financeiro  = lazy(() => import("./pages/Financeiro"));
+const Producao    = lazy(() => import("./pages/Producao"));
+const Processos   = lazy(() => import("./pages/Processos"));
+const Qualidade   = lazy(() => import("./pages/Qualidade"));
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 1, staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false },
+    mutations: { retry: 0 },
+  },
+});
+
+// ── Rota pública: redireciona para / se já logado ─────────────────────────────
+function PublicGuard({ children }: { children: React.ReactNode }) {
+  const { user, loading, approved } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <>{children}</>;
+  if (approved === false) return <Navigate to="/pending-approval" replace />;
+  return <Navigate to="/" replace />;
+}
+
+// ── Layout protegido: AppShell montado UMA vez para todas as rotas internas ───
+function ProtectedLayout() {
+  const { user, loading, approved, blocked, mustChangePassword } = useAuth();
+  const location = useLocation();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (blocked || approved === false) return <Navigate to="/pending-approval" replace />;
+  // Força troca de senha antes de acessar qualquer outra rota
+  if (mustChangePassword && location.pathname !== "/set-password") {
+    return <Navigate to="/set-password" replace />;
+  }
+  return (
+    <AppShell>
+      <Suspense fallback={<LoadingScreen />}>
+        <Outlet />
+      </Suspense>
+    </AppShell>
+  );
+}
+
+// ── Guard de role dentro das rotas protegidas ─────────────────────────────────
+function RoleGuard({ children, roles, adminOnly }: {
+  children: React.ReactNode;
+  roles?: AppRole[];
+  adminOnly?: boolean;
+}) {
+  const { isAdmin, role } = useAuth();
+  if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
+  if (roles && !isAdmin && !roles.includes(role as AppRole)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+function PendingApprovalRoute() {
+  const { user, loading, approved, blocked } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (approved === null) return <LoadingScreen />;
+  if (approved === true && !blocked) return <Navigate to="/" replace />;
+  return <PendingApproval />;
+}
+
+function IndexRoute() {
+  const { loading, approved } = useAuth();
+  if (loading || approved === null) return <LoadingScreen />;
+  return <Index />;
+}
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <PointerEventsWatchdog />
+      <Sonner />
+      <BrowserRouter future={{ v7_relativeSplatPath: true }}>
+        <AuthProvider>
+          <Routes>
+            {/* Públicas */}
+            <Route path="/login" element={<PublicGuard><Login /></PublicGuard>} />
+            <Route path="/pending-approval" element={<PendingApprovalRoute />} />
+
+            {/* Protegidas — AppShell renderizado uma única vez via Outlet */}
+            <Route element={<ProtectedLayout />}>
+              <Route path="/"           element={<ErrorBoundary><IndexRoute /></ErrorBoundary>} />
+              <Route path="/set-password" element={<ErrorBoundary><SetPassword /></ErrorBoundary>} />
+              <Route path="/manual"     element={<ErrorBoundary><Manual /></ErrorBoundary>} />
+              <Route path="/guia"       element={<ErrorBoundary><Guia /></ErrorBoundary>} />
+              <Route path="/sobre"      element={<ErrorBoundary><Sobre /></ErrorBoundary>} />
+              <Route path="/estoque"    element={<ErrorBoundary><RoleGuard roles={["estoque","qualidade","admin"]}><Estoque /></RoleGuard></ErrorBoundary>} />
+              <Route path="/producao"   element={<ErrorBoundary><RoleGuard roles={["producao","admin"]}><Producao /></RoleGuard></ErrorBoundary>} />
+              <Route path="/processos"  element={<ErrorBoundary><RoleGuard roles={["processos","producao","admin"]}><Processos /></RoleGuard></ErrorBoundary>} />
+              <Route path="/qualidade"  element={<ErrorBoundary><RoleGuard roles={["qualidade","admin"]}><Qualidade /></RoleGuard></ErrorBoundary>} />
+              <Route path="/comercial"  element={<ErrorBoundary><RoleGuard roles={["comercial","admin"]}><Comercial /></RoleGuard></ErrorBoundary>} />
+              <Route path="/financeiro" element={<ErrorBoundary><RoleGuard roles={["financeiro","admin"]}><Financeiro /></RoleGuard></ErrorBoundary>} />
+              <Route path="/admin"      element={<ErrorBoundary><RoleGuard adminOnly><Admin /></RoleGuard></ErrorBoundary>} />
+            </Route>
+
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+
+export default App;

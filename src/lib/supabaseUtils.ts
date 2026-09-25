@@ -31,9 +31,6 @@ export async function fetchAllPages<T>(
   let page = 0;
 
   while (page < MAX_PAGES) {
-    // select("*") é proposital: fetchAllPages é genérico (usado com tipos T
-    // diferentes para tabelas/views distintas) — restringir colunas aqui
-    // exigiria um parâmetro de coluna por chamada, mudança maior de escopo.
     const { data, error } = await supabase
       .from(table as keyof Database["public"]["Tables"])
       .select("*")

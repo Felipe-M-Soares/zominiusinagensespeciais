@@ -123,12 +123,6 @@ function ReenviarPedidoRetornadoBtn({ pedidoId, onComentar, onReenviar }: { pedi
 
 // ─── Card de Pedido ───────────────────────────────────────────────────────────
 
-// Prioridade de exibição na lista de pedidos — o que precisa de ação
-// (retorno/pendente) aparece antes do que já foi resolvido.
-const ORDEM_PRIORIDADE: Record<string, number> = {
-  retorno: 0, pendente: 1, separando: 2, pronto: 3, faturado: 4, enviado: 5, cancelado: 6,
-};
-
 interface PedidoCardProps {
   pedido: PedidoCompleto;
   isAdmin: boolean;
@@ -544,13 +538,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
             </button>
           )}
 
-          {/* ── Ações Admin (confirmar / cancelar) ──
-              FIX: o botão Cancelar só existia para pedidos "pendente" —
-              qualquer pedido em separando/pronto/retorno não tinha NENHUMA
-              forma de ser cancelado pela tela, mesmo o backend (cancel_pedido)
-              já permitindo isso em qualquer status que não seja
-              faturado/enviado/cancelado. Alinhado agora com o que o RPC
-              realmente aceita. */}
+          {/* ── Ações Admin (confirmar / cancelar) ── */}
           {pedido.status === "pendente" && (isAdmin || canConfirm) && (
             <div className="flex gap-2">
               <button
@@ -575,16 +563,6 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
             </div>
           )}
 
-          {(["separando", "pronto"] as const).includes(pedido.status as "separando" | "pronto") && (isAdmin || canConfirm) && (
-            <button
-              type="button"
-              onClick={() => onCancelar(pedido)}
-              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 border border-border/40 hover:border-red-300 dark:hover:border-red-800 transition-colors"
-            >
-              <Ban className="h-3.5 w-3.5" /> Cancelar pedido
-            </button>
-          )}
-
           {/* ── Indicadores de estado (sem ação) ── */}
           {(["separando","pronto","faturado","enviado","cancelado","retorno"] as const).includes(
             pedido.status as "separando"|"pronto"|"faturado"|"enviado"|"cancelado"|"retorno"
@@ -602,28 +580,15 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
             </div>
           )}
 
-          {/* Pedido em retorno: revisar (editar), cancelar, ou reenviar como
-              está pro estoque tentar de novo — as 3 opções reais que a
-              vendedora tem nesse status, lado a lado em vez de empilhadas. */}
+          {/* Editar pedido em retorno */}
           {pedido.status === "retorno" && (
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => onEditarPedido(pedido)}
-                className="flex items-center justify-center gap-1.5 h-9 rounded-xl text-[12px] font-semibold transition-colors border border-orange-500/40 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
-              >
-                <Pencil className="h-3.5 w-3.5 shrink-0" /> Editar
-              </button>
-              {(isAdmin || canConfirm) && (
-                <button
-                  type="button"
-                  onClick={() => onCancelar(pedido)}
-                  className="flex items-center justify-center gap-1.5 h-9 rounded-xl text-[12px] font-semibold transition-colors border border-border text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 hover:border-red-300 dark:hover:border-red-800"
-                >
-                  <Ban className="h-3.5 w-3.5 shrink-0" /> Cancelar
-                </button>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => onEditarPedido(pedido)}
+              className="w-full flex items-center justify-center gap-1.5 h-9 rounded-xl text-[12px] font-semibold transition-colors border border-orange-500/40 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+            >
+              <Pencil className="h-3.5 w-3.5 shrink-0" /> Editar Pedido
+            </button>
           )}
 
           {/* Botão reenviar pedido retornado */}
@@ -1058,8 +1023,6 @@ export default function Comercial() {
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>([]);
   const [loadingPedidos, setLoadingPedidos] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "pronto" | "enviado" | "retorno" | "cancelado">("todos");
-  const [buscaPedido, setBuscaPedido] = useState("");
-  const [filtroAtrasados, setFiltroAtrasados] = useState(false);
   const [novoPedidoOpen, setNovoPedidoOpen] = useState(false);
   const [faturarPedido, setFaturarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<PedidoCompleto | null>(null);
@@ -1154,7 +1117,7 @@ export default function Comercial() {
   const loadClientes = useCallback(async () => {
     setLoadingClientes(true);
     try {
-      const { data, error } = await supabase.from("clientes").select("id, nome, documento, telefone, email, endereco, observacoes, created_at, cep, logradouro, numero, bairro, municipio, uf").order("nome");
+      const { data, error } = await supabase.from("clientes").select("*").order("nome");
       if (error) { toast.error("Erro ao carregar clientes.", {
         action: { label: "Tentar novamente", onClick: loadClientes }
       }); return; }
@@ -1247,43 +1210,17 @@ export default function Comercial() {
     loadClientes();
   }
 
-  // FIX (usabilidade ponta a ponta): antes só dava pra filtrar por status e
-  // data — achar "o pedido da Fulana" numa lista grande exigia rolar tudo.
-  // Agora busca por cliente também, e a lista prioriza o que precisa de
-  // ação (retorno/atrasado/pendente) em vez de só ordenar por data de
-  // criação, que misturava pedidos já resolvidos com os urgentes.
-  function pedidoAtrasado(p: PedidoCompleto): boolean {
-    return !!p.prazo_entrega && !["cancelado", "enviado", "faturado"].includes(p.status)
-      && new Date(p.prazo_entrega) < new Date();
-  }
-  const pedidosFiltrados = useMemo(() => {
-    const busca = buscaPedido.trim().toLowerCase();
-    return pedidos
-      .filter(p => {
-        if (filtroStatus !== "todos" && p.status !== filtroStatus) return false;
-        if (filtroDataInicio && p.created_at < filtroDataInicio) return false;
-        if (filtroDataFim && p.created_at > filtroDataFim + "T23:59:59") return false;
-        if (filtroAtrasados && !pedidoAtrasado(p)) return false;
-        if (busca && !p.cliente_nome.toLowerCase().includes(busca)) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        const atrasoA = pedidoAtrasado(a) ? 0 : 1;
-        const atrasoB = pedidoAtrasado(b) ? 0 : 1;
-        if (atrasoA !== atrasoB) return atrasoA - atrasoB;
-        const prioA = ORDEM_PRIORIDADE[a.status] ?? 9;
-        const prioB = ORDEM_PRIORIDADE[b.status] ?? 9;
-        if (prioA !== prioB) return prioA - prioB;
-        return b.created_at.localeCompare(a.created_at);
-      });
-  }, [pedidos, filtroStatus, filtroDataInicio, filtroDataFim, filtroAtrasados, buscaPedido]);
-  const contagemPorStatus = useMemo(() => {
-    const c: Record<string, number> = { todos: pedidos.length };
-    for (const p of pedidos) c[p.status] = (c[p.status] ?? 0) + 1;
-    return c;
-  }, [pedidos]);
+  const pedidosFiltrados = useMemo(() => pedidos.filter(p => {
+    if (filtroStatus !== "todos" && p.status !== filtroStatus) return false;
+    if (filtroDataInicio && p.created_at < filtroDataInicio) return false;
+    if (filtroDataFim && p.created_at > filtroDataFim + "T23:59:59") return false;
+    return true;
+  }), [pedidos, filtroStatus, filtroDataInicio, filtroDataFim]);
   const pedidosPendentes  = useMemo(() => pedidos.filter(p => p.status === "pendente").length, [pedidos]);
-  const pedidosAtrasados  = useMemo(() => pedidos.filter(pedidoAtrasado).length, [pedidos]);
+  const pedidosAtrasados  = useMemo(() => pedidos.filter(p =>
+    p.prazo_entrega && !["cancelado","enviado","faturado"].includes(p.status) &&
+    new Date(p.prazo_entrega) < new Date()
+  ).length, [pedidos]);
   const clientesFiltrados = useMemo(() => clientes.filter(c =>
     c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
     (c.documento ?? "").includes(clienteSearchFilter) ||
@@ -1409,51 +1346,15 @@ export default function Comercial() {
             {subTab === "pedidos" && (
               <div className="space-y-3">
                 <div className="flex flex-col gap-2">
-                  {/* Busca por cliente — antes só dava pra filtrar por status/data */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                    <input
-                      type="text"
-                      value={buscaPedido}
-                      onChange={e => setBuscaPedido(e.target.value)}
-                      placeholder="Buscar por cliente..."
-                      className="w-full h-9 pl-9 pr-8 rounded-lg border border-border/50 bg-background text-[12.5px] focus:outline-none focus:ring-1 focus:ring-violet-500/40"
-                    />
-                    {buscaPedido && (
-                      <button type="button" onClick={() => setBuscaPedido("")}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Linha 1: filtros de status, com contagem — mostra de cara
-                      onde tem coisa pendente sem precisar clicar em cada um */}
+                  {/* Linha 1: filtros de status */}
                   <div className="flex items-center gap-2 flex-wrap">
                     {(["todos","pendente","pronto","enviado","retorno","cancelado"] as const).map(s => (
                       <button key={s} type="button" onClick={() => setFiltroStatus(s)}
-                        className={cn("h-7 pl-3 pr-2 rounded-full text-[11px] font-semibold border transition-colors flex items-center gap-1.5",
+                        className={cn("h-7 px-3 rounded-full text-[11px] font-semibold border transition-colors",
                           filtroStatus === s ? "bg-violet-600 text-white border-violet-600" : "bg-background text-muted-foreground border-border/50 hover:border-violet-400")}>
                         {s === "todos" ? "Todos" : s.charAt(0).toUpperCase() + s.slice(1)}
-                        {(contagemPorStatus[s] ?? 0) > 0 && (
-                          <span className={cn("text-[9px] font-bold rounded-full h-4 min-w-4 px-1 flex items-center justify-center",
-                            filtroStatus === s ? "bg-white/25 text-white" : "bg-muted text-muted-foreground")}>
-                            {contagemPorStatus[s] ?? 0}
-                          </span>
-                        )}
                       </button>
                     ))}
-                    {pedidosAtrasados > 0 && (
-                      <button type="button" onClick={() => setFiltroAtrasados(v => !v)}
-                        className={cn("h-7 pl-3 pr-2 rounded-full text-[11px] font-semibold border transition-colors flex items-center gap-1.5",
-                          filtroAtrasados ? "bg-red-600 text-white border-red-600" : "bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800")}>
-                        <Clock className="h-3 w-3" /> Atrasados
-                        <span className={cn("text-[9px] font-bold rounded-full h-4 min-w-4 px-1 flex items-center justify-center",
-                          filtroAtrasados ? "bg-white/25 text-white" : "bg-red-200/60 dark:bg-red-900/50")}>
-                          {pedidosAtrasados}
-                        </span>
-                      </button>
-                    )}
                   </div>
                   {/* Linha 2: filtros de data + botão novo pedido */}
                   <div className="flex items-center gap-1.5">
@@ -1479,22 +1380,10 @@ export default function Comercial() {
                 ) : pedidosFiltrados.length === 0 ? (
                   <div className="text-center py-16 space-y-2">
                     <ShoppingBag className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-                    {pedidos.length === 0 ? (
-                      <>
-                        <p className="text-muted-foreground font-medium">Nenhum pedido encontrado</p>
-                        <button type="button" onClick={() => setNovoPedidoOpen(true)} className="mt-2 inline-flex items-center gap-1.5 h-8 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors">
-                          <Plus className="h-3.5 w-3.5" /> Criar primeiro pedido
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-muted-foreground font-medium">Nenhum pedido bate com esse filtro</p>
-                        <button type="button" onClick={() => { setFiltroStatus("todos"); setBuscaPedido(""); setFiltroAtrasados(false); setFiltroDataInicio(""); setFiltroDataFim(""); }}
-                          className="mt-2 inline-flex items-center gap-1.5 h-8 px-4 rounded-xl border border-border text-muted-foreground text-[12px] font-semibold hover:bg-muted/40 transition-colors">
-                          <X className="h-3.5 w-3.5" /> Limpar filtros
-                        </button>
-                      </>
-                    )}
+                    <p className="text-muted-foreground font-medium">Nenhum pedido encontrado</p>
+                    <button type="button" onClick={() => setNovoPedidoOpen(true)} className="mt-2 inline-flex items-center gap-1.5 h-8 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors">
+                      <Plus className="h-3.5 w-3.5" /> Criar primeiro pedido
+                    </button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">

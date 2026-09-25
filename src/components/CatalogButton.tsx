@@ -62,7 +62,7 @@ export function CatalogButton() {
     try {
       const { data, error } = await supabase
         .from("catalogs")
-        .select("id, title, file_path, file_size, created_at")
+        .select("*")
         .order("created_at", { ascending: false });
       if (controller.signal.aborted) return;
       if (error) {

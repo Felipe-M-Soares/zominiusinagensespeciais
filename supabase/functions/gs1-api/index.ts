@@ -1,9 +1,26 @@
 /**
  * supabase/functions/gs1-api/index.ts
  *
- * Edge Function — Proxy seguro para as APIs GS1 Brasil (CNP, Provider,
- * Provider Other Keys). Auth OAuth 2.0 com token cacheado em memória por 55
- * minutos. Ver README.md deste diretório para deploy e secrets.
+ * Edge Function — Proxy seguro para as APIs GS1 Brasil
+ *
+ * Cobre as 3 APIs:
+ *  • CNP (Cadastro Nacional de Produtos) — GET/POST/PATCH de produtos
+ *  • Provider (Verified by GS1)          — GET /provider/v2/verified
+ *  • Provider Other Keys                 — GET /provider-otherKeys/searchByKey
+ *
+ * Auth: OAuth 2.0 (client_credentials + password). O token é obtido
+ * na primeira requisição e cacheado em memória por 55 minutos.
+ *
+ * Deploy:
+ *   supabase functions deploy gs1-api
+ *
+ * Secrets obrigatórios (supabase secrets set KEY=VALUE):
+ *   GS1_CLIENT_ID      → client_id fornecido pela GS1 Brasil
+ *   GS1_CLIENT_SECRET  → client_secret fornecido pela GS1 Brasil
+ *   GS1_USERNAME       → e-mail cadastrado no CNP (cnp.gs1br.org)
+ *   GS1_PASSWORD       → senha do portal CNP
+ *   GS1_ENV            → "producao" | "homologacao"  (default: homologacao)
+ *   ALLOWED_ORIGIN     → domínio do frontend
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";

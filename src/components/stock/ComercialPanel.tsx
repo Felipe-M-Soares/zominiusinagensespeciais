@@ -282,7 +282,7 @@ function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems
   }, [open, clienteFixo]);
 
   async function loadClientes() {
-    const { data } = await supabase.from("clientes").select("id, nome, documento, telefone, email, endereco, observacoes, created_at").order("nome");
+    const { data } = await supabase.from("clientes").select("*").order("nome");
     setClientes((data as Cliente[]) ?? []);
   }
 
@@ -1540,7 +1540,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     setLoadingClientes(true);
     try {
       // Isolamento: vendedoras vêem apenas clientes que elas criaram; admins vêem todos
-      let query = supabase.from("clientes").select("id, nome, documento, telefone, email, endereco, observacoes, created_at").order("nome");
+      let query = supabase.from("clientes").select("*").order("nome");
       if (!isAdmin && user?.id) {
         query = query.eq("created_by", user.id);
       }

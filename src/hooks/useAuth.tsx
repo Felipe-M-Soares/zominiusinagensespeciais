@@ -170,15 +170,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        // FIX: antes, `setLoading(false)` era chamado imediatamente aqui,
-        // em paralelo com fetchRoleAndApproval (sem esperar o resultado).
-        // Isso liberava o AppShell para montar com role ainda nula — que
-        // cai no fallback "estoque" — mostrando só Componentes + Estoque
-        // no menu logo após o login, até a pessoa dar F5 (quando a sessão
-        // já está pronta antes da query rodar). Agora só liberamos
-        // `loading` depois que role/approval realmente terminaram de
-        // carregar, garantindo que o menu já nasça completo.
-        await fetchRoleAndApproval(session.user.id);
+        fetchRoleAndApproval(session.user.id).finally(() => {
+          if (initialLoadDone) setLoading(false);
+        });
         if (initialLoadDone) setLoading(false);
         return;
       } else {

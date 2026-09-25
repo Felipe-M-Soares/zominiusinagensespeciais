@@ -36,7 +36,6 @@ const RastreabilidadePanel = lazy(() => import("@/components/qualidade/Rastreabi
 const GS1Panel             = lazy(() => import("@/components/qualidade/GS1Panel").then(m => ({ default: m.GS1Panel })));
 const RecallPanel          = lazy(() => import("@/components/qualidade/RecallPanel").then(m => ({ default: m.RecallPanel })));
 const DevolucaoTrocaQualidadePanel = lazy(() => import("@/components/qualidade/DevolucaoTrocaQualidadePanel").then(m => ({ default: m.DevolucaoTrocaQualidadePanel })));
-const NaoConformidadePanel = lazy(() => import("@/components/qualidade/NaoConformidadePanel").then(m => ({ default: m.NaoConformidadePanel })));
 import { PageNav } from "@/components/PageNav";
 import type { PageNavTab } from "@/components/PageNav";
 import type { StockFase, AllMovement } from "@/hooks/useStock";
@@ -46,7 +45,7 @@ import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type QualidadeView = "pipeline" | "rastreamento" | "rastreabilidade_pos" | "recall" | "historico" | "gs1" | "devolucao_troca" | "nao_conformidade";
+type QualidadeView = "pipeline" | "rastreamento" | "rastreabilidade_pos" | "recall" | "historico" | "gs1" | "devolucao_troca";
 
 type FaseNum = 1 | 2 | 3 | 4 | 5;
 type StatusReg =
@@ -99,7 +98,6 @@ interface Suggestion { device_id: string; model: string; reference: string }
 
 const TABS: PageNavTab<QualidadeView>[] = [
   { id: "pipeline",     label: "Pipeline",     Icon: ClipboardCheck, activeColor: "text-violet-500",  activeBg: "bg-violet-500/10",  activeBorder: "border-violet-500/40" },
-  { id: "nao_conformidade", label: "Não Conformidade", Icon: AlertTriangle, activeColor: "text-orange-500", activeBg: "bg-orange-500/10", activeBorder: "border-orange-500/40" },
   { id: "rastreamento", label: "Rastreamento", Icon: Search,         activeColor: "text-blue-500",    activeBg: "bg-blue-500/10",    activeBorder: "border-blue-500/40"   },
   { id: "historico",    label: "Histórico",    Icon: History,        activeColor: "text-amber-500",   activeBg: "bg-amber-500/10",   activeBorder: "border-amber-500/40"  },
   { id: "rastreabilidade_pos", label: "Rastreab. Pós-venda", Icon: MapPin, activeColor: "text-rose-500", activeBg: "bg-rose-500/10", activeBorder: "border-rose-500/40" },
@@ -692,7 +690,7 @@ const PipelinePanel = memo(function PipelinePanel() {
       while (true) {
         const { data: page, error } = await supabase
           .from("devices_regularizacao")
-          .select("id, model, reference, risk_class, regime, status_regularizacao, empresa_lf, empresa_afe, empresa_bpf, anvisa_registration, numero_processo_anvisa, data_registro_anvisa, data_vencimento_anvisa, udi_di, gtin, siud_transmitido_em, rotulo_udi_ok, classification_code, brand_name, updated_at, fase_atual, dias_ate_vencer")
+          .select("*")
           .lt("fase_atual", 5)
           .order("fase_atual", { ascending: true })
           .order("model", { ascending: true })
@@ -1237,7 +1235,6 @@ export default function Qualidade() {
       </div>
       <div className="flex-1 overflow-y-auto p-3 sm:p-4">
         {activeView === "pipeline"          && <PipelinePanel />}
-        {activeView === "nao_conformidade"  && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><NaoConformidadePanel/></Suspense>}
         {activeView === "rastreamento"      && <RastreamentoPanel />}
         {activeView === "rastreabilidade_pos" && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><RastreabilidadePanel/></Suspense>}
         {activeView === "devolucao_troca"    && <Suspense fallback={<div className="flex justify-center py-10"><RefreshCw className="h-5 w-5 animate-spin text-muted-foreground"/></div>}><DevolucaoTrocaQualidadePanel/></Suspense>}

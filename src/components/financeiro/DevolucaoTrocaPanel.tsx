@@ -156,7 +156,7 @@ export function DevolucaoTrocaPanel({ modoTeste }: { modoTeste: boolean }) {
     setLoading(true);
     const { data, error } = await supabase
       .from("notas_devolucao_troca")
-      .select("id, tipo, pedido_id, avulsa, cliente_nome, cliente_documento, cliente_ie, cliente_endereco, cliente_telefone, cliente_email, nf_original_numero, nf_original_chave, motivo, itens, valor_frete, valor_total, tipo_nota, tp_nf, numero, serie, natureza_operacao, chave_acesso, protocolo_sefaz, dh_autorizacao, status, status_msg, modo_teste, created_at")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(300);
     if (error) { toast.error(friendlyError(error)); setLoading(false); return; }

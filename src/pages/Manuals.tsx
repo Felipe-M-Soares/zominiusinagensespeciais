@@ -65,7 +65,7 @@ export default function Manual() {
   const fetchManuals = useCallback(async () => {
     try {
       const { data, error } = await supabase
-        .from("manuals").select("id, title, description, file_path, file_size, created_at").order("created_at", { ascending: false });
+        .from("manuals").select("*").order("created_at", { ascending: false });
       if (error) { logger.error("fetchManuals:", error); toast.error("Erro ao carregar manuais"); }
       else setManuals((data as Manual[]) ?? []);
     } catch (err) {

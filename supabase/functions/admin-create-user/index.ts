@@ -1,7 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { log } from "../_shared/log.ts";
-import { checkRateLimitByIp } from "../_shared/rateLimit.ts";
 
 function getRequiredEnv(key: string): string {
   const value = Deno.env.get(key);
@@ -13,12 +12,34 @@ function loginToEmail(login: string): string {
   return `${login.toLowerCase().trim()}@interno.conceptus`;
 }
 
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function checkRateLimit(ip: string, maxReq = 10, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxReq) return false;
+  entry.count++;
+  return true;
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = getCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? req.headers.get("cf-connecting-ip")
+    ?? "unknown";
+  if (!checkRateLimit(clientIp)) {
+    return new Response(JSON.stringify({ error: "Muitas requisições. Aguarde 1 minuto." }), {
+      status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "60" },
     });
   }
 
@@ -32,16 +53,6 @@ Deno.serve(async (req) => {
     // como override opcional para quem já os tinha configurado.
     const supabaseAnon = Deno.env.get("API_ANON_KEY")    ?? getRequiredEnv("SUPABASE_ANON_KEY");
     const serviceKey   = Deno.env.get("API_SERVICE_KEY") ?? getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-    const adminClient  = createClient(supabaseUrl, serviceKey);
-
-    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-      ?? req.headers.get("cf-connecting-ip")
-      ?? "unknown";
-    if (!(await checkRateLimitByIp(adminClient, clientIp, "admin_create_user"))) {
-      return new Response(JSON.stringify({ error: "Muitas requisições. Aguarde 1 minuto." }), {
-        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "60" },
-      });
-    }
 
     const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
     if (!token) {
@@ -56,17 +67,17 @@ Deno.serve(async (req) => {
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      log.error("admin-create-user", "JWT validation failed:", userError?.message ?? "no user");
-      return new Response(JSON.stringify({ error: "Sessão expirada ou inválida. Faça login novamente." }), {
+      return new Response(JSON.stringify({ error: "Sessão inválida: " + (userError?.message ?? "sem usuário") }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    const adminClient = createClient(supabaseUrl, serviceKey);
+
     const { data: roleData, error: roleError } = await adminClient
       .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
     if (roleError) {
-      log.error("admin-create-user", "role check error:", roleError.message);
-      return new Response(JSON.stringify({ error: "Erro ao verificar permissões." }), {
+      return new Response(JSON.stringify({ error: "Erro ao verificar role: " + roleError.message }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -141,8 +152,7 @@ Deno.serve(async (req) => {
           status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      log.error("admin-create-user", "createUser error:", createError.message);
-      return new Response(JSON.stringify({ error: "Não foi possível criar o usuário." }), {
+      return new Response(JSON.stringify({ error: "Erro ao criar usuário: " + createError.message }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -178,7 +188,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error("admin-create-user", "admin-create-user error:", msg);
-    return new Response(JSON.stringify({ error: "Erro interno ao criar usuário." }), {
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
