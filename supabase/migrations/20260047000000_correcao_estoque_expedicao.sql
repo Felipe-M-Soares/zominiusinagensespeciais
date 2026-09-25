@@ -77,15 +77,6 @@ BEGIN
   END IF;
 
   UPDATE public.pedidos_comerciais SET status = 'cancelado', lotes_separados = NULL WHERE id = p_pedido_id;
-
-  -- FIX: encerra (marca como lida) qualquer notificação pendente sobre este
-  -- pedido — ex.: "pedido retornado ao comercial" enviada pelo estoque
-  -- (RetornarPedidoModal). Sem isso, a notificação continuava aparecendo
-  -- como pendente mesmo com o pedido já cancelado e a situação resolvida.
-  UPDATE public.notificacoes
-  SET lida = true
-  WHERE pedido_id = p_pedido_id AND lida = false;
-
   RETURN jsonb_build_object('ok', true);
 END; $f04$;
 GRANT EXECUTE ON FUNCTION public.cancel_pedido(uuid) TO authenticated;

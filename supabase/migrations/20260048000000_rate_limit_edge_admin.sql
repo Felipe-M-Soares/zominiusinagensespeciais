@@ -13,15 +13,6 @@
 -- Diferente das demais ações (que usam auth.uid()), estas continuam por IP,
 -- pois o limite existe justamente para conter abuso ANTES/independente de
 -- uma sessão de admin específica ser validada repetidamente.
---
--- FIX: esta migration reescreve check_rate_limit() por completo (CREATE OR
--- REPLACE substitui a função inteira, não só o CASE) — a versão anterior
--- desta migration tinha perdido, por engano, várias ações já configuradas em
--- 20260044000000_seguranca_revisao_final.sql (remove_pedido_item,
--- enviar_feedback, registrar_devolucao_troca, as duas de análise de
--- devolução/troca e consumir_credito_cliente), fazendo elas caírem no limite
--- genérico do ELSE. A lista abaixo foi restaurada por completo e já inclui
--- também as ações do módulo de Não Conformidade.
 
 CREATE OR REPLACE FUNCTION public.check_rate_limit(
   p_action text,
@@ -38,18 +29,9 @@ BEGIN
     WHEN 'stock_movement_atomic'  THEN v_max := 60;  v_window := 60;
     WHEN 'reserve_stock'          THEN v_max := 20;  v_window := 60;
     WHEN 'cancel_pedido'          THEN v_max := 10;  v_window := 60;
-    WHEN 'remove_pedido_item'     THEN v_max := 20;  v_window := 60;
     WHEN 'faturar_pedido_sefaz'   THEN v_max := 5;   v_window := 60;
     WHEN 'marcar_pedido_pronto'   THEN v_max := 30;  v_window := 60;
     WHEN 'import_devices'         THEN v_max := 3;   v_window := 300;
-    WHEN 'enviar_feedback'                       THEN v_max := 5;   v_window := 3600;
-    WHEN 'registrar_devolucao_troca'             THEN v_max := 5;   v_window := 60;
-    WHEN 'iniciar_analise_qualidade_devolucao'   THEN v_max := 15;  v_window := 60;
-    WHEN 'finalizar_analise_qualidade_devolucao' THEN v_max := 15;  v_window := 60;
-    WHEN 'consumir_credito_cliente'              THEN v_max := 10;  v_window := 60;
-    WHEN 'abrir_nao_conformidade'                THEN v_max := 20;  v_window := 3600;
-    WHEN 'decidir_nao_conformidade'              THEN v_max := 30;  v_window := 60;
-    WHEN 'encerrar_nao_conformidade'             THEN v_max := 30;  v_window := 60;
     WHEN 'admin_create_user'      THEN v_max := 10;  v_window := 60;
     WHEN 'admin_reset_password'   THEN v_max := 10;  v_window := 3600;
     WHEN 'delete_account'         THEN v_max := 3;   v_window := 86400;

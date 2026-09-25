@@ -26,7 +26,6 @@ import {
   Info,
 } from "lucide-react";
 import { FeedbackButton } from "@/components/FeedbackButton";
-import { ReportarNaoConformidadeModal } from "@/components/qualidade/ReportarNaoConformidadeModal";
 import { APP_VERSION } from "@/lib/appInfo";
 
 interface NavItem {
@@ -358,11 +357,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
 
-            {/* Reportar Não Conformidade — disponível para QUALQUER setor,
-                não só Qualidade/Admin (qualquer um pode encontrar um
-                problema, ex: peça com defeito na inspeção). */}
-            <ReportarNaoConformidadeModal sidebarTrigger collapsed={collapsed} />
-
             <button
               onClick={() => navigate("/sobre")}
               title="Sobre o sistema, manual, guia de uso e reportar problemas"
@@ -457,7 +451,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>
           </button>
-          <ReportarNaoConformidadeModal sidebarTrigger className="!px-3 !py-2" />
           <button
             onClick={() => { setMobileOpen(false); navigate("/sobre"); }}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
