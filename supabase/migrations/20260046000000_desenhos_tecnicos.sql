@@ -536,6 +536,27 @@ WHERE a.lote ~ '^\d{7}-\d+'
 GROUP BY a.data_apontamento
 ON CONFLICT (data) DO UPDATE SET ultimo = GREATEST(public.lote_sequencia_diaria.ultimo, EXCLUDED.ultimo);
 
+-- Bancos antigos podem ter a função com tipos de parâmetro diferentes (ex.:
+-- p_data text). O CREATE OR REPLACE abaixo criaria uma SEGUNDA versão com os
+-- mesmos nomes de parâmetro — e o app deixaria de conseguir salvar
+-- ("could not choose the best candidate function"). Remove as versões com
+-- assinatura diferente antes de recriar; os nomes dos parâmetros são os mesmos,
+-- então as telas Diário, Controle e Importador continuam compatíveis.
+DO $limpa_overloads$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'criar_apontamento_ppi51'
+      AND p.oid::regprocedure::text <> 'criar_apontamento_ppi51(date,text,text,text,text,text,numeric,numeric,numeric,integer,numeric,numeric,numeric,numeric,text,text,text,numeric,numeric,text,jsonb,jsonb)'
+  LOOP
+    RAISE NOTICE 'Removendo versão antiga: %', r.sig;
+    EXECUTE format('DROP FUNCTION %s', r.sig);
+  END LOOP;
+END;
+$limpa_overloads$;
+
 CREATE OR REPLACE FUNCTION public.criar_apontamento_ppi51(
   p_data               date,
   p_turno              text,
@@ -627,4 +648,5 @@ BEGIN
 END;
 $f01$;
 
-GRANT EXECUTE ON FUNCTION public.criar_apontamento_ppi51 TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.criar_apontamento_ppi51(date, text, text, text, text, text, numeric, numeric, numeric, integer, numeric, numeric, numeric, numeric, text, text, text, numeric, numeric, text, jsonb, jsonb) FROM anon, PUBLIC;
+GRANT EXECUTE ON FUNCTION public.criar_apontamento_ppi51(date, text, text, text, text, text, numeric, numeric, numeric, integer, numeric, numeric, numeric, numeric, text, text, text, numeric, numeric, text, jsonb, jsonb) TO authenticated;

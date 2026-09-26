@@ -508,7 +508,7 @@ BEGIN
 END;
 $f01$;
 
-GRANT EXECUTE ON FUNCTION public.criar_apontamento_ppi51 TO authenticated;
+GRANT EXECUTE ON FUNCTION public.criar_apontamento_ppi51(date, text, text, text, text, text, numeric, numeric, numeric, integer, numeric, numeric, numeric, numeric, text, text, text, numeric, numeric, text, jsonb, jsonb) TO authenticated;
 
 -- ── RPC: OEE real por período e máquina ───────────────────────────────────────
 -- v2: além das paradas/refugos lançados dentro do assistente completo do
