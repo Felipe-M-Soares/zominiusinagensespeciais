@@ -636,9 +636,9 @@ export function LancamentoDiarioPanel() {
                     className={cn("relative flex flex-col items-center justify-center gap-0.5 h-16 rounded-xl border-2 transition-all",
                       ativa ? "border-primary bg-primary/5 shadow-sm" : "border-input hover:border-primary/30 hover:bg-muted/30")}>
                     <span className="text-sm font-bold">{m.codigo}</span>
-                    <span className="text-[9px] text-muted-foreground truncate max-w-full px-1">{m.nome}</span>
+                    <span className="text-[10px] text-muted-foreground truncate max-w-full px-1">{m.nome}</span>
                     <span className="absolute top-1.5 right-1.5 flex items-center gap-1">
-                      {qtdNaLista > 0 && <span className="text-[9px] font-bold text-blue-600 bg-blue-500/15 rounded-full h-3.5 w-3.5 flex items-center justify-center">{qtdNaLista}</span>}
+                      {qtdNaLista > 0 && <span className="text-[10px] font-bold text-blue-600 bg-blue-500/15 rounded-full h-3.5 w-3.5 flex items-center justify-center">{qtdNaLista}</span>}
                       <span className={cn("h-1.5 w-1.5 rounded-full", st.dot)} />
                     </span>
                   </button>
@@ -991,7 +991,7 @@ function ResumoPeriodoCard({ titulo, subtitulo, Icon, dado, loading }: {
         <div className="flex items-center justify-center py-8 text-muted-foreground text-[12px] gap-2">
           <Loader2 className="h-4 w-4 animate-spin" /> Calculando...
         </div>
-      ) : !dado || dado.hr_planejadas === 0 ? (
+      ) : !dado || !dado.hr_planejadas ? (
         <p className="text-[12px] text-muted-foreground py-6 text-center">Sem lançamentos neste período</p>
       ) : (
         <>

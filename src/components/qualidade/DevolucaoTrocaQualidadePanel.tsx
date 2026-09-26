@@ -182,7 +182,7 @@ export function DevolucaoTrocaQualidadePanel() {
                   <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground flex-1">
                     {q === "em_analise" ? "Aguardando decisão" : r.tipo === "devolucao" ? "Devolução" : "Troca"}
                   </span>
-                  <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0", Q_COLOR[q])}>
+                  <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border shrink-0", Q_COLOR[q])}>
                     {q === "em_analise" && <Lock size={9} className="inline mr-0.5 -mt-0.5" />}
                     {Q_LABEL[q]}
                   </span>
@@ -470,7 +470,7 @@ function AnalisarModal({ registro, onClose, onDone }: { registro: Registro; onCl
                     className={cn("rounded-xl border-2 p-2.5 text-left transition-all", decisao === d.id ? d.cor : "border-border/40 hover:border-border")}>
                     <d.Icon size={14} className="mb-1" />
                     <p className="text-[11px] font-bold">{d.label}</p>
-                    <p className="text-[9px] text-muted-foreground">{d.desc}</p>
+                    <p className="text-[10px] text-muted-foreground">{d.desc}</p>
                   </button>
                 ))}
               </div>

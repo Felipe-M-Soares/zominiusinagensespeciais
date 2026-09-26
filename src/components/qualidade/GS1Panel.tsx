@@ -19,12 +19,26 @@
  * 3. Este arquivo substitui o GS1Panel em src/pages/Qualidade.tsx
  */
 
-import { useState, useEffect, useMemo, memo, useCallback } from "react";
+import { useState, useEffect, useMemo, memo } from "react";
 import {
-  Barcode, Search, RefreshCw, CheckCircle2, AlertCircle,
-  BadgeCheck, Hash, ExternalLink, ChevronRight, X,
-  Package, Tag, Globe, FileSearch, ClipboardList,
-  Loader2, AlertTriangle, Info, ShieldCheck,
+  Barcode,
+  Search,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  BadgeCheck,
+  Hash,
+  ExternalLink,
+  ChevronRight,
+  X,
+  Package,
+  Globe,
+  FileSearch,
+  ClipboardList,
+  Loader2,
+  AlertTriangle,
+  Info,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -161,7 +175,7 @@ function ProductCard({ product }: { product: GS1ProductData }) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         {fields.slice(0, expanded ? undefined : 4).map(f => (
           <div key={f.label} className="min-w-0">
-            <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</p>
             <p className="text-[11px] font-mono truncate">{f.value}</p>
           </div>
         ))}
@@ -563,7 +577,7 @@ function CNPSyncTab({ devices }: { devices: DeviceGTIN[] }) {
                     { label: "Status",   value: (r as GS1ProductData).status },
                   ].filter(f => f.value && f.value !== "undefined").map(f => (
                     <div key={f.label}>
-                      <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</p>
                       <p className="text-[10px] font-mono truncate">{f.value}</p>
                     </div>
                   ))}
@@ -596,21 +610,21 @@ function VisaoGeralTab({
         <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-3 flex flex-col sm:flex-row items-center sm:gap-3 gap-0.5">
           <Hash className="h-4 w-4 sm:h-5 sm:w-5 text-violet-500 shrink-0" />
           <div className="flex flex-col items-center sm:items-start">
-            <p className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Total</p>
+            <p className="text-[10px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Total</p>
             <p className="text-xl sm:text-2xl font-bold tabular-nums text-violet-500 leading-none">{devices.length}</p>
           </div>
         </div>
         <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 flex flex-col sm:flex-row items-center sm:gap-3 gap-0.5">
           <BadgeCheck className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-500 shrink-0" />
           <div className="flex flex-col items-center sm:items-start">
-            <p className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Com GTIN</p>
+            <p className="text-[10px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Com GTIN</p>
             <p className="text-xl sm:text-2xl font-bold tabular-nums text-emerald-500 leading-none">{comGtin}</p>
           </div>
         </div>
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 flex flex-col sm:flex-row items-center sm:gap-3 gap-0.5">
           <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 shrink-0" />
           <div className="flex flex-col items-center sm:items-start">
-            <p className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Sem GTIN</p>
+            <p className="text-[10px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Sem GTIN</p>
             <p className="text-xl sm:text-2xl font-bold tabular-nums text-amber-500 leading-none">{semGtin}</p>
           </div>
         </div>

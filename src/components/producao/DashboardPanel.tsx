@@ -5,13 +5,22 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line, Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
 } from "recharts";
 import { Activity, TrendingUp, AlertTriangle, Clock, Zap, Award, RefreshCw, Target, BarChart2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { META_SEMESTRE_CODIGO, periodoSemestre } from "@/components/producao/MetasPanel";
+
+// Anos do filtro: de 2024 até o ano seguinte ao atual (antes era fixo até 2027).
+const ANOS_DISPONIVEIS = Array.from({ length: new Date().getFullYear() - 2024 + 2 }, (_, i) => 2024 + i);
 
 interface OEEData {
   hr_planejadas: number;
@@ -95,7 +104,10 @@ export function DashboardPanel() {
         .eq("ano", ano).eq("mes", sem === 1 ? 1 : 7).eq("maquina_codigo", META_SEMESTRE_CODIGO).maybeSingle(),
       (supabase.rpc as any)("calcular_oee", { p_data_ini: per.ini, p_data_fim: per.fim, p_maquina: null }),
     ]);
-    if (!error && res) setData(res as ResumoMensal);
+    // Só aceita a resposta se vier no formato esperado (evita tela de erro
+    // "toLocaleString of undefined" se a RPC mudar/retornar vazio).
+    if (!error && res && (res as ResumoMensal).geral) setData(res as ResumoMensal);
+    else setData(null);
     if (meta && oeeSem) {
       const o = oeeSem as { performance: number; qtde_produzida: number };
       setSemMeta({ sem, alvo: Number(meta.meta_oee_pct) || 0, real: o.performance ?? 0, pecas: o.qtde_produzida ?? 0 });
@@ -122,7 +134,7 @@ export function DashboardPanel() {
         </select>
         <select value={ano} onChange={e => setAno(Number(e.target.value))}
           className="h-9 rounded-lg border border-input bg-background px-3 text-sm">
-          {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          {ANOS_DISPONIVEIS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         <button onClick={load} disabled={loading}
           className="h-9 w-9 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40 transition-colors">

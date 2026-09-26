@@ -1,14 +1,10 @@
 project_id = "lvbilwznflyyiuxfhjyb"
 
-[functions]
-  [functions.import-devices]
-    verify_jwt = false
+# verify_jwt = false: estas funções validam o JWT manualmente (auth.getUser)
+# e checam o role de admin no banco antes de qualquer ação. Deixar o gateway
+# sem verificação evita falhas com as novas chaves assimétricas do Supabase.
+[functions.admin-reset-password]
+verify_jwt = false
 
-  [functions.delete-account]
-    verify_jwt = false
-
-  [functions.admin-reset-password]
-    verify_jwt = false
-
-  [functions.admin-create-user]
-    verify_jwt = false
+[functions.admin-create-user]
+verify_jwt = false

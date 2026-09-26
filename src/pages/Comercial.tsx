@@ -17,13 +17,12 @@ import { useConfirmEnter } from "@/hooks/useConfirmEnter";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { CardSkeleton } from "@/components/PageSkeleton";
-import { useStock, fetchAllMovements } from "@/hooks/useStock";
-import type { AllMovement } from "@/hooks/useStock";
+
+import { useStock } from "@/hooks/useStock";
+
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -52,7 +51,6 @@ import {
   LayoutDashboard,
   History,
   Trophy,
-  Undo2,
   TrendingUp,
   Download,
   Bell,
@@ -65,15 +63,14 @@ import {
   Loader2,
 } from "lucide-react";
 import { PageNav } from "@/components/PageNav";
-import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { Logo } from "@/components/Logo";
 
-import { loteValido, displayLote } from "@/lib/lote";
+import { displayLote } from "@/lib/lote";
 import { TabelaPrecos } from "@/components/TabelaPrecos";
 import { escHtml } from "@/lib/escHtml";
-import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
+
 import type { Cliente, PedidoCompleto } from "@/types/comercial";
 import { logAudit } from "@/types/comercial";
+import { excluirClienteSeguro } from "@/lib/pedidoUtils";
 
 // ─── Modais extraídos — lazy-loaded para reduzir o bundle inicial da página ────
 // (ver src/components/comercial/). Cada um só baixa quando de fato abre.
@@ -84,8 +81,6 @@ const FaturarModal           = lazy(() => import("@/components/comercial/Faturar
 const HistoricoClienteModal  = lazy(() => import("@/components/comercial/HistoricoClienteModal").then(m => ({ default: m.HistoricoClienteModal })));
 const ComentariosModal       = lazy(() => import("@/components/comercial/ComentariosModal").then(m => ({ default: m.ComentariosModal })));
 const HistoricoGeralModal    = lazy(() => import("@/components/comercial/HistoricoGeralModal").then(m => ({ default: m.HistoricoGeralModal })));
-
-
 
 // ─── Botão Reenviar Pedido Retornado ──────────────────────────────────────────
 
@@ -394,7 +389,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
                 <span className="text-[17px] font-black text-emerald-800 leading-none tabular-nums">
                   {pedido.desconto_pct}%
                 </span>
-                <span className="text-[8px] font-bold text-emerald-700 uppercase tracking-widest leading-none mt-0.5">
+                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest leading-none mt-0.5">
                   desc.
                 </span>
               </div>
@@ -408,7 +403,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
               <div className="flex flex-col items-center justify-center rounded-xl px-2 py-2 border border-violet-500/25 min-w-[50px]"
                 style={{ background: "linear-gradient(135deg,#ede9fe,#ddd6fe)", borderColor: "#c4b5fd" }}>
                 <Truck className="h-3 w-3 text-violet-600 mb-0.5" />
-                <span className="text-[9px] font-bold text-violet-700 leading-none">
+                <span className="text-[10px] font-bold text-violet-700 leading-none">
                   R$ {(pedido.frete).toFixed(0)}
                 </span>
               </div>
@@ -441,7 +436,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
                   className="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-muted/20 border border-border/40 group"
                 >
                   <div
-                    className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 text-[9px] font-black text-white"
+                    className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-black text-white"
                     style={{ background: s.accent + "cc" }}
                   >
                     {idx + 1}
@@ -452,7 +447,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
                     </p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {displayLote(it.lote) && (
-                        <span className="text-[9px] font-mono text-muted-foreground/60 bg-muted/40 rounded px-1">
+                        <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/40 rounded px-1">
                           {displayLote(it.lote)}
                         </span>
                       )}
@@ -653,7 +648,6 @@ function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir, onHis
   );
 }
 
-
 // ─── Notificações Bell ───────────────────────────────────────────────────────
 
 function NotificacoesBell({ userId }: { userId: string }) {
@@ -745,9 +739,6 @@ function NotificacoesBell({ userId }: { userId: string }) {
     </div>
   );
 }
-
-
-
 
 interface DashboardComercialProps {
   pedidos: PedidoCompleto[];
@@ -1194,17 +1185,9 @@ export default function Comercial() {
   async function handleDeleteCliente() {
     if (!deleteCliente) return;
     setDeletingCliente(true);
-    // Admin pode apagar mesmo com pedidos vinculados — cancela pedidos primeiro
-    if (isAdmin) {
-      await supabase.from("pedido_itens").delete().in(
-        "pedido_id",
-        (await supabase.from("pedidos_comerciais").select("id").eq("cliente_id", deleteCliente.id)).data?.map((p: Record<string, unknown>) => p.id as string) ?? []
-      );
-      await supabase.from("pedidos_comerciais").delete().eq("cliente_id", deleteCliente.id);
-    }
-    const { error } = await supabase.from("clientes").delete().eq("id", deleteCliente.id);
+    const res = await excluirClienteSeguro(deleteCliente.id, isAdmin);
     setDeletingCliente(false);
-    if (error) { toast.error("Não foi possível excluir o cliente."); return; }
+    if (!res.ok) { toast.error(res.error ?? "Não foi possível excluir o cliente.", { duration: 8000 }); return; }
     toast.success("Cliente excluído.");
     setDeleteCliente(null);
     loadClientes();

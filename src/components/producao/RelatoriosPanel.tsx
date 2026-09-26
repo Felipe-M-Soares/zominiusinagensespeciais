@@ -5,13 +5,13 @@
  */
 
 import { useState, useCallback } from "react";
-import { FileBarChart2, Download, Calendar, RefreshCw, BarChart2, Clock, ShieldAlert, Boxes } from "lucide-react";
+import { FileBarChart2, Download, RefreshCw, BarChart2, Clock, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 
 type RelatorioTipo = "producao_diaria"|"eficiencia"|"paradas"|"refugo";

@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { friendlyError } from "@/lib/errorMessages";
 import { cn } from "@/lib/utils";
-import { escHtml } from "@/lib/escHtml";
+
 import { formatBRL } from "@/lib/format";
 import { gerarDanfeHtml } from "@/lib/danfe";
 import {
@@ -134,7 +134,7 @@ const STATUS_COLOR: Record<StatusNota, string> = {
 
 function TestBadgeLocal({ modoTeste }: { modoTeste: boolean }) {
   return (
-    <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border",
+    <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
       modoTeste ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
                 : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30")}>
       {modoTeste ? "HOMOLOGAÇÃO" : "PRODUÇÃO"}
@@ -253,18 +253,18 @@ export function DevolucaoTrocaPanel({ modoTeste }: { modoTeste: boolean }) {
                 <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground flex-1">
                   {r.tipo === "devolucao" ? "Devolução" : "Troca"}
                 </span>
-                <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0", STATUS_COLOR[r.status])}>
+                <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border shrink-0", STATUS_COLOR[r.status])}>
                   {STATUS_LABEL[r.status]}
                 </span>
               </div>
               <p className="text-[13px] font-semibold truncate">{r.cliente_nome}</p>
               {qSubStatus(r) === "em_analise" && (
-                <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
                   <Lock size={9} /> Em análise pela Qualidade
                 </span>
               )}
               {(qSubStatus(r) === "aprovado_devolucao" || qSubStatus(r) === "aprovado_troca") && r.status === "rascunho" && (
-                <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
                   <ShieldCheck size={9} /> Aprovado pela Qualidade — pronto p/ emitir
                 </span>
               )}
@@ -435,7 +435,7 @@ function ViewerModal({ registro, onClose, onChanged, modoTeste }: { registro: No
               {registro.tipo === "devolucao" ? <Undo2 size={15}/> : <Repeat2 size={15}/>}
             </span>
             <span className="text-sm font-semibold">{registro.tipo === "devolucao" ? "Devolução" : "Troca"}</span>
-            <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full border", STATUS_COLOR[registro.status])}>
+            <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border", STATUS_COLOR[registro.status])}>
               {STATUS_LABEL[registro.status]}
             </span>
           </div>

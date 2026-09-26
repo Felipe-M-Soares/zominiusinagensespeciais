@@ -678,3 +678,58 @@ END;
 $f03$;
 
 GRANT EXECUTE ON FUNCTION public.resumo_mensal_producao(integer, integer) TO authenticated;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Policies de produção (antes em 20260029000000_seguranca.sql, que roda ANTES
+-- desta migration e por isso falhava em deploy novo). Idempotente.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ── producao ──────────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "apon_update" ON apontamentos_producao;
+CREATE POLICY "apon_update" ON apontamentos_producao
+  FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id OR public.get_my_role() IN ('admin','producao'));
+
+DROP POLICY IF EXISTS "par_update" ON paradas_producao;
+CREATE POLICY "par_update" ON paradas_producao
+  FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id OR public.get_my_role() IN ('admin','producao'));
+
+DROP POLICY IF EXISTS "ref_update" ON refugos_producao;
+CREATE POLICY "ref_update" ON refugos_producao
+  FOR UPDATE TO authenticated USING ((select auth.uid()) = user_id OR public.get_my_role() IN ('admin','producao'));
+
+-- Policies que usam auth.uid() IS NOT NULL → trocar por autenticação via role
+DROP POLICY IF EXISTS "maq_select"  ON maquinas_producao;
+DROP POLICY IF EXISTS "prod_select" ON produtos_producao;
+DROP POLICY IF EXISTS "apon_select" ON apontamentos_producao;
+DROP POLICY IF EXISTS "apon_insert" ON apontamentos_producao;
+DROP POLICY IF EXISTS "op_select"   ON ordens_planejamento;
+DROP POLICY IF EXISTS "op_insert"   ON ordens_planejamento;
+DROP POLICY IF EXISTS "op_update"   ON ordens_planejamento;
+DROP POLICY IF EXISTS "par_select"  ON paradas_producao;
+DROP POLICY IF EXISTS "par_insert"  ON paradas_producao;
+DROP POLICY IF EXISTS "ref_select"  ON refugos_producao;
+DROP POLICY IF EXISTS "ref_insert"  ON refugos_producao;
+DROP POLICY IF EXISTS "mp_select"   ON materias_primas_producao;
+DROP POLICY IF EXISTS "mp_update"   ON materias_primas_producao;
+DROP POLICY IF EXISTS "mov_select"  ON movimentos_mp_producao;
+DROP POLICY IF EXISTS "mov_insert"  ON movimentos_mp_producao;
+
+CREATE POLICY "maq_select"  ON maquinas_producao     FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "prod_select" ON public.produtos_producao;
+CREATE POLICY "prod_select" ON produtos_producao      FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "apon_select" ON public.apontamentos_producao;
+CREATE POLICY "apon_select" ON apontamentos_producao  FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "apon_insert" ON public.apontamentos_producao;
+CREATE POLICY "apon_insert" ON apontamentos_producao  FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "op_select" ON ordens_planejamento;
+CREATE POLICY "op_select"   ON ordens_planejamento    FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "op_insert"   ON ordens_planejamento    FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "op_update"   ON ordens_planejamento    FOR UPDATE TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "par_select"  ON paradas_producao       FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "par_insert"  ON paradas_producao       FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "ref_select"  ON refugos_producao       FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "ref_insert"  ON refugos_producao       FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "mp_select"   ON materias_primas_producao  FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "mp_update"   ON materias_primas_producao  FOR UPDATE TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "mov_select"  ON movimentos_mp_producao FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+CREATE POLICY "mov_insert"  ON movimentos_mp_producao FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);

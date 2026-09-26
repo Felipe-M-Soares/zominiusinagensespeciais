@@ -8,13 +8,24 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Plus, X, ClipboardList, RefreshCw, WifiOff, ChevronDown,
-  ChevronUp, Package, Clock, Trash2, CheckCircle2, Factory, Pencil,
-  AlertTriangle, BarChart2, FileSpreadsheet,
+  Plus,
+  X,
+  ClipboardList,
+  RefreshCw,
+  WifiOff,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Trash2,
+  CheckCircle2,
+  Factory,
+  Pencil,
+  AlertTriangle,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";

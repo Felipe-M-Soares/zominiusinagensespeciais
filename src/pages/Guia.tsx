@@ -12,16 +12,16 @@ export default function Guia() {
     <div className="min-h-screen bg-transparent flex flex-col">
       <header className="border-b border-border bg-card sticky top-0 z-10 shrink-0">
         <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} aria-label="Voltar">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <Logo className="h-8 object-contain" />
           <h1 className="font-display text-lg font-semibold flex-1">Guia de Uso do Sistema</h1>
-          <a href={GUIA_PDF_PATH} download="Guia-de-Uso.pdf">
-            <Button size="sm" className="gap-1.5">
+          <Button asChild size="sm" className="gap-1.5">
+            <a href={GUIA_PDF_PATH} download="Guia-de-Uso.pdf">
               <Download className="h-3.5 w-3.5" /> Baixar PDF
-            </Button>
-          </a>
+            </a>
+          </Button>
         </div>
       </header>
 
@@ -35,9 +35,9 @@ export default function Guia() {
                 <p className="text-sm font-medium">Não foi possível exibir o PDF aqui</p>
                 <p className="text-xs text-muted-foreground mt-1">Use o botão abaixo para abrir ou baixar o arquivo</p>
               </div>
-              <a href={GUIA_PDF_PATH} download="Guia-de-Uso.pdf">
-                <Button size="sm" className="gap-1.5"><Download className="h-3.5 w-3.5" /> Baixar PDF</Button>
-              </a>
+              <Button asChild size="sm" className="gap-1.5">
+                <a href={GUIA_PDF_PATH} download="Guia-de-Uso.pdf"><Download className="h-3.5 w-3.5" /> Baixar PDF</a>
+              </Button>
             </div>
           </object>
         </div>

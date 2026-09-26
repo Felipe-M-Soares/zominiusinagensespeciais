@@ -129,7 +129,7 @@ export function DeviceCard({ device, onClick }: Props) {
         )}
       >
         <div className="min-w-0">
-          <p className="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-0.5">GTIN / UDI</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-0.5">GTIN / UDI</p>
           <p className={cn("text-[14px] font-mono font-semibold tracking-tight truncate", copied ? "text-success" : "text-foreground")}>
             {device.anvisa_registration || device.udi_di || "—"}
           </p>

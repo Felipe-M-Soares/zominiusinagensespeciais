@@ -1,0 +1,50 @@
+# Mantém o projeto Supabase (plano Free) ativo.
+#
+# O Supabase pausa projetos Free após ~7 dias sem atividade. Este workflow
+# chama a função public.keep_alive() a cada 2 dias (e pode ser disparado
+# manualmente em Actions → "Supabase keep-alive" → Run workflow).
+#
+# Configuração (uma vez só) — GitHub → Settings → Secrets and variables → Actions:
+#   SUPABASE_URL       = https://<project-ref>.supabase.co
+#   SUPABASE_ANON_KEY  = a mesma chave pública usada em VITE_SUPABASE_PUBLISHABLE_KEY
+#
+# Observação: o GitHub desativa workflows agendados em repositórios sem
+# nenhum commit por 60 dias. O cron da Vercel (api/keep-alive.js) é a
+# segunda camada de proteção para esse caso.
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "17 9 */2 * *"   # a cada 2 dias, 09:17 UTC (fora do minuto 0 = menos fila)
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; then
+            echo "::error::Configure os secrets SUPABASE_URL e SUPABASE_ANON_KEY no repositório."
+            exit 1
+          fi
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o response.json -w "%{http_code}" \
+              -X POST "${SUPABASE_URL%/}/rest/v1/rpc/keep_alive" \
+              -H "apikey: ${SUPABASE_ANON_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+              -H "Content-Type: application/json" \
+              -d '{"p_source":"github-actions"}' || echo "000")
+            echo "Tentativa ${attempt}: HTTP ${code} — $(cat response.json 2>/dev/null || true)"
+            if [ "${code}" = "200" ]; then exit 0; fi
+            sleep $((attempt * 20))
+          done
+          echo "::error::Supabase não respondeu ao keep-alive. Se o projeto já estiver pausado, restaure-o no dashboard."
+          exit 1

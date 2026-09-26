@@ -1,10 +1,7 @@
-/* PERF-004 FIX: Consolidado de 13 imports separados para 1 único request ao Google Fonts.
-   Fontes removidas (nunca usadas no CSS/componentes): Roboto, Libre Caslon, Roboto Mono,
-   Lora, Space Mono, Source Sans Pro, Source Serif Pro, Source Code Pro.
-   Fontes mantidas: Inter (body), Space Grotesk (display/headings), Lato (font-sans),
-   EB Garamond (font-serif), Fira Code (font-mono). */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Lato:wght@400;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Fira+Code:wght@400;700&display=swap');
-
+/* Fontes self-hosted (pacotes @fontsource-variable importados em main.tsx):
+   sem requisição ao Google Fonts → carrega mais rápido, funciona offline no
+   PWA (apontamento de produção sem internet) e não envia IP do usuário a
+   terceiros (LGPD). */
 
 @tailwind base;
 @tailwind components;
@@ -12,117 +9,128 @@
 
 @layer base {
   :root {
-    --background: 0 0% 96%;
-    --foreground: 0 0% 9%;
+    /* Neutros levemente frios (antes: cinzas puros 0% saturação, bordas
+       80% — pesadas e "datadas"). */
+    --background: 220 20% 97%;
+    --foreground: 222 22% 11%;
 
-    --card: 0 0% 98%;
-    --card-foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 22% 11%;
 
-    --popover: 0 0% 89%;
-    --popover-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 22% 11%;
 
-    --primary: 197 100% 50%;
+    /* Ciano mais profundo: texto branco sobre o botão primário agora passa
+       no contraste WCAG AA (antes 197 100% 50% ≈ 2,6:1). */
+    --primary: 199 89% 39%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 197 25% 26%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 222 22% 16%;
 
-    --muted: 0 0% 90%;
-    --muted-foreground: 0 0% 35%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 9% 40%;
 
-    --accent: 197 100% 92%;
-    --accent-foreground: 197 100% 30%;
+    --accent: 199 80% 94%;
+    --accent-foreground: 199 90% 26%;
 
-    --destructive: 0 88% 50%;
-    --destructive-foreground: 0 85% 97%;
+    --destructive: 0 74% 50%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 80%;
-    --input: 0 0% 80%;
-    --ring: 197 100% 50%;
+    --border: 220 13% 88%;
+    --input: 220 13% 84%;
+    --ring: 199 89% 45%;
 
     --radius: 0.625rem;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 0 0% 9%;
-    --sidebar-primary: 197 100% 50%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 22% 11%;
+    --sidebar-primary: 199 89% 39%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 197 25% 26%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 80%;
-    --sidebar-ring: 197 100% 50%;
+    --sidebar-accent: 220 14% 95%;
+    --sidebar-accent-foreground: 222 22% 11%;
+    --sidebar-border: 220 13% 90%;
+    --sidebar-ring: 199 89% 45%;
 
-    --success: 152 80% 36%;
+    --success: 152 70% 34%;
     --success-foreground: 0 0% 100%;
-    --warning: 32 96% 50%;
+    --warning: 32 95% 44%;
     --warning-foreground: 0 0% 100%;
-    --brand: 197 70% 58%;
+    /* Laranja da marca Zomini (logo) — para destaques de identidade. */
+    --brand: 22 90% 52%;
     --brand-foreground: 0 0% 100%;
 
-    --font-display: 'Space Grotesk', sans-serif;
-    --font-body: 'Inter', sans-serif;
-    --chart-1: 197 100% 58%;
-    --chart-2: 197 90% 68%;
-    --chart-3: 197 85% 45%;
-    --chart-4: 197 100% 50%;
-    --chart-5: 280 70% 55%;
-    --sidebar: 0 0% 98%;
-    --font-sans: 'Lato', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-    --font-serif: 'EB Garamond', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
-    --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    --font-display: 'Space Grotesk Variable', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-body: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    --chart-1: 199 89% 45%;
+    --chart-2: 22 90% 52%;
+    --chart-3: 152 60% 40%;
+    --chart-4: 262 60% 58%;
+    --chart-5: 38 92% 50%;
+    --sidebar: 0 0% 100%;
+    --font-sans: var(--font-body);
+    --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+    --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+    --shadow-2xs: 0 1px 2px 0 hsl(222 30% 20% / 0.04);
+    --shadow-xs: 0 1px 2px 0 hsl(222 30% 20% / 0.05);
+    --shadow-sm: 0 1px 3px 0 hsl(222 30% 20% / 0.07), 0 1px 2px -1px hsl(222 30% 20% / 0.06);
+    --shadow: 0 1px 3px 0 hsl(222 30% 20% / 0.08), 0 1px 2px -1px hsl(222 30% 20% / 0.06);
+    --shadow-md: 0 4px 8px -2px hsl(222 30% 20% / 0.08), 0 2px 4px -2px hsl(222 30% 20% / 0.06);
+    --shadow-lg: 0 12px 20px -6px hsl(222 30% 20% / 0.10), 0 4px 8px -4px hsl(222 30% 20% / 0.06);
+    --shadow-xl: 0 20px 32px -8px hsl(222 30% 20% / 0.14), 0 8px 12px -6px hsl(222 30% 20% / 0.08);
+    --shadow-2xl: 0 28px 56px -12px hsl(222 30% 20% / 0.22);
     --tracking-normal: 0em;
     --spacing: 0.25rem;
   }
 
   .dark {
-    --background: 0 0% 9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 14%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 25%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 197 100% 60%;
-    --primary-foreground: 197 100% 8%;
-    --secondary: 197 22% 44%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 45%;
-    --muted-foreground: 0 0% 98%;
-    --accent: 197 95% 20%;
-    --accent-foreground: 197 100% 74%;
-    --destructive: 0 90% 65%;
-    --destructive-foreground: 0 85% 97%;
-    --border: 0 0% 32%;
-    --input: 0 0% 32%;
-    --ring: 197 100% 60%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 197 100% 60%;
-    --sidebar-primary-foreground: 197 100% 8%;
-    --sidebar-accent: 197 100% 70%;
-    --sidebar-accent-foreground: 197 90% 18%;
-    --sidebar-border: 0 0% 32%;
-    --sidebar-ring: 197 100% 60%;
-    --chart-1: 197 100% 68%;
-    --chart-2: 197 90% 78%;
-    --chart-3: 197 90% 60%;
-    --chart-4: 197 100% 60%;
-    --chart-5: 280 75% 65%;
-    --sidebar: 0 0% 14%;
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    /* Correção: antes --muted era 45% (cinza claro demais como fundo) e
+       --muted-foreground 98% (texto secundário BRANCO) — no escuro não havia
+       hierarquia visual entre título e texto de apoio. */
+    --background: 224 14% 8%;
+    --foreground: 220 14% 95%;
+    --card: 224 13% 11%;
+    --card-foreground: 220 14% 95%;
+    --popover: 224 13% 13%;
+    --popover-foreground: 220 14% 95%;
+    --primary: 199 90% 58%;
+    --primary-foreground: 205 80% 10%;
+    --secondary: 224 10% 18%;
+    --secondary-foreground: 220 14% 92%;
+    --muted: 224 10% 17%;
+    --muted-foreground: 220 9% 64%;
+    --accent: 199 60% 18%;
+    --accent-foreground: 199 90% 78%;
+    --destructive: 0 80% 62%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 224 10% 20%;
+    --input: 224 10% 24%;
+    --ring: 199 90% 58%;
+    --sidebar-background: 224 14% 9%;
+    --sidebar-foreground: 220 14% 95%;
+    --sidebar-primary: 199 90% 58%;
+    --sidebar-primary-foreground: 205 80% 10%;
+    --sidebar-accent: 224 10% 16%;
+    --sidebar-accent-foreground: 220 14% 95%;
+    --sidebar-border: 224 10% 18%;
+    --sidebar-ring: 199 90% 58%;
+    --success: 152 60% 45%;
+    --warning: 36 95% 55%;
+    --brand: 22 95% 58%;
+    --chart-1: 199 90% 60%;
+    --chart-2: 22 95% 60%;
+    --chart-3: 152 55% 50%;
+    --chart-4: 262 70% 70%;
+    --chart-5: 38 92% 58%;
+    --sidebar: 224 14% 9%;
+    --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
+    --shadow-xs: 0 1px 2px 0 hsl(0 0% 0% / 0.35);
+    --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.4), 0 1px 2px -1px hsl(0 0% 0% / 0.3);
+    --shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.4), 0 1px 2px -1px hsl(0 0% 0% / 0.3);
+    --shadow-md: 0 4px 8px -2px hsl(0 0% 0% / 0.45), 0 2px 4px -2px hsl(0 0% 0% / 0.3);
+    --shadow-lg: 0 12px 20px -6px hsl(0 0% 0% / 0.5), 0 4px 8px -4px hsl(0 0% 0% / 0.3);
+    --shadow-xl: 0 20px 32px -8px hsl(0 0% 0% / 0.55);
+    --shadow-2xl: 0 28px 56px -12px hsl(0 0% 0% / 0.6);
   }
 }
 
@@ -132,33 +140,32 @@
   }
 
   body {
-    @apply text-foreground;
+    @apply text-foreground antialiased;
     font-family: var(--font-body);
-
-    /* Mesh gradient — light mode
-       Base neutra do tema + 4 orbs ciano (cor primária do projeto) nos cantos.
-       background-attachment: fixed cria efeito parallax: o padrão não rola com a página. */
+    font-feature-settings: "cv11", "ss01";
+    /* Fundo sutil: um único brilho discreto no topo em vez de 4 "orbs"
+       coloridos com background-attachment: fixed (que forçava repaint no
+       scroll e pesava em celulares). */
     background-color: hsl(var(--background));
-    background-image:
-      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 50% / 0.16) 0%, transparent 70%),
-      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 50% / 0.13) 0%, transparent 65%),
-      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(190 100% 65% / 0.10) 0%, transparent 60%),
-      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(280  70% 60% / 0.07) 0%, transparent 55%);
-    background-attachment: fixed;
-    background-size: 100% 100%;
+    background-image: radial-gradient(1200px 500px at 20% -10%, hsl(var(--primary) / 0.06), transparent 70%);
+    background-repeat: no-repeat;
     min-height: 100vh;
   }
 
-  /* Dark mode — orbs um pouco mais vivos sobre fundo escuro */
-  .dark body {
-    background-color: hsl(var(--background));
-    background-image:
-      radial-gradient(ellipse 80% 60% at 0% 0%,    hsl(197 100% 60% / 0.20) 0%, transparent 70%),
-      radial-gradient(ellipse 60% 50% at 100% 100%, hsl(197 100% 60% / 0.16) 0%, transparent 65%),
-      radial-gradient(ellipse 50% 40% at 100% 0%,   hsl(190 100% 70% / 0.11) 0%, transparent 60%),
-      radial-gradient(ellipse 40% 35% at 0%  100%,  hsl(280  75% 65% / 0.09) 0%, transparent 55%);
-    background-attachment: fixed;
-    background-size: 100% 100%;
+  /* Números alinhados em tabelas/KPIs (valores monetários não "dançam"). */
+  table, .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    /* Indicadores de carregamento continuam girando (feedback essencial). */
+    .animate-spin { animation-duration: 1s !important; animation-iteration-count: infinite !important; }
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -323,69 +330,10 @@ html, body, #root {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
-/* ── Notificações (toast) no mobile: pílula compacta só com ícone colorido ──
-   No celular o toast com texto ficava sobrepondo os botões de confirmação
-   fixos no rodapé dos modais. Em vez de mostrar o texto completo (como no
-   desktop), no mobile mostramos só um ícone pequeno, colorido e redondo, no
-   topo da tela — fora da área dos botões. Tocar no ícone revela o texto por
-   alguns segundos, para quem precisar confirmar a mensagem exata. */
-.toaster-mobile-compact [data-sonner-toast] {
-  width: auto !important;
-  min-width: 0 !important;
-  max-width: 64px !important;
-  padding: 8px !important;
-  border-radius: 999px !important;
-  gap: 0 !important;
-  justify-content: center !important;
-  align-items: center !important;
-  box-shadow: 0 4px 16px -2px hsl(0 0% 0% / 0.18) !important;
-  cursor: pointer;
-  transition: max-width 0.25s ease, padding 0.25s ease, border-radius 0.25s ease;
-}
-
-.toaster-mobile-compact [data-sonner-toast] [data-content] {
-  display: none !important;
-}
-
-.toaster-mobile-compact [data-sonner-toast] [data-icon] {
-  margin: 0 !important;
-}
-
-.toaster-mobile-compact [data-sonner-toast] [data-close-button] {
-  display: none !important;
-}
-
-/* Estado expandido (após tocar no ícone): volta a virar um cartão com texto */
-.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap {
-  max-width: 92vw !important;
-  width: calc(100vw - 32px) !important;
-  padding: 12px 14px !important;
-  border-radius: 14px !important;
-  gap: 10px !important;
-  justify-content: flex-start !important;
-}
-
-.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap [data-content] {
-  display: block !important;
-}
-
-
-/* Mobile: mantém ações do toast clicáveis, mas sem exibir o texto "Ver" dentro da pílula. */
-.toaster-mobile-compact [data-sonner-toast] [data-button],
-.toaster-mobile-compact [data-sonner-toast] button[data-button] {
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  opacity: 0 !important;
-  color: transparent !important;
-  background: transparent !important;
-}
-
-.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap [data-button],
-.toaster-mobile-compact [data-sonner-toast].toast-expanded-tap button[data-button] {
-  opacity: 0 !important;
+/* Utilitários de barra de rolagem (usados em PageNav/menus — antes as classes
+   existiam no JSX mas não estavam definidas, então não tinham efeito). */
+@layer utilities {
+  .scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-thin { scrollbar-width: thin; }
 }

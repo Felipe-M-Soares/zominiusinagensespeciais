@@ -3,7 +3,7 @@ import { z } from "zod";
 import { useDebounce } from "@/hooks/useDebounce";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchDevicesPage } from "@/lib/supabaseUtils";
-import { invokeWithAuth } from "@/lib/invokeEdgeFunction";
+
 import { DeviceImageUploader } from "@/components/admin/DeviceImageUploader";
 import { DesenhoTecnicoUploader } from "@/components/admin/DesenhoTecnicoUploader";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Search, Upload, RefreshCw, ShieldAlert, FileImage, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, RefreshCw, ShieldAlert, FileImage, FileText } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { logger } from "@/lib/logger";

@@ -1,308 +1,249 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, EyeOff, ShieldX, ArrowRight } from "lucide-react";
-import { toast } from "sonner";
+import { Label } from "@/components/ui/label";
+import {
+  Eye, EyeOff, ShieldX, ArrowRight, AlertCircle, Boxes, Factory, ShieldCheck,
+  ShoppingBag, Receipt, WifiOff,
+} from "lucide-react";
 import { logger } from "@/lib/logger";
-import logoZomini from "@/assets/logo_zomini.png";
+import { cn } from "@/lib/utils";
+import logoZomini from "@/assets/logo_zomini.webp";
+
+const MODULOS = [
+  { icon: Boxes,       label: "Estoque e expedição" },
+  { icon: Factory,     label: "Produção e OEE" },
+  { icon: ShieldCheck, label: "Qualidade e ANVISA" },
+  { icon: ShoppingBag, label: "Comercial e pedidos" },
+  { icon: Receipt,     label: "Financeiro e NF-e" },
+];
 
 export default function Login() {
   const [login, setLogin]               = useState("");
   const [password, setPassword]         = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+  const [capsLock, setCapsLock]         = useState(false);
   const { signIn } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
 
   const wasBlocked = (location.state as { blocked?: boolean } | null)?.blocked === true;
-  const canSubmit  = login.trim() && password.trim() && !loading;
+  const offline    = typeof navigator !== "undefined" && !navigator.onLine;
+  const canSubmit  = !!login.trim() && !!password && !loading;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
     setLoading(true);
+    setError(null);
     try {
       const { error } = await signIn(login.trim(), password);
-      if (error) { toast.error(error); return; }
-
-      // O ProtectedLayout redireciona automaticamente para /set-password
-      // via mustChangePassword do contexto (populado pelo fetchRoleAndApproval).
-      // Não precisamos verificar aqui — evita race condition com o banco.
+      // Erro exibido junto ao formulário (antes só em toast — no celular o
+      // toast era um ícone sem texto e a pessoa não via o motivo).
+      if (error) { setError(error); return; }
+      // "/" redireciona para a tela inicial do perfil (ver IndexRoute) e o
+      // ProtectedLayout cuida da troca de senha obrigatória.
       navigate("/");
     } catch (err) {
       logger.error("Login error:", err);
-      toast.error("Erro inesperado. Tente novamente.");
+      setError("Erro inesperado. Tente novamente.");
     } finally {
       setLoading(false);
     }
   }
 
-  return (
-    <div className="min-h-screen flex overflow-hidden" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+  const detectCaps = (e: React.KeyboardEvent<HTMLInputElement>) =>
+    setCapsLock(e.getModifierState?.("CapsLock") ?? false);
 
-      {/* ── Painel esquerdo — identidade visual ─────────────────────────────── */}
-      <div
-        className="hidden lg:flex flex-col justify-between w-[52%] relative overflow-hidden p-12"
-        style={{
-          background: "linear-gradient(160deg, #0a1628 0%, #0d1f3c 40%, #0b2240 70%, #061525 100%)",
-        }}
+  return (
+    <div className="min-h-[100dvh] flex bg-background">
+      {/* ── Painel de identidade (desktop) ─────────────────────────────── */}
+      <aside
+        className="hidden lg:flex flex-col justify-between w-[46%] max-w-[640px] relative overflow-hidden p-12 text-white"
+        style={{ background: "linear-gradient(155deg, #0c1220 0%, #111a2e 55%, #0b1324 100%)" }}
       >
-        {/* Textura de grade fina */}
-        <svg className="absolute inset-0 w-full h-full opacity-[0.06]" xmlns="http://www.w3.org/2000/svg">
+        <div
+          aria-hidden
+          className="absolute -top-40 -left-40 w-[560px] h-[560px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, hsl(var(--brand) / 0.22) 0%, transparent 65%)" }}
+        />
+        <div
+          aria-hidden
+          className="absolute -bottom-48 -right-32 w-[520px] h-[520px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, hsl(199 89% 50% / 0.16) 0%, transparent 65%)" }}
+        />
+        <svg aria-hidden className="absolute inset-0 w-full h-full opacity-[0.05]" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="hsl(197,100%,60%)" strokeWidth="0.8"/>
+            <pattern id="login-grid" width="44" height="44" patternUnits="userSpaceOnUse">
+              <path d="M 44 0 L 0 0 0 44" fill="none" stroke="white" strokeWidth="0.7" />
             </pattern>
           </defs>
-          <rect width="100%" height="100%" fill="url(#grid)" />
+          <rect width="100%" height="100%" fill="url(#login-grid)" />
         </svg>
 
-        {/* Círculo de luz primário */}
-        <div
-          className="absolute top-[-10%] left-[-15%] w-[700px] h-[700px] rounded-full pointer-events-none"
-          style={{
-            background: "radial-gradient(circle, hsla(197,100%,47%,0.18) 0%, transparent 65%)",
-          }}
-        />
-        {/* Segundo ponto de luz */}
-        <div
-          className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full pointer-events-none"
-          style={{
-            background: "radial-gradient(circle, hsla(197,100%,47%,0.10) 0%, transparent 65%)",
-          }}
-        />
+        <img src={logoZomini} alt="Zomini Usinagens Especiais" className="relative h-10 w-auto self-start" />
 
-        {/* Linha decorativa vertical */}
-        <div
-          className="absolute left-0 top-0 bottom-0 w-[3px]"
-          style={{ background: "linear-gradient(to bottom, transparent, hsl(197,100%,47%), transparent)" }}
-        />
-
-        {/* Logo no topo */}
-        <div className="relative z-10">
-          <img
-            src={logoZomini}
-            alt="Zomini Usinagens Especiais"
-            className="h-10 w-auto object-contain brightness-0 invert opacity-90"
-          />
-        </div>
-
-        {/* Conteúdo central */}
-        <div className="relative z-10 space-y-6">
-          {/* Ícone decorativo */}
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, hsla(197,100%,47%,0.25) 0%, hsla(197,100%,47%,0.08) 100%)",
-              border: "1px solid hsla(197,100%,47%,0.3)",
-              boxShadow: "0 0 40px hsla(197,100%,47%,0.15)",
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="14" cy="14" r="4" fill="hsl(197,100%,47%)" />
-              <circle cx="14" cy="14" r="8" fill="none" stroke="hsl(197,100%,47%)" strokeWidth="1.5" strokeDasharray="3 3" />
-              <circle cx="14" cy="14" r="12" fill="none" stroke="hsla(197,100%,47%,0.4)" strokeWidth="1" />
-              <line x1="2" y1="14" x2="26" y2="14" stroke="hsla(197,100%,47%,0.3)" strokeWidth="0.8" />
-              <line x1="14" y1="2" x2="14" y2="26" stroke="hsla(197,100%,47%,0.3)" strokeWidth="0.8" />
-            </svg>
-          </div>
-
-          <div>
-            <h2 className="text-4xl font-bold leading-tight" style={{ color: "#f0f8ff", letterSpacing: "-0.02em" }}>
-              Sistema de<br />
-              <span style={{ color: "hsl(197,100%,60%)" }}>Gestão Integrada</span>
+        <div className="relative space-y-8">
+          <div className="space-y-4">
+            <h2 className="font-display text-[2.6rem] font-bold leading-[1.1] tracking-tight">
+              Gestão integrada
+              <br />
+              <span className="text-brand">da usinagem à nota fiscal.</span>
             </h2>
-            <p className="mt-4 text-base leading-relaxed" style={{ color: "hsla(197,20%,75%,0.8)" }}>
-              Controle completo de estoque, produção e comercial — tudo em um único lugar.
+            <p className="text-base leading-relaxed text-white/65 max-w-md">
+              Um só lugar para acompanhar peças, produção, qualidade, pedidos e financeiro.
             </p>
           </div>
-
-          {/* Métricas decorativas */}
-          <div className="grid grid-cols-3 gap-4 pt-4">
-            {[
-              { label: "Módulos", value: "7" },
-              { label: "Integrado", value: "100%" },
-              { label: "Tempo Real", value: "∞" },
-            ].map((m) => (
-              <div
-                key={m.label}
-                className="rounded-xl p-4 space-y-1"
-                style={{
-                  background: "hsla(197,100%,47%,0.06)",
-                  border: "1px solid hsla(197,100%,47%,0.15)",
-                }}
+          <ul className="grid grid-cols-1 xl:grid-cols-2 gap-2.5 max-w-lg">
+            {MODULOS.map(({ icon: Icon, label }) => (
+              <li
+                key={label}
+                className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm text-white/80"
               >
-                <div className="text-2xl font-bold" style={{ color: "hsl(197,100%,60%)" }}>{m.value}</div>
-                <div className="text-xs" style={{ color: "hsla(197,20%,70%,0.7)" }}>{m.label}</div>
-              </div>
+                <Icon className="h-4 w-4 text-brand shrink-0" />
+                {label}
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
 
-        {/* Rodapé */}
-        <div className="relative z-10">
-          <p className="text-xs" style={{ color: "hsla(197,20%,60%,0.5)" }}>
-            © {new Date().getFullYear()} Zomini Usinagens Especiais
-          </p>
-        </div>
-      </div>
+        <p className="relative text-xs text-white/40">
+          © {new Date().getFullYear()} Zomini Usinagens Especiais
+        </p>
+      </aside>
 
-      {/* ── Painel direito — formulário ──────────────────────────────────────── */}
-      <div
-        className="flex-1 flex flex-col items-center justify-center px-6 py-10 relative"
-        style={{ background: "hsl(0,0%,96%)" }}
-      >
-        {/* Logo mobile */}
-        <div className="lg:hidden mb-10">
-          <img
-            src={logoZomini}
-            alt="Zomini Usinagens Especiais"
-            className="h-9 w-auto object-contain"
-          />
-        </div>
-
+      {/* ── Formulário ─────────────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col items-center justify-center px-6 py-10">
         <div className="w-full max-w-[380px] animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <img src={logoZomini} alt="Zomini Usinagens Especiais" className="lg:hidden h-9 w-auto mb-10" />
 
-          {/* Cabeçalho */}
-          <div className="mb-8">
-            <p
-              className="text-xs font-semibold uppercase tracking-[0.15em] mb-2"
-              style={{ color: "hsl(197,100%,40%)" }}
-            >
+          <header className="mb-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary mb-2">
               Bem-vindo de volta
             </p>
-            <h1
-              className="text-3xl font-bold"
-              style={{ color: "hsl(0,0%,9%)", letterSpacing: "-0.02em" }}
-            >
+            <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
               Acesse sua conta
             </h1>
-            <p className="mt-2 text-sm" style={{ color: "hsl(0,0%,45%)" }}>
-              Digite suas credenciais para continuar
+            <p className="mt-2 text-sm text-muted-foreground">
+              Use o login e a senha fornecidos pelo administrador.
             </p>
-          </div>
+          </header>
 
-          {/* Banner de bloqueio */}
           {wasBlocked && (
-            <div
-              className="mb-6 px-4 py-3 rounded-2xl flex items-start gap-3"
-              style={{
-                background: "hsl(0,60%,97%)",
-                border: "1px solid hsl(0,72%,88%)",
-              }}
-            >
-              <ShieldX className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "hsl(0,72%,50%)" }} />
+            <div role="alert" className="mb-5 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+              <ShieldX className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
               <div>
-                <p className="text-sm font-semibold" style={{ color: "hsl(0,72%,38%)" }}>Acesso Bloqueado</p>
-                <p className="text-xs mt-0.5" style={{ color: "hsl(0,50%,50%)" }}>
+                <p className="text-sm font-semibold text-destructive">Acesso bloqueado</p>
+                <p className="text-xs mt-0.5 text-muted-foreground">
                   Seu acesso foi bloqueado. Entre em contato com o administrador.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Formulário */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Campo Login */}
+          {offline && (
+            <div role="status" className="mb-5 flex items-center gap-2.5 rounded-xl border border-warning/30 bg-warning/10 px-4 py-2.5 text-xs text-foreground">
+              <WifiOff className="h-4 w-4 shrink-0 text-warning" />
+              Você está sem internet. O login precisa de conexão.
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="space-y-1.5">
-              <label
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "hsl(0,0%,30%)" }}
-              >
+              <Label htmlFor="login" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Login
-              </label>
+              </Label>
               <Input
+                id="login"
+                name="username"
                 type="text"
-                placeholder="Seu login"
+                placeholder="seu.login"
                 value={login}
-                onChange={(e) => setLogin(e.target.value)}
-                required
+                onChange={(e) => { setLogin(e.target.value); if (error) setError(null); }}
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 autoFocus
-                className="h-12 rounded-xl text-sm font-medium transition-all border-2 focus-visible:ring-0 focus-visible:border-[hsl(197,100%,47%)] placeholder:text-[hsl(0,0%,65%)]"
-                style={{
-                  background: "hsl(0,0%,99%)",
-                  borderColor: login ? "hsl(197,100%,47%)" : "hsl(0,0%,88%)",
-                  color: "hsl(0,0%,9%)",
-                } as React.CSSProperties}
+                aria-invalid={!!error}
+                className="h-12 rounded-xl text-[15px] bg-card"
               />
             </div>
 
-            {/* Campo Senha */}
             <div className="space-y-1.5">
-              <label
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "hsl(0,0%,30%)" }}
-              >
+              <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Senha
-              </label>
+              </Label>
               <div className="relative">
                 <Input
+                  id="password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
+                  onChange={(e) => { setPassword(e.target.value); if (error) setError(null); }}
+                  onKeyUp={detectCaps}
+                  onKeyDown={detectCaps}
                   autoComplete="current-password"
-                  className="h-12 pr-12 rounded-xl text-sm font-medium transition-all border-2 focus-visible:ring-0 focus-visible:border-[hsl(197,100%,47%)] placeholder:text-[hsl(0,0%,65%)] [&::-ms-reveal]:hidden"
-                  style={{
-                    background: "hsl(0,0%,99%)",
-                    borderColor: password ? "hsl(197,100%,47%)" : "hsl(0,0%,88%)",
-                    color: "hsl(0,0%,9%)",
-                  } as React.CSSProperties}
+                  aria-invalid={!!error}
+                  aria-describedby={capsLock ? "caps-hint" : undefined}
+                  className="h-12 pr-12 rounded-xl text-[15px] bg-card"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors hover:opacity-70"
-                  style={{ color: "hsl(0,0%,50%)" }}
-                  tabIndex={-1}
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  aria-pressed={showPassword}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {capsLock && (
+                <p id="caps-hint" className="text-xs text-warning font-medium">Caps Lock está ativado.</p>
+              )}
             </div>
 
-            {/* Botão Entrar */}
+            {error && (
+              <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={!canSubmit}
-              className="relative w-full h-12 rounded-xl font-semibold text-sm tracking-wide transition-all duration-200 overflow-hidden group mt-2"
-              style={{
-                background: canSubmit
-                  ? "linear-gradient(135deg, hsl(197,100%,42%) 0%, hsl(197,100%,35%) 100%)"
-                  : "hsl(197,30%,80%)",
-                color: "white",
-                boxShadow: canSubmit ? "0 4px 24px hsla(197,100%,47%,0.35)" : "none",
-                cursor: canSubmit ? "pointer" : "not-allowed",
-              } as React.CSSProperties}
+              className={cn(
+                "w-full h-12 rounded-xl font-semibold text-sm tracking-wide transition-all duration-200 mt-2",
+                "inline-flex items-center justify-center gap-2 group",
+                "bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:brightness-110 active:scale-[0.99]",
+                "disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed disabled:active:scale-100",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              )}
             >
-              {/* Brilho hover */}
-              <span
-                className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                style={{ background: "linear-gradient(135deg, hsl(197,100%,50%) 0%, hsl(197,100%,40%) 100%)" }}
-              />
-              <span className="relative flex items-center justify-center gap-2">
-                {loading ? (
-                  <>
-                    <div className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    Entrando...
-                  </>
-                ) : (
-                  <>
-                    Entrar
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 duration-200" />
-                  </>
-                )}
-              </span>
+              {loading ? (
+                <>
+                  <span className="h-4 w-4 border-2 border-primary-foreground/40 border-t-primary-foreground rounded-full animate-spin" />
+                  Entrando...
+                </>
+              ) : (
+                <>
+                  Entrar
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </>
+              )}
             </button>
           </form>
 
+          <p className="mt-8 text-center text-xs text-muted-foreground">
+            Esqueceu a senha? Peça ao administrador para redefini-la.
+          </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

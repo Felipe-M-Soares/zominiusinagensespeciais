@@ -21,15 +21,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  ArrowLeft,
   ArrowDownCircle,
   ArrowUpCircle,
   ChevronDown,
   Clock,
   Plus,
-  ScanBarcode,
   Search,
-  X,
   Package,
   AlertTriangle,
   TrendingDown,
@@ -37,19 +34,14 @@ import {
   Boxes,
   List,
   Trash2,
-  History,
   Tag,
   Menu,
   Shield,
   Activity,
-  Globe,
   Truck,
   PackageCheck,
   Filter,
-  LayoutDashboard,
   Wrench,
-  Inbox,
-  ShoppingBag,
   Archive,
   FileSpreadsheet,
 } from "lucide-react";
@@ -576,8 +568,6 @@ export default function Estoque() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
-
-
   // ── Estado principal ──────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ActiveView>("dashboard");
   const [search, setSearch] = useState("");
@@ -1072,7 +1062,6 @@ export default function Estoque() {
             <PedidosEstoquePanel isAdmin={isAdmin} />
           </Suspense>
         )}
-
 
         {/* Busca + Filtros — apenas nas abas de lista */}
         {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && (

@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
+// Anos do filtro: de 2024 até o ano seguinte ao atual (antes era fixo até 2027).
+const ANOS_DISPONIVEIS = Array.from({ length: new Date().getFullYear() - 2024 + 2 }, (_, i) => 2024 + i);
+
 interface Meta { id:string; mes:number; ano:number; maquina_codigo:string|null; meta_pecas:number; meta_oee_pct:number; meta_disponibilidade_pct:number; meta_qualidade_pct:number; }
 interface OEEReal { oee:number; disponibilidade:number; performance:number; qualidade:number; qtde_produzida:number; }
 
@@ -115,7 +118,7 @@ export function MetasPanel() {
           {MESES.map((m,i)=><option key={i} value={i+1}>{m}</option>)}
         </select>
         <select value={ano} onChange={e=>setAno(Number(e.target.value))} className="h-9 rounded-lg border border-input bg-background px-3 text-sm">
-          {[2024,2025,2026,2027].map(y=><option key={y}>{y}</option>)}
+          {ANOS_DISPONIVEIS.map(y=><option key={y}>{y}</option>)}
         </select>
         <button onClick={load} className="h-9 w-9 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40"><RefreshCw className={cn("h-4 w-4 text-muted-foreground",loading&&"animate-spin")}/></button>
         <Button size="sm" className="h-9 gap-1 ml-auto" onClick={()=>setModal(true)}><Plus className="h-4 w-4"/>Definir Meta</Button>

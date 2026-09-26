@@ -1,24 +1,16 @@
 /**
- * StockNav — Navegação mobile-first com ícones animados e preview de contagens
+ * StockNav — abas do módulo Estoque.
  *
- * Substitui o bloco de navegação (Tabs) na página Estoque.tsx.
- * Cole este componente no topo do arquivo e use <StockNav ... /> no lugar
- * do bloco <div className="flex items-stretch gap-2"> atual.
+ * Agora é uma camada fina sobre o PageNav (mesmo visual de todos os módulos).
+ * Antes era uma cópia do componente com rótulos de 8px abreviados
+ * ("Interm.", "Retrab.", "Recebim.") difíceis de ler.
  */
 
-import { useState, useCallback, useRef } from "react";
-import {
-  LayoutDashboard,
-  Package,
-  Truck,
-  Wrench,
-  Inbox,
-  ShoppingBag,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useMemo } from "react";
+import { LayoutDashboard, Package, Truck, Wrench, Inbox, ShoppingBag } from "lucide-react";
+import { PageNav, type PageNavTab } from "@/components/PageNav";
 import type { StockItem } from "@/hooks/useStock";
 
-// ── Tipos ──────────────────────────────────────────────────────────────────────
 export type ActiveView =
   | "dashboard"
   | "intermediaria"
@@ -30,197 +22,50 @@ export type ActiveView =
 interface StockNavProps {
   activeView: ActiveView;
   onViewChange: (view: ActiveView) => void;
-  intermediariaItems: StockItem[];
-  expedicaoItems: StockItem[];
-  retrabalhoItems: StockItem[];
+  /** Mantidos por compatibilidade — as contagens vêm de `qtyByFase`. */
+  intermediariaItems?: StockItem[];
+  expedicaoItems?: StockItem[];
+  retrabalhoItems?: StockItem[];
   loading: boolean;
   pedidosPendentes?: number;
-  qtyByFase?: { intermediaria: number; expedicao: number; retrabalho: number; count_intermediaria: number; count_expedicao: number; count_retrabalho: number };
+  qtyByFase?: {
+    intermediaria: number; expedicao: number; retrabalho: number;
+    count_intermediaria: number; count_expedicao: number; count_retrabalho: number;
+  };
 }
 
-// ── Configuração das abas ──────────────────────────────────────────────────────
-const TABS = [
-  {
-    id: "dashboard" as ActiveView,
-    label: "Dashboard",
-    Icon: LayoutDashboard,
-    activeColor: "text-primary",
-    activeBg: "bg-primary/10",
-    activeBorder: "border-primary/40",
-    badgeBg: "bg-primary/15",
-    badgeText: "text-primary",
-    animation: "animate-pop",
-  },
-  {
-    id: "intermediaria" as ActiveView,
-    label: "Interm.",
-    Icon: Package,
-    activeColor: "text-primary",
-    activeBg: "bg-primary/10",
-    activeBorder: "border-primary/40",
-    badgeBg: "bg-primary/15",
-    badgeText: "text-primary",
-    animation: "animate-bounce-once",
-  },
-  {
-    id: "expedicao" as ActiveView,
-    label: "Expedição",
-    Icon: Truck,
-    activeColor: "text-success",
-    activeBg: "bg-success/10",
-    activeBorder: "border-success/40",
-    badgeBg: "bg-success/15",
-    badgeText: "text-success",
-    animation: "animate-spin-once",
-  },
-  {
-    id: "retrabalho" as ActiveView,
-    label: "Retrab.",
-    Icon: Wrench,
-    activeColor: "text-orange-500",
-    activeBg: "bg-orange-500/10",
-    activeBorder: "border-orange-500/40",
-    badgeBg: "bg-orange-500/15",
-    badgeText: "text-orange-500",
-    animation: "animate-shake",
-  },
-  {
-    id: "recebimento" as ActiveView,
-    label: "Recebim.",
-    Icon: Inbox,
-    activeColor: "text-cyan-600 dark:text-cyan-400",
-    activeBg: "bg-cyan-500/10",
-    activeBorder: "border-cyan-500/40",
-    badgeBg: "bg-cyan-500/15",
-    badgeText: "text-cyan-600 dark:text-cyan-400",
-    animation: "animate-tilt",
-  },
-  {
-    id: "pedidos" as ActiveView,
-    label: "Pedidos",
-    Icon: ShoppingBag,
-    activeColor: "text-amber-600 dark:text-amber-400",
-    activeBg: "bg-amber-500/10",
-    activeBorder: "border-amber-500/40",
-    badgeBg: "bg-amber-500/15",
-    badgeText: "text-amber-600 dark:text-amber-400",
-    animation: "animate-pop",
-  },
-] as const;
-
-// ── Componente principal ───────────────────────────────────────────────────────
-export function StockNav({
-  activeView,
-  onViewChange,
-  intermediariaItems,
-  expedicaoItems,
-  retrabalhoItems,
-  loading,
-  pedidosPendentes = 0,
-  qtyByFase,
-}: StockNavProps) {
-  const [animating, setAnimating] = useState<ActiveView | null>(null);
-  // Ref para evitar closure stale no handleClick (activeView pode ficar desatualizado
-  // em taps rápidos mobile porque o useCallback não re-executa imediatamente).
-  const activeViewRef = useRef<ActiveView>(activeView);
-  activeViewRef.current = activeView;
-
-  const handleClick = useCallback(
-    (view: ActiveView) => {
-      if (view === activeViewRef.current) return;
-      setAnimating(view);
-      setTimeout(() => setAnimating(null), 500);
-      onViewChange(view);
+export function StockNav({ activeView, onViewChange, loading, pedidosPendentes = 0, qtyByFase }: StockNavProps) {
+  const tabs = useMemo<PageNavTab<ActiveView>[]>(() => [
+    { id: "dashboard",     label: "Visão geral",   Icon: LayoutDashboard },
+    { id: "intermediaria", label: "Intermediário", Icon: Package, badge: qtyByFase?.count_intermediaria },
+    {
+      id: "expedicao", label: "Expedição", Icon: Truck, badge: qtyByFase?.count_expedicao,
+      activeColor: "text-success", activeBg: "bg-success/10", activeBorder: "border-success/30",
+      badgeBg: "bg-success/15", badgeText: "text-success",
     },
-    [onViewChange]
-  );
-
-  // Badges com totais reais do RPC (não limitados pela paginação)
-  const counts: Partial<Record<ActiveView, number>> = {
-    intermediaria: qtyByFase?.count_intermediaria || undefined,
-    expedicao:     qtyByFase?.count_expedicao     || undefined,
-    retrabalho:    qtyByFase?.count_retrabalho     || undefined,
-    pedidos:       pedidosPendentes                || undefined,
-  };
+    {
+      id: "retrabalho", label: "Retrabalho", Icon: Wrench, badge: qtyByFase?.count_retrabalho,
+      activeColor: "text-orange-600 dark:text-orange-400", activeBg: "bg-orange-500/10", activeBorder: "border-orange-500/30",
+      badgeBg: "bg-orange-500/15", badgeText: "text-orange-600 dark:text-orange-400",
+    },
+    {
+      id: "recebimento", label: "Recebimento", Icon: Inbox,
+      activeColor: "text-cyan-700 dark:text-cyan-400", activeBg: "bg-cyan-500/10", activeBorder: "border-cyan-500/30",
+    },
+    {
+      id: "pedidos", label: "Pedidos", Icon: ShoppingBag, badge: pedidosPendentes,
+      activeColor: "text-amber-700 dark:text-amber-400", activeBg: "bg-amber-500/10", activeBorder: "border-amber-500/30",
+      badgeBg: "bg-amber-500/15", badgeText: "text-amber-700 dark:text-amber-400",
+    },
+  ], [qtyByFase, pedidosPendentes]);
 
   return (
-    <div className="space-y-2">
-      {/* ── Barra de ícones ── */}
-      <div className="overflow-x-auto scrollbar-none -mx-1 px-1 py-1"><div className="flex items-stretch gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5 min-w-max sm:min-w-0">
-        {TABS.map((tab) => {
-          const isActive = tab.id === activeView;
-          const count = counts[tab.id];
-          const isAnimating = animating === tab.id;
-
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleClick(tab.id)}
-              className={cn(
-                "relative flex flex-1 flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border transition-all duration-200",
-                isActive
-                  ? cn(tab.activeBg, tab.activeBorder)
-                  : "border-transparent hover:bg-muted/30"
-              )}
-              aria-label={tab.label}
-              aria-pressed={isActive}
-            >
-              {/* Badge */}
-              {!loading && count !== undefined && count > 0 && (
-                <span
-                  className={cn(
-                    "absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center px-[3px] leading-none",
-                    isActive ? cn(tab.badgeBg, tab.badgeText) : "bg-muted/60 text-muted-foreground"
-                  )}
-                >
-                  {count}
-                </span>
-              )}
-
-              {/* Ícone com animação */}
-              <div
-                className={cn(
-                  "flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200",
-                  isActive ? tab.activeBg : ""
-                )}
-              >
-                <tab.Icon
-                  className={cn(
-                    "h-[18px] w-[18px] transition-all duration-200",
-                    isActive ? cn(tab.activeColor, "scale-110") : "text-muted-foreground",
-                    isAnimating && "animate-[wiggle_0.4s_ease]"
-                  )}
-                  style={
-                    isAnimating
-                      ? { animation: "navIconPop 0.35s cubic-bezier(.36,.07,.19,.97)" }
-                      : {}
-                  }
-                />
-              </div>
-
-              {/* Label */}
-              <span
-                className={cn(
-                  "text-[8px] font-medium leading-tight",
-                  isActive ? tab.activeColor : "text-muted-foreground"
-                )}
-              >
-                {tab.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <style>{`
-        @keyframes navIconPop {
-          0%   { transform: scale(1.1); }
-          30%  { transform: scale(1.45) rotate(-10deg); }
-          60%  { transform: scale(0.95) rotate(6deg); }
-          100% { transform: scale(1.1) rotate(0deg); }
-        }
-      `}</style>
-    </div></div>
+    <PageNav
+      tabs={tabs}
+      activeTab={activeView}
+      onTabChange={onViewChange}
+      loading={loading}
+      ariaLabel="Seções do estoque"
+    />
   );
 }

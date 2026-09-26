@@ -19,11 +19,10 @@
  *    dimensionais que não cabe no apontamento resumido de Controle).
  */
 
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, lazy, Suspense } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { getStoredTheme, applyTheme } from "@/lib/theme";
 import {
   LayoutDashboard, ClipboardList, CalendarClock,
   Settings2, OctagonPause, ShieldAlert, Boxes,
@@ -98,8 +97,6 @@ export default function Producao() {
   const canWriteCadastros = role === "admin" || role === "producao";
   const [view, setView] = useState<ProdView>("diario");
   const [importOpen, setImportOpen] = useState(false);
-
-  useEffect(() => { applyTheme(getStoredTheme()); }, []);
 
   // Mesmo padrão de filtro por role que já existia, agora também libera
   // "Cadastros" para quem tem role producao (o banco já permite via RLS).

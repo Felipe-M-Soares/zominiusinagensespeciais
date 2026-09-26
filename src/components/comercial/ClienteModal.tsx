@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
-import { User, X, CheckCircle2 } from "lucide-react";
+import { User, X, CheckCircle2, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { Cliente } from "@/types/comercial";
+import { buscarCep as consultarCep, buscarCnpj, formatarDocumento, formatarTelefone, somenteDigitos } from "@/lib/brasilApi";
+import { validarDocumento } from "@/lib/validators";
 
 interface ClienteModalProps {
   open: boolean;
@@ -28,6 +30,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -52,21 +55,49 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
     if (cepLimpo.length !== 8) return;
     setBuscandoCep(true);
     try {
-      const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
-      const data = await res.json();
-      if (data.erro) { toast.error("CEP não encontrado."); return; }
-      setLogradouro(data.logradouro ?? "");
-      setBairro(data.bairro ?? "");
-      setMunicipio(data.localidade ?? "");
-      setUf(data.uf ?? "");
-    } catch { toast.error("Erro ao buscar CEP."); }
-    finally { setBuscandoCep(false); }
+      const end = await consultarCep(cepLimpo);
+      if (!end) { toast.error("CEP não encontrado."); return; }
+      setLogradouro(end.logradouro);
+      setBairro(end.bairro);
+      setMunicipio(end.municipio);
+      setUf(end.uf);
+    } finally { setBuscandoCep(false); }
+  }
+
+  /** Preenche o cadastro com os dados públicos do CNPJ (Receita Federal via BrasilAPI). */
+  async function preencherPorCnpj() {
+    const d = somenteDigitos(documento);
+    if (d.length !== 14) { toast.error("Informe um CNPJ com 14 dígitos."); return; }
+    if (!validarDocumento(d)) { toast.error("CNPJ inválido — confira os dígitos."); return; }
+    setBuscandoCnpj(true);
+    try {
+      const r = await buscarCnpj(d);
+      if (!r) { toast.error("Não foi possível consultar esse CNPJ agora."); return; }
+      // Só preenche o que está vazio — nunca sobrescreve o que o usuário digitou.
+      if (!nome.trim()) setNome(r.razaoSocial);
+      if (!telefone.trim() && r.telefone) setTelefone(r.telefone);
+      if (!email.trim() && r.email) setEmail(r.email);
+      if (!cep.trim() && r.cep) setCep(r.cep.length === 8 ? `${r.cep.slice(0, 5)}-${r.cep.slice(5)}` : r.cep);
+      if (!logradouro.trim() && r.logradouro) setLogradouro(r.logradouro);
+      if (!numero.trim() && r.numero) setNumero(r.numero);
+      if (!bairro.trim() && r.bairro) setBairro(r.bairro);
+      if (!municipio.trim() && r.municipio) setMunicipio(r.municipio);
+      if (!uf.trim() && r.uf) setUf(r.uf);
+      if (r.situacao && r.situacao.toUpperCase() !== "ATIVA") {
+        toast.warning(`Atenção: situação cadastral do CNPJ é "${r.situacao}".`, { duration: 8000 });
+      } else {
+        toast.success("Dados do CNPJ preenchidos.");
+      }
+    } finally { setBuscandoCnpj(false); }
   }
 
   if (!open) return null;
 
   async function handleSave() {
     if (!nome.trim()) { toast.error("Nome obrigatório"); return; }
+    if (documento.trim() && !validarDocumento(documento)) {
+      toast.error("CPF/CNPJ inválido — confira os dígitos."); return;
+    }
     // FIX: validação de e-mail antes de persistir
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       toast.error("E-mail inválido."); return;
@@ -119,7 +150,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
             <User className="h-4 w-4 text-violet-500" />
             <p className="text-sm font-semibold">{inicial ? "Editar Cliente" : "Novo Cliente"}</p>
           </div>
-          <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
+          <button type="button" onClick={onClose} aria-label="Fechar" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -131,11 +162,38 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">CPF / CNPJ</label>
-              <Input value={documento} onChange={e => setDocumento(e.target.value)} placeholder="000.000.000-00" className="h-9 text-sm" maxLength={20} />
+              <div className="relative">
+                <Input
+                  value={documento}
+                  onChange={e => setDocumento(formatarDocumento(e.target.value))}
+                  placeholder="CPF ou CNPJ"
+                  inputMode="numeric"
+                  className="h-9 text-sm pr-9"
+                  maxLength={18}
+                  aria-invalid={!!documento && somenteDigitos(documento).length >= 11 && !validarDocumento(documento)}
+                />
+                {somenteDigitos(documento).length === 14 && (
+                  <button
+                    type="button"
+                    onClick={preencherPorCnpj}
+                    disabled={buscandoCnpj}
+                    title="Buscar dados do CNPJ na Receita"
+                    aria-label="Buscar dados do CNPJ"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-md text-violet-600 hover:bg-violet-500/10 disabled:opacity-50"
+                  >
+                    {buscandoCnpj
+                      ? <div className="h-3.5 w-3.5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                      : <Search className="h-3.5 w-3.5" />}
+                  </button>
+                )}
+              </div>
+              {!!documento && somenteDigitos(documento).length >= 11 && !validarDocumento(documento) && (
+                <p className="text-[11px] text-destructive">Documento inválido</p>
+              )}
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Telefone</label>
-              <Input value={telefone} onChange={e => setTelefone(e.target.value)} placeholder="(00) 00000-0000" className="h-9 text-sm" maxLength={20} />
+              <Input value={telefone} onChange={e => setTelefone(formatarTelefone(e.target.value))} placeholder="(00) 00000-0000" inputMode="tel" className="h-9 text-sm" maxLength={20} />
             </div>
           </div>
           <div className="space-y-1">

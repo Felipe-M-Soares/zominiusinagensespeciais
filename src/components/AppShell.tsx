@@ -2,11 +2,11 @@ import { useState, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/hooks/useNotifications";
-import { getStoredTheme, applyTheme } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS } from "@/types/roles";
+import { ROLE_LABELS, getHomeRoute } from "@/types/roles";
 import type { AppRole } from "@/types/roles";
-import logoZomini from "@/assets/logo_zomini.png";
+import logoZomini from "@/assets/logo_zomini.webp";
 import { NotificacoesPanel } from "@/components/NotificacoesPanel";
 import {
   Boxes,
@@ -25,7 +25,7 @@ import {
   ShieldCheck,
   Info,
 } from "lucide-react";
-import { FeedbackButton } from "@/components/FeedbackButton";
+
 import { APP_VERSION } from "@/lib/appInfo";
 
 interface NavItem {
@@ -74,6 +74,8 @@ function SidebarNav({ visibleItems, isAdmin, collapsed, isActive, onNav }: Sideb
             key={item.path}
             onClick={() => onNav(item.path)}
             title={collapsed ? item.label : undefined}
+            aria-label={item.label}
+            aria-current={active ? "page" : undefined}
             className={cn(
               "w-full flex items-center rounded-lg text-sm font-medium transition-all duration-150 group relative overflow-hidden",
               collapsed ? "p-2.5 justify-center" : "px-3 py-2.5 gap-3",
@@ -87,7 +89,7 @@ function SidebarNav({ visibleItems, isAdmin, collapsed, isActive, onNav }: Sideb
             )}
             <Icon className={cn("shrink-0 transition-colors", collapsed ? "w-5 h-5" : "w-4 h-4")} />
             {!collapsed && <span className="truncate">{item.label}</span>}
-            {collapsed && active && (
+            {collapsed && (
               <span className="absolute left-full ml-2 px-2 py-1 bg-foreground text-background text-xs rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
                 {item.label}
               </span>
@@ -112,11 +114,13 @@ function SidebarNav({ visibleItems, isAdmin, collapsed, isActive, onNav }: Sideb
                 key={item.path}
                 onClick={() => onNav(item.path)}
                 title={collapsed ? item.label : undefined}
+                aria-label={item.label}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "w-full flex items-center rounded-lg text-sm font-medium transition-all duration-150 group relative",
                   collapsed ? "p-2.5 justify-center" : "px-3 py-2.5 gap-3",
                   active
-                    ? "bg-primary text-primary-foreground shadow-sm"
+                    ? "bg-primary/10 text-primary font-semibold"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                 )}
               >
@@ -151,10 +155,11 @@ function MobileNav({ visibleItems, isAdmin, isActive, onNav }: MobileNavProps) {
           <button
             key={item.path}
             onClick={() => onNav(item.path)}
+            aria-current={active ? "page" : undefined}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
               active
-                ? "bg-primary text-primary-foreground shadow-sm"
+                ? "bg-primary/10 text-primary font-semibold"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
             )}
           >
@@ -178,7 +183,7 @@ function MobileNav({ visibleItems, isAdmin, isActive, onNav }: MobileNavProps) {
                 className={cn(
                   "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
                   active
-                    ? "bg-primary text-primary-foreground shadow-sm"
+                    ? "bg-primary/10 text-primary font-semibold"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                 )}
               >
@@ -206,35 +211,45 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // em Comercial.tsx para o sino próprio da vendedora, que é independente).
   const notifState = useNotifications(isAdmin);
 
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [isDark, setIsDark] = useState(() => {
-    const theme = getStoredTheme();
-    if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return theme === "dark";
+  const [collapsed, setCollapsedState] = useState(() => {
+    try { return localStorage.getItem("sidebar-collapsed") === "1"; } catch { return false; }
   });
-
-  useEffect(() => {
-    applyTheme(getStoredTheme());
+  const setCollapsed = useCallback((v: boolean) => {
+    setCollapsedState(v);
+    try { localStorage.setItem("sidebar-collapsed", v ? "1" : "0"); } catch { /* modo privado */ }
   }, []);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
 
   // Atalho Cmd+K / Ctrl+K → busca global no estoque
   useEffect(() => {
     function handler(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        // Só para quem tem acesso ao Estoque (senão o RoleGuard devolvia a
+        // pessoa para outra tela, parecendo um bug).
+        if (!(isAdmin || role === "estoque" || role === "qualidade")) return;
         e.preventDefault();
         navigate("/estoque");
       }
     }
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [navigate]);
+  }, [navigate, isAdmin, role]);
 
   const toggleTheme = useCallback(() => {
-    const next = !isDark;
-    setIsDark(next);
-    applyTheme(next ? "dark" : "light");
-  }, [isDark]);
+    setTheme(isDark ? "light" : "dark");
+  }, [isDark, setTheme]);
+
+  // Drawer mobile: fecha com Esc e trava o scroll do fundo enquanto aberto.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileOpen(false); };
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = prev; document.removeEventListener("keydown", onKey); };
+  }, [mobileOpen]);
 
   const isActive = useCallback(
     (path: string) => {
@@ -258,8 +273,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return item.roles.includes(role ?? "");
   });
 
-  const userInitial = user?.email?.charAt(0).toUpperCase() ?? "U";
-  const userEmail = user?.email ?? "";
+  // Mostra o nome da pessoa (ou o login), não o e-mail interno
+  // "<login>@interno.conceptus", que não significa nada para o usuário.
+  const displayName =
+    (user?.user_metadata as { display_name?: string } | undefined)?.display_name?.trim() ||
+    (user?.email ?? "").split("@")[0] ||
+    "Usuário";
+  const userInitial = displayName.charAt(0).toUpperCase() || "U";
+  const userEmail = displayName;
+  const homeRoute = getHomeRoute((role as AppRole | null) ?? null);
 
   return (
     <div className="flex h-screen bg-background">
@@ -280,17 +302,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             {collapsed ? (
               <button
-                onClick={() => handleNav("/")}
+                onClick={() => handleNav(homeRoute)}
                 className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 hover:bg-primary/20 transition-colors"
-                title="Ir para Componentes"
+                title="Ir para a tela inicial"
               >
                 <Cpu className="w-4 h-4 text-primary" />
               </button>
             ) : (
               <button
-                onClick={() => handleNav("/")}
+                onClick={() => handleNav(homeRoute)}
                 className="flex-1 min-w-0 hover:opacity-80 transition-opacity cursor-pointer"
-                title="Ir para Componentes"
+                title="Ir para a tela inicial"
               >
                 <img
                   src={logoZomini}
@@ -378,6 +400,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <button
                     onClick={() => signOut()}
                     title="Sair"
+                    aria-label="Sair"
                     className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors w-full flex justify-center"
                   >
                     <LogOut className="w-4 h-4" />
@@ -397,12 +420,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <button
                     onClick={() => signOut()}
                     title="Sair"
+                    aria-label="Sair"
                     className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <p className="text-[9px] text-muted-foreground/50 text-center pt-1">v{APP_VERSION}</p>
+                <p className="text-[10px] text-muted-foreground/60 text-center pt-1">v{APP_VERSION}</p>
               </div>
             )}
           </div>
@@ -428,7 +452,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <img src={logoZomini} alt="Zomini" className="h-9 w-auto object-contain" decoding="async" />
           <button
             onClick={() => setMobileOpen(false)}
-            className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground"
+            aria-label="Fechar menu"
+            className="p-2 rounded-md hover:bg-muted/50 text-muted-foreground"
           >
             <X className="w-4 h-4" />
           </button>
@@ -470,12 +495,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 onClick={() => signOut()}
                 title="Sair"
+                    aria-label="Sair"
                 className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
-            <p className="text-[9px] text-muted-foreground/50 text-center pt-1">v{APP_VERSION}</p>
+            <p className="text-[10px] text-muted-foreground/60 text-center pt-1">v{APP_VERSION}</p>
           </div>
         </div>
       </aside>
@@ -484,7 +510,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Mobile topbar */}
         <header className="md:hidden flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-card/90 backdrop-blur-md shrink-0 z-30 mobile-header-safe">
-          <button onClick={() => handleNav("/")} className="hover:opacity-80 transition-opacity" title="Componentes">
+          <button onClick={() => handleNav(homeRoute)} className="hover:opacity-80 transition-opacity" title="Tela inicial" aria-label="Tela inicial">
             <img src={logoZomini} alt="Zomini" className="h-7 w-auto object-contain" decoding="async" />
           </button>
           <div className="flex items-center gap-1">
@@ -494,6 +520,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => setMobileOpen(true)}
               className="p-2 rounded-lg hover:bg-muted/60 text-muted-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"
               title="Menu"
+              aria-label="Abrir menu"
+              aria-expanded={mobileOpen}
             >
               <Menu className="w-5 h-5" />
             </button>

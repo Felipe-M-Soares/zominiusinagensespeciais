@@ -10,8 +10,11 @@
 
 import { useState, memo } from "react";
 import {
-  Search, Package, Truck, Wrench, Tag, AlertCircle,
-  MapPin, ShieldAlert,
+  Package,
+  Truck,
+  Wrench,
+  Tag,
+  AlertCircle,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { sanitizeQuery } from "@/lib/sanitize";
@@ -232,7 +235,6 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
   };
 }
 
-
 // ── Sub-componentes ────────────────────────────────────────────────────────────
 
 // Linha de lote inline dentro de cada fase
@@ -268,7 +270,7 @@ function FaseRow({ fase }: { fase: FaseInfo }) {
         {fase.lotes.length > 0 && (
           <div className="flex-1 flex flex-wrap gap-1 min-w-0 overflow-hidden">
             {fase.lotes.map(l => (
-              <span key={l.lote} className="flex items-center gap-0.5 text-[9px] font-mono bg-background/60 border border-border/30 px-1 py-0.5 rounded">
+              <span key={l.lote} className="flex items-center gap-0.5 text-[10px] font-mono bg-background/60 border border-border/30 px-1 py-0.5 rounded">
                 {l.lote}
               </span>
             ))}
@@ -279,7 +281,7 @@ function FaseRow({ fase }: { fase: FaseInfo }) {
             <span className="text-[10px] font-semibold tabular-nums text-blue-500">{fase.quantity_reserved}r</span>
           )}
           <span className={cn("text-[12px] font-bold tabular-nums", cfg.color)}>{fase.quantity.toLocaleString("pt-BR")}</span>
-          <span className="text-[9px] text-muted-foreground/50">un.</span>
+          <span className="text-[10px] text-muted-foreground/50">un.</span>
         </div>
       </div>
     </div>
@@ -298,14 +300,14 @@ function PecaCard({ peca }: { peca: PecaResult }) {
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className="text-[10px] text-muted-foreground/60 font-mono">{peca.reference}</span>
             {peca.em_retrabalho && (
-              <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">Retrab.</span>
+              <span className="text-[10px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">Retrab.</span>
             )}
             {peca.tem_reservas && (
-              <span className="text-[9px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">Reserv.</span>
+              <span className="text-[10px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">Reserv.</span>
             )}
           </div>
         </div>
-        <span className="text-[13px] font-bold tabular-nums text-foreground shrink-0">{totalQty.toLocaleString("pt-BR")}<span className="text-[9px] font-normal text-muted-foreground/60 ml-0.5">un.</span></span>
+        <span className="text-[13px] font-bold tabular-nums text-foreground shrink-0">{totalQty.toLocaleString("pt-BR")}<span className="text-[10px] font-normal text-muted-foreground/60 ml-0.5">un.</span></span>
       </div>
       {/* Fases compactas */}
       <div className="px-2 py-1.5 space-y-1">

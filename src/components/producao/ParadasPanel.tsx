@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, X, OctagonPause, Clock, AlertTriangle, CheckCircle2, Search, RefreshCw } from "lucide-react";
+import { Plus, X, OctagonPause, Clock, CheckCircle2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
@@ -154,7 +154,6 @@ export function ParadasPanel() {
   const [modalOpen,setModalOpen]=useState(false);
   const [search,setSearch]=useState("");
   const {loadWithFallback,saveWithFallback}=useOfflineSync();
-
 
   const load=useCallback(async()=>{
     setLoading(true);

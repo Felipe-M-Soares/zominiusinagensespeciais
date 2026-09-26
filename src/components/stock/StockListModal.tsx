@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { StockItem } from "@/hooks/useStock";
-import { Package, AlertTriangle, TrendingDown, CheckCircle2, List, Printer } from "lucide-react";
+import { Package, TrendingDown, CheckCircle2, List, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { escHtml } from "@/lib/escHtml";
 
@@ -145,12 +145,12 @@ export function StockListModal({ open, onClose, items }: Props) {
                   <div className="flex items-center gap-1.5">
                     <p className="text-[10px] text-muted-foreground font-mono">{item.device.reference}</p>
                     {isRetrabalho && (
-                      <span className="text-[9px] font-semibold uppercase tracking-wide text-orange-500 bg-orange-500/10 px-1 py-0.5 rounded">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-orange-500 bg-orange-500/10 px-1 py-0.5 rounded">
                         retrabalho
                       </span>
                     )}
                     {isIntermediaria && (
-                      <span className="text-[9px] font-semibold uppercase tracking-wide text-blue-500 bg-blue-500/10 px-1 py-0.5 rounded">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-500 bg-blue-500/10 px-1 py-0.5 rounded">
                         intermediário
                       </span>
                     )}

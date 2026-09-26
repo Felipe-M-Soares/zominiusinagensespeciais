@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense, useEffect } from "react";
 import type { AppRole } from "@/types/roles";
+import { canAccessRoute, getHomeRoute } from "@/types/roles";
 
 /**
  * PointerEventsWatchdog — correção do "app congelado, nenhum botão responde".
@@ -104,8 +105,11 @@ function RoleGuard({ children, roles, adminOnly }: {
   adminOnly?: boolean;
 }) {
   const { isAdmin, role } = useAuth();
-  if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
-  if (roles && !isAdmin && !roles.includes(role as AppRole)) return <Navigate to="/" replace />;
+  // Barrado → volta para a tela inicial DO PERFIL (antes ia sempre para "/",
+  // que nem todos os perfis podem ver).
+  const home = getHomeRoute(role);
+  if (adminOnly && !isAdmin) return <Navigate to={home} replace />;
+  if (roles && !isAdmin && !roles.includes(role as AppRole)) return <Navigate to={home} replace />;
   return <>{children}</>;
 }
 
@@ -119,8 +123,11 @@ function PendingApprovalRoute() {
 }
 
 function IndexRoute() {
-  const { loading, approved } = useAuth();
+  const { loading, approved, role } = useAuth();
   if (loading || approved === null) return <LoadingScreen />;
+  // Comercial, Financeiro e Processos não têm acesso a "Componentes":
+  // manda direto para o módulo deles em vez de mostrar uma tela proibida.
+  if (role && !canAccessRoute(role, "/")) return <Navigate to={getHomeRoute(role)} replace />;
   return <Index />;
 }
 

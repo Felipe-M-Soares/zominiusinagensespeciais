@@ -740,7 +740,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <p className="text-[10px] text-muted-foreground font-mono">{item.device_reference}</p>
                           {(item.desconto_pct ?? 0) > 0 && (
-                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-500/10 rounded px-1">
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 rounded px-1">
                               -{String(item.desconto_pct).replace(".", ",")}%
                             </span>
                           )}

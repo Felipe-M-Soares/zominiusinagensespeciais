@@ -25,27 +25,23 @@ import {
   ShoppingBag,
   AlertTriangle,
   MapPin,
-  DollarSign,
   ArrowRight,
   PackageCheck,
   Ban,
-  Search,
-  Archive,
   Minus,
   Plus,
   Printer,
   RotateCcw,
-  Pencil,
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchLotesDisponivelBatch } from "@/hooks/useStock";
-import { useDebounce } from "@/hooks/useDebounce";
+
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
-import { PrintButton } from "@/components/PrintButton";
+
 import { escHtml } from "@/lib/escHtml";
 import { detectarUF, adaptarCFOP as adaptarCFOPShared } from "@/lib/cfop";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
@@ -574,7 +570,6 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
       return adaptarCFOPShared(cfopOriginal, ufCliente, UF_EMPRESA);
     }
 
-
     // ── Agrupa por tipo de peça (model + reference) para separadores na página ──
     const grouped = new Map<string, typeof printRows>();
     for (const row of printRows) {
@@ -613,7 +608,7 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
         <td class="col-model">
           <span class="model-name">${escHtml(first.model ?? "")}</span>
           <span class="model-ref">${escHtml(first.reference ?? "")}</span>
-          <span class="model-meta">NCM: ${ncm} &nbsp;|&nbsp; CFOP: ${cfop} &nbsp;|&nbsp; IPI: ${ipi}</span>
+          <span class="model-meta">NCM: ${escHtml(String(ncm))} &nbsp;|&nbsp; CFOP: ${escHtml(String(cfop))} &nbsp;|&nbsp; IPI: ${ipi}</span>
         </td>
         <td class="col-preco">${precoFmt(precoComDesconto)}</td>
         <td class="col-qty">${tipoTotal}</td>
@@ -1295,7 +1290,6 @@ function PedidoCard({ pedido, onExpandChange, onIniciarSeparacao, onSalvarSepara
     </div>
   );
 }
-
 
 // ─── Modal de Separação de Lotes ──────────────────────────────────────────────
 
@@ -2291,7 +2285,6 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
     return () => { supabase.removeChannel(channel); };
   }, [loadPedidos]);
 
-
   const filtrados = pedidos.filter(p => {
     const matchStatus = ["separando", "pronto", "faturado", "enviado", "retorno"].includes(p.status);
     if (!matchStatus) return false;
@@ -2302,7 +2295,6 @@ export function PedidosEstoquePanel({ isAdmin }: PedidosEstoquePanelProps) {
       (p.vendedora_nome ?? "").toLowerCase().includes(q)
     );
   });
-
 
   async function handleSalvarSeparacao(
     pedido: Pedido,

@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Tag, Printer, RefreshCw, Package, AlertCircle, X, Eye } from "lucide-react";
+import { Tag, Printer, RefreshCw, Package, AlertCircle, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -126,7 +126,6 @@ function printLabelFallback(model: string, reference: string, copies = 2) {
     finally { setTimeout(() => iframe.remove(), 3000); }
   };
 }
-
 
 function LabelPreview({ model, reference }: { model: string; reference: string }) {
   // Proporção 50x45 mm → renderiza como 250x225px

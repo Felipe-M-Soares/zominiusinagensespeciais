@@ -14,23 +14,47 @@
  */
 
 import {
-  useState, useEffect, useCallback, useRef, memo, useMemo, lazy, Suspense,
+  useState,
+  useEffect,
+  useCallback,
+  memo,
+  useMemo,
+  lazy,
+  Suspense,
 } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  ShieldCheck, Search, History, Building2, Tag, Package,
-  Truck, Wrench, MapPin, Clock,
-  ShieldAlert, AlertCircle, CheckCircle2, Copy, RefreshCw,
-  ArrowDownCircle, ArrowUpCircle, ExternalLink, Hash, Barcode,
-  FileText, AlertTriangle, ChevronRight, X, Save, Loader2,
-  CalendarClock, ClipboardCheck, BadgeCheck, Undo2,
+  ShieldCheck,
+  Search,
+  History,
+  Tag,
+  Package,
+  Truck,
+  Wrench,
+  MapPin,
+  Clock,
+  AlertCircle,
+  CheckCircle2,
+  RefreshCw,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  ExternalLink,
+  Hash,
+  Barcode,
+  AlertTriangle,
+  X,
+  Save,
+  Loader2,
+  CalendarClock,
+  ClipboardCheck,
+  Undo2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchAllPages, sumColumnPaginated } from "@/lib/supabaseUtils";
+
 import { sanitizeQuery } from "@/lib/sanitize";
 import { useDebounce } from "@/hooks/useDebounce";
-import { useClickOutside } from "@/hooks/useClickOutside";
+
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 const RastreabilidadePanel = lazy(() => import("@/components/qualidade/RastreabilidadePanel").then(m => ({ default: m.RastreabilidadePanel })));
 const GS1Panel             = lazy(() => import("@/components/qualidade/GS1Panel").then(m => ({ default: m.GS1Panel })));
@@ -180,7 +204,7 @@ function FaseProgress({ fase }: { fase: FaseNum }) {
           )}>
             {f < fase
               ? <CheckCircle2 className="h-3 w-3" />
-              : <span className="text-[9px] font-bold">{f}</span>
+              : <span className="text-[10px] font-bold">{f}</span>
             }
           </div>
           {f < 5 && (
@@ -327,7 +351,7 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
           {/* FASE 1 — Empresa */}
           <section className="space-y-2">
             <div className="flex items-center gap-2">
-              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
+              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
                 faseAtual > 1 ? "bg-emerald-500 text-white" : "bg-violet-500 text-white")}>
                 {faseAtual > 1 ? <CheckCircle2 className="h-3 w-3" /> : "1"}
               </div>
@@ -348,7 +372,7 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
           {/* FASE 2 — Classificação */}
           <section className="space-y-2">
             <div className="flex items-center gap-2">
-              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
+              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
                 faseAtual > 2 ? "bg-emerald-500 text-white" : faseAtual === 2 ? "bg-violet-500 text-white" : "bg-muted/40 text-muted-foreground/40")}>
                 {faseAtual > 2 ? <CheckCircle2 className="h-3 w-3" /> : "2"}
               </div>
@@ -394,7 +418,7 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
           {/* FASE 3 — ANVISA Solicita */}
           <section className="space-y-2">
             <div className="flex items-center gap-2">
-              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
+              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
                 faseAtual > 3 ? "bg-emerald-500 text-white" : faseAtual === 3 ? "bg-violet-500 text-white" : "bg-muted/40 text-muted-foreground/40")}>
                 {faseAtual > 3 ? <CheckCircle2 className="h-3 w-3" /> : "3"}
               </div>
@@ -465,7 +489,7 @@ function EditModal({ device, onClose, onSaved }: EditModalProps) {
           {/* FASE 4 — UDI / GTIN */}
           <section className="space-y-2">
             <div className="flex items-center gap-2">
-              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
+              <div className={cn("h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
                 faseAtual > 4 ? "bg-emerald-500 text-white" : faseAtual === 4 ? "bg-violet-500 text-white" : "bg-muted/40 text-muted-foreground/40")}>
                 {faseAtual > 4 ? <CheckCircle2 className="h-3 w-3" /> : "4"}
               </div>
@@ -982,7 +1006,7 @@ function FaseCard({ fase }: { fase: FaseInfo }) {
         {fase.lotes.length > 0 && (
           <div className="flex-1 flex flex-wrap gap-1 min-w-0 overflow-hidden">
             {fase.lotes.map(l => (
-              <span key={l.lote} className="flex items-center gap-0.5 text-[9px] font-mono bg-background/60 border border-border/30 px-1 py-0.5 rounded">
+              <span key={l.lote} className="flex items-center gap-0.5 text-[10px] font-mono bg-background/60 border border-border/30 px-1 py-0.5 rounded">
                 {l.lote}
               </span>
             ))}
@@ -993,7 +1017,7 @@ function FaseCard({ fase }: { fase: FaseInfo }) {
             <span className="text-[10px] font-semibold tabular-nums text-blue-500">{fase.quantity_reserved}r</span>
           )}
           <span className={cn("text-[12px] font-bold tabular-nums", cfg.color)}>{fase.quantity.toLocaleString("pt-BR")}</span>
-          <span className="text-[9px] text-muted-foreground/50">un.</span>
+          <span className="text-[10px] text-muted-foreground/50">un.</span>
         </div>
       </div>
     </div>
@@ -1009,13 +1033,13 @@ function PecaCard({ peca }: { peca: PecaResult }) {
           <p className="text-[12px] font-semibold truncate leading-tight">{peca.model}</p>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className="text-[10px] text-muted-foreground/60 font-mono">{peca.reference}</span>
-            {peca.udi_di && <span className="flex items-center gap-0.5 text-[9px] text-violet-600 font-mono"><Hash className="h-2.5 w-2.5" />{peca.udi_di}</span>}
-            {peca.anvisa_registration && <span className="flex items-center gap-0.5 text-[9px] text-blue-600"><ShieldCheck className="h-2.5 w-2.5" />{peca.anvisa_registration}</span>}
-            {peca.em_retrabalho && <span className="text-[9px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">Retrab.</span>}
-            {peca.tem_reservas && <span className="text-[9px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">Reserv.</span>}
+            {peca.udi_di && <span className="flex items-center gap-0.5 text-[10px] text-violet-600 font-mono"><Hash className="h-2.5 w-2.5" />{peca.udi_di}</span>}
+            {peca.anvisa_registration && <span className="flex items-center gap-0.5 text-[10px] text-blue-600"><ShieldCheck className="h-2.5 w-2.5" />{peca.anvisa_registration}</span>}
+            {peca.em_retrabalho && <span className="text-[10px] font-medium text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">Retrab.</span>}
+            {peca.tem_reservas && <span className="text-[10px] font-medium text-blue-500 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">Reserv.</span>}
           </div>
         </div>
-        <span className="text-[13px] font-bold tabular-nums text-foreground shrink-0">{totalQty.toLocaleString("pt-BR")}<span className="text-[9px] font-normal text-muted-foreground/60 ml-0.5">un.</span></span>
+        <span className="text-[13px] font-bold tabular-nums text-foreground shrink-0">{totalQty.toLocaleString("pt-BR")}<span className="text-[10px] font-normal text-muted-foreground/60 ml-0.5">un.</span></span>
       </div>
       <div className="px-2 py-1.5 space-y-1">
         {peca.fases.map(fase => <FaseCard key={`${fase.fase}-${fase.stock_item_id}`} fase={fase} />)}
@@ -1192,7 +1216,7 @@ const HistoricoPanel = memo(function HistoricoPanel() {
                     </span>
                     <div className="text-right">
                       <p className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-violet-500" : "text-amber-500")}>{isEntrada ? "+" : "−"}{m.quantity}</p>
-                      <p className="text-[9px] text-muted-foreground/50">{fmtDateTime(m.created_at)}</p>
+                      <p className="text-[10px] text-muted-foreground/50">{fmtDateTime(m.created_at)}</p>
                     </div>
                   </div>
                 </div>
@@ -1212,7 +1236,6 @@ const HistoricoPanel = memo(function HistoricoPanel() {
     </div>
   );
 });
-
 
 // ─── Página Principal ─────────────────────────────────────────────────────────
 

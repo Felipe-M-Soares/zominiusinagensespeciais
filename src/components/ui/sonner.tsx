@@ -1,14 +1,11 @@
-import { useTheme } from "next-themes";
 import { Toaster as Sonner } from "sonner";
-import { useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useTheme } from "@/lib/theme";
 import { CheckCircle2, XCircle, AlertTriangle, Info, Loader2 } from "lucide-react";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 // Ícones coloridos usados nos dois modos (mobile e desktop).
-// No mobile o toast vira uma "pílula" compacta — só o círculo colorido aparece,
-// já que o texto fica escondido via CSS para não cobrir botões fixos no rodapé.
 const coloredIcons = {
   success: (
     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm shadow-emerald-500/40">
@@ -38,39 +35,29 @@ const coloredIcons = {
 };
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
+  // Segue o tema real do app (antes usava next-themes sem ThemeProvider e
+  // ficava preso em "system", destoando quando o usuário escolhia outro tema).
+  const { resolvedTheme } = useTheme();
   const isMobile = useIsMobile();
 
-  // No mobile, o toast aparece como uma pílula só com ícone. Tocar nela revela
-  // o texto por alguns segundos — sem isso, quem precisa confirmar a mensagem
-  // exata (ex: qual erro de validação) não teria como ver.
-  useEffect(() => {
-    if (!isMobile) return;
-    function handleTap(e: MouseEvent | TouchEvent) {
-      const toastEl = (e.target as HTMLElement)?.closest?.("[data-sonner-toast]");
-      if (!toastEl) return;
-      toastEl.classList.add("toast-expanded-tap");
-      window.clearTimeout((toastEl as HTMLElement & { _collapseTimer?: number })._collapseTimer);
-      (toastEl as HTMLElement & { _collapseTimer?: number })._collapseTimer = window.setTimeout(() => {
-        toastEl.classList.remove("toast-expanded-tap");
-      }, 3500);
-    }
-    document.addEventListener("click", handleTap);
-    return () => document.removeEventListener("click", handleTap);
-  }, [isMobile]);
-
+  // Mobile: toasts no topo (longe dos botões fixos no rodapé dos modais) e
+  // COM o texto visível — antes eram só um ícone, e a pessoa não conseguia ler
+  // a mensagem de erro sem tocar nela.
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={resolvedTheme}
       // Mobile: topo da tela, longe dos botões "Cancelar/Confirmar" fixos no rodapé dos modais.
       // Desktop: mantém o canto inferior direito, comportamento já conhecido.
       position={isMobile ? "top-center" : "bottom-right"}
       icons={coloredIcons}
-      className={isMobile ? "toaster group toaster-mobile-compact" : "toaster group"}
+      className="toaster group"
+      closeButton={!isMobile}
+      visibleToasts={isMobile ? 2 : 4}
+      offset={isMobile ? 12 : 24}
       toastOptions={{
         classNames: {
           toast:
-            "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
+            "group toast group-[.toaster]:bg-card group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
           description: "group-[.toast]:text-muted-foreground",
           actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",

@@ -5,7 +5,7 @@
  *   canEdit: boolean — true para financeiro, false para comercial (somente leitura)
  *   modoTeste: boolean — passa false normalmente
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -384,7 +384,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                   {/* Preço Custo */}
                   {isEdit ? (
                     <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">R$</span>
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
                       <input type="number" inputMode="decimal" min="0" step="0.01"
                         value={editData.preco_custo === 0 || editData.preco_custo == null ? "" : editData.preco_custo}
                         onChange={e => {
@@ -404,7 +404,7 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                   {/* Preço Venda */}
                   {isEdit ? (
                     <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">R$</span>
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
                       <input type="number" inputMode="decimal" min="0" step="0.01"
                         value={editData.preco_venda === 0 || editData.preco_venda == null ? "" : editData.preco_venda}
                         onChange={e => {
@@ -424,7 +424,6 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                       {d.preco_venda > 0 ? fmtCurrency(d.preco_venda) : "—"}
                     </p>
                   )}
-
 
                   {/* NCM */}
                   {isEdit ? (
@@ -447,7 +446,6 @@ export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean
                   ) : (
                     <p className="text-[10px] font-mono text-muted-foreground">{d.cfop_padrao || "—"}</p>
                   )}
-
 
                   {/* Ativo */}
                   {isEdit ? (

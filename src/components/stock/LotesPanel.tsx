@@ -483,7 +483,7 @@ export function LotesPanel({ item, open, onClose }: Props) {
                         style={{ width: `${Math.round((l.total_saida / l.total_entrada) * 100)}%` }}
                       />
                     </div>
-                    <div className="flex justify-between text-[9px] text-muted-foreground/50">
+                    <div className="flex justify-between text-[10px] text-muted-foreground/50">
                       <span className="flex items-center gap-0.5">
                         <TrendingUp className="h-2 w-2 text-success" />
                         {l.total_entrada} entraram

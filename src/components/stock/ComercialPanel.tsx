@@ -17,7 +17,6 @@ import {
   ShoppingBag,
   UserPlus,
   User,
-  Search,
   X,
   Plus,
   Trash2,
@@ -31,9 +30,7 @@ import {
   Phone,
   Mail,
   MapPin,
-  AlertTriangle,
   ShoppingCart,
-  Truck,
   Receipt,
   Ban,
   History,
@@ -48,7 +45,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { useDebounce } from "@/hooks/useDebounce";
+
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -57,7 +54,7 @@ import type { StockItem } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
 import type { AllMovement } from "@/hooks/useStock";
 import { escHtml } from "@/lib/escHtml";
-import { criarPedidoComReserva } from "@/lib/pedidoUtils";
+import { criarPedidoComReserva, excluirClienteSeguro } from "@/lib/pedidoUtils";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -1571,6 +1568,11 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
     [clientes, clienteSearchFilter]
   );
 
+  // Hooks precisam rodar ANTES do early-return abaixo (rules of hooks) — as
+  // funções handleCancelar/handleDeleteCliente são declarações e sofrem hoisting.
+  useConfirmEnter(!!cancelarPedido, handleCancelar, cancelando);
+  useConfirmEnter(!!deleteCliente, handleDeleteCliente, deletingCliente);
+
   if (!canAccess) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
@@ -1603,24 +1605,13 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
   async function handleDeleteCliente() {
     if (!deleteCliente) return;
     setDeletingCliente(true);
-    if (isAdmin) {
-      const { data: peds } = await supabase.from("pedidos_comerciais").select("id").eq("cliente_id", deleteCliente.id);
-      const ids = (peds ?? []).map((p: Record<string, unknown>) => p.id as string);
-      if (ids.length > 0) {
-        await supabase.from("pedido_itens").delete().in("pedido_id", ids);
-        await supabase.from("pedidos_comerciais").delete().eq("cliente_id", deleteCliente.id);
-      }
-    }
-    const { error } = await supabase.from("clientes").delete().eq("id", deleteCliente.id);
+    const res = await excluirClienteSeguro(deleteCliente.id, isAdmin);
     setDeletingCliente(false);
-    if (error) { toast.error("Erro ao excluir cliente."); return; }
+    if (!res.ok) { toast.error(res.error ?? "Não foi possível excluir o cliente.", { duration: 8000 }); return; }
     toast.success("Cliente excluído.");
     setDeleteCliente(null);
     loadClientes();
   }
-
-  useConfirmEnter(!!cancelarPedido, handleCancelar, cancelando);
-  useConfirmEnter(!!deleteCliente, handleDeleteCliente, deletingCliente);
 
   return (
     <div className="space-y-4">
@@ -1654,7 +1645,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
           >
             {tab.badge > 0 && (
               <span className={cn(
-                "absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center px-[3px] leading-none",
+                "absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full text-[10px] font-bold flex items-center justify-center px-[3px] leading-none",
                 subTab === tab.id ? "bg-amber-500/20 text-amber-500" : "bg-muted/60 text-muted-foreground"
               )}>
                 {tab.badge}
@@ -1663,7 +1654,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
             <tab.icon className={cn("h-[18px] w-[18px] transition-colors",
               subTab === tab.id ? "text-violet-500 scale-110" : "text-muted-foreground"
             )} />
-            <span className={cn("text-[9px] font-medium leading-tight hidden sm:block",
+            <span className={cn("text-[10px] font-medium leading-tight hidden sm:block",
               subTab === tab.id ? "text-violet-500" : "text-muted-foreground"
             )}>
               {tab.label}
@@ -1678,7 +1669,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
           title="Histórico Geral"
         >
           <History className="h-[18px] w-[18px] text-muted-foreground" />
-          <span className="text-[9px] font-medium text-muted-foreground hidden sm:block">Histórico</span>
+          <span className="text-[10px] font-medium text-muted-foreground hidden sm:block">Histórico</span>
         </button>
         <button
           type="button"
@@ -1687,7 +1678,7 @@ export function ComercialPanel({ isAdmin, isVendedora, expedicaoItems }: Comerci
           title="Exportar pedidos do mês"
         >
           <Download className="h-[18px] w-[18px] text-emerald-600 dark:text-emerald-400" />
-          <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 hidden sm:block">Excel</span>
+          <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 hidden sm:block">Excel</span>
         </button>
       </div>
 

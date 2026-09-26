@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, X, CalendarClock, Factory, Search, RefreshCw, Edit2, Trash2 } from "lucide-react";
+import { Plus, X, CalendarClock, RefreshCw, Edit2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";

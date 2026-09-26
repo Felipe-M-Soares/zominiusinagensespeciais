@@ -132,11 +132,11 @@ export function AddToStockModal({ open, onClose, onSuccess }: Props) {
                 <p className="text-[11px] text-muted-foreground font-mono">{device.reference}</p>
                 <p className="text-[10px] text-muted-foreground/60 font-mono">{device.udi_di}</p>
                 <div className="flex flex-wrap gap-1 pt-0.5">
-                  <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-primary/20 text-primary/80">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/20 text-primary/80">
                     {device.classification_code}
                   </Badge>
                   {device.sterile && (
-                    <Badge className="text-[9px] px-1.5 py-0 bg-success/10 text-success border-0">Estéril</Badge>
+                    <Badge className="text-[10px] px-1.5 py-0 bg-success/10 text-success border-0">Estéril</Badge>
                   )}
                 </div>
               </div>

@@ -198,7 +198,7 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
                           </div>
                           <div className="text-right shrink-0">
                             <p className="text-[15px] font-black text-emerald-500">{disp}</p>
-                            <p className="text-[9px] text-muted-foreground uppercase tracking-wide">disponível</p>
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">disponível</p>
                           </div>
                         </button>
                       );

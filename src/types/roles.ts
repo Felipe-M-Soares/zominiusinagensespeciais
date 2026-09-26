@@ -50,3 +50,20 @@ export const ROLE_ROUTES: Record<AppRole, string[]> = {
   producao:   ["/", "/producao", "/processos"],
   processos:  ["/processos"],
 };
+
+/**
+ * Tela inicial de cada perfil. Usado após o login, no clique do logo e quando
+ * o RoleGuard barra uma rota — antes todos iam para "/" (Componentes), então
+ * Comercial/Financeiro/Processos caíam numa tela que nem aparece no menu deles.
+ */
+export function getHomeRoute(role: AppRole | null | undefined): string {
+  if (!role) return "/";
+  return ROLE_ROUTES[role]?.[0] ?? "/";
+}
+
+/** Se o perfil pode abrir a rota (admin pode tudo). */
+export function canAccessRoute(role: AppRole | null | undefined, path: string): boolean {
+  if (!role) return false;
+  if (role === "admin") return true;
+  return (ROLE_ROUTES[role] ?? []).includes(path);
+}

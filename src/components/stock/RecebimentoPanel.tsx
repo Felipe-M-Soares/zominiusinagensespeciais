@@ -8,12 +8,9 @@ import {
   CheckCircle2,
   Inbox,
   Trash2,
-  FileText,
-  Search,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -81,7 +78,7 @@ function RecebimentoCard({ item, onRetirar, onDelete, isAdmin }: RecebimentoCard
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             {tipo && TipoIcon && (
-              <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
                 <TipoIcon className="h-2.5 w-2.5" /> {TIPO_MATERIAL_LABEL[tipo]}
               </span>
             )}
@@ -417,7 +414,7 @@ export function RecebimentoPanel({ isAdmin }: RecebimentoPanelProps) {
               )}
             >
               <Icon className="h-3 w-3" /> {TIPO_MATERIAL_LABEL[t]}
-              <span className={cn("text-[9px] font-bold px-1 rounded-full", filtroTipo === t ? "bg-cyan-500/20" : "bg-muted/50")}>
+              <span className={cn("text-[10px] font-bold px-1 rounded-full", filtroTipo === t ? "bg-cyan-500/20" : "bg-muted/50")}>
                 {countPorTipo(t)}
               </span>
             </button>

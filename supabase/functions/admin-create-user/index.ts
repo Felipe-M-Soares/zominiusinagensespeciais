@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Sessão inválida: " + (userError?.message ?? "sem usuário") }), {
+      return new Response(JSON.stringify({ error: "Sessão inválida ou expirada. Faça login novamente." }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -77,7 +77,8 @@ Deno.serve(async (req) => {
     const { data: roleData, error: roleError } = await adminClient
       .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
     if (roleError) {
-      return new Response(JSON.stringify({ error: "Erro ao verificar role: " + roleError.message }), {
+      log.error("admin-create-user", "role check error:", roleError.message);
+      return new Response(JSON.stringify({ error: "Erro ao verificar permissões." }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -128,7 +129,9 @@ Deno.serve(async (req) => {
     }
 
     const { data: existingProfile } = await adminClient
-      .from("profiles").select("user_id").ilike("login", cleanLogin).maybeSingle();
+      .from("profiles").select("user_id").eq("login", cleanLogin).maybeSingle();
+    // .eq (e não .ilike): "_" e "%" são curingas no ILIKE — "joao_1" colidia com
+    // "joaox1". O login já é salvo normalizado em minúsculas.
     if (existingProfile) {
       return new Response(JSON.stringify({ error: "Este login já está em uso" }), {
         status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -152,7 +155,8 @@ Deno.serve(async (req) => {
           status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify({ error: "Erro ao criar usuário: " + createError.message }), {
+      log.error("admin-create-user", "createUser error:", createError.message);
+      return new Response(JSON.stringify({ error: "Erro ao criar usuário." }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -164,7 +168,7 @@ Deno.serve(async (req) => {
 
     const newUserId = createdUser.user.id;
 
-    await adminClient.from("profiles").upsert(
+    const { error: profileErr } = await adminClient.from("profiles").upsert(
       {
         user_id: newUserId,
         approved: true,
@@ -176,10 +180,22 @@ Deno.serve(async (req) => {
       { onConflict: "user_id" }
     );
 
-    await adminClient.from("user_roles").upsert(
-      { user_id: newUserId, role: validRole },
-      { onConflict: "user_id" }
-    );
+    const { error: roleErr } = profileErr
+      ? { error: null }
+      : await adminClient.from("user_roles").upsert(
+          { user_id: newUserId, role: validRole },
+          { onConflict: "user_id" }
+        );
+
+    // Sem perfil/role o usuário ficaria "órfão" (login funciona, mas sem
+    // permissões corretas). Desfaz a criação para não deixar lixo no Auth.
+    if (profileErr || roleErr) {
+      log.error("admin-create-user", "profile/role error:", (profileErr ?? roleErr)?.message);
+      await adminClient.auth.admin.deleteUser(newUserId).catch(() => {});
+      return new Response(JSON.stringify({ error: "Não foi possível concluir o cadastro do usuário. Tente novamente." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     return new Response(JSON.stringify({ success: true, user_id: newUserId, login: cleanLogin }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -188,7 +204,8 @@ Deno.serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error("admin-create-user", "admin-create-user error:", msg);
-    return new Response(JSON.stringify({ error: msg }), {
+    // Não devolve a mensagem interna ao navegador (pode conter detalhes de infra).
+    return new Response(JSON.stringify({ error: "Erro interno ao criar usuário." }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

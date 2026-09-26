@@ -2435,7 +2435,6 @@ export type Database = {
       admin_clear_audit_log: { Args: never; Returns: Json }
       admin_clear_comercial: { Args: never; Returns: Json }
       admin_clear_financeiro: { Args: never; Returns: Json }
-      admin_clear_history: { Args: never; Returns: undefined }
       admin_clear_producao: { Args: never; Returns: Json }
       admin_clear_rastreabilidade: { Args: never; Returns: Json }
       admin_clear_stock_movements: { Args: never; Returns: Json }
@@ -2526,6 +2525,7 @@ export type Database = {
         Args: { p_id: string; p_status: string }
         Returns: Json
       }
+      keep_alive: { Args: { p_source?: string }; Returns: Json }
       listar_feedback_reports: {
         Args: { p_status?: string }
         Returns: {
@@ -2563,25 +2563,16 @@ export type Database = {
         Returns: Json
       }
       get_devices_regularizacao_counts: { Args: never; Returns: Json }
-      get_lotes_intermediario:
-        | {
-            Args: never
-            Returns: {
-              lote: string
-              model: string
-              reference: string
-              saldo: number
-              stock_item_id: string
-            }[]
-          }
-        | {
-            Args: { p_stock_item_id: string }
-            Returns: {
-              last_movement: string
-              lote: string
-              saldo: number
-            }[]
-          }
+      get_lotes_intermediario: {
+        Args: never
+        Returns: {
+          lote: string
+          model: string
+          reference: string
+          saldo: number
+          stock_item_id: string
+        }[]
+      }
       get_conta_bancaria_token: {
         Args: { p_conta_id: string }
         Returns: string
@@ -2642,9 +2633,11 @@ export type Database = {
         Args: { p_quantity: number; p_stock_item_id: string }
         Returns: undefined
       }
-      reserve_stock:
-        | { Args: { p_item_id: string; p_qty: number }; Returns: Json }
-        | { Args: { p_items: Json; p_pedido_id: string }; Returns: Json }
+      remove_pedido_item: {
+        Args: { p_pedido_item_id: string }
+        Returns: Json
+      }
+      reserve_stock: { Args: { p_item_id: string; p_qty: number }; Returns: Json }
       resolve_cfop_device: { Args: { p_implantable: boolean }; Returns: string }
       resolve_ncm_device: {
         Args: {

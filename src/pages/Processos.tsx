@@ -140,7 +140,7 @@ export default function Processos() {
       </div>
     </header>
     <main className="flex-1 overflow-y-auto"><div className="px-2.5 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4">
-      <PageNav tabs={tabItems} activeTab={tab} onTabChange={setTab} cols={isMobile ? 2 : undefined} />
+      <PageNav tabs={tabItems} activeTab={tab} onTabChange={setTab} />
       <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <Metric title="Ferramentas cadastradas" value={ferramentas.length} icon={Wrench} tone="primary" />
         <Metric title="Ativas" value={totalAtivas} icon={Boxes} tone="success" />

@@ -78,7 +78,7 @@ export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | nul
             )}>
               <p className="font-semibold text-[10px] text-muted-foreground mb-0.5">{cm.user_name}</p>
               <p className="leading-relaxed whitespace-pre-wrap">{cm.texto}</p>
-              <p className="text-[9px] text-muted-foreground/60 mt-1 text-right">
+              <p className="text-[10px] text-muted-foreground/60 mt-1 text-right">
                 {new Date(cm.created_at).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}
               </p>
             </div>

@@ -1,9 +1,16 @@
 /**
- * PageNav — Barra de navegação reutilizável com ícones animados.
- * Mesmo padrão visual do StockNav para harmonia entre todas as páginas.
+ * PageNav — barra de abas reutilizável por todos os módulos.
+ *
+ * Redesenho (set/2026):
+ *  - Rótulo SEMPRE visível ao lado do ícone (antes: 8–9px, e escondido no
+ *    celular — só ícone, sem como saber o que era cada aba).
+ *  - Acessível: role="tablist"/"tab", aria-selected e navegação por setas
+ *    (← → Home End), como um componente de abas nativo.
+ *  - A aba ativa rola automaticamente para a área visível no celular.
+ *  - `cols` continua disponível (grade fixa) para quem já usava.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 export interface PageNavTab<T extends string> {
@@ -23,11 +30,10 @@ interface PageNavProps<T extends string> {
   activeTab: T;
   onTabChange: (tab: T) => void;
   loading?: boolean;
-  /**
-   * Quando definido, usa grid com esse número de colunas fixas em vez de
-   * scroll horizontal — ideal para muitas abas (ex: cols={3} para Financeiro).
-   */
+  /** Grade com N colunas fixas em vez de rolagem horizontal. */
   cols?: number;
+  /** Rótulo acessível do grupo de abas. */
+  ariaLabel?: string;
 }
 
 export function PageNav<T extends string>({
@@ -36,147 +42,103 @@ export function PageNav<T extends string>({
   onTabChange,
   loading = false,
   cols,
+  ariaLabel = "Seções",
 }: PageNavProps<T>) {
-  const [animating, setAnimating] = useState<T | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<T>(activeTab);
   activeRef.current = activeTab;
 
-  const handleClick = useCallback(
+  const select = useCallback(
     (tab: T) => {
       if (tab === activeRef.current) return;
-      setAnimating(tab);
-      setTimeout(() => setAnimating(null), 400);
       onTabChange(tab);
     },
     [onTabChange]
   );
 
-  /* ── Botão compartilhado entre os dois modos ── */
-  const renderTab = (tab: PageNavTab<T>, gridMode: boolean) => {
-    const isActive   = tab.id === activeTab;
-    const isAnimating = animating === tab.id;
+  // Mantém a aba ativa visível quando a barra rola na horizontal (celular).
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    el?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }, [activeTab]);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const idx = tabs.findIndex((t) => t.id === activeTab);
+    let next = -1;
+    if (e.key === "ArrowRight") next = (idx + 1) % tabs.length;
+    else if (e.key === "ArrowLeft") next = (idx - 1 + tabs.length) % tabs.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = tabs.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    select(tabs[next].id);
+    requestAnimationFrame(() => {
+      listRef.current?.querySelector<HTMLElement>(`[data-tab-id="${tabs[next].id}"]`)?.focus();
+    });
+  };
+
+  const renderTab = (tab: PageNavTab<T>) => {
+    const isActive     = tab.id === activeTab;
     const activeColor  = tab.activeColor  ?? "text-primary";
     const activeBg     = tab.activeBg     ?? "bg-primary/10";
-    const activeBorder = tab.activeBorder ?? "border-primary/40";
+    const activeBorder = tab.activeBorder ?? "border-primary/30";
     const badgeBg      = tab.badgeBg      ?? "bg-primary/15";
     const badgeText    = tab.badgeText    ?? "text-primary";
+    const showBadge    = !loading && tab.badge !== undefined && tab.badge > 0;
 
-    if (gridMode) {
-      /* Modo grid: horizontal compacto — ícone + label lado a lado */
-      return (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => handleClick(tab.id)}
-          className={cn(
-            "relative flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border transition-all duration-200 w-full",
-            isActive
-              ? cn(activeBg, activeBorder)
-              : "border-transparent hover:bg-muted/30"
-          )}
-          aria-label={tab.label}
-          aria-pressed={isActive}
-        >
-          {!loading && tab.badge !== undefined && tab.badge > 0 && (
-            <span className={cn(
-              "absolute top-0.5 right-0.5 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center px-[3px] leading-none",
-              isActive ? cn(badgeBg, badgeText) : "bg-muted/60 text-muted-foreground"
-            )}>
-              {tab.badge}
-            </span>
-          )}
-          <tab.Icon
-            className={cn(
-              "h-[14px] w-[14px] shrink-0 transition-all duration-200",
-              isActive ? cn(activeColor, "scale-110") : "text-muted-foreground"
-            )}
-            style={isAnimating ? { animation: "pageNavPop 0.35s cubic-bezier(.36,.07,.19,.97)" } : {}}
-          />
-          <span className={cn(
-            "text-[10px] font-medium leading-tight truncate",
-            isActive ? activeColor : "text-muted-foreground"
-          )}>
-            {tab.label}
-          </span>
-        </button>
-      );
-    }
-
-    /* Modo scroll: ícone em cima, label embaixo (coluna) */
     return (
       <button
         key={tab.id}
         type="button"
-        onClick={() => handleClick(tab.id)}
+        role="tab"
+        id={`tab-${tab.id}`}
+        data-tab-id={tab.id}
+        aria-selected={isActive}
+        tabIndex={isActive ? 0 : -1}
+        onClick={() => select(tab.id)}
         className={cn(
-          "relative flex flex-1 flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border transition-all duration-200",
+          "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-3.5 h-10",
+          "text-[13px] font-medium transition-colors duration-150 select-none",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+          cols ? "w-full px-2" : "shrink-0",
           isActive
-            ? cn(activeBg, activeBorder)
-            : "border-transparent hover:bg-muted/30"
+            ? cn(activeBg, activeBorder, activeColor, "font-semibold shadow-sm")
+            : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/70"
         )}
-        aria-label={tab.label}
-        aria-pressed={isActive}
       >
-        {!loading && tab.badge !== undefined && tab.badge > 0 && (
-          <span className={cn(
-            "absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full text-[9px] font-bold flex items-center justify-center px-[3px] leading-none",
-            isActive ? cn(badgeBg, badgeText) : "bg-muted/60 text-muted-foreground"
-          )}>
-            {tab.badge}
+        <tab.Icon className={cn("h-4 w-4 shrink-0", isActive ? activeColor : "text-muted-foreground")} aria-hidden />
+        <span className={cn(cols && "truncate")}>{tab.label}</span>
+        {showBadge && (
+          <span
+            className={cn(
+              "min-w-[18px] h-[18px] rounded-full text-[10px] font-bold inline-flex items-center justify-center px-1 leading-none tabular-nums",
+              isActive ? cn(badgeBg, badgeText) : "bg-muted text-muted-foreground"
+            )}
+            aria-label={`${tab.badge} pendente(s)`}
+          >
+            {tab.badge! > 99 ? "99+" : tab.badge}
           </span>
         )}
-        <div className={cn(
-          "flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200",
-          isActive ? activeBg : ""
-        )}>
-          <tab.Icon
-            className={cn(
-              "h-[18px] w-[18px] transition-all duration-200",
-              isActive ? cn(activeColor, "scale-110") : "text-muted-foreground"
-            )}
-            style={isAnimating ? { animation: "pageNavPop 0.35s cubic-bezier(.36,.07,.19,.97)" } : {}}
-          />
-        </div>
-        <span className={cn(
-          "text-[9px] font-medium leading-tight hidden sm:block",
-          isActive ? activeColor : "text-muted-foreground"
-        )}>
-          {tab.label}
-        </span>
       </button>
     );
   };
 
   return (
-    <div className="space-y-2">
-      {cols ? (
-        /* Modo grid: N colunas fixas, abas ficam simétricas e nunca vazam */
-        <div className="rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5">
-          <div
-            className="grid gap-1"
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-          >
-            {tabs.map(tab => renderTab(tab, true))}
-          </div>
-        </div>
-      ) : (
-        /* Modo padrão: scroll horizontal */
-        /* py-1 garante espaço vertical para sombra/borda não ser clipada pelo overflow */
-        <div className="overflow-x-auto scrollbar-none -mx-1 px-1 py-1">
-          <div className="flex items-stretch gap-1.5 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-1.5 min-w-max sm:min-w-0">
-            {tabs.map(tab => renderTab(tab, false))}
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        @keyframes pageNavPop {
-          0%   { transform: scale(1.1); }
-          30%  { transform: scale(1.45) rotate(-10deg); }
-          60%  { transform: scale(0.95) rotate(6deg); }
-          100% { transform: scale(1.1) rotate(0deg); }
-        }
-      `}</style>
+    <div className="rounded-2xl border border-border/70 bg-card/90 shadow-xs backdrop-blur-sm p-1.5">
+      <div
+        ref={listRef}
+        role="tablist"
+        aria-label={ariaLabel}
+        onKeyDown={onKeyDown}
+        className={cn(
+          cols
+            ? "grid gap-1"
+            : "flex items-center gap-1 overflow-x-auto scrollbar-none scroll-px-2"
+        )}
+        style={cols ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined}
+      >
+        {tabs.map(renderTab)}
+      </div>
     </div>
   );
 }

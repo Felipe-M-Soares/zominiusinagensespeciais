@@ -29,17 +29,63 @@ const PedidosCompraPanel = lazy(() => import("@/components/compras/PedidosCompra
 const FluxoCaixaPanelLazy = lazy(() => import("@/components/financeiro/FluxoCaixaPanel").then(m => ({ default: m.FluxoCaixaPanel })));
 const DevolucaoTrocaPanelLazy = lazy(() => import("@/components/financeiro/DevolucaoTrocaPanel").then(m => ({ default: m.DevolucaoTrocaPanel })));
 import {
-  ArrowLeft, Receipt, CheckCircle2, Package, User, Clock, Printer,
-  Truck, ChevronDown, ChevronUp, Send, X, RefreshCw,
-  FileText, History, BadgeCheck, Ban, Bell, FileCheck2,
-  AlertCircle, Building2, Hash, DollarSign, CreditCard,
-  Banknote, Landmark, ChevronRight, Loader2, MapPin,
-  Mail, Percent, ShoppingCart, Wrench, Monitor, Zap,
-  Cpu, FlaskConical, Factory, PlusCircle, Edit3, Trash2,
-  Link, TestTube2, CheckSquare, AlertTriangle, TrendingDown,
-  Wallet, CalendarDays, BarChart3, Tag, Building,
-  TrendingUp, Download, Search, Copy, Repeat2,
-  BarChart2, PieChart, Layers, Sun, Moon, FileSpreadsheet,
+  Receipt,
+  CheckCircle2,
+  Package,
+  User,
+  Clock,
+  Printer,
+  Truck,
+  ChevronDown,
+  ChevronUp,
+  Send,
+  X,
+  RefreshCw,
+  FileText,
+  History,
+  BadgeCheck,
+  Ban,
+  FileCheck2,
+  AlertCircle,
+  Building2,
+  Hash,
+  DollarSign,
+  CreditCard,
+  Banknote,
+  Landmark,
+  ChevronRight,
+  Loader2,
+  MapPin,
+  Mail,
+  Percent,
+  ShoppingCart,
+  Wrench,
+  Monitor,
+  Zap,
+  Cpu,
+  FlaskConical,
+  Factory,
+  PlusCircle,
+  Edit3,
+  Trash2,
+  Link,
+  TestTube2,
+  CheckSquare,
+  AlertTriangle,
+  TrendingDown,
+  Wallet,
+  CalendarDays,
+  BarChart3,
+  Tag,
+  Building,
+  TrendingUp,
+  Download,
+  Copy,
+  Repeat2,
+  BarChart2,
+  PieChart,
+  Layers,
+  FileSpreadsheet,
 } from "lucide-react";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -321,7 +367,7 @@ function StepBar({ step, total, labels }: { step: number; total: number; labels:
           )}>
             {i + 1 < step ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span>{i + 1}</span>}
           </div>
-          <span className={cn("text-[9px] ml-1 font-medium hidden sm:block shrink-0",
+          <span className={cn("text-[10px] ml-1 font-medium hidden sm:block shrink-0",
             i + 1 === step ? "text-violet-600" : "text-muted-foreground/60")}>
             {labels[i]}
           </span>
@@ -340,12 +386,11 @@ function StepBar({ step, total, labels }: { step: number; total: number; labels:
 function TestBadge({ modoTeste }: { modoTeste: boolean }) {
   if (!modoTeste) return null; // Produção é o padrão — não precisa de badge
   return (
-    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-orange-500/40 bg-orange-500/8 text-orange-500 leading-none shrink-0 whitespace-nowrap">
+    <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-orange-500/40 bg-orange-500/8 text-orange-500 leading-none shrink-0 whitespace-nowrap">
       Homo
     </span>
   );
 }
-
 
 // ─── Helper: notifica vendedora + todos os admins sobre pedido enviado ──────────
 async function notificarPedidoEnviado(
@@ -579,7 +624,7 @@ function NFViewerModal({ pedido, onClose }: NFViewerModalProps) {
                   <Copy className="h-2.5 w-2.5" />Copiar
                 </button>
               </div>
-              <p className="text-[9px] font-mono break-all text-muted-foreground leading-relaxed">{pedido.chave_acesso_nfe}</p>
+              <p className="text-[10px] font-mono break-all text-muted-foreground leading-relaxed">{pedido.chave_acesso_nfe}</p>
             </div>
           )}
           <div className="rounded-xl bg-muted/10 border border-border/20 px-3 py-2 space-y-1">
@@ -807,7 +852,7 @@ function SefazModal({
                       className="w-full h-9 rounded-xl border border-border/50 bg-background text-foreground pl-7 pr-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500/50"
                     />
                   </div>
-                  <p className="text-[9px] text-muted-foreground/60 pl-1">Preenchido automaticamente (sequencial)</p>
+                  <p className="text-[10px] text-muted-foreground/60 pl-1">Preenchido automaticamente (sequencial)</p>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Série</label>
@@ -914,7 +959,7 @@ function SefazModal({
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">NCM (8 díg.) *</label>
+                        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">NCM (8 díg.) *</label>
                         <input type="text" inputMode="numeric"
                           value={item.ncm}
                           onChange={e => updItem(idx, "ncm", e.target.value.replace(/\D/g,"").slice(0, 8))}
@@ -928,12 +973,12 @@ function SefazModal({
                             if (sug) { updItem(idx, "ncm", sug.ncm); updItem(idx, "ipi_pct", String(sug.ipi)); toast.success(`NCM ${sug.ncm} — ${sug.desc}`); }
                             else toast.info("Não foi possível sugerir NCM. Preencha manualmente.");
                           }}
-                          className="w-full h-6 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 text-[9px] font-semibold transition-colors flex items-center justify-center gap-1">
+                          className="w-full h-6 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 text-[10px] font-semibold transition-colors flex items-center justify-center gap-1">
                           <Zap size={9} />Sugerir NCM
                         </button>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">CFOP (4 díg.) *</label>
+                        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">CFOP (4 díg.) *</label>
                         <input type="text" inputMode="numeric"
                           value={item.cfop}
                           onChange={e => updItem(idx, "cfop", e.target.value.replace(/\D/g,"").slice(0, 4))}
@@ -945,9 +990,9 @@ function SefazModal({
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">Vlr. Unit. *</label>
+                        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Vlr. Unit. *</label>
                         <div className="relative">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">R$</span>
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
                           <input type="number" min="0" step="0.01"
                             value={item.valorUnitario}
                             onChange={e => updItem(idx, "valorUnitario", e.target.value)}
@@ -957,7 +1002,7 @@ function SefazModal({
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">ICMS %</label>
+                        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">ICMS %</label>
                         <input type="number" min="0" max="100" step="0.01"
                           value={item.aliqICMS}
                           onChange={e => updItem(idx, "ipi_pct", e.target.value)}
@@ -965,7 +1010,7 @@ function SefazModal({
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">CST</label>
+                        <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">CST</label>
                         <select value={item.cst} onChange={e => updItem(idx, "cst", e.target.value)}
                           className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500/40">
                           <option value="00">00 — Tributado</option>
@@ -1056,7 +1101,7 @@ function SefazModal({
                   rows={3}
                   className="w-full rounded-xl border border-border/50 bg-background text-foreground px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/30 resize-none"
                 />
-                <p className="text-[9px] text-muted-foreground text-right">{dados.informacoesAdicionais.length}/500</p>
+                <p className="text-[10px] text-muted-foreground text-right">{dados.informacoesAdicionais.length}/500</p>
               </div>
             </div>
           )}
@@ -1269,7 +1314,7 @@ function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirN
               { label: "NF emitida", value: pedido.nf_criada_em, color: "#7c3aed" },
             ].map(({ label, value, color }) => (
               <div key={label} className="rounded-xl p-2 text-center bg-muted/20 border border-border/50">
-                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color }}>{label}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color }}>{label}</p>
                 <p className="text-[10px] font-mono text-muted-foreground">{value ? fmtDate(value) : "—"}</p>
               </div>
             ))}
@@ -1293,7 +1338,7 @@ function PedidoCard({ pedido, onEmitirNF, onVerNF }: { pedido: Pedido; onEmitirN
                   <Copy size={10} />{copied ? "Copiado!" : "Copiar"}
                 </button>
               </div>
-              <p className="text-[9px] font-mono break-all leading-relaxed text-muted-foreground">{pedido.chave_acesso_nfe}</p>
+              <p className="text-[10px] font-mono break-all leading-relaxed text-muted-foreground">{pedido.chave_acesso_nfe}</p>
               {pedido.protocolo_sefaz && (
                 <p className="text-[10px] font-mono font-semibold text-violet-600 dark:text-violet-400">Protocolo: {pedido.protocolo_sefaz}</p>
               )}
@@ -1526,7 +1571,7 @@ function LancamentoModal({ open, tipo, onClose, onSuccess, inicial, modoTeste }:
                 <div className="grid grid-cols-4 gap-1.5">
                   {(["mensal", "bimestral", "trimestral", "anual"] as const).map(p => (
                     <button key={p} type="button" onClick={() => setPeriodicidade(p)}
-                      className={cn("h-7 rounded-lg border text-[9px] font-medium transition-all",
+                      className={cn("h-7 rounded-lg border text-[10px] font-medium transition-all",
                         periodicidade === p
                           ? "border-violet-500/50 bg-violet-500/10 text-violet-600"
                           : "border-border/30 bg-muted/10 text-muted-foreground")}>
@@ -1638,7 +1683,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                 <Icon size={18} />
               </div>
               <div className="min-w-0">
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{k.label}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{k.label}</p>
                 <p className="text-[14px] font-black truncate tabular-nums" style={{ color: k.color }}>{k.value}</p>
               </div>
             </div>
@@ -1763,7 +1808,7 @@ function PainelLancamentos({ tipo, modoTeste }: { tipo: LancamentoFinanceiro["ti
                   {(item.nota_fiscal_manual || item.chave_nfe) && (
                     <div className="rounded-lg px-2 py-1.5 bg-muted/30 border border-border/40">
                       {item.nota_fiscal_manual && <p className="text-[10px] font-mono text-muted-foreground">NF: {item.nota_fiscal_manual}</p>}
-                      {item.chave_nfe && <p className="text-[9px] font-mono text-muted-foreground/70 truncate">Chave: {item.chave_nfe.slice(0, 20)}…</p>}
+                      {item.chave_nfe && <p className="text-[10px] font-mono text-muted-foreground/70 truncate">Chave: {item.chave_nfe.slice(0, 20)}…</p>}
                     </div>
                   )}
                   {item.observacoes && <p className="text-[10px] text-muted-foreground italic line-clamp-2">{item.observacoes}</p>}
@@ -2230,8 +2275,8 @@ function PainelBancos() {
                   <div className="text-right shrink-0">
                     <p className="text-[16px] font-black font-mono tabular-nums">{fmtCurrency(c.saldo_atual)}</p>
                     <div className="flex items-center gap-1 mt-1 justify-end">
-                      {c.integracao_ativa && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">Integrado</span>}
-                      {c.envio_automatico_nf && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 border border-violet-500/20">NF Auto</span>}
+                      {c.integracao_ativa && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">Integrado</span>}
+                      {c.envio_automatico_nf && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 border border-violet-500/20">NF Auto</span>}
                     </div>
                   </div>
                 </div>
@@ -2452,7 +2497,7 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="text-[12px] font-semibold truncate">{p.cliente_nome}</p>
                   {p.nota_fiscal && <p className="text-[11px] font-mono text-violet-500 flex items-center gap-1"><Tag className="h-2.5 w-2.5" />{p.nota_fiscal}</p>}
-                  {p.protocolo_sefaz && <p className="text-[9px] font-mono text-muted-foreground/60">Prot: {p.protocolo_sefaz}</p>}
+                  {p.protocolo_sefaz && <p className="text-[10px] font-mono text-muted-foreground/60">Prot: {p.protocolo_sefaz}</p>}
                   {p.vendedora_nome && <p className="text-[10px] text-muted-foreground flex items-center gap-1"><User className="h-2.5 w-2.5" />{p.vendedora_nome}</p>}
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
@@ -2470,7 +2515,6 @@ function HistoricoModal({ open, onClose }: { open: boolean; onClose: () => void 
     </div>
   );
 }
-
 
 // ─── PainelTabelaPrecos ───────────────────────────────────────────────────────
 
@@ -2883,7 +2927,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                   {/* Preço Custo */}
                   {isEdit ? (
                     <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">R$</span>
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
                       <input type="number" min="0" step="0.01"
                         value={editData.preco_custo ?? ""}
                         onChange={e => setEditData(prev => ({ ...prev, preco_custo: parseFloat(e.target.value) || 0 }))}
@@ -2897,7 +2941,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                   {/* Preço Venda */}
                   {isEdit ? (
                     <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">R$</span>
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
                       <input type="number" min="0" step="0.01"
                         value={editData.preco_venda ?? ""}
                         onChange={e => setEditData(prev => ({ ...prev, preco_venda: parseFloat(e.target.value) || 0 }))}
@@ -2911,7 +2955,6 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       {d.preco_venda > 0 ? fmtCurrency(d.preco_venda) : "—"}
                     </p>
                   )}
-
 
                   {/* NCM */}
                   {isEdit ? (
@@ -2932,7 +2975,7 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                             toast.info("Não foi possível sugerir NCM automaticamente. Preencha manualmente.");
                           }
                         }}
-                        className="w-full h-6 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 text-[9px] font-semibold transition-colors flex items-center justify-center gap-1"
+                        className="w-full h-6 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 text-[10px] font-semibold transition-colors flex items-center justify-center gap-1"
                       >
                         <Zap size={9} />Sugerir NCM
                       </button>
@@ -2970,7 +3013,6 @@ function PainelTabelaPrecos({ modoTeste }: { modoTeste: boolean }) {
                       {(d.ipi_pct ?? 0) > 0 ? `${d.ipi_pct}%` : "0%"}
                     </span>
                   )}
-
 
                   {/* Ativo */}
                   {isEdit ? (
@@ -3074,7 +3116,6 @@ export default function Financeiro() {
       return next;
     });
   }, []);
-
 
   const canAccess = isAdmin || role === "financeiro";
   const abortRef  = useRef<AbortController | null>(null);
@@ -3297,7 +3338,6 @@ export default function Financeiro() {
           tabs={PAGE_NAV_TABS}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          cols={isMobile ? 3 : undefined}
         />
 
         {activeTab === "dashboard" && (

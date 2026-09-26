@@ -36,6 +36,20 @@ interface AuthContext {
 
 const AuthContext = createContext<AuthContext | null>(null);
 
+// Cache do último role conhecido por usuário — permite abrir o app offline
+// (apontamento de produção) com as permissões certas, em vez de cair no
+// antigo padrão "estoque" para todo mundo quando a consulta falhava.
+const ROLE_CACHE_PREFIX = "zomini:role:";
+function readCachedRole(userId: string): AppRole | null {
+  try { return (localStorage.getItem(ROLE_CACHE_PREFIX + userId) as AppRole | null) ?? null; } catch { return null; }
+}
+function writeCachedRole(userId: string, role: AppRole | null) {
+  try {
+    if (role) localStorage.setItem(ROLE_CACHE_PREFIX + userId, role);
+    else localStorage.removeItem(ROLE_CACHE_PREFIX + userId);
+  } catch { /* modo privado */ }
+}
+
 // SECURITY: taxa máxima de tentativas de login (client-side, não substitui server-side)
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS    = 60_000;
@@ -66,11 +80,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchRoleAndApproval = useCallback(async (userId: string) => {
     try {
-      const [{ data: roleData }, { data: profileData, error: profileError }] = await Promise.all([
+      const [{ data: roleData, error: roleError }, { data: profileData, error: profileError }] = await Promise.all([
         supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
         supabase.from("profiles").select("approved, blocked, must_change_password").eq("user_id", userId).maybeSingle(),
       ]);
-      setRole((roleData?.role as AppRole) ?? "estoque");
+      if (roleError) {
+        // Falha de rede/servidor: usa o último role conhecido deste usuário.
+        // (Antes: virava "estoque" — dava a qualquer um a interface do estoque.)
+        logger.error("fetchRoleAndApproval user_roles error:", roleError.message);
+        setRole(readCachedRole(userId));
+      } else {
+        const r = (roleData?.role as AppRole | undefined) ?? null;
+        setRole(r);
+        writeCachedRole(userId, r);
+      }
       if (profileError) {
         logger.error("fetchRoleAndApproval profiles error:", profileError.message);
         setApproved(true);
@@ -91,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       logger.error("Failed to fetch role/approval:", err);
-      setRole("estoque");
+      setRole(readCachedRole(userId));
       setApproved(true);
       setBlocked(false);
       setMustChangePassword(false);

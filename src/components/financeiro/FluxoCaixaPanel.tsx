@@ -13,9 +13,20 @@ import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { formatBRL } from "@/lib/format";
 import {
-  TrendingUp, TrendingDown, AlertTriangle, RefreshCw,
-  BarChart3, Clock, DollarSign, Download, User, CheckCircle2,
-  XCircle, AlertCircle, ChevronDown, ChevronUp, Search, Building2,
+  TrendingUp,
+  RefreshCw,
+  BarChart3,
+  Clock,
+  DollarSign,
+  Download,
+  User,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -97,8 +108,8 @@ function FluxoCaixa({ contas }: { contas: Conta[] }) {
                   style={{ height: `${Math.max(2, (d.saidas / maxVal) * 100)}%` }} />
               </div>
             </div>
-            <p className="text-[9px] text-muted-foreground">{d.label}</p>
-            <p className={cn("text-[9px] font-bold", d.saldo >= 0 ? "text-emerald-600" : "text-red-500")}>
+            <p className="text-[10px] text-muted-foreground">{d.label}</p>
+            <p className={cn("text-[10px] font-bold", d.saldo >= 0 ? "text-emerald-600" : "text-red-500")}>
               {d.saldo >= 0 ? "+" : ""}{BRL(d.saldo)}
             </p>
           </div>
@@ -428,19 +439,19 @@ function ProjecaoSaldo({ contas }: { contas: Conta[] }) {
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-2.5 text-center">
-          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">A Receber</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">A Receber</p>
           <p className="text-sm font-bold text-emerald-600">{BRL(receber30)}</p>
-          <p className="text-[9px] text-muted-foreground">{abertas.filter(c => c.tipo === "receber").length} contas</p>
+          <p className="text-[10px] text-muted-foreground">{abertas.filter(c => c.tipo === "receber").length} contas</p>
         </div>
         <div className="rounded-xl bg-red-500/5 border border-red-500/20 p-2.5 text-center">
-          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">A Pagar</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">A Pagar</p>
           <p className="text-sm font-bold text-red-600">{BRL(pagar30)}</p>
-          <p className="text-[9px] text-muted-foreground">{abertas.filter(c => c.tipo === "pagar").length} contas</p>
+          <p className="text-[10px] text-muted-foreground">{abertas.filter(c => c.tipo === "pagar").length} contas</p>
         </div>
         <div className={cn("rounded-xl border p-2.5 text-center", saldo30 >= 0 ? "bg-primary/5 border-primary/20" : "bg-orange-500/5 border-orange-500/20")}>
-          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Saldo</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Saldo</p>
           <p className={cn("text-sm font-bold", saldo30 >= 0 ? "text-primary" : "text-orange-600")}>{BRL(saldo30)}</p>
-          <p className="text-[9px] text-muted-foreground">{saldo30 >= 0 ? "positivo" : "negativo"}</p>
+          <p className="text-[10px] text-muted-foreground">{saldo30 >= 0 ? "positivo" : "negativo"}</p>
         </div>
       </div>
     </div>

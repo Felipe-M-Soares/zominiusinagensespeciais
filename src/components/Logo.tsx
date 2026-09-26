@@ -1,4 +1,4 @@
-import logoZomini from "@/assets/logo_zomini.png";
+import logoZomini from "@/assets/logo_zomini.webp";
 
 interface LogoProps {
   className?: string;

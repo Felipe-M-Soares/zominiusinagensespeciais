@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { VitePWA } from "vite-plugin-pwa";
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   root: ".",
   // Injeta a data de build real em tempo de compilação — diferente de
   // `new Date()` dentro do código do app, que capturaria a data em que o
@@ -23,13 +23,9 @@ export default defineConfig(({ mode }) => ({
     // Inline assets < 4KB como base64 (evita request extra para ícones pequenos)
     assetsInlineLimit: 4096,
     chunkSizeWarningLimit: 800,
-    // Minificação agressiva com esbuild (padrão do Vite)
-    minify: "esbuild",
-    // Remove console.* em produção automaticamente
-    esbuildOptions: {
-      drop: ["console", "debugger"],
-      pure: ["console.log", "console.debug", "console.info"],
-    },
+    // (Removido "esbuildOptions": não é uma opção válida de build no Vite e
+    //  era ignorada silenciosamente. O código do app já não usa console.log —
+    //  a regra no-console do ESLint garante isso.)
     // CSS code splitting para carregar só o CSS necessário
     cssCodeSplit: true,
     // Melhor target para browsers modernos
@@ -93,7 +89,6 @@ export default defineConfig(({ mode }) => ({
       injectRegister: "script",
       includeAssets: [
         "favicon.ico",
-        "favicon.png",
         "favicon-16x16.png",
         "favicon-32x32.png",
         "apple-touch-icon.png",
@@ -101,14 +96,19 @@ export default defineConfig(({ mode }) => ({
         "android-chrome-512x512.png",
       ],
       manifest: {
-        name: "Concept Usinagens Especiais",
-        short_name: "Concept",
-        description: "Base de dados de dispositivos médicos - Conformidade ANVISA",
-        theme_color: "#0a0a0a",
-        background_color: "#0a0a0a",
+        id: "/",
+        name: "Zomini Usinagens Especiais",
+        short_name: "Zomini",
+        description: "Zomini ERP — estoque, produção, qualidade (ANVISA), comercial e financeiro.",
+        lang: "pt-BR",
+        dir: "ltr",
+        theme_color: "#f5f6f8",
+        background_color: "#f5f6f8",
         display: "standalone",
+        orientation: "any",
         start_url: "/",
         scope: "/",
+        categories: ["business", "productivity"],
         icons: [
           { src: "/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
           { src: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
@@ -117,6 +117,24 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        // Não pré-baixa no celular de todo usuário as bibliotecas pesadas que
+        // só o admin/financeiro usam (Excel, PDF, html2canvas) nem fontes de
+        // alfabetos que o app não usa. Elas continuam carregando sob demanda.
+        // Resultado: precache cai de ~5 MB para ~2 MB a cada deploy.
+        globIgnores: [
+          "**/exceljs-*.js",
+          "**/pdfjs-*.js",
+          "**/pdf.worker*.js",
+          "**/html2canvas-*.js",
+          "**/pedidoPdf-*.js",
+          "**/purify.es-*.js",
+          "**/index.es-*.js",
+          "**/*-cyrillic*.woff2",
+          "**/*-greek*.woff2",
+          "**/*-vietnamese*.woff2",
+        ],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/~oauth/, /^\/api\//],
         // SECURITY: API do Supabase usa autenticação por sessão — cachear respostas
