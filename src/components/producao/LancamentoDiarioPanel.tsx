@@ -12,9 +12,8 @@
  *   • cálculo automático e visível: turno − paradas = tempo produtivo → peças
  *     esperadas e eficiência, antes de salvar.
  *
- * Turnos fixos da empresa:
- *   1º Turno — 06:00 às 15:30 (9,5h)
- *   2º Turno — 15:31 à 01:30 do dia seguinte (≈9,98h)
+ * Lançamento por DIA (sem turno): cada máquina soma até 24h no dia. Dá para
+ * lançar em outra data (ex.: ontem) e corrigir/excluir lançamentos já salvos.
  *
  * Registro por máquina/hora com todos os detalhes (planilha PPI-51) continua
  * na aba Controle.
@@ -29,32 +28,23 @@ import {
   RefreshCw, CheckCircle2, Clock, Package, Factory, Timer, TrendingUp, User, Loader2,
   CalendarDays, CalendarRange, Gauge, Search, ChevronDown, Target, Minus, Plus, Hammer,
   PauseCircle, Wrench, Coffee, Settings2, AlertTriangle, ChevronRight, Pencil, Trash2,
-  BarChart3, Sun, Moon,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 
-// ── Turnos fixos ─────────────────────────────────────────────────────────────
+// ── Lançamento diário ────────────────────────────────────────────────────────
 
-interface Turno { id: 1 | 2; label: string; inicioH: number; inicioM: number; fimH: number; fimM: number; duracaoH: number; }
-const TURNOS: Turno[] = [
-  { id: 1, label: "1º Turno", inicioH: 6,  inicioM: 0,  fimH: 15, fimM: 30, duracaoH: 9.5 },
-  { id: 2, label: "2º Turno", inicioH: 15, inicioM: 31, fimH: 1,  fimM: 30, duracaoH: +(9 + 59 / 60).toFixed(4) },
-];
-function turnoAtual(): 1 | 2 {
-  const h = new Date().getHours() + new Date().getMinutes() / 60;
-  if (h >= 6 && h < 15.5167) return 1;
-  return 2; // 15:31–24:00 e 00:00–06:00 (fim do 2º turno)
-}
-function fmtTurnoHorario(t: Turno): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(t.inicioH)}:${p(t.inicioM)}–${p(t.fimH)}:${p(t.fimM)}`;
-}
+const TURNO_DIA = "Dia inteiro";
+const HORAS_DIA = 24;
+/** Opções do seletor de horas: 30 min até 24 h. */
+const OPCOES_HORAS = Array.from({ length: 48 }, (_, i) => (i + 1) / 2);
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -119,14 +109,12 @@ function fmtHora(iso: string): string {
 function minutosDecorridos(inicioIso: string): number {
   return Math.max(0, Math.round((Date.now() - new Date(inicioIso).getTime()) / 60000));
 }
-/**
- * Data de referência do lançamento. Entre 00:00 e 06:00 ainda é o 2º turno
- * do dia ANTERIOR — sem isso, o fim do 2º turno caía no dia seguinte.
- * (Antes usava a data UTC, que já "virava o dia" às 21:00 no horário de Brasília.)
- */
+/** Data local (antes usava UTC, que "virava o dia" às 21:00 em Brasília). */
+function isoLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function hojeLocalISO(): string {
   const d = new Date();
-  if (d.getHours() < 6) d.setDate(d.getDate() - 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 function inicioSemanaISO(): string {
@@ -262,12 +250,14 @@ export function LancamentoDiarioPanel() {
   const [editandoOperador, setEditandoOperador] = useState(() => {
     try { return !localStorage.getItem(OPERADOR_STORAGE_KEY); } catch { return true; }
   });
-  const [turnoSel, setTurnoSel]     = useState<1 | 2>(turnoAtual());
+  const [dataRef, setDataRef]       = useState(hojeLocalISO()); // dia do lançamento
   const [maquinaSel, setMaquinaSel] = useState("");
   const [modo, setModo]             = useState<Modo>("produziu");
   const [peca, setPeca]             = useState("");
   const [quantidade, setQuantidade] = useState("");
-  const [horasCustom, setHorasCustom] = useState<string | null>(null); // null = turno/restante
+  const [horasSel, setHorasSel]     = useState(""); // horas trabalhadas (seletor 0h30–24h)
+  const [editando, setEditando]     = useState<ApontamentoHoje | null>(null);
+  const [editandoParada, setEditandoParada] = useState<ParadaHoje | null>(null);
   const [paradas, setParadas]       = useState<ParadaForm[]>([]);
   const [paradaAberta, setParadaAberta] = useState<number | null>(null); // tipo sendo escolhida a duração
   const [minCustom, setMinCustom]   = useState("");
@@ -277,7 +267,8 @@ export function LancamentoDiarioPanel() {
   const [materia, setMateria]       = useState("");
 
   const qtdRef = useRef<HTMLInputElement>(null);
-  const hoje = hojeLocalISO();
+  const hoje = dataRef;
+  const ehHoje = dataRef === hojeLocalISO();
 
   useEffect(() => {
     try { localStorage.setItem(OPERADOR_STORAGE_KEY, operador); } catch { /* modo privado */ }
@@ -285,7 +276,8 @@ export function LancamentoDiarioPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const dia = hojeLocalISO();
+    const dia = dataRef;
+    const diaSeguinte = (() => { const d = new Date(`${dia}T12:00:00`); d.setDate(d.getDate() + 1); return isoLocal(d); })();
     const [maqRes, prodRes, devRes, tpRes, trRes, mpRes, apRes, parRes] = await Promise.all([
       loadWithFallback<Maquina>("maquinas_producao", "maquinas"),
       supabase.from("produtos_producao").select("codigo,descricao,pecas_por_hora").eq("ativo", true).order("codigo"),
@@ -298,7 +290,7 @@ export function LancamentoDiarioPanel() {
         .eq("data_apontamento", dia).order("created_at", { ascending: false }),
       supabase.from("paradas_producao")
         .select("id,maquina,motivo,tipo,inicio,fim,duracao_min,operador,observacoes,user_id")
-        .gte("inicio", `${dia}T00:00:00`).order("inicio", { ascending: false }),
+        .gte("inicio", `${dia}T00:00:00`).lt("inicio", `${diaSeguinte}T00:00:00`).order("inicio", { ascending: false }),
     ]);
 
     const maqOrdenadas = [...maqRes].sort((a, b) => a.codigo.localeCompare(b.codigo));
@@ -316,10 +308,10 @@ export function LancamentoDiarioPanel() {
     if (tpRes.data) setTiposParada(tpRes.data as TipoParada[]);
     if (trRes.data) setTiposRefugo(trRes.data as TipoRefugo[]);
     setMaterias([...mpRes].sort((a, b) => a.codigo.localeCompare(b.codigo)));
-    if (apRes.data) setApontamentosHoje(apRes.data as ApontamentoHoje[]);
-    if (parRes.data) setParadasHoje(parRes.data as ParadaHoje[]);
+    setApontamentosHoje((apRes.data ?? []) as ApontamentoHoje[]);
+    setParadasHoje((parRes.data ?? []) as ParadaHoje[]);
     setLoading(false);
-  }, [loadWithFallback]);
+  }, [loadWithFallback, dataRef]);
 
   const loadResumos = useCallback(async () => {
     setLoadingResumos(true);
@@ -339,31 +331,35 @@ export function LancamentoDiarioPanel() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (mostrarResumo) loadResumos(); }, [mostrarResumo, loadResumos]);
 
-  const turnoDef  = TURNOS.find(t => t.id === turnoSel)!;
   const tipoSetup = useMemo(() => tiposParada.find(t => t.nome.trim().toLowerCase() === "setup"), [tiposParada]);
 
-  // Horas já lançadas por máquina neste turno (hoje) — mostra o que falta.
+  // Horas já lançadas por máquina no dia — mostra o que falta das 24h.
   const horasLancadas = useMemo(() => {
     const m = new Map<string, number>();
     for (const a of apontamentosHoje) {
-      if (a.turno !== turnoDef.label) continue;
       const k = a.maquina_codigo || a.maquina;
       m.set(k, (m.get(k) ?? 0) + (Number(a.horas_planejadas) || 0));
     }
     return m;
-  }, [apontamentosHoje, turnoDef.label]);
+  }, [apontamentosHoje]);
 
   const restanteMaquina = useCallback(
-    (cod: string) => Math.max(0, turnoDef.duracaoH - (horasLancadas.get(cod) ?? 0)),
-    [horasLancadas, turnoDef.duracaoH]
+    (cod: string) => Math.max(0, HORAS_DIA - (horasLancadas.get(cod) ?? 0)),
+    [horasLancadas]
+  );
+
+  // Máquina já tem algum lançamento (produção ou parada) no dia?
+  const jaLancada = useCallback(
+    (cod: string) => (horasLancadas.get(cod) ?? 0) > 0 || paradasHoje.some(p => p.maquina === cod),
+    [horasLancadas, paradasHoje]
   );
 
   // Seleciona automaticamente a primeira máquina ainda sem lançamento.
   useEffect(() => {
     if (maquinaSel || maquinas.length === 0) return;
-    const pendente = maquinas.find(m => restanteMaquina(m.codigo) > 0.01);
+    const pendente = maquinas.find(m => !jaLancada(m.codigo));
     setMaquinaSel((pendente ?? maquinas[0]).codigo);
-  }, [maquinas, maquinaSel, restanteMaquina]);
+  }, [maquinas, maquinaSel, jaLancada]);
 
   // Peças sugeridas: a última usada nesta máquina + as mais lançadas hoje.
   const pecasSugeridas = useMemo(() => {
@@ -383,8 +379,9 @@ export function LancamentoDiarioPanel() {
   }, [maquinaSel, pecas]);
 
   // ── Cálculos ao vivo ─────────────────────────────────────────────────────
-  const restante      = maquinaSel ? restanteMaquina(maquinaSel) : turnoDef.duracaoH;
-  const horasPeriodo  = horasCustom !== null ? (parseFloat(horasCustom.replace(",", ".")) || 0) : restante;
+  const restante      = maquinaSel ? restanteMaquina(maquinaSel) : HORAS_DIA;
+  const horasPeriodo  = parseFloat(horasSel) || 0;
+  const passaDoDia    = horasPeriodo > restante + 1e-6;
   const minParadas    = paradas.reduce((s, p) => s + p.minutos, 0);
   const horasParadas  = minParadas / 60;
   const horasProdutivas = Math.max(0, horasPeriodo - horasParadas);
@@ -398,7 +395,7 @@ export function LancamentoDiarioPanel() {
 
   const pronto =
     !!operador.trim() && !!maquinaSel &&
-    (modo === "produziu" ? !!peca && qtdNum > 0 && horasPeriodo > 0 && !paradasExcedem : paradas.length > 0);
+    (modo === "produziu" ? !!peca && qtdNum > 0 && horasPeriodo > 0 && !paradasExcedem && !passaDoDia : paradas.length > 0);
 
   const faltando: string[] = [];
   if (!operador.trim()) faltando.push("operador");
@@ -406,6 +403,7 @@ export function LancamentoDiarioPanel() {
   if (modo === "produziu") {
     if (!peca) faltando.push("peça");
     if (qtdNum <= 0) faltando.push("quantidade");
+    if (horasPeriodo <= 0) faltando.push("horas");
   } else if (paradas.length === 0) faltando.push("motivo da parada");
 
   // ── Paradas ──────────────────────────────────────────────────────────────
@@ -423,7 +421,7 @@ export function LancamentoDiarioPanel() {
   }
 
   function limparFormulario() {
-    setQuantidade(""); setHorasCustom(null); setParadas([]); setParadaAberta(null);
+    setQuantidade(""); setHorasSel(""); setParadas([]); setParadaAberta(null);
     setMinCustom(""); setPecaSetup(""); setRefugos({}); setMostrarRefugo(false); setMateria("");
     setModo("produziu");
   }
@@ -432,9 +430,10 @@ export function LancamentoDiarioPanel() {
   async function salvar() {
     if (!pronto) { toast.error(`Falta: ${faltando.join(", ")}`); return; }
     setSaving(true);
-    const agora = new Date();
-    const inicioDec = turnoDef.inicioH + turnoDef.inicioM / 60;
-    const fimDec    = turnoDef.fimH + turnoDef.fimM / 60;
+    // Em outra data, as paradas avulsas terminam às 23:59 daquele dia.
+    const agora = ehHoje ? new Date() : new Date(`${dataRef}T23:59:00`);
+    const inicioDec = 0;
+    const fimDec    = HORAS_DIA;
     const op = operador.trim();
 
     try {
@@ -454,7 +453,7 @@ export function LancamentoDiarioPanel() {
           .map(([id, q]) => ({ tipo_id: Number(id), tipo_nome: tiposRefugo.find(t => t.id === Number(id))?.nome ?? "Refugo", quantidade: q }));
 
         const args = {
-          p_data: hoje, p_turno: turnoDef.label,
+          p_data: hoje, p_turno: TURNO_DIA,
           p_maquina: maquinaSel, p_equipamento: maquinaSel,
           p_produto: peca, p_descricao_produto: pecaInfo?.descricao ?? peca,
           p_qtde_por_hora: porHora, p_horas_planejadas: +horasPeriodo.toFixed(4), p_qtde_plan_disp: planDisp,
@@ -467,7 +466,7 @@ export function LancamentoDiarioPanel() {
           p_operador: op, p_paradas: pParadas, p_refugos: pRefugos,
         };
         const preview = {
-          seq_producao: 0, data_apontamento: hoje, turno: turnoDef.label,
+          seq_producao: 0, data_apontamento: hoje, turno: TURNO_DIA,
           maquina: maquinaSel, maquina_codigo: maquinaSel,
           produto: peca, descricao_produto: pecaInfo?.descricao,
           qtde_por_hora: porHora, horas_planejadas: horasPeriodo, qtde_plan_disp: planDisp,
@@ -502,10 +501,10 @@ export function LancamentoDiarioPanel() {
       }
 
       toast.success(`${maquinaSel} lançada${modo === "produziu" ? ` — ${qtdNum} pç` : ""}`);
-      // "Salvar e seguir": vai para a próxima máquina ainda sem lançamento no turno.
+      // "Salvar e seguir": vai para a próxima máquina ainda sem lançamento no dia.
       const idx = maquinas.findIndex(m => m.codigo === maquinaSel);
       const ordem = [...maquinas.slice(idx + 1), ...maquinas.slice(0, idx)];
-      const proxima = ordem.find(m => restanteMaquina(m.codigo) > 0.01 && m.codigo !== maquinaSel);
+      const proxima = ordem.find(m => !jaLancada(m.codigo) && m.codigo !== maquinaSel);
       limparFormulario();
       if (proxima) setMaquinaSel(proxima.codigo);
       await load();
@@ -548,40 +547,46 @@ export function LancamentoDiarioPanel() {
     return { horasProducao, totalPecas, eficienciaDia, pizzaTempo, barMaquinas };
   }, [apontamentosHoje, paradasHoje]);
 
-  const maquinasLancadas = maquinas.filter(m => restanteMaquina(m.codigo) <= 0.01).length;
-  const lancadosMaquina = apontamentosHoje.filter(a => (a.maquina_codigo || a.maquina) === maquinaSel && a.turno === turnoDef.label);
+  const maquinasLancadas = maquinas.filter(m => jaLancada(m.codigo)).length;
+  const lancadosMaquina = apontamentosHoje.filter(a => (a.maquina_codigo || a.maquina) === maquinaSel);
+  const ontemISO = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return isoLocal(d); })();
+  const dataLabel = (() => {
+    const t = new Date(`${dataRef}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  })();
 
   // ── UI ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4 animate-in fade-in duration-200" id="diario-topo">
-      {/* Barra do turno: data, turno, operador, progresso */}
+      {/* Barra do dia: data, operador, progresso */}
       <div className="rounded-2xl border bg-card shadow-xs p-3 sm:p-4 flex flex-col lg:flex-row lg:items-center gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
             <Factory className="h-5 w-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold capitalize truncate">
-              {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
-            </p>
+            <p className="text-sm font-semibold truncate">{dataLabel}</p>
             <p className="text-xs text-muted-foreground">
-              {maquinasLancadas} de {maquinas.length} máquinas lançadas no {turnoDef.label}
+              {maquinasLancadas} de {maquinas.length} máquinas com lançamento no dia
             </p>
           </div>
         </div>
 
-        {/* Turno (segmentado) */}
-        <div className="flex rounded-xl border bg-muted/40 p-1 lg:ml-auto" role="radiogroup" aria-label="Turno">
-          {TURNOS.map(t => (
-            <button key={t.id} type="button" role="radio" aria-checked={turnoSel === t.id}
-              onClick={() => { setTurnoSel(t.id); setMaquinaSel(""); setHorasCustom(null); }}
-              className={cn("flex-1 lg:flex-none flex items-center justify-center gap-1.5 h-10 px-4 rounded-lg text-sm font-medium transition-colors",
-                turnoSel === t.id ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>
-              {t.id === 1 ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              {t.label}
-              <span className="hidden sm:inline text-xs text-muted-foreground font-normal">{fmtTurnoHorario(t)}</span>
-            </button>
-          ))}
+        {/* Data do lançamento */}
+        <div className="flex items-center gap-2 lg:ml-auto">
+          <div className="flex rounded-xl border bg-muted/40 p-1" role="radiogroup" aria-label="Dia do lançamento">
+            {[{ v: hojeLocalISO(), l: "Hoje" }, { v: ontemISO, l: "Ontem" }].map(o => (
+              <button key={o.l} type="button" role="radio" aria-checked={dataRef === o.v}
+                onClick={() => { setDataRef(o.v); setMaquinaSel(""); }}
+                className={cn("h-10 px-4 rounded-lg text-sm font-medium transition-colors",
+                  dataRef === o.v ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                {o.l}
+              </button>
+            ))}
+          </div>
+          <Input type="date" value={dataRef} max={hojeLocalISO()} aria-label="Outra data"
+            onChange={e => { if (e.target.value) { setDataRef(e.target.value); setMaquinaSel(""); } }}
+            className="h-11 w-[9.5rem]" />
         </div>
 
         {/* Operador (lembrado) */}
@@ -618,11 +623,11 @@ export function LancamentoDiarioPanel() {
                 {maquinas.map(m => {
                   const st = STATUS_MAQUINA[m.status] ?? STATUS_MAQUINA.operando;
                   const lanc = horasLancadas.get(m.codigo) ?? 0;
-                  const pct = Math.min(100, (lanc / turnoDef.duracaoH) * 100);
-                  const completa = restanteMaquina(m.codigo) <= 0.01;
+                  const pct = Math.min(100, (lanc / HORAS_DIA) * 100);
+                  const completa = jaLancada(m.codigo);
                   const ativa = maquinaSel === m.codigo;
                   return (
-                    <button key={m.id} type="button" onClick={() => { setMaquinaSel(m.codigo); setHorasCustom(null); setParadas([]); }}
+                    <button key={m.id} type="button" onClick={() => { setMaquinaSel(m.codigo); setHorasSel(""); setParadas([]); }}
                       aria-pressed={ativa}
                       className={cn("relative rounded-xl border-2 p-2.5 text-left transition-all min-h-[76px]",
                         ativa ? "border-primary bg-primary/5 shadow-sm" : "border-border hover:border-primary/40",
@@ -630,7 +635,7 @@ export function LancamentoDiarioPanel() {
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-[15px] font-bold">{m.codigo}</span>
                         {completa
-                          ? <CheckCircle2 className="h-4 w-4 text-green-600" aria-label="Turno lançado" />
+                          ? <CheckCircle2 className="h-4 w-4 text-green-600" aria-label="Já lançada no dia" />
                           : <span className={cn("h-2 w-2 rounded-full", st.dot)} title={st.label} />}
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{m.nome}</p>
@@ -638,7 +643,7 @@ export function LancamentoDiarioPanel() {
                         <div className={cn("h-full rounded-full", completa ? "bg-green-500" : "bg-primary")} style={{ width: `${pct}%` }} />
                       </div>
                       <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">
-                        {completa ? "Turno completo" : lanc > 0 ? `${fmtH(lanc)} de ${fmtH(turnoDef.duracaoH)}` : "Sem lançamento"}
+                        {lanc > 0 ? `${fmtH(lanc)} lançadas` : completa ? "Só paradas" : "Sem lançamento"}
                       </p>
                     </button>
                   );
@@ -720,23 +725,20 @@ export function LancamentoDiarioPanel() {
               </Etapa>
 
               {/* 5. Tempo */}
-              <Etapa n={5} titulo="Quanto tempo?" dica="já vem preenchido com o que falta do turno">
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => setHorasCustom(null)} aria-pressed={horasCustom === null}
-                    className={cn("h-11 px-4 rounded-xl border-2 text-sm font-medium",
-                      horasCustom === null ? "border-primary bg-primary/5 text-primary" : "border-border hover:border-primary/40")}>
-                    {restante >= turnoDef.duracaoH - 0.01 ? "Turno inteiro" : "Restante do turno"} · {fmtH(restante)}
-                  </button>
-                  <div className={cn("flex items-center gap-2 h-11 px-3 rounded-xl border-2",
-                    horasCustom !== null ? "border-primary bg-primary/5" : "border-border")}>
-                    <span className="text-sm text-muted-foreground">Outro:</span>
-                    <Input type="number" min="0" step="0.25" inputMode="decimal" value={horasCustom ?? ""}
-                      onChange={e => setHorasCustom(e.target.value)} onFocus={() => setHorasCustom(v => v ?? "")}
-                      placeholder="horas" aria-label="Horas trabalhadas"
-                      className="h-8 w-20 border-0 bg-transparent px-1 text-sm focus-visible:ring-0" />
-                    <span className="text-sm text-muted-foreground">h</span>
-                  </div>
-                </div>
+              <Etapa n={5} titulo="Quantas horas a máquina trabalhou?" dica="no dia, incluindo as paradas" done={horasPeriodo > 0}>
+                <select value={horasSel} onChange={e => setHorasSel(e.target.value)} aria-label="Horas trabalhadas no dia"
+                  className={cn("w-full max-w-xs h-12 rounded-xl border-2 bg-background px-3.5 text-base font-semibold focus:outline-none focus:ring-2 focus:ring-ring",
+                    horasSel ? "border-primary" : "border-input")}>
+                  <option value="">Selecione as horas…</option>
+                  {OPCOES_HORAS.map(h => (
+                    <option key={h} value={h} disabled={h > restante + 1e-6}>{fmtH(h)}</option>
+                  ))}
+                </select>
+                {restante < HORAS_DIA && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Já lançado nesta máquina no dia: {fmtH(HORAS_DIA - restante)} · disponível: {fmtH(restante)}
+                  </p>
+                )}
               </Etapa>
             </>
           )}
@@ -868,7 +870,7 @@ export function LancamentoDiarioPanel() {
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resumo do lançamento</p>
             <dl className="space-y-1.5 text-sm">
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Máquina</dt><dd className="font-semibold">{maquinaSel || "—"}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Turno</dt><dd className="font-medium">{turnoDef.label}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Dia</dt><dd className="font-medium">{new Date(`${dataRef}T12:00:00`).toLocaleDateString("pt-BR")}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Operador</dt><dd className="font-medium truncate">{operador || "—"}</dd></div>
               {modo === "produziu" ? (
                 <>
@@ -907,7 +909,7 @@ export function LancamentoDiarioPanel() {
 
           {lancadosMaquina.length > 0 && (
             <div className="rounded-2xl border bg-card p-3 space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Já lançado em {maquinaSel} · {turnoDef.label}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Já lançado em {maquinaSel} no dia</p>
               {lancadosMaquina.map(a => (
                 <div key={a.id} className="flex items-center justify-between text-sm">
                   <span className="truncate">{a.produto} · {a.operador}</span>
@@ -922,7 +924,7 @@ export function LancamentoDiarioPanel() {
       {/* KPIs do dia */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { Icon: Package,    label: "Peças hoje",   value: resumo.totalPecas.toLocaleString("pt-BR"), cor: "text-green-600" },
+          { Icon: Package,    label: "Peças no dia",   value: resumo.totalPecas.toLocaleString("pt-BR"), cor: "text-green-600" },
           { Icon: Timer,      label: "Horas produção", value: fmtH(resumo.horasProducao),              cor: "text-blue-600" },
           { Icon: TrendingUp, label: "Eficiência",   value: `${resumo.eficienciaDia.toFixed(0)}%`,     cor: resumo.eficienciaDia >= 95 ? "text-green-600" : resumo.eficienciaDia >= 80 ? "text-amber-600" : "text-red-600" },
           { Icon: Factory,    label: "Máquinas lançadas", value: `${maquinasLancadas}/${maquinas.length}`, cor: "text-foreground" },
@@ -940,14 +942,15 @@ export function LancamentoDiarioPanel() {
       {/* Lançamentos de hoje */}
       <div className="rounded-2xl border bg-card p-4 space-y-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-600" /> Lançados hoje</h3>
+          <h3 className="text-sm font-semibold flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-600" /> Lançados no dia</h3>
+          <span className="text-xs text-muted-foreground hidden sm:inline">toque no lápis para corrigir</span>
           <button onClick={() => load()} disabled={loading} aria-label="Atualizar"
             className="ml-auto h-9 w-9 flex items-center justify-center rounded-lg border hover:bg-muted">
             <RefreshCw className={cn("h-4 w-4 text-muted-foreground", loading && "animate-spin")} />
           </button>
         </div>
         {apontamentosHoje.length === 0 && paradasHoje.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">Nada lançado hoje ainda.</p>
+          <p className="text-sm text-muted-foreground py-6 text-center">Nada lançado neste dia.</p>
         ) : (
           <div className="divide-y">
             {apontamentosHoje.slice(0, 30).map(a => (
@@ -961,6 +964,9 @@ export function LancamentoDiarioPanel() {
                   <p className="font-semibold text-sm text-green-600 tabular-nums">{a.quantidade.toLocaleString("pt-BR")} pç</p>
                   <p className="text-xs text-muted-foreground tabular-nums">{fmtH(Number(a.horas_planejadas) || 0)}</p>
                 </div>
+                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" aria-label="Corrigir lançamento" onClick={() => setEditando(a)}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
               </div>
             ))}
             {paradasHoje.slice(0, 15).map(p => (
@@ -971,6 +977,9 @@ export function LancamentoDiarioPanel() {
                   <p className="text-xs text-muted-foreground">{p.operador} · {fmtHora(p.inicio)}</p>
                 </div>
                 <p className="text-sm font-semibold text-amber-600 tabular-nums shrink-0">{fmtMin(p.duracao_min ?? minutosDecorridos(p.inicio))}</p>
+                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" aria-label="Corrigir parada" onClick={() => setEditandoParada(p)}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
               </div>
             ))}
           </div>
@@ -1048,6 +1057,13 @@ export function LancamentoDiarioPanel() {
         Precisa lançar hora a hora, com lote e medições (planilha PPI-51)? Use a aba <strong className="text-foreground">Controle</strong>.
       </p>
 
+      <EditarApontamentoDialog
+        apontamento={editando} onClose={() => setEditando(null)} onSaved={() => { setEditando(null); load(); }}
+        maquinas={maquinas} pecas={pecas} tiposParada={tiposParada} tiposRefugo={tiposRefugo} />
+      <EditarParadaDialog
+        parada={editandoParada} onClose={() => setEditandoParada(null)} onSaved={() => { setEditandoParada(null); load(); }}
+        maquinas={maquinas} tiposParada={tiposParada} />
+
       {/* Barra fixa de salvar no celular */}
       <div className="xl:hidden sticky bottom-2 z-20">
         <div className="rounded-2xl border bg-card/95 backdrop-blur shadow-lg px-3 py-2.5 flex items-center gap-3">
@@ -1116,5 +1132,290 @@ function ResumoPeriodoCard({ titulo, subtitulo, Icon, dado, loading }: {
         </>
       )}
     </div>
+  );
+}
+
+// ── Correção de lançamentos ──────────────────────────────────────────────────
+
+const selCls = "w-full h-11 rounded-xl border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
+const lblCls = "text-xs font-semibold text-muted-foreground uppercase tracking-wide";
+
+interface ParadaEdit { id: string; tipoId: number; nome: string; horas: number; }
+
+/** Botão de excluir em dois toques (sem pop-up de confirmação do navegador). */
+function BotaoExcluir({ onConfirm, disabled }: { onConfirm: () => void; disabled?: boolean }) {
+  const [armado, setArmado] = useState(false);
+  useEffect(() => { if (!armado) return; const t = setTimeout(() => setArmado(false), 4000); return () => clearTimeout(t); }, [armado]);
+  return (
+    <Button type="button" variant={armado ? "destructive" : "outline"} disabled={disabled}
+      className={cn("h-11 gap-1.5", !armado && "text-destructive border-destructive/40 hover:bg-destructive/10")}
+      onClick={() => (armado ? onConfirm() : setArmado(true))}>
+      <Trash2 className="h-4 w-4" /> {armado ? "Toque de novo para excluir" : "Excluir"}
+    </Button>
+  );
+}
+
+function EditarApontamentoDialog({ apontamento, onClose, onSaved, maquinas, pecas, tiposParada, tiposRefugo }: {
+  apontamento: ApontamentoHoje | null; onClose: () => void; onSaved: () => void;
+  maquinas: Maquina[]; pecas: PecaOption[]; tiposParada: TipoParada[]; tiposRefugo: TipoRefugo[];
+}) {
+  const [maquina, setMaquina] = useState("");
+  const [peca, setPeca] = useState("");
+  const [qtd, setQtd] = useState("");
+  const [horas, setHoras] = useState("");
+  const [operador, setOperador] = useState("");
+  const [paradas, setParadas] = useState<ParadaEdit[]>([]);
+  const [refugos, setRefugos] = useState<Record<number, number>>({});
+  const [novaTipo, setNovaTipo] = useState("");
+  const [novaMin, setNovaMin] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (!apontamento) return;
+    setMaquina(apontamento.maquina_codigo || apontamento.maquina);
+    setPeca(apontamento.produto);
+    setQtd(String(apontamento.quantidade ?? 0));
+    setHoras(String(Number(apontamento.horas_planejadas) || ""));
+    setOperador(apontamento.operador ?? "");
+    setNovaTipo(""); setNovaMin("");
+    setCarregando(true);
+    Promise.all([
+      supabase.from("apontamento_paradas").select("id,tipo_parada_id,tipo_parada_nome,duracao_horas").eq("apontamento_id", apontamento.id),
+      supabase.from("apontamento_refugos").select("tipo_refugo_id,quantidade").eq("apontamento_id", apontamento.id),
+    ]).then(([pr, rr]) => {
+      setParadas((pr.data ?? []).map(p => ({ id: p.id, tipoId: p.tipo_parada_id, nome: p.tipo_parada_nome, horas: Number(p.duracao_horas) || 0 })));
+      const r: Record<number, number> = {};
+      for (const x of rr.data ?? []) r[x.tipo_refugo_id] = (r[x.tipo_refugo_id] ?? 0) + (x.quantidade ?? 0);
+      setRefugos(r);
+    }).finally(() => setCarregando(false));
+  }, [apontamento]);
+
+  const horasNum = parseFloat(horas) || 0;
+  const horasParadas = paradas.reduce((s, p) => s + p.horas, 0);
+  const pecaInfo = pecas.find(p => p.codigo === peca);
+
+  async function salvar() {
+    if (!apontamento) return;
+    if (!navigator.onLine) { toast.error("Sem internet — a correção precisa de conexão."); return; }
+    if (!peca || !maquina || !operador.trim() || horasNum <= 0) { toast.error("Preencha máquina, peça, horas e operador."); return; }
+    if (horasParadas > horasNum) { toast.error("As paradas passam das horas do lançamento."); return; }
+    setSalvando(true);
+    const { data, error } = await supabase.rpc("editar_apontamento_producao", {
+      p_id: apontamento.id, p_maquina: maquina, p_produto: peca,
+      p_descricao_produto: pecaInfo?.descricao ?? peca, p_qtde_por_hora: pecaInfo?.pecas_por_hora ?? 0,
+      p_horas_planejadas: horasNum, p_qtde_produzida: parseInt(qtd) || 0, p_operador: operador.trim(),
+      p_paradas: paradas.map(p => ({ tipo_id: p.tipoId, tipo_nome: p.nome, duracao_horas: +p.horas.toFixed(4) })),
+      p_refugos: Object.entries(refugos).filter(([, q]) => q > 0)
+        .map(([id, q]) => ({ tipo_id: Number(id), tipo_nome: tiposRefugo.find(t => t.id === Number(id))?.nome ?? "Refugo", quantidade: q })),
+    });
+    setSalvando(false);
+    const res = data as { ok?: boolean; error?: string } | null;
+    if (error || !res?.ok) { toast.error(res?.error ?? "Não foi possível salvar a correção."); return; }
+    toast.success("Lançamento corrigido.");
+    onSaved();
+  }
+
+  async function excluir() {
+    if (!apontamento) return;
+    setSalvando(true);
+    const { data, error } = await supabase.rpc("excluir_lancamento_producao", { p_tipo: "apontamento", p_id: apontamento.id });
+    setSalvando(false);
+    const res = data as { ok?: boolean; error?: string } | null;
+    if (error || !res?.ok) { toast.error(res?.error ?? "Não foi possível excluir."); return; }
+    toast.success("Lançamento excluído.");
+    onSaved();
+  }
+
+  function addParada() {
+    const tp = tiposParada.find(t => t.id === Number(novaTipo));
+    const min = parseInt(novaMin) || 0;
+    if (!tp || min <= 0) return;
+    setParadas(prev => [...prev, { id: crypto.randomUUID(), tipoId: tp.id, nome: tp.nome, horas: min / 60 }]);
+    setNovaTipo(""); setNovaMin("");
+  }
+
+  return (
+    <Dialog open={!!apontamento} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Corrigir lançamento</DialogTitle>
+          <DialogDescription>
+            {apontamento && `Lançado às ${fmtHora(apontamento.created_at)} por ${apontamento.operador}. A correção fica registrada no histórico.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {carregando ? (
+          <div className="flex items-center gap-2 py-10 justify-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Carregando...</div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><label className={lblCls}>Máquina</label>
+                <select value={maquina} onChange={e => setMaquina(e.target.value)} className={selCls}>
+                  {!maquinas.some(m => m.codigo === maquina) && maquina && <option value={maquina}>{maquina}</option>}
+                  {maquinas.map(m => <option key={m.id} value={m.codigo}>{m.codigo} — {m.nome}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5"><label className={lblCls}>Operador</label>
+                <Input value={operador} onChange={e => setOperador(e.target.value)} className="h-11" />
+              </div>
+            </div>
+            <div className="space-y-1.5"><label className={lblCls}>Peça</label>
+              <PecaCombobox pecas={pecas} value={peca} onChange={v => v && setPeca(v)} placeholder="Buscar peça..." />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><label className={lblCls}>Peças boas</label>
+                <Input type="number" min="0" inputMode="numeric" value={qtd} onChange={e => setQtd(e.target.value.replace(/\D/g, ""))} className="h-11 text-lg font-semibold tabular-nums" />
+              </div>
+              <div className="space-y-1.5"><label className={lblCls}>Horas trabalhadas</label>
+                <select value={horas} onChange={e => setHoras(e.target.value)} className={selCls}>
+                  {!OPCOES_HORAS.includes(horasNum) && horasNum > 0 && <option value={horas}>{fmtH(horasNum)}</option>}
+                  {OPCOES_HORAS.map(h => <option key={h} value={h}>{fmtH(h)}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className={lblCls}>Paradas ({fmtH(horasParadas)})</label>
+              {paradas.map(p => (
+                <div key={p.id} className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
+                  <span className="flex-1 text-sm truncate">{p.nome}</span>
+                  <select value={Math.round(p.horas * 60)} aria-label={`Duração de ${p.nome}`}
+                    onChange={e => setParadas(prev => prev.map(x => x.id === p.id ? { ...x, horas: Number(e.target.value) / 60 } : x))}
+                    className="h-9 rounded-md border bg-background px-2 text-sm">
+                    {[...new Set([Math.round(p.horas * 60), ...DURACOES_MIN, 180, 240, 300, 360, 480])].sort((a, b) => a - b)
+                      .map(m => <option key={m} value={m}>{fmtMin(m)}</option>)}
+                  </select>
+                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9" aria-label="Remover parada"
+                    onClick={() => setParadas(prev => prev.filter(x => x.id !== p.id))}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <select value={novaTipo} onChange={e => setNovaTipo(e.target.value)} className={cn(selCls, "h-10 flex-1")} aria-label="Motivo da nova parada">
+                  <option value="">+ Adicionar parada…</option>
+                  {tiposParada.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                </select>
+                <select value={novaMin} onChange={e => setNovaMin(e.target.value)} className="h-10 rounded-xl border bg-background px-2 text-sm" aria-label="Duração da nova parada">
+                  <option value="">Duração</option>
+                  {[...DURACOES_MIN, 180, 240, 300, 360, 480].map(m => <option key={m} value={m}>{fmtMin(m)}</option>)}
+                </select>
+                <Button type="button" variant="secondary" className="h-10" onClick={addParada} disabled={!novaTipo || !novaMin}>OK</Button>
+              </div>
+            </div>
+
+            {tiposRefugo.length > 0 && (
+              <div className="space-y-2">
+                <label className={lblCls}>Refugo</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {tiposRefugo.map(t => (
+                    <div key={t.id} className="flex items-center gap-2 rounded-lg border px-2.5 py-1">
+                      <span className="flex-1 text-sm truncate">{t.nome}</span>
+                      <input type="number" min="0" inputMode="numeric" value={refugos[t.id] ?? 0} aria-label={`Refugo ${t.nome}`}
+                        onChange={e => setRefugos(r => ({ ...r, [t.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                        className="w-14 h-8 text-center text-sm rounded-md border bg-background tabular-nums" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="gap-2 sm:justify-between">
+          <BotaoExcluir onConfirm={excluir} disabled={salvando || carregando} />
+          <div className="flex gap-2">
+            <Button variant="outline" className="h-11" onClick={onClose} disabled={salvando}>Cancelar</Button>
+            <Button className="h-11 gap-1.5" onClick={salvar} disabled={salvando || carregando}>
+              {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Salvar correção
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditarParadaDialog({ parada, onClose, onSaved, maquinas, tiposParada }: {
+  parada: ParadaHoje | null; onClose: () => void; onSaved: () => void;
+  maquinas: Maquina[]; tiposParada: TipoParada[];
+}) {
+  const [maquina, setMaquina] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [minutos, setMinutos] = useState(0);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (!parada) return;
+    setMaquina(parada.maquina);
+    setMotivo(parada.motivo);
+    setMinutos(parada.duracao_min ?? minutosDecorridos(parada.inicio));
+  }, [parada]);
+
+  const opcoesMin = [...new Set([minutos, ...DURACOES_MIN, 180, 240, 300, 360, 480, 600, 720])].filter(m => m > 0).sort((a, b) => a - b);
+
+  async function salvar() {
+    if (!parada) return;
+    if (!navigator.onLine) { toast.error("Sem internet — a correção precisa de conexão."); return; }
+    setSalvando(true);
+    const tp = tiposParada.find(t => t.nome === motivo);
+    const fim = new Date(new Date(parada.inicio).getTime() + minutos * 60000).toISOString();
+    const { error } = await supabase.from("paradas_producao").update({
+      maquina, motivo, duracao_min: minutos, fim,
+      ...(tp ? { tipo: tp.categoria === "operacional" || tp.categoria === "setup" ? "planejada" : "nao_planejada" } : {}),
+    }).eq("id", parada.id);
+    setSalvando(false);
+    if (error) { toast.error("Não foi possível salvar a correção."); return; }
+    toast.success("Parada corrigida.");
+    onSaved();
+  }
+
+  async function excluir() {
+    if (!parada) return;
+    setSalvando(true);
+    const { data, error } = await supabase.rpc("excluir_lancamento_producao", { p_tipo: "parada", p_id: parada.id });
+    setSalvando(false);
+    const res = data as { ok?: boolean; error?: string } | null;
+    if (error || !res?.ok) { toast.error(res?.error ?? "Não foi possível excluir."); return; }
+    toast.success("Parada excluída.");
+    onSaved();
+  }
+
+  return (
+    <Dialog open={!!parada} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Corrigir parada</DialogTitle>
+          <DialogDescription>{parada && `Registrada às ${fmtHora(parada.inicio)} por ${parada.operador}.`}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5"><label className={lblCls}>Máquina</label>
+            <select value={maquina} onChange={e => setMaquina(e.target.value)} className={selCls}>
+              {!maquinas.some(m => m.codigo === maquina) && maquina && <option value={maquina}>{maquina}</option>}
+              {maquinas.map(m => <option key={m.id} value={m.codigo}>{m.codigo} — {m.nome}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5"><label className={lblCls}>Motivo</label>
+            <select value={motivo} onChange={e => setMotivo(e.target.value)} className={selCls}>
+              {!tiposParada.some(t => t.nome === motivo) && <option value={motivo}>{motivo}</option>}
+              {tiposParada.map(t => <option key={t.id} value={t.nome}>{t.nome}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5"><label className={lblCls}>Duração</label>
+            <select value={minutos} onChange={e => setMinutos(Number(e.target.value))} className={selCls}>
+              {opcoesMin.map(m => <option key={m} value={m}>{fmtMin(m)}</option>)}
+            </select>
+          </div>
+        </div>
+        <DialogFooter className="gap-2 sm:justify-between">
+          <BotaoExcluir onConfirm={excluir} disabled={salvando} />
+          <div className="flex gap-2">
+            <Button variant="outline" className="h-11" onClick={onClose} disabled={salvando}>Cancelar</Button>
+            <Button className="h-11 gap-1.5" onClick={salvar} disabled={salvando}>
+              {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Salvar correção
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

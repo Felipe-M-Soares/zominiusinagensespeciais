@@ -2526,6 +2526,25 @@ export type Database = {
         Returns: Json
       }
       keep_alive: { Args: { p_source?: string }; Returns: Json }
+      editar_apontamento_producao: {
+        Args: {
+          p_id: string
+          p_maquina: string
+          p_produto: string
+          p_descricao_produto: string
+          p_qtde_por_hora: number
+          p_horas_planejadas: number
+          p_qtde_produzida: number
+          p_operador: string
+          p_paradas?: Json
+          p_refugos?: Json
+        }
+        Returns: Json
+      }
+      excluir_lancamento_producao: {
+        Args: { p_tipo: string; p_id: string }
+        Returns: Json
+      }
       listar_feedback_reports: {
         Args: { p_status?: string }
         Returns: {

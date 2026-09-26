@@ -185,3 +185,151 @@ DELETE FROM public.profiles   p  WHERE NOT EXISTS (SELECT 1 FROM auth.users u WH
 DROP FUNCTION IF EXISTS public.reserve_stock(uuid, jsonb);
 DROP FUNCTION IF EXISTS public.get_lotes_intermediario(uuid);
 DROP FUNCTION IF EXISTS public.admin_clear_history();
+
+-- ── R7. Diário da Produção: lançamento por DIA (sem turno) ──────────────────
+-- O Diário passou a lançar o dia todo de uma vez (até 24h por máquina).
+-- Acrescenta 'Dia inteiro' aos valores aceitos em apontamentos_producao.turno.
+DO $turno_dia$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT c.conname
+    FROM pg_constraint c
+    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+    WHERE c.conrelid = 'public.apontamentos_producao'::regclass
+      AND c.contype = 'c' AND a.attname = 'turno'
+  LOOP
+    EXECUTE format('ALTER TABLE public.apontamentos_producao DROP CONSTRAINT %I', r.conname);
+  END LOOP;
+  ALTER TABLE public.apontamentos_producao
+    ADD CONSTRAINT apontamentos_producao_turno_check
+    CHECK (turno IN ('1º Turno','2º Turno','3º Turno','Dia inteiro'));
+END;
+$turno_dia$;
+
+-- ── R8. Correção de lançamentos (editar / excluir) ──────────────────────────
+-- Permite corrigir um apontamento já salvo: peça, quantidade, horas,
+-- operador, paradas e refugos — tudo numa transação, recalculando o
+-- planejado e o tempo de ciclo. Quem pode: admin, produção ou quem lançou.
+CREATE OR REPLACE FUNCTION public.editar_apontamento_producao(
+  p_id                 uuid,
+  p_maquina            text,
+  p_produto            text,
+  p_descricao_produto  text,
+  p_qtde_por_hora      numeric,
+  p_horas_planejadas   numeric,
+  p_qtde_produzida     integer,
+  p_operador           text,
+  p_paradas            jsonb DEFAULT '[]',
+  p_refugos            jsonb DEFAULT '[]'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f_edit_ap$
+DECLARE
+  v_uid      uuid := auth.uid();
+  v_dono     uuid;
+  v_hr_par   numeric;
+  v_hr_prod  numeric;
+  v_plan     numeric;
+  v_nome     text;
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
+  SELECT user_id INTO v_dono FROM public.apontamentos_producao WHERE id = p_id;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Lançamento não encontrado'); END IF;
+  IF NOT (public.get_my_role() IN ('admin','producao') OR v_dono = v_uid) THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão para editar este lançamento');
+  END IF;
+  IF p_horas_planejadas IS NULL OR p_horas_planejadas <= 0 OR p_horas_planejadas > 24 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Horas devem estar entre 0 e 24');
+  END IF;
+  IF p_qtde_produzida IS NULL OR p_qtde_produzida < 0 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Quantidade inválida');
+  END IF;
+
+  SELECT COALESCE(SUM((p->>'duracao_horas')::numeric), 0) INTO v_hr_par
+  FROM jsonb_array_elements(COALESCE(p_paradas, '[]'::jsonb)) p;
+  IF v_hr_par > p_horas_planejadas THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'As paradas passam das horas do lançamento');
+  END IF;
+
+  v_hr_prod := GREATEST(0, p_horas_planejadas - v_hr_par);
+  v_plan := CASE WHEN COALESCE(p_qtde_por_hora, 0) > 0 AND v_hr_prod > 0
+                 THEN round(p_qtde_por_hora * v_hr_prod, 2) ELSE p_qtde_produzida END;
+
+  UPDATE public.apontamentos_producao SET
+    maquina = p_maquina, maquina_codigo = p_maquina, equipamento = p_maquina,
+    produto = p_produto, descricao_produto = p_descricao_produto,
+    qtde_por_hora = COALESCE(p_qtde_por_hora, 0),
+    horas_planejadas = p_horas_planejadas, lead_time_horas = p_horas_planejadas,
+    qtde_plan_disp = v_plan, quantidade = p_qtde_produzida,
+    cycle_time_min = CASE WHEN p_qtde_produzida > 0 AND v_hr_prod > 0
+                          THEN round(v_hr_prod * 60 / p_qtde_produzida, 4) ELSE NULL END,
+    operador = left(trim(p_operador), 120)
+  WHERE id = p_id;
+
+  DELETE FROM public.apontamento_paradas WHERE apontamento_id = p_id;
+  INSERT INTO public.apontamento_paradas (apontamento_id, tipo_parada_id, tipo_parada_nome, duracao_horas)
+  SELECT p_id, (p->>'tipo_id')::integer, p->>'tipo_nome', (p->>'duracao_horas')::numeric
+  FROM jsonb_array_elements(COALESCE(p_paradas, '[]'::jsonb)) p
+  WHERE (p->>'duracao_horas')::numeric > 0;
+
+  DELETE FROM public.apontamento_refugos WHERE apontamento_id = p_id;
+  INSERT INTO public.apontamento_refugos (apontamento_id, tipo_refugo_id, tipo_refugo_nome, quantidade)
+  SELECT p_id, (r->>'tipo_id')::integer, r->>'tipo_nome', (r->>'quantidade')::integer
+  FROM jsonb_array_elements(COALESCE(p_refugos, '[]'::jsonb)) r
+  WHERE (r->>'quantidade')::integer > 0;
+
+  SELECT display_name INTO v_nome FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, entity_id, details)
+  VALUES (v_uid, COALESCE(v_nome, 'Desconhecido'), 'editar_apontamento', 'apontamento_producao', p_id,
+    jsonb_build_object('produto', p_produto, 'quantidade', p_qtde_produzida, 'horas', p_horas_planejadas));
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$f_edit_ap$;
+
+CREATE OR REPLACE FUNCTION public.excluir_lancamento_producao(p_tipo text, p_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f_del_ap$
+DECLARE
+  v_uid  uuid := auth.uid();
+  v_dono uuid;
+  v_nome text;
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
+  IF p_tipo = 'apontamento' THEN
+    SELECT user_id INTO v_dono FROM public.apontamentos_producao WHERE id = p_id;
+  ELSIF p_tipo = 'parada' THEN
+    SELECT user_id INTO v_dono FROM public.paradas_producao WHERE id = p_id;
+  ELSE
+    RETURN jsonb_build_object('ok', false, 'error', 'Tipo inválido');
+  END IF;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Lançamento não encontrado'); END IF;
+  IF NOT (public.get_my_role() IN ('admin','producao') OR v_dono = v_uid) THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão para excluir este lançamento');
+  END IF;
+
+  IF p_tipo = 'apontamento' THEN
+    DELETE FROM public.apontamentos_producao WHERE id = p_id;   -- paradas/refugos vinculados: ON DELETE CASCADE
+  ELSE
+    DELETE FROM public.paradas_producao WHERE id = p_id;
+  END IF;
+
+  SELECT display_name INTO v_nome FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, entity_id, details)
+  VALUES (v_uid, COALESCE(v_nome, 'Desconhecido'), 'excluir_lancamento_producao', p_tipo, p_id, '{}'::jsonb);
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$f_del_ap$;
+
+REVOKE EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb) FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.excluir_lancamento_producao(text, uuid) FROM anon, PUBLIC;
+GRANT EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.excluir_lancamento_producao(text, uuid) TO authenticated;

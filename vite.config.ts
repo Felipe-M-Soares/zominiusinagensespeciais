@@ -127,6 +127,7 @@ export default defineConfig(() => ({
           "**/pdf.worker*.js",
           "**/html2canvas-*.js",
           "**/pedidoPdf-*.js",
+          "**/pptxgen*.js",
           "**/purify.es-*.js",
           "**/index.es-*.js",
           "**/*-cyrillic*.woff2",
