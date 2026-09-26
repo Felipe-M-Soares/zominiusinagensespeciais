@@ -108,9 +108,10 @@ export function DashboardPanel() {
     // "toLocaleString of undefined" se a RPC mudar/retornar vazio).
     if (!error && res && (res as ResumoMensal).geral) setData(res as ResumoMensal);
     else setData(null);
-    if (meta && oeeSem) {
-      const o = oeeSem as { performance: number; qtde_produzida: number };
-      setSemMeta({ sem, alvo: Number(meta.meta_oee_pct) || 0, real: o.performance ?? 0, pecas: o.qtde_produzida ?? 0 });
+    if (oeeSem) {
+      // Meta do semestre é comparada com o OEE (paradas entram no cálculo). Sem meta salva: 85%.
+      const o = oeeSem as { oee: number; qtde_produzida: number };
+      setSemMeta({ sem, alvo: Number(meta?.meta_oee_pct) || 85, real: o.oee ?? 0, pecas: o.qtde_produzida ?? 0 });
     } else {
       setSemMeta(null);
     }
@@ -150,7 +151,7 @@ export function DashboardPanel() {
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
           <div className="flex items-center gap-2">
             <Target className="h-4 w-4 text-emerald-600" />
-            <h3 className="text-sm font-semibold">Meta do {semMeta.sem}º Semestre — Produtividade das Máquinas</h3>
+            <h3 className="text-sm font-semibold">Meta de OEE do {semMeta.sem}º Semestre</h3>
             {semMeta.real >= semMeta.alvo
               ? <CheckCircle2 className="h-4 w-4 text-green-600 ml-auto" />
               : <AlertTriangle className="h-4 w-4 text-amber-500 ml-auto" />}
@@ -166,7 +167,7 @@ export function DashboardPanel() {
               style={{ width: `${Math.min(100, (semMeta.real / semMeta.alvo) * 100)}%` }} />
           </div>
           <p className="text-[10px] text-muted-foreground">
-            {semMeta.pecas.toLocaleString("pt-BR")} peças produzidas no semestre · produtividade = produzido ÷ planejado de todas as máquinas · meta definida em Desempenho → Metas
+            {semMeta.pecas.toLocaleString("pt-BR")} peças produzidas no semestre · OEE = disponibilidade × performance × qualidade (as paradas entram no cálculo) · meta em Desempenho → Semestre
           </p>
         </div>
       )}

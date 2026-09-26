@@ -97,16 +97,19 @@ export async function gerarApresentacaoSemestre(d: DadosSemestre): Promise<void>
       s.addText(k.l.toUpperCase(), { x: x + 0.2, y: y + 0.15, w: 2.5, h: 0.35, fontFace: FONT, fontSize: 11, bold: true, color: C.muted });
       s.addText(k.v, { x: x + 0.2, y: y + 0.55, w: 2.5, h: 0.8, fontFace: FONT, fontSize: 30, bold: true, color: k.c ?? C.ink });
     });
-    if (d.metaProdutividade) {
-      const ating = d.geral.performance;
-      const ok = ating >= d.metaProdutividade;
+    {
+      const meta = d.metaOee;
+      const ok = d.geral.oee >= meta;
+      const perda = Math.max(0, d.oeeSemParadas - d.geral.oee);
       s.addText([
-        { text: "Meta de produtividade do semestre: ", options: { color: C.muted } },
-        { text: `${fmtPct(d.metaProdutividade)}  ·  realizado ${fmtPct(ating)}  `, options: { bold: true, color: C.ink } },
-        { text: ok ? "✔ meta atingida" : "✖ abaixo da meta", options: { bold: true, color: ok ? C.good : C.bad } },
-      ], { x: 0.5, y: 5.75, w: 12.3, h: 0.5, fontFace: FONT, fontSize: 16 });
+        { text: "Meta de OEE do semestre: ", options: { color: C.muted } },
+        { text: `${fmtPct(meta)}  ·  realizado ${fmtPct(d.geral.oee)}  `, options: { bold: true, color: C.ink } },
+        { text: ok ? "✔ meta atingida" : `✖ faltam ${(meta - d.geral.oee).toFixed(1).replace(".", ",")} pontos`, options: { bold: true, color: ok ? C.good : C.bad } },
+      ], { x: 0.5, y: 5.6, w: 12.3, h: 0.45, fontFace: FONT, fontSize: 16 });
+      s.addText(`Sem as paradas o OEE seria ${fmtPct(d.oeeSemParadas)} — as ${fmtHoras(d.geral.hr_paradas)} paradas custaram ${perda.toFixed(1).replace(".", ",")} pontos.`,
+        { x: 0.5, y: 6.02, w: 12.3, h: 0.4, fontFace: FONT, fontSize: 13, color: C.muted });
     }
-    s.addText("OEE = Disponibilidade × Performance × Qualidade", { x: 0.5, y: 6.4, w: 12.3, h: 0.4, fontFace: FONT, fontSize: 11, color: C.muted, italic: true });
+    s.addText("OEE = Disponibilidade × Performance × Qualidade", { x: 0.5, y: 6.5, w: 12.3, h: 0.4, fontFace: FONT, fontSize: 11, color: C.muted, italic: true });
   }
 
   // 3. OEE mês a mês
@@ -200,6 +203,29 @@ export async function gerarApresentacaoSemestre(d: DadosSemestre): Promise<void>
         showValue: true, dataLabelFontSize: 10, dataLabelColor: C.ink, dataLabelFormatCode: "#,##0",
       });
     }
+  }
+
+  // 6b. Tempo por peça
+  if (d.tempos.length > 0) {
+    const s = pres.addSlide({ masterName: "PADRAO" });
+    cabecalho(s, "Tempo por peça", "Calculado automaticamente a cada lançamento · primeiro × último mês em que a peça rodou");
+    const ciclo = (m: number) => m < 1 ? `${Math.round(m * 60)} s/pç` : `${m.toFixed(2).replace(".", ",")} min/pç`;
+    const head = ["Peça", "Descrição", "Início", "Agora", "Variação", "Peças"]
+      .map(t => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: C.ink } } }));
+    const rows = d.tempos.slice(0, 10).map(t => [
+      { text: t.produto, options: { bold: true } },
+      { text: t.descricao.slice(0, 40) },
+      { text: `${ciclo(t.cicloIni)} (${t.mesIni})` },
+      { text: `${ciclo(t.cicloFim)} (${t.mesFim})` },
+      { text: t.mesIni === t.mesFim ? "—" : `${t.variacaoPct > 0 ? "+" : ""}${t.variacaoPct.toFixed(1).replace(".", ",")}%`,
+        options: { bold: true, color: t.variacaoPct < -2 ? C.good : t.variacaoPct > 2 ? C.bad : C.muted } },
+      { text: fmtNum(t.pecas) },
+    ]);
+    s.addTable([head, ...rows], {
+      x: 0.5, y: 1.8, w: 12.3, colW: [1.6, 4.1, 1.9, 1.9, 1.4, 1.4], fontFace: FONT, fontSize: 12, color: C.ink,
+      border: { type: "solid", color: C.line, pt: 1 }, rowH: 0.42, valign: "middle", autoPage: false,
+    });
+    s.addText("Variação negativa (verde) = a peça passou a ser produzida mais rápido.", { x: 0.5, y: 6.6, w: 12.3, h: 0.35, fontFace: FONT, fontSize: 11, italic: true, color: C.muted });
   }
 
   // 7. Tabela mensal

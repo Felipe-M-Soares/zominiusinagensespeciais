@@ -39,6 +39,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      tempo_peca_padrao: {
+        Row: {
+          amostras: number
+          atualizado_em: string
+          ciclo_medio_min: number | null
+          ciclo_mediana_min: number | null
+          horas_produtivas: number
+          maquina: string
+          melhor_ciclo_min: number | null
+          pecas: number
+          pecas_hora: number | null
+          produto: string
+          ultimo_lancamento: string | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       apontamento_paradas: {
         Row: {
           apontamento_id: string
@@ -2351,6 +2369,20 @@ export type Database = {
       }
     }
     Views: {
+      tempo_peca_mensal: {
+        Row: {
+          amostras: number | null
+          ciclo_min: number | null
+          descricao_produto: string | null
+          horas_produtivas: number | null
+          maquina_codigo: string | null
+          mes: string | null
+          pecas: number | null
+          pecas_hora: number | null
+          produto: string | null
+        }
+        Relationships: []
+      }
       devices_regularizacao: {
         Row: {
           anvisa_registration: string | null

@@ -11,7 +11,8 @@ import { Download, Loader2, RefreshCw, Target, CheckCircle2, AlertTriangle, Pres
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { carregarSemestre, semestreAtual, fmtHoras, fmtNum, fmtPct, type DadosSemestre } from "@/lib/semestre";
+import { carregarSemestre, semestreAtual, salvarMetaSemestre, fmtCiclo, fmtHoras, fmtNum, fmtPct, type DadosSemestre } from "@/lib/semestre";
+import { Input } from "@/components/ui/input";
 
 const ANOS = Array.from({ length: new Date().getFullYear() - 2024 + 1 }, (_, i) => 2024 + i);
 const tooltipStyle = { background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 };
@@ -110,18 +111,7 @@ export function SemestralPanel() {
             ))}
           </div>
 
-          {dados.metaProdutividade && (
-            <div className={cn("rounded-2xl border p-4 flex items-center gap-3",
-              g.performance >= dados.metaProdutividade ? "border-green-500/30 bg-green-500/5" : "border-amber-500/30 bg-amber-500/5")}>
-              <Target className="h-5 w-5 text-muted-foreground shrink-0" />
-              <p className="text-sm flex-1">
-                Meta de produtividade do semestre: <strong>{fmtPct(dados.metaProdutividade)}</strong> · realizado <strong>{fmtPct(g.performance)}</strong>
-              </p>
-              {g.performance >= dados.metaProdutividade
-                ? <span className="flex items-center gap-1 text-sm font-semibold text-green-600"><CheckCircle2 className="h-4 w-4" />Atingida</span>
-                : <span className="flex items-center gap-1 text-sm font-semibold text-amber-600"><AlertTriangle className="h-4 w-4" />Abaixo</span>}
-            </div>
-          )}
+          <MetaSemestre dados={dados} onSalva={load} />
 
           {!temDados ? (
             <p className="rounded-2xl border bg-card py-16 text-center text-sm text-muted-foreground">Sem lançamentos neste semestre.</p>
@@ -242,6 +232,34 @@ export function SemestralPanel() {
                   </tbody>
                 </table>
               </div>
+              {dados.tempos.length > 0 && (
+                <div className="rounded-2xl border bg-card p-4 overflow-x-auto">
+                  <h3 className="text-sm font-semibold">Tempo por peça no semestre</h3>
+                  <p className="text-xs text-muted-foreground mb-3">Calculado automaticamente a cada lançamento (tempo produtivo ÷ peças). Compara o primeiro e o último mês em que a peça rodou.</p>
+                  <table className="w-full text-sm min-w-[560px]">
+                    <thead><tr className="text-left text-xs text-muted-foreground border-b">
+                      <th className="py-2 font-medium">Peça</th><th className="py-2 font-medium text-right">Início</th>
+                      <th className="py-2 font-medium text-right">Agora</th><th className="py-2 font-medium text-right">Variação</th>
+                      <th className="py-2 font-medium text-right">Peças</th></tr></thead>
+                    <tbody>
+                      {dados.tempos.slice(0, 15).map(t => (
+                        <tr key={t.produto} className="border-b last:border-0">
+                          <td className="py-2"><span className="font-semibold">{t.produto}</span> <span className="text-muted-foreground">{t.descricao}</span></td>
+                          <td className="py-2 text-right tabular-nums">{fmtCiclo(t.cicloIni)} <span className="text-xs text-muted-foreground">{t.mesIni}</span></td>
+                          <td className="py-2 text-right tabular-nums">{fmtCiclo(t.cicloFim)} <span className="text-xs text-muted-foreground">{t.mesFim}</span></td>
+                          <td className={cn("py-2 text-right tabular-nums font-semibold",
+                            t.variacaoPct < -2 ? "text-green-600" : t.variacaoPct > 2 ? "text-red-600" : "text-muted-foreground")}>
+                            {t.mesIni === t.mesFim ? "—" : `${t.variacaoPct > 0 ? "+" : ""}${t.variacaoPct.toFixed(1).replace(".", ",")}%`}
+                          </td>
+                          <td className="py-2 text-right tabular-nums">{fmtNum(t.pecas)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="mt-2 text-xs text-muted-foreground">Variação negativa (verde) = a peça passou a ser feita mais rápido.</p>
+                </div>
+              )}
+
               {g.performance > 100 && (
                 <p className="text-xs text-muted-foreground flex items-start gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-600" />
@@ -252,6 +270,80 @@ export function SemestralPanel() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/** Meta de OEE do semestre: editável, padrão 85%, com o impacto das paradas. */
+function MetaSemestre({ dados, onSalva }: { dados: DadosSemestre; onSalva: () => void }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(String(dados.metaOee));
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => { setValor(String(dados.metaOee)); }, [dados.metaOee]);
+
+  const g = dados.geral;
+  const meta = dados.metaOee;
+  const atingiu = g.oee >= meta;
+  const perdaParadas = Math.max(0, dados.oeeSemParadas - g.oee);
+  const falta = Math.max(0, meta - g.oee);
+  const pct = Math.min(100, meta > 0 ? (g.oee / meta) * 100 : 0);
+
+  async function salvar() {
+    const v = parseFloat(valor.replace(",", "."));
+    if (!(v > 0 && v <= 100)) { toast.error("Informe uma meta entre 1 e 100%."); return; }
+    setSalvando(true);
+    const { error } = await salvarMetaSemestre(dados.semestre, dados.ano, v);
+    setSalvando(false);
+    if (error) { toast.error("Não foi possível salvar a meta."); return; }
+    toast.success("Meta do semestre salva.");
+    setEditando(false);
+    onSalva();
+  }
+
+  return (
+    <div className={cn("rounded-2xl border p-4 space-y-3", atingiu ? "border-green-500/30 bg-green-500/5" : "border-amber-500/30 bg-amber-500/5")}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Target className="h-5 w-5 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">Meta de OEE do {dados.semestre}º semestre</h3>
+        {!dados.metaDefinida && <span className="text-xs text-muted-foreground">(padrão)</span>}
+        {editando ? (
+          <form className="flex items-center gap-2 ml-auto" onSubmit={e => { e.preventDefault(); salvar(); }}>
+            <Input type="number" min="1" max="100" step="0.5" value={valor} onChange={e => setValor(e.target.value)} className="h-9 w-24" aria-label="Meta de OEE (%)" autoFocus />
+            <span className="text-sm">%</span>
+            <Button type="submit" size="sm" className="h-9" disabled={salvando}>{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}</Button>
+            <Button type="button" size="sm" variant="ghost" className="h-9" onClick={() => setEditando(false)}>Cancelar</Button>
+          </form>
+        ) : (
+          <Button size="sm" variant="outline" className="h-9 ml-auto" onClick={() => setEditando(true)}>Alterar meta</Button>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className={cn("text-3xl font-bold tabular-nums", atingiu ? "text-green-600" : "text-amber-600")}>{fmtPct(g.oee)}</span>
+        <span className="text-sm text-muted-foreground">de {fmtPct(meta)} de meta</span>
+        {atingiu
+          ? <span className="flex items-center gap-1 text-sm font-semibold text-green-600"><CheckCircle2 className="h-4 w-4" />Meta atingida</span>
+          : <span className="flex items-center gap-1 text-sm font-semibold text-amber-600"><AlertTriangle className="h-4 w-4" />Faltam {falta.toFixed(1).replace(".", ",")} pontos</span>}
+      </div>
+      <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+        <div className={cn("h-full rounded-full", atingiu ? "bg-green-500" : "bg-amber-500")} style={{ width: `${pct}%` }} />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+        <div className="rounded-xl bg-card/70 border px-3 py-2">
+          <p className="text-xs text-muted-foreground">Horas paradas</p>
+          <p className="font-semibold tabular-nums">{fmtHoras(g.hr_paradas)} <span className="text-xs text-muted-foreground font-normal">de {fmtHoras(g.hr_planejadas)}</span></p>
+        </div>
+        <div className="rounded-xl bg-card/70 border px-3 py-2">
+          <p className="text-xs text-muted-foreground">OEE sem as paradas</p>
+          <p className="font-semibold tabular-nums">{fmtPct(dados.oeeSemParadas)}</p>
+        </div>
+        <div className="rounded-xl bg-card/70 border px-3 py-2">
+          <p className="text-xs text-muted-foreground">Paradas custaram</p>
+          <p className="font-semibold tabular-nums text-amber-600">{perdaParadas.toFixed(1).replace(".", ",")} pontos de OEE</p>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">OEE = disponibilidade (tempo sem paradas) × performance (ritmo) × qualidade (peças boas).</p>
     </div>
   );
 }

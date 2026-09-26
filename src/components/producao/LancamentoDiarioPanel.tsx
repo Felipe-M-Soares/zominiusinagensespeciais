@@ -43,6 +43,13 @@ import { useOfflineSync } from "@/hooks/useOfflineSync";
 
 const TURNO_DIA = "Dia inteiro";
 const HORAS_DIA = 24;
+/** Período de trabalho da fábrica (06:00 → 01:30 do dia seguinte). Quando a
+ *  máquina "só ficou parada", a parada ocupa esse período inteiro (menos o
+ *  que já tiver sido lançado para ela no dia). */
+const JORNADA_H = 19.5;
+const JORNADA_INICIO_H = 6;
+/** A partir de quantos lançamentos o tempo aprendido passa a valer mais que o cadastro. */
+const MIN_AMOSTRAS_APRENDIDO = 3;
 /** Opções do seletor de horas: 30 min até 24 h. */
 const OPCOES_HORAS = Array.from({ length: 48 }, (_, i) => (i + 1) / 2);
 
@@ -257,6 +264,8 @@ export function LancamentoDiarioPanel() {
   const [quantidade, setQuantidade] = useState("");
   const [horasSel, setHorasSel]     = useState(""); // horas trabalhadas (seletor 0h30–24h)
   const [editando, setEditando]     = useState<ApontamentoHoje | null>(null);
+  const [motivoDia, setMotivoDia]   = useState<number | null>(null); // "só ficou parada": motivo único
+  const [tempos, setTempos]         = useState<Map<string, { pecasHora: number; amostras: number }>>(new Map());
   const [editandoParada, setEditandoParada] = useState<ParadaHoje | null>(null);
   const [paradas, setParadas]       = useState<ParadaForm[]>([]);
   const [paradaAberta, setParadaAberta] = useState<number | null>(null); // tipo sendo escolhida a duração
@@ -278,7 +287,7 @@ export function LancamentoDiarioPanel() {
     setLoading(true);
     const dia = dataRef;
     const diaSeguinte = (() => { const d = new Date(`${dia}T12:00:00`); d.setDate(d.getDate() + 1); return isoLocal(d); })();
-    const [maqRes, prodRes, devRes, tpRes, trRes, mpRes, apRes, parRes] = await Promise.all([
+    const [maqRes, prodRes, devRes, tpRes, trRes, mpRes, apRes, parRes, tempoRes] = await Promise.all([
       loadWithFallback<Maquina>("maquinas_producao", "maquinas"),
       supabase.from("produtos_producao").select("codigo,descricao,pecas_por_hora").eq("ativo", true).order("codigo"),
       supabase.from("devices").select("internal_code,model,reference").eq("ativo", true).order("internal_code"),
@@ -291,7 +300,13 @@ export function LancamentoDiarioPanel() {
       supabase.from("paradas_producao")
         .select("id,maquina,motivo,tipo,inicio,fim,duracao_min,operador,observacoes,user_id")
         .gte("inicio", `${dia}T00:00:00`).lt("inicio", `${diaSeguinte}T00:00:00`).order("inicio", { ascending: false }),
+      supabase.from("tempo_peca_padrao").select("produto,maquina,pecas_hora,amostras"),
     ]);
+    const mt = new Map<string, { pecasHora: number; amostras: number }>();
+    for (const t of tempoRes.data ?? []) {
+      if (t.pecas_hora && t.pecas_hora > 0) mt.set(`${t.produto}|${t.maquina}`, { pecasHora: Number(t.pecas_hora), amostras: t.amostras });
+    }
+    setTempos(mt);
 
     const maqOrdenadas = [...maqRes].sort((a, b) => a.codigo.localeCompare(b.codigo));
     setMaquinas(maqOrdenadas);
@@ -386,16 +401,29 @@ export function LancamentoDiarioPanel() {
   const horasParadas  = minParadas / 60;
   const horasProdutivas = Math.max(0, horasPeriodo - horasParadas);
   const pecaInfo      = pecas.find(p => p.codigo === peca);
-  const porHora       = pecaInfo?.pecas_por_hora ?? 0;
+  // Ritmo esperado da peça: o sistema aprende sozinho com os lançamentos
+  // (tempo_peca_padrao). Com histórico suficiente, o aprendido vale mais que o
+  // cadastro; sem histórico, usa o cadastro; sem nenhum dos dois, não há meta.
+  const aprendido     = tempos.get(`${peca}|${maquinaSel}`) ?? tempos.get(`${peca}|*`);
+  const porHoraCad    = pecaInfo?.pecas_por_hora ?? 0;
+  const usarAprendido = !!aprendido && (aprendido.amostras >= MIN_AMOSTRAS_APRENDIDO || porHoraCad <= 0);
+  const porHora       = usarAprendido ? aprendido!.pecasHora : porHoraCad;
+  const fontePorHora  = usarAprendido ? `histórico de ${aprendido!.amostras} lançamento${aprendido!.amostras > 1 ? "s" : ""}` : porHoraCad > 0 ? "cadastro" : "";
   const esperado      = porHora > 0 ? Math.round(porHora * horasProdutivas) : 0;
   const qtdNum        = parseInt(quantidade) || 0;
   const totalRefugo   = Object.values(refugos).reduce((s, v) => s + v, 0);
   const eficiencia    = esperado > 0 && qtdNum > 0 ? (qtdNum / esperado) * 100 : null;
   const paradasExcedem = modo === "produziu" && horasParadas > horasPeriodo + 1e-6;
 
+  // "Só ficou parada": ocupa o período de trabalho inteiro que ainda não foi lançado.
+  const lancadoMaquinaDia = maquinaSel
+    ? (horasLancadas.get(maquinaSel) ?? 0) + paradasHoje.filter(p => p.maquina === maquinaSel).reduce((s, p) => s + (p.duracao_min ?? 0) / 60, 0)
+    : 0;
+  const horasParadaDia = Math.max(0, JORNADA_H - lancadoMaquinaDia);
+
   const pronto =
     !!operador.trim() && !!maquinaSel &&
-    (modo === "produziu" ? !!peca && qtdNum > 0 && horasPeriodo > 0 && !paradasExcedem && !passaDoDia : paradas.length > 0);
+    (modo === "produziu" ? !!peca && qtdNum > 0 && horasPeriodo > 0 && !paradasExcedem && !passaDoDia : motivoDia !== null && horasParadaDia > 0);
 
   const faltando: string[] = [];
   if (!operador.trim()) faltando.push("operador");
@@ -404,7 +432,8 @@ export function LancamentoDiarioPanel() {
     if (!peca) faltando.push("peça");
     if (qtdNum <= 0) faltando.push("quantidade");
     if (horasPeriodo <= 0) faltando.push("horas");
-  } else if (paradas.length === 0) faltando.push("motivo da parada");
+  } else if (motivoDia === null) faltando.push("motivo da parada");
+  else if (horasParadaDia <= 0) faltando.push("período (a máquina já tem o dia todo lançado)");
 
   // ── Paradas ──────────────────────────────────────────────────────────────
   function adicionarParada(tipoId: number, minutos: number) {
@@ -423,7 +452,7 @@ export function LancamentoDiarioPanel() {
   function limparFormulario() {
     setQuantidade(""); setHorasSel(""); setParadas([]); setParadaAberta(null);
     setMinCustom(""); setPecaSetup(""); setRefugos({}); setMostrarRefugo(false); setMateria("");
-    setModo("produziu");
+    setModo("produziu"); setMotivoDia(null);
   }
 
   // ── Salvar ───────────────────────────────────────────────────────────────
@@ -480,24 +509,23 @@ export function LancamentoDiarioPanel() {
           localStorage.setItem(ULTIMA_PECA_KEY, JSON.stringify(ult));
         } catch { /* modo privado */ }
       } else {
-        // Só parada: grava cada motivo em paradas_producao, encadeando os horários.
-        let fim = new Date(agora);
-        for (let j = paradas.length - 1; j >= 0; j--) {
-          const p = paradas[j];
-          const inicio = new Date(fim.getTime() - p.minutos * 60000);
-          const tp = tiposParada.find(t => t.id === p.tipoId);
-          const ehSetup = p.tipoId === tipoSetup?.id;
-          const { error } = await saveWithFallback("paradas_producao", "paradas", "INSERT", {
-            id: crypto.randomUUID(), maquina: maquinaSel,
-            motivo: ehSetup ? `Setup — ${p.pecaSetup}` : (tp?.nome ?? "Parada"),
-            tipo: tp?.categoria === "operacional" || tp?.categoria === "setup" ? "planejada" : "nao_planejada",
-            inicio: inicio.toISOString(), fim: fim.toISOString(), duracao_min: p.minutos,
-            operador: op, observacoes: ehSetup ? `Preparação para produzir ${p.pecaSetup}` : null,
-            user_id: user?.id,
-          });
-          if (error) throw new Error("Falha ao gravar parada");
-          fim = inicio;
-        }
+        // Só parada: uma parada cobrindo o período de trabalho do dia.
+        const tp = tiposParada.find(t => t.id === motivoDia);
+        const ehSetup = motivoDia === tipoSetup?.id;
+        const pecaDoSetup = pecaSetup || peca;
+        const inicio = new Date(`${dataRef}T${String(JORNADA_INICIO_H).padStart(2, "0")}:00:00`);
+        inicio.setMinutes(inicio.getMinutes() + Math.round((JORNADA_H - horasParadaDia) * 60));
+        const minutos = Math.round(horasParadaDia * 60);
+        const fim = new Date(inicio.getTime() + minutos * 60000);
+        const { error } = await saveWithFallback("paradas_producao", "paradas", "INSERT", {
+          id: crypto.randomUUID(), maquina: maquinaSel,
+          motivo: ehSetup && pecaDoSetup ? `Setup — ${pecaDoSetup}` : (tp?.nome ?? "Parada"),
+          tipo: tp?.categoria === "operacional" || tp?.categoria === "setup" ? "planejada" : "nao_planejada",
+          inicio: inicio.toISOString(), fim: fim.toISOString(), duracao_min: minutos,
+          operador: op, observacoes: "Máquina parada o período todo (lançamento do Diário)",
+          user_id: user?.id,
+        });
+        if (error) throw new Error("Falha ao gravar parada");
       }
 
       toast.success(`${maquinaSel} lançada${modo === "produziu" ? ` — ${qtdNum} pç` : ""}`);
@@ -743,8 +771,42 @@ export function LancamentoDiarioPanel() {
             </>
           )}
 
-          {/* Paradas */}
-          <Etapa n={modo === "produziu" ? 6 : 3}
+          {/* Só ficou parada: escolhe o motivo — o tempo é o período todo */}
+          {modo === "parada" && (
+            <Etapa n={3} titulo="Por que ficou parada?" dica="toque no motivo — o tempo é o período todo" done={motivoDia !== null}>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                  {tiposParada.map(t => {
+                    const est = estiloParada(t.categoria, t.nome);
+                    const sel = motivoDia === t.id;
+                    return (
+                      <button key={t.id} type="button" onClick={() => setMotivoDia(sel ? null : t.id)} aria-pressed={sel}
+                        className={cn("flex items-center gap-2 rounded-xl border-2 px-3 min-h-[52px] text-left text-sm font-medium transition-all",
+                          sel ? cn(est.bg, "border-current", est.cor) : "border-border hover:border-primary/40")}>
+                        {sel ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <est.Icon className={cn("h-4 w-4 shrink-0", est.cor)} />}
+                        <span className="leading-tight">{t.nome}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {motivoDia !== null && motivoDia === tipoSetup?.id && (
+                  <div className="space-y-1 max-w-lg">
+                    <p className="text-xs text-muted-foreground">Setup para qual peça? (opcional)</p>
+                    <PecaCombobox pecas={pecas} value={pecaSetup} onChange={setPecaSetup} placeholder="Peça que será produzida depois do setup..." />
+                  </div>
+                )}
+                <p className={cn("text-sm rounded-xl border px-3 py-2",
+                  horasParadaDia > 0 ? "bg-muted/40" : "border-destructive/30 bg-destructive/5 text-destructive")}>
+                  {horasParadaDia > 0
+                    ? <>Será registrada <strong>{fmtH(horasParadaDia)}</strong> de parada — período de trabalho do dia{lancadoMaquinaDia > 0 ? ` menos ${fmtH(lancadoMaquinaDia)} já lançadas` : ""}.</>
+                    : "Esta máquina já tem o período de trabalho do dia todo lançado."}
+                </p>
+              </div>
+            </Etapa>
+          )}
+
+          {/* Paradas (dentro de um período produtivo) */}
+          {modo === "produziu" && <Etapa n={modo === "produziu" ? 6 : 3}
             titulo={modo === "produziu" ? "Teve parada?" : "Por que ficou parada?"}
             dica={modo === "produziu" ? "opcional — toque no motivo" : "toque no motivo e na duração"}
             done={paradas.length > 0}>
@@ -820,7 +882,7 @@ export function LancamentoDiarioPanel() {
                   As paradas ({fmtH(horasParadas)}) passam do tempo informado ({fmtH(horasPeriodo)}).</p>
               )}
             </div>
-          </Etapa>
+          </Etapa>}
 
           {/* Opcionais: refugo e matéria-prima */}
           {modo === "produziu" && (
@@ -881,7 +943,8 @@ export function LancamentoDiarioPanel() {
                   <div className="flex justify-between gap-3 font-semibold"><dt>= Produtivo</dt><dd className="tabular-nums text-green-600">{fmtH(horasProdutivas)}</dd></div>
                   {esperado > 0 && (
                     <div className="flex justify-between gap-3"><dt className="text-muted-foreground flex items-center gap-1"><Target className="h-3.5 w-3.5" />Esperado</dt>
-                      <dd className="tabular-nums">{esperado.toLocaleString("pt-BR")} pç <span className="text-xs text-muted-foreground">({porHora}/h)</span></dd></div>
+                      <dd className="tabular-nums text-right">{esperado.toLocaleString("pt-BR")} pç
+                        <span className="block text-[11px] text-muted-foreground">{porHora.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} pç/h · {fontePorHora}</span></dd></div>
                   )}
                   <div className="flex justify-between gap-3 items-baseline"><dt className="text-muted-foreground">Produzido</dt>
                     <dd className="text-xl font-bold tabular-nums">{qtdNum.toLocaleString("pt-BR")} pç</dd></div>
@@ -894,7 +957,11 @@ export function LancamentoDiarioPanel() {
                   )}
                 </>
               ) : (
-                <div className="flex justify-between gap-3 font-semibold border-t pt-2"><dt>Tempo parado</dt><dd className="tabular-nums text-amber-600">{fmtH(horasParadas)}</dd></div>
+                <>
+                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Motivo</dt>
+                    <dd className="font-semibold truncate">{tiposParada.find(t => t.id === motivoDia)?.nome ?? "—"}</dd></div>
+                  <div className="flex justify-between gap-3 font-semibold border-t pt-2"><dt>Tempo parado</dt><dd className="tabular-nums text-amber-600">{fmtH(horasParadaDia)}</dd></div>
+                </>
               )}
             </dl>
 
@@ -1069,7 +1136,7 @@ export function LancamentoDiarioPanel() {
         <div className="rounded-2xl border bg-card/95 backdrop-blur shadow-lg px-3 py-2.5 flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold truncate">
-              {maquinaSel || "—"}{modo === "produziu" ? ` · ${peca || "sem peça"} · ${qtdNum} pç` : ` · parada ${fmtH(horasParadas)}`}
+              {maquinaSel || "—"}{modo === "produziu" ? ` · ${peca || "sem peça"} · ${qtdNum} pç` : ` · parada ${fmtH(horasParadaDia)}`}
             </p>
             <p className="text-xs text-muted-foreground truncate">{pronto ? "Pronto para salvar" : `Falta: ${faltando.join(", ")}`}</p>
           </div>

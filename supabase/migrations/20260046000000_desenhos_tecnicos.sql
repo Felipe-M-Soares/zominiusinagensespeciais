@@ -333,3 +333,137 @@ REVOKE EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,tex
 REVOKE EXECUTE ON FUNCTION public.excluir_lancamento_producao(text, uuid) FROM anon, PUBLIC;
 GRANT EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.excluir_lancamento_producao(text, uuid) TO authenticated;
+
+-- ── R9. Tempo de peça aprendido automaticamente ─────────────────────────────
+-- Todo apontamento com quantidade > 0 alimenta o "tempo padrão" da peça:
+--   tempo produtivo = horas do lançamento − paradas do lançamento
+--   ciclo (min/pç)  = tempo produtivo × 60 ÷ peças
+-- O sistema guarda, por peça e por peça+máquina, a mediana dos últimos 30
+-- lançamentos (resistente a lançamentos fora da curva), o melhor ciclo e as
+-- peças/hora resultantes. O operador não precisa saber nem digitar nada: o
+-- Diário usa esse padrão para calcular o "esperado" e a performance quando a
+-- peça não tem peças/hora cadastrado, e a análise compara mês a mês.
+CREATE TABLE IF NOT EXISTS public.tempo_peca_padrao (
+  produto            text        NOT NULL,
+  maquina            text        NOT NULL DEFAULT '*',   -- '*' = todas as máquinas
+  amostras           integer     NOT NULL DEFAULT 0,
+  pecas              bigint      NOT NULL DEFAULT 0,
+  horas_produtivas   numeric(12,4) NOT NULL DEFAULT 0,
+  ciclo_medio_min    numeric(12,4),
+  ciclo_mediana_min  numeric(12,4),
+  melhor_ciclo_min   numeric(12,4),
+  pecas_hora         numeric(12,2),
+  ultimo_lancamento  date,
+  atualizado_em      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (produto, maquina)
+);
+ALTER TABLE public.tempo_peca_padrao ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "tempo_peca_select" ON public.tempo_peca_padrao;
+CREATE POLICY "tempo_peca_select" ON public.tempo_peca_padrao
+  FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
+GRANT SELECT ON public.tempo_peca_padrao TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.recalcular_tempo_peca(p_produto text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f_tempo$
+BEGIN
+  IF p_produto IS NULL THEN RETURN; END IF;
+  DELETE FROM public.tempo_peca_padrao WHERE produto = p_produto;
+
+  WITH base AS (
+    SELECT a.maquina_codigo AS maquina, a.data_apontamento, a.created_at, a.quantidade,
+           GREATEST(0, a.horas_planejadas - COALESCE((
+             SELECT SUM(ap.duracao_horas) FROM public.apontamento_paradas ap WHERE ap.apontamento_id = a.id), 0)) AS h_prod
+    FROM public.apontamentos_producao a
+    WHERE a.produto = p_produto AND a.quantidade > 0 AND a.horas_planejadas > 0
+  ), validos AS (
+    SELECT *, h_prod * 60.0 / quantidade AS ciclo FROM base WHERE h_prod > 0
+  ), ranq AS (
+    SELECT v.*, row_number() OVER (PARTITION BY v.maquina ORDER BY v.data_apontamento DESC, v.created_at DESC) AS rn_maq,
+                row_number() OVER (ORDER BY v.data_apontamento DESC, v.created_at DESC) AS rn_geral
+    FROM validos v
+  ), grupos AS (
+    SELECT COALESCE(maquina, '*') AS maquina, ciclo, quantidade, h_prod, data_apontamento FROM ranq WHERE rn_maq <= 30 AND maquina IS NOT NULL
+    UNION ALL
+    SELECT '*' AS maquina, ciclo, quantidade, h_prod, data_apontamento FROM ranq WHERE rn_geral <= 30
+  )
+  INSERT INTO public.tempo_peca_padrao
+    (produto, maquina, amostras, pecas, horas_produtivas, ciclo_medio_min, ciclo_mediana_min,
+     melhor_ciclo_min, pecas_hora, ultimo_lancamento, atualizado_em)
+  SELECT p_produto, g.maquina, COUNT(*), SUM(g.quantidade), SUM(g.h_prod),
+         round(SUM(g.h_prod) * 60.0 / NULLIF(SUM(g.quantidade), 0), 4),
+         round((percentile_cont(0.5) WITHIN GROUP (ORDER BY g.ciclo))::numeric, 4),
+         round(MIN(g.ciclo)::numeric, 4),
+         round(60.0 / NULLIF((percentile_cont(0.5) WITHIN GROUP (ORDER BY g.ciclo))::numeric, 0), 2),
+         MAX(g.data_apontamento), now()
+  FROM grupos g
+  GROUP BY g.maquina;
+END;
+$f_tempo$;
+REVOKE EXECUTE ON FUNCTION public.recalcular_tempo_peca(text) FROM anon, PUBLIC, authenticated;
+
+-- Dispara no COMMIT (constraint trigger adiada): nesse momento as paradas do
+-- lançamento já foram gravadas, então o tempo produtivo sai correto.
+CREATE OR REPLACE FUNCTION public.trg_tempo_peca()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f_trg_tempo$
+BEGIN
+  IF TG_OP IN ('UPDATE','DELETE') THEN PERFORM public.recalcular_tempo_peca(OLD.produto); END IF;
+  IF TG_OP IN ('INSERT','UPDATE') THEN
+    PERFORM public.recalcular_tempo_peca(NEW.produto);
+  END IF;
+  RETURN NULL;
+END;
+$f_trg_tempo$;
+
+DROP TRIGGER IF EXISTS trg_tempo_peca ON public.apontamentos_producao;
+CREATE CONSTRAINT TRIGGER trg_tempo_peca
+  AFTER INSERT OR UPDATE OR DELETE ON public.apontamentos_producao
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION public.trg_tempo_peca();
+
+-- Tempo de peça mês a mês (para "rodou essa peça mais rápido que no mês
+-- passado?"). security_invoker: respeita o RLS de quem consulta.
+DROP VIEW IF EXISTS public.tempo_peca_mensal;
+CREATE VIEW public.tempo_peca_mensal WITH (security_invoker = true) AS
+WITH base AS (
+  SELECT a.produto, MAX(a.descricao_produto) AS descricao_produto, a.maquina_codigo,
+         date_trunc('month', a.data_apontamento)::date AS mes,
+         COUNT(*) AS amostras, SUM(a.quantidade) AS pecas,
+         SUM(GREATEST(0, a.horas_planejadas - COALESCE((
+           SELECT SUM(ap.duracao_horas) FROM public.apontamento_paradas ap WHERE ap.apontamento_id = a.id), 0))) AS horas_produtivas
+  FROM public.apontamentos_producao a
+  WHERE a.quantidade > 0 AND a.horas_planejadas > 0
+  GROUP BY a.produto, a.maquina_codigo, date_trunc('month', a.data_apontamento)
+)
+SELECT produto, descricao_produto, maquina_codigo, mes, amostras, pecas, horas_produtivas,
+       round(horas_produtivas * 60.0 / NULLIF(pecas, 0), 4)       AS ciclo_min,
+       round(pecas / NULLIF(horas_produtivas, 0), 2)              AS pecas_hora
+FROM base
+WHERE horas_produtivas > 0;
+GRANT SELECT ON public.tempo_peca_mensal TO authenticated;
+
+-- Carga inicial com o histórico que já existe.
+DO $backfill_tempo$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT DISTINCT produto FROM public.apontamentos_producao WHERE quantidade > 0 LOOP
+    PERFORM public.recalcular_tempo_peca(r.produto);
+  END LOOP;
+END;
+$backfill_tempo$;
+
+-- ── R10. Meta semestral padrão de 85% (OEE) ──────────────────────────────────
+-- A meta do semestre é comparada com o OEE (disponibilidade × performance ×
+-- qualidade), ou seja, as paradas entram no cálculo. Garante 85% para o
+-- semestre atual se ainda não houver meta definida.
+INSERT INTO public.metas_producao (mes, ano, maquina_codigo, meta_pecas, meta_oee_pct)
+VALUES (CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) <= 6 THEN 1 ELSE 7 END,
+        EXTRACT(YEAR FROM CURRENT_DATE)::int, 'SEMESTRE', 0, 85)
+ON CONFLICT (mes, ano, maquina_codigo) DO NOTHING;

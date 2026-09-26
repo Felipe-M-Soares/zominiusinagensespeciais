@@ -18,7 +18,7 @@ const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov"
  * Meta SEMESTRAL de produtividade das máquinas — armazenada na mesma tabela
  * metas_producao (sem migration nova), usando a convenção:
  *   maquina_codigo = 'SEMESTRE'  e  mes = 1 (1º sem) ou 7 (2º sem).
- * O campo meta_oee_pct guarda a % de produtividade alvo do semestre.
+ * O campo meta_oee_pct guarda a meta de OEE do semestre (padrão 85%).
  * A UNIQUE(mes, ano, maquina_codigo) do banco garante 1 meta por semestre/ano.
  */
 export const META_SEMESTRE_CODIGO = "SEMESTRE";
@@ -170,7 +170,7 @@ export function MetasPanel() {
       <div className="rounded-2xl border border-border/40 bg-card p-4 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <Target className="h-4 w-4 text-emerald-600"/>
-          <h3 className="text-sm font-semibold">Produtividade das Máquinas — Meta Semestral</h3>
+          <h3 className="text-sm font-semibold">Meta de OEE do Semestre</h3>
           <select value={semestre} onChange={e=>setSemestre(Number(e.target.value) as 1|2)}
             className="ml-auto h-8 rounded-lg border border-input bg-background px-2 text-xs">
             <option value={1}>1º semestre</option>
@@ -179,8 +179,8 @@ export function MetasPanel() {
         </div>
 
         {(()=>{
-          // Produtividade = performance real do semestre (produzido ÷ planejado)
-          const real = realSemestre?.performance ?? 0;
+          // Meta do semestre = OEE (disponibilidade × performance × qualidade — paradas incluídas)
+          const real = realSemestre?.oee ?? 0;
           const alvo = metaSemestre?.meta_oee_pct ?? 0;
           const g = alvo>0 ? gauge(real, alvo) : null;
           return (
@@ -188,7 +188,7 @@ export function MetasPanel() {
               {alvo>0 ? (
                 <div className="space-y-1">
                   <div className="flex justify-between text-[12px]">
-                    <span>Produtividade real ({semestre}º sem/{ano})</span>
+                    <span>OEE real ({semestre}º sem/{ano})</span>
                     <div className="flex items-center gap-1.5">
                       <span className={g!.ok?"text-green-600 font-bold":"text-red-600 font-bold"}>{real.toFixed(1)}%</span>
                       <span className="text-muted-foreground text-[10px]">/ meta {alvo}%</span>
@@ -209,7 +209,7 @@ export function MetasPanel() {
               )}
               <div className="flex gap-2 items-end">
                 <div className="flex-1">
-                  <label className={lbl}>Meta de produtividade (%)</label>
+                  <label className={lbl}>Meta de OEE do semestre (%)</label>
                   <Input type="number" min="1" max="100" step="0.5" value={metaSemInput}
                     onChange={e=>setMetaSemInput(e.target.value)} className="h-9"/>
                 </div>
