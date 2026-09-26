@@ -87,7 +87,7 @@ return (
           </DialogHeader>
 
           <div className="flex flex-wrap gap-1.5 mt-3">
-            <Badge variant="outline" className="border-primary/20 text-primary/80 font-mono text-[11px] rounded-lg">
+            <Badge variant="outline" className="rounded-full border-cyan-500/50 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 dark:border-cyan-400/60 dark:shadow-[0_0_8px_rgba(34,211,238,0.25)] font-semibold text-[11px]">
               Classe {device.classification_code}
             </Badge>
             {device.sterile ? (

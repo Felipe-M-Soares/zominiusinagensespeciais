@@ -161,8 +161,8 @@ export function DeviceCard({ device, onClick }: Props) {
 
       {/* Status pills — neon, cada categoria com sua cor original */}
       <div className="flex flex-wrap gap-1.5">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-0.5 text-[10px] font-medium text-brand tracking-wide">
-          <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+        {/* Classe de risco — azul-ciano "neon" (padrão visual da classe nos componentes) */}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/50 bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-cyan-700 dark:text-cyan-300 dark:border-cyan-400/60 dark:shadow-[0_0_8px_rgba(34,211,238,0.25)] tracking-wide">
           Classe {device.classification_code || "—"}
         </span>
         {device.sterile && (

@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // VULN-002 FIX: Now that user.id is cryptographically verified, role check is trustworthy
+    // Usuário validado pelo JWT antes da checagem de papel.
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: roleData } = await adminClient
       .from("user_roles")
@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    // VULN-010 FIX: Do not log sensitive user data in production
+    // Não registra dados do usuário em produção.
     const DEBUG = Deno.env.get("DEBUG") === "true";
     if (DEBUG) {
       log.info("admin-reset-password", "Caller role:", roleData?.role);

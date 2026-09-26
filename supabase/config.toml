@@ -1,4 +1,5 @@
-project_id = "lvbilwznflyyiuxfhjyb"
+# Nome local do projeto. O projeto remoto é definido por `supabase link`.
+project_id = "zomini-erp"
 
 # verify_jwt = false: estas funções validam o JWT manualmente (auth.getUser)
 # e checam o role de admin no banco antes de qualquer ação. Deixar o gateway

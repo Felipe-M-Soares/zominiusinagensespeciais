@@ -274,7 +274,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
 
   // Mostra o nome da pessoa (ou o login), não o e-mail interno
-  // "<login>@interno.conceptus", que não significa nada para o usuário.
+  // usado internamente pela autenticação.
   const displayName =
     (user?.user_metadata as { display_name?: string } | undefined)?.display_name?.trim() ||
     (user?.email ?? "").split("@")[0] ||

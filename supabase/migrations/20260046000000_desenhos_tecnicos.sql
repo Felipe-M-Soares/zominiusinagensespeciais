@@ -82,12 +82,8 @@ $keepalive$;
 COMMENT ON FUNCTION public.keep_alive(text) IS
   'Heartbeat chamado por GitHub Actions / Vercel Cron para evitar a pausa automática do projeto Supabase Free. Não expõe dados.';
 
--- ── R2. Funções: anon (chave pública do bundle) não executa NADA além do
---        keep_alive. Antes, funções SECURITY DEFINER sem checagem de auth
---        (calcular_oee, resumo_mensal_producao, get_lotes_intermediario,
---        peek/get_next_nf_number, sync_stock_items_from_devices...) podiam
---        ser chamadas por qualquer pessoa com a URL + anon key — vazando
---        dados de produção/estoque e permitindo "queimar" números de NF-e.
+-- ── R2. Privilégios de execução: somente usuários autenticados executam
+--        funções do schema public (exceto keep_alive). ─────────────────────
 DO $revoke_anon$
 DECLARE r record;
 BEGIN
@@ -114,7 +110,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM anon;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO authenticated, service_role;
 
--- ── R3. Numeração de NF-e: só usuário aprovado e não bloqueado reserva número
+-- ── R3. Numeração de NF-e: exige usuário aprovado
 CREATE OR REPLACE FUNCTION public.get_next_nf_number(p_serie text DEFAULT '1', p_tipo text DEFAULT 'nfe')
 RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_nfnum$
 DECLARE v_num bigint;
@@ -131,11 +127,7 @@ $f_nfnum$;
 REVOKE EXECUTE ON FUNCTION public.get_next_nf_number(text, text) FROM anon, PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_next_nf_number(text, text) TO authenticated;
 
--- ── R4. Buckets públicos: impede LISTAGEM anônima dos arquivos ───────────────
--- Em bucket público o download por URL pública NÃO depende de policy de
--- SELECT; a policy só servia para permitir listar/enumerar todos os arquivos
--- sem login. Agora listar exige usuário autenticado; as URLs públicas
--- (imagens dos componentes, assets de e-mail) continuam funcionando.
+-- ── R4. Buckets públicos: listagem somente para usuários autenticados ───────
 DROP POLICY IF EXISTS "devices_img_public_read" ON storage.objects;
 CREATE POLICY "devices_img_public_read" ON storage.objects
   FOR SELECT TO authenticated

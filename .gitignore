@@ -25,3 +25,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Documentação interna (credenciais, operação e auditoria) — NUNCA versionar
+PRIVADO/
