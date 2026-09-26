@@ -4,7 +4,7 @@
 // peças de terceiros (ex.: chaves) que não têm turno de produção próprio.
 // Ex: 010126-01 ou 010126-01/A
 
-export const LOTE_REGEX = /^\d{6,7}-\d{2}([/][A-Za-z])?$/;
+export const LOTE_REGEX = /^\d{6,7}-\d{2,3}([/][A-Za-z])?$/;
 
 export function formatLote(raw: string): string {
   let v = raw.toUpperCase().replace(/[^0-9\-/A-Z]/g, "");

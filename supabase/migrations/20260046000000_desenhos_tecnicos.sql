@@ -371,24 +371,43 @@ SET search_path = public
 AS $f_tempo$
 BEGIN
   IF p_produto IS NULL THEN RETURN; END IF;
+  -- Serializa o recálculo por peça: dois lançamentos simultâneos da mesma
+  -- peça não podem apagar/inserir a mesma linha ao mesmo tempo (dava erro de
+  -- chave duplicada e derrubava o lançamento). O lock é liberado no commit.
+  PERFORM pg_advisory_xact_lock(hashtext('tempo_peca:' || p_produto));
   DELETE FROM public.tempo_peca_padrao WHERE produto = p_produto;
 
-  WITH base AS (
-    SELECT a.maquina_codigo AS maquina, a.data_apontamento, a.created_at, a.quantidade,
-           GREATEST(0, a.horas_planejadas - COALESCE((
-             SELECT SUM(ap.duracao_horas) FROM public.apontamento_paradas ap WHERE ap.apontamento_id = a.id), 0)) AS h_prod
+  -- Só os últimos lançamentos (via índice) — o custo não cresce com o histórico.
+  WITH ult_geral AS (
+    SELECT a.id, a.maquina_codigo, a.data_apontamento, a.quantidade, a.horas_planejadas
     FROM public.apontamentos_producao a
     WHERE a.produto = p_produto AND a.quantidade > 0 AND a.horas_planejadas > 0
-  ), validos AS (
-    SELECT *, h_prod * 60.0 / quantidade AS ciclo FROM base WHERE h_prod > 0
-  ), ranq AS (
-    SELECT v.*, row_number() OVER (PARTITION BY v.maquina ORDER BY v.data_apontamento DESC, v.created_at DESC) AS rn_maq,
-                row_number() OVER (ORDER BY v.data_apontamento DESC, v.created_at DESC) AS rn_geral
-    FROM validos v
-  ), grupos AS (
-    SELECT COALESCE(maquina, '*') AS maquina, ciclo, quantidade, h_prod, data_apontamento FROM ranq WHERE rn_maq <= 30 AND maquina IS NOT NULL
+    ORDER BY a.data_apontamento DESC, a.created_at DESC
+    LIMIT 30
+  ), maqs AS (
+    SELECT DISTINCT a.maquina_codigo FROM public.apontamentos_producao a
+    WHERE a.produto = p_produto AND a.maquina_codigo IS NOT NULL
+      AND a.data_apontamento >= CURRENT_DATE - 365
+  ), ult_maq AS (
+    SELECT u.* FROM maqs m CROSS JOIN LATERAL (
+      SELECT a.id, a.maquina_codigo, a.data_apontamento, a.quantidade, a.horas_planejadas
+      FROM public.apontamentos_producao a
+      WHERE a.produto = p_produto AND a.maquina_codigo = m.maquina_codigo
+        AND a.quantidade > 0 AND a.horas_planejadas > 0
+      ORDER BY a.data_apontamento DESC, a.created_at DESC
+      LIMIT 30
+    ) u
+  ), todos AS (
+    SELECT '*'::text AS grupo, * FROM ult_geral
     UNION ALL
-    SELECT '*' AS maquina, ciclo, quantidade, h_prod, data_apontamento FROM ranq WHERE rn_geral <= 30
+    SELECT maquina_codigo AS grupo, * FROM ult_maq
+  ), grupos AS (
+    SELECT t.grupo AS maquina, t.quantidade, t.data_apontamento,
+           GREATEST(0, t.horas_planejadas - COALESCE((
+             SELECT SUM(ap.duracao_horas) FROM public.apontamento_paradas ap WHERE ap.apontamento_id = t.id), 0)) AS h_prod
+    FROM todos t
+  ), validos AS (
+    SELECT g.*, g.h_prod * 60.0 / g.quantidade AS ciclo FROM grupos g WHERE g.h_prod > 0
   )
   INSERT INTO public.tempo_peca_padrao
     (produto, maquina, amostras, pecas, horas_produtivas, ciclo_medio_min, ciclo_mediana_min,
@@ -399,11 +418,16 @@ BEGIN
          round(MIN(g.ciclo)::numeric, 4),
          round(60.0 / NULLIF((percentile_cont(0.5) WITHIN GROUP (ORDER BY g.ciclo))::numeric, 0), 2),
          MAX(g.data_apontamento), now()
-  FROM grupos g
+  FROM validos g
   GROUP BY g.maquina;
 END;
 $f_tempo$;
 REVOKE EXECUTE ON FUNCTION public.recalcular_tempo_peca(text) FROM anon, PUBLIC, authenticated;
+
+-- Índice para o recálculo e para as análises por peça (antes não havia
+-- índice por produto — cada recálculo varria a tabela inteira).
+CREATE INDEX IF NOT EXISTS idx_ap_produto_data ON public.apontamentos_producao (produto, data_apontamento DESC, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ap_produto_maq_data ON public.apontamentos_producao (produto, maquina_codigo, data_apontamento DESC, created_at DESC);
 
 -- Dispara no COMMIT (constraint trigger adiada): nesse momento as paradas do
 -- lançamento já foram gravadas, então o tempo produtivo sai correto.
@@ -413,11 +437,34 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $f_trg_tempo$
+DECLARE v_prod text;
 BEGIN
-  IF TG_OP IN ('UPDATE','DELETE') THEN PERFORM public.recalcular_tempo_peca(OLD.produto); END IF;
-  IF TG_OP IN ('INSERT','UPDATE') THEN
-    PERFORM public.recalcular_tempo_peca(NEW.produto);
-  END IF;
+  -- A estatística de tempo nunca pode impedir o lançamento de ser salvo:
+  -- se o recálculo falhar por qualquer motivo, o lançamento segue e o tempo
+  -- é recalculado no próximo lançamento da peça.
+  BEGIN
+    -- Trava as peças envolvidas SEMPRE na mesma ordem (alfabética) antes de
+    -- recalcular — correção que troca a peça A→B concorrendo com outra B→A
+    -- causava deadlock (encontrado no teste de carga com 50 usuários).
+    FOR v_prod IN
+      SELECT DISTINCT x FROM unnest(ARRAY[
+        CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN OLD.produto END,
+        CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN NEW.produto END]) AS x
+      WHERE x IS NOT NULL ORDER BY x
+    LOOP
+      PERFORM pg_advisory_xact_lock(hashtext('tempo_peca:' || v_prod));
+    END LOOP;
+    FOR v_prod IN
+      SELECT DISTINCT x FROM unnest(ARRAY[
+        CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN OLD.produto END,
+        CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN NEW.produto END]) AS x
+      WHERE x IS NOT NULL ORDER BY x
+    LOOP
+      PERFORM public.recalcular_tempo_peca(v_prod);
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'tempo_peca: recálculo ignorado (%)', SQLERRM;
+  END;
   RETURN NULL;
 END;
 $f_trg_tempo$;
@@ -432,13 +479,15 @@ CREATE CONSTRAINT TRIGGER trg_tempo_peca
 -- passado?"). security_invoker: respeita o RLS de quem consulta.
 DROP VIEW IF EXISTS public.tempo_peca_mensal;
 CREATE VIEW public.tempo_peca_mensal WITH (security_invoker = true) AS
-WITH base AS (
+WITH par AS (
+  SELECT apontamento_id, SUM(duracao_horas) AS h FROM public.apontamento_paradas GROUP BY apontamento_id
+), base AS (
   SELECT a.produto, MAX(a.descricao_produto) AS descricao_produto, a.maquina_codigo,
          date_trunc('month', a.data_apontamento)::date AS mes,
          COUNT(*) AS amostras, SUM(a.quantidade) AS pecas,
-         SUM(GREATEST(0, a.horas_planejadas - COALESCE((
-           SELECT SUM(ap.duracao_horas) FROM public.apontamento_paradas ap WHERE ap.apontamento_id = a.id), 0))) AS horas_produtivas
+         SUM(GREATEST(0, a.horas_planejadas - COALESCE(par.h, 0))) AS horas_produtivas
   FROM public.apontamentos_producao a
+  LEFT JOIN par ON par.apontamento_id = a.id
   WHERE a.quantidade > 0 AND a.horas_planejadas > 0
   GROUP BY a.produto, a.maquina_codigo, date_trunc('month', a.data_apontamento)
 )
@@ -467,3 +516,115 @@ INSERT INTO public.metas_producao (mes, ano, maquina_codigo, meta_pecas, meta_oe
 VALUES (CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) <= 6 THEN 1 ELSE 7 END,
         EXTRACT(YEAR FROM CURRENT_DATE)::int, 'SEMESTRE', 0, 85)
 ON CONFLICT (mes, ano, maquina_codigo) DO NOTHING;
+
+-- ── R11. Lote de produção único (sequência diária) ──────────────────────────
+-- Encontrado no teste de carga: o número de lote se repetia a partir do 100º
+-- apontamento (sequência global cortada em 2 dígitos). Mesma função, com a
+-- numeração corrigida para "sequência do dia" — formato DDMMAAT-NN mantido.
+-- Contador por dia (custo constante e seguro com lançamentos simultâneos:
+-- a linha do dia fica travada só durante o próprio lançamento).
+CREATE TABLE IF NOT EXISTS public.lote_sequencia_diaria (
+  data   date PRIMARY KEY,
+  ultimo integer NOT NULL DEFAULT 0
+);
+ALTER TABLE public.lote_sequencia_diaria ENABLE ROW LEVEL SECURITY;  -- só a função mexe
+-- Parte do maior número já usado em cada dia (lotes existentes).
+INSERT INTO public.lote_sequencia_diaria (data, ultimo)
+SELECT a.data_apontamento, MAX(NULLIF(substring(a.lote FROM '^\d{7}-(\d+)'), '')::int)
+FROM public.apontamentos_producao a
+WHERE a.lote ~ '^\d{7}-\d+'
+GROUP BY a.data_apontamento
+ON CONFLICT (data) DO UPDATE SET ultimo = GREATEST(public.lote_sequencia_diaria.ultimo, EXCLUDED.ultimo);
+
+CREATE OR REPLACE FUNCTION public.criar_apontamento_ppi51(
+  p_data               date,
+  p_turno              text,
+  p_maquina            text,
+  p_equipamento        text,
+  p_produto            text,
+  p_descricao_produto  text,
+  p_qtde_por_hora      numeric,
+  p_horas_planejadas   numeric,
+  p_qtde_plan_disp     numeric,
+  p_qtde_produzida     integer,
+  p_horario_inicio     numeric,
+  p_horario_fim        numeric,
+  p_cycle_time_min     numeric,
+  p_lead_time_horas    numeric,
+  p_lote               text,
+  p_lote_mp            text,
+  p_descricao_mp       text,
+  p_comprimento_mm     numeric,
+  p_consumo_mp_metros  numeric,
+  p_operador           text,
+  p_paradas            jsonb DEFAULT '[]',
+  p_refugos            jsonb DEFAULT '[]'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f01$
+DECLARE
+  v_seq  integer;
+  v_id   uuid;
+  v_lote text;
+  v_seq_dia integer;
+BEGIN
+  IF (select auth.uid()) IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado');
+  END IF;
+
+  v_seq  := nextval('public.seq_apontamento_producao');
+  v_id   := gen_random_uuid();
+  v_lote := NULLIF(trim(p_lote), '');
+  IF v_lote IS NULL THEN
+    -- Lote = DDMMAA + turno (1, 2, 3; 0 = dia inteiro) + '-' + sequência DO DIA.
+    -- Antes usava a sequência global truncada em 2 dígitos (lpad corta!):
+    -- a partir do 100º apontamento os lotes se repetiam. A trava por data
+    -- garante números únicos mesmo com lançamentos simultâneos.
+    INSERT INTO public.lote_sequencia_diaria AS l (data, ultimo) VALUES (p_data, 1)
+    ON CONFLICT (data) DO UPDATE SET ultimo = l.ultimo + 1
+    RETURNING l.ultimo INTO v_seq_dia;
+    v_lote := to_char(p_data, 'DDMMYY') ||
+      CASE WHEN p_turno LIKE '1%' THEN '1'
+           WHEN p_turno LIKE '2%' THEN '2'
+           WHEN p_turno LIKE '3%' THEN '3'
+           ELSE '0' END || '-' || lpad(v_seq_dia::text, GREATEST(2, length(v_seq_dia::text)), '0');
+  END IF;
+
+  INSERT INTO public.apontamentos_producao (
+    id, seq_producao, data_apontamento, turno,
+    maquina, maquina_codigo, equipamento, grupo,
+    produto, descricao_produto, unidade_medida,
+    qtde_por_hora, horas_planejadas, qtde_plan_disp,
+    quantidade, horario_inicio, horario_fim,
+    cycle_time_min, lead_time_horas,
+    lote, lote_mp, descricao_mp, comprimento_mm, consumo_mp_metros,
+    operador, status, inicio, user_id
+  ) VALUES (
+    v_id, v_seq, p_data, p_turno,
+    p_maquina, p_maquina, p_equipamento, 'TORNO CNC',
+    p_produto, p_descricao_produto, 'PC',
+    p_qtde_por_hora, p_horas_planejadas, p_qtde_plan_disp,
+    p_qtde_produzida, p_horario_inicio, p_horario_fim,
+    p_cycle_time_min, p_lead_time_horas,
+    v_lote, p_lote_mp, p_descricao_mp, p_comprimento_mm, p_consumo_mp_metros,
+    p_operador, 'concluido', p_horario_inicio::text, (select auth.uid())
+  );
+
+  INSERT INTO public.apontamento_paradas (apontamento_id, tipo_parada_id, tipo_parada_nome, duracao_horas)
+  SELECT v_id, (p->>'tipo_id')::integer, p->>'tipo_nome', (p->>'duracao_horas')::numeric
+  FROM jsonb_array_elements(p_paradas) p
+  WHERE (p->>'duracao_horas')::numeric > 0;
+
+  INSERT INTO public.apontamento_refugos (apontamento_id, tipo_refugo_id, tipo_refugo_nome, quantidade)
+  SELECT v_id, (r->>'tipo_id')::integer, r->>'tipo_nome', (r->>'quantidade')::integer
+  FROM jsonb_array_elements(p_refugos) r
+  WHERE (r->>'quantidade')::integer > 0;
+
+  RETURN jsonb_build_object('ok', true, 'id', v_id, 'seq', v_seq, 'lote', v_lote);
+END;
+$f01$;
+
+GRANT EXECUTE ON FUNCTION public.criar_apontamento_ppi51 TO authenticated;

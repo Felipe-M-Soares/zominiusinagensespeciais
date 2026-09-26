@@ -50,8 +50,41 @@ const JORNADA_H = 19.5;
 const JORNADA_INICIO_H = 6;
 /** A partir de quantos lançamentos o tempo aprendido passa a valer mais que o cadastro. */
 const MIN_AMOSTRAS_APRENDIDO = 3;
-/** Opções do seletor de horas: 30 min até 24 h. */
-const OPCOES_HORAS = Array.from({ length: 48 }, (_, i) => (i + 1) / 2);
+/** Seletor de tempo: horas (0–24) + minutos (0–59), para valores quebrados como 9h15 ou 9h10. */
+const OPCOES_H = Array.from({ length: HORAS_DIA + 1 }, (_, i) => i);
+const OPCOES_MIN = Array.from({ length: 60 }, (_, i) => i);
+
+/** Dois seletores lado a lado (horas e minutos). Valor em horas decimais; "" = não escolhido. */
+function HorasMinutosSelect({ value, onChange, max = HORAS_DIA, ariaLabel, destaque = false }: {
+  value: string; onChange: (v: string) => void; max?: number; ariaLabel: string; destaque?: boolean;
+}) {
+  const total = value === "" ? null : Math.round((parseFloat(value) || 0) * 60);
+  const h = total === null ? "" : String(Math.floor(total / 60));
+  const m = total === null ? "" : String(total % 60);
+  const maxMin = Math.round(max * 60);
+  const emitir = (hh: string, mm: string) => {
+    if (hh === "" && mm === "") { onChange(""); return; }
+    let t = (parseInt(hh) || 0) * 60 + (parseInt(mm) || 0);
+    if (t > maxMin) t = maxMin;
+    onChange(t === 0 ? "" : String(t / 60));
+  };
+  const cls = cn("h-12 rounded-xl border-2 bg-background px-3 text-base font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-ring",
+    destaque ? "border-primary" : "border-input");
+  return (
+    <div className="flex items-center gap-2" role="group" aria-label={ariaLabel}>
+      <select value={h} onChange={e => emitir(e.target.value, m === "" ? "0" : m)} aria-label="Horas" className={cn(cls, "w-24")}>
+        <option value="">--</option>
+        {OPCOES_H.map(x => <option key={x} value={x} disabled={x * 60 > maxMin}>{x}</option>)}
+      </select>
+      <span className="text-sm font-medium text-muted-foreground">h</span>
+      <select value={m} onChange={e => emitir(h === "" ? "0" : h, e.target.value)} aria-label="Minutos" className={cn(cls, "w-24")}>
+        <option value="">--</option>
+        {OPCOES_MIN.map(x => <option key={x} value={x} disabled={(parseInt(h) || 0) * 60 + x > maxMin}>{String(x).padStart(2, "0")}</option>)}
+      </select>
+      <span className="text-sm font-medium text-muted-foreground">min</span>
+    </div>
+  );
+}
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -754,14 +787,9 @@ export function LancamentoDiarioPanel() {
 
               {/* 5. Tempo */}
               <Etapa n={5} titulo="Quantas horas a máquina trabalhou?" dica="no dia, incluindo as paradas" done={horasPeriodo > 0}>
-                <select value={horasSel} onChange={e => setHorasSel(e.target.value)} aria-label="Horas trabalhadas no dia"
-                  className={cn("w-full max-w-xs h-12 rounded-xl border-2 bg-background px-3.5 text-base font-semibold focus:outline-none focus:ring-2 focus:ring-ring",
-                    horasSel ? "border-primary" : "border-input")}>
-                  <option value="">Selecione as horas…</option>
-                  {OPCOES_HORAS.map(h => (
-                    <option key={h} value={h} disabled={h > restante + 1e-6}>{fmtH(h)}</option>
-                  ))}
-                </select>
+                <HorasMinutosSelect value={horasSel} onChange={setHorasSel} max={restante}
+                  ariaLabel="Horas trabalhadas no dia" destaque={!!horasSel} />
+                {horasPeriodo > 0 && <p className="mt-1.5 text-sm font-medium">= {fmtH(horasPeriodo)}</p>}
                 {restante < HORAS_DIA && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     Já lançado nesta máquina no dia: {fmtH(HORAS_DIA - restante)} · disponível: {fmtH(restante)}
@@ -1330,15 +1358,12 @@ function EditarApontamentoDialog({ apontamento, onClose, onSaved, maquinas, peca
             <div className="space-y-1.5"><label className={lblCls}>Peça</label>
               <PecaCombobox pecas={pecas} value={peca} onChange={v => v && setPeca(v)} placeholder="Buscar peça..." />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
               <div className="space-y-1.5"><label className={lblCls}>Peças boas</label>
                 <Input type="number" min="0" inputMode="numeric" value={qtd} onChange={e => setQtd(e.target.value.replace(/\D/g, ""))} className="h-11 text-lg font-semibold tabular-nums" />
               </div>
               <div className="space-y-1.5"><label className={lblCls}>Horas trabalhadas</label>
-                <select value={horas} onChange={e => setHoras(e.target.value)} className={selCls}>
-                  {!OPCOES_HORAS.includes(horasNum) && horasNum > 0 && <option value={horas}>{fmtH(horasNum)}</option>}
-                  {OPCOES_HORAS.map(h => <option key={h} value={h}>{fmtH(h)}</option>)}
-                </select>
+                <HorasMinutosSelect value={horas} onChange={setHoras} ariaLabel="Horas trabalhadas" destaque={!!horas} />
               </div>
             </div>
 
