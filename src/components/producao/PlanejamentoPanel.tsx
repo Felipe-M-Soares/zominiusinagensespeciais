@@ -1,277 +1,617 @@
 /**
- * PlanejamentoPanel — Planejamento de Produção
- * ✓ Dados reais via Supabase (tabela ordens_planejamento)
- * ✓ Fallback offline com IndexedDB
+ * PlanejamentoPanel — Programação da produção (ordens de produção).
+ *
+ * Redesenho (set/2026), no formato usado por sistemas de PCP/APS:
+ *  • sem turno: a ordem tem DIA e HORA de início e de fim — pode atravessar
+ *    os dois turnos seguidos;
+ *  • o fim previsto é sugerido automaticamente pela quantidade ÷ ritmo da peça
+ *    (ritmo aprendido pelos lançamentos; se não houver, o do cadastro);
+ *  • tabela com progresso real (peças apontadas no Diário/Controle para a
+ *    mesma peça e máquina dentro do período), situação e atraso;
+ *  • botões Iniciar / Concluir registram o início e o fim REAIS, que alimentam
+ *    o indicador "cumprimento do prazo";
+ *  • aviso de conflito quando duas ordens ocupam a mesma máquina no mesmo horário.
  */
-
-import { useState, useEffect, useCallback } from "react";
-import { Plus, X, CalendarClock, RefreshCw, Edit2, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Plus, RefreshCw, CalendarClock, Play, CheckCircle2, Pencil, Trash2, AlertTriangle,
+  Search, Loader2, Clock, XCircle, Factory, Target,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { useOfflineSync } from "@/hooks/useOfflineSync";
-import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { PecaCombobox, type PecaOption } from "@/components/producao/PecaCombobox";
 
-type OPStatus = "planejada"|"em_producao"|"concluida"|"cancelada";
-type Prioridade = "baixa"|"normal"|"alta"|"urgente";
+type OPStatus = "planejada" | "em_producao" | "concluida" | "cancelada";
+type Prioridade = "baixa" | "normal" | "alta" | "urgente";
 
-interface OrdemPlanejamento {
-  id: string; numero: string; produto: string; maquina: string;
-  turno: string; quantidade: number; data_inicio: string; data_fim: string;
-  status: OPStatus; prioridade: Prioridade; capacidade: number;
-  user_id?: string; created_at?: string; updated_at?: string;
+interface Ordem {
+  id: string; numero: string; produto: string; descricao_produto: string | null; maquina: string;
+  quantidade: number; status: OPStatus; prioridade: Prioridade;
+  inicio_previsto: string | null; fim_previsto: string | null;
+  inicio_real: string | null; fim_real: string | null;
+  data_inicio: string; data_fim: string; observacoes: string | null;
+}
+interface Maquina { codigo: string; nome: string; }
+
+const STATUS: Record<OPStatus, { label: string; cls: string }> = {
+  planejada:   { label: "Planejada",   cls: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30" },
+  em_producao: { label: "Em produção", cls: "bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30" },
+  concluida:   { label: "Concluída",   cls: "bg-muted text-muted-foreground border-border" },
+  cancelada:   { label: "Cancelada",   cls: "bg-muted text-muted-foreground border-border line-through" },
+};
+const PRIORIDADE: Record<Prioridade, { label: string; cls: string; peso: number }> = {
+  urgente: { label: "Urgente", cls: "text-red-600 dark:text-red-400", peso: 0 },
+  alta:    { label: "Alta",    cls: "text-amber-600 dark:text-amber-400", peso: 1 },
+  normal:  { label: "Normal",  cls: "text-muted-foreground", peso: 2 },
+  baixa:   { label: "Baixa",   cls: "text-muted-foreground/70", peso: 3 },
+};
+type Filtro = "abertas" | "atrasadas" | "concluidas" | "canceladas" | "todas";
+
+// ── Datas ────────────────────────────────────────────────────────────────────
+const pad = (n: number) => String(n).padStart(2, "0");
+const isoDia = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const isoHora = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const juntar = (dia: string, hora: string) => (dia && hora ? new Date(`${dia}T${hora}:00`) : null);
+function fmtDataHora(iso: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${isoHora(d)}`;
+}
+function fmtDur(h: number) {
+  if (!isFinite(h) || h <= 0) return "—";
+  const tot = Math.round(h * 60), hh = Math.floor(tot / 60), mm = tot % 60;
+  if (hh >= 48) return `${Math.floor(hh / 24)}d ${hh % 24}h`;
+  return mm ? `${hh}h${pad(mm)}` : `${hh}h`;
+}
+const horasEntre = (a: string | null, b: string | null) => (a && b ? (new Date(b).getTime() - new Date(a).getTime()) / 3600000 : 0);
+
+/** Situação calculada: atrasos contam a partir do horário previsto. */
+function situacao(o: Ordem, agora = Date.now()) {
+  const fimPrev = o.fim_previsto ? new Date(o.fim_previsto).getTime() : null;
+  const iniPrev = o.inicio_previsto ? new Date(o.inicio_previsto).getTime() : null;
+  if (o.status === "concluida" && o.fim_real && fimPrev) {
+    const atraso = (new Date(o.fim_real).getTime() - fimPrev) / 3600000;
+    return atraso > 0.25 ? { tipo: "atrasou" as const, horas: atraso } : { tipo: "no_prazo" as const, horas: 0 };
+  }
+  if (o.status === "cancelada" || o.status === "concluida") return { tipo: "ok" as const, horas: 0 };
+  if (fimPrev && agora > fimPrev) return { tipo: "atrasada" as const, horas: (agora - fimPrev) / 3600000 };
+  if (o.status === "planejada" && iniPrev && agora > iniPrev) return { tipo: "inicio_atrasado" as const, horas: (agora - iniPrev) / 3600000 };
+  return { tipo: "ok" as const, horas: 0 };
 }
 
-const STATUS_CFG: Record<OPStatus,{label:string;color:string;bg:string}> = {
-  planejada:   {label:"Planejada",   color:"text-blue-500",     bg:"bg-blue-500/10"},
-  em_producao: {label:"Em Produção", color:"text-green-500",    bg:"bg-green-500/10"},
-  concluida:   {label:"Concluída",   color:"text-primary",      bg:"bg-primary/10"},
-  cancelada:   {label:"Cancelada",   color:"text-destructive",  bg:"bg-destructive/10"},
-};
-const PRIO_CFG: Record<Prioridade,{label:string;color:string}> = {
-  baixa:   {label:"Baixa",   color:"text-muted-foreground"},
-  normal:  {label:"Normal",  color:"text-blue-500"},
-  alta:    {label:"Alta",    color:"text-amber-500"},
-  urgente: {label:"Urgente", color:"text-destructive"},
-};
-const TURNOS = ["1º Turno","2º Turno","3º Turno"];
+// ── Formulário ───────────────────────────────────────────────────────────────
 
-function OPModal({open,op,onClose,onSaved,maquinas,produtos}:{
-  open:boolean; op?:OrdemPlanejamento; onClose:()=>void; onSaved:(o:OrdemPlanejamento)=>void;
-  maquinas:string[]; produtos:string[];
+function OrdemDialog({ open, ordem, onClose, onSaved, maquinas, pecas, ritmos, ordens }: {
+  open: boolean; ordem: Ordem | null; onClose: () => void; onSaved: () => void;
+  maquinas: Maquina[]; pecas: PecaOption[]; ritmos: Map<string, { ph: number; amostras: number }>; ordens: Ordem[];
 }) {
-  const {saveWithFallback}=useOfflineSync();
-  const {user}=useAuth();
-  const isEdit=!!op;
-  const [form,setForm]=useState({
-    produto:"",maquina:"",turno:"1º Turno",quantidade:"",
-    data_inicio:"",data_fim:"",prioridade:"normal" as Prioridade,capacidade:"70",
-  });
-  const [saving,setSaving]=useState(false);
+  const { user } = useAuth();
+  const [peca, setPeca] = useState("");
+  const [maquina, setMaquina] = useState("");
+  const [qtd, setQtd] = useState("");
+  const [diaIni, setDiaIni] = useState(""); const [horaIni, setHoraIni] = useState("");
+  const [diaFim, setDiaFim] = useState(""); const [horaFim, setHoraFim] = useState("");
+  const [fimManual, setFimManual] = useState(false);
+  const [prioridade, setPrioridade] = useState<Prioridade>("normal");
+  const [obs, setObs] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
-  useEffect(()=>{
-    if(open) setForm({
-      produto:op?.produto||"",maquina:op?.maquina||"",turno:op?.turno||"1º Turno",
-      quantidade:String(op?.quantidade||""),data_inicio:op?.data_inicio||"",data_fim:op?.data_fim||"",
-      prioridade:op?.prioridade||"normal",capacidade:String(op?.capacidade||"70"),
-    });
-  },[open,op]);
+  // Próximo horário livre da máquina: depois da última ordem aberta dela (ou agora).
+  const proximoLivre = useCallback((maq: string, ignorar?: string) => {
+    const agora = new Date(); agora.setMinutes(agora.getMinutes() < 30 ? 30 : 60, 0, 0);
+    const fins = ordens.filter(o => o.maquina === maq && o.id !== ignorar && (o.status === "planejada" || o.status === "em_producao") && o.fim_previsto)
+      .map(o => new Date(o.fim_previsto!).getTime());
+    return new Date(Math.max(agora.getTime(), ...fins));
+  }, [ordens]);
 
-  if(!open) return null;
+  useEffect(() => {
+    if (!open) return;
+    setPeca(ordem?.produto ?? ""); setMaquina(ordem?.maquina ?? "");
+    setQtd(ordem ? String(ordem.quantidade) : ""); setPrioridade(ordem?.prioridade ?? "normal");
+    setObs(ordem?.observacoes ?? ""); setFimManual(!!ordem);
+    const ini = ordem?.inicio_previsto ? new Date(ordem.inicio_previsto) : null;
+    const fim = ordem?.fim_previsto ? new Date(ordem.fim_previsto) : null;
+    setDiaIni(ini ? isoDia(ini) : ""); setHoraIni(ini ? isoHora(ini) : "");
+    setDiaFim(fim ? isoDia(fim) : ""); setHoraFim(fim ? isoHora(fim) : "");
+  }, [open, ordem]);
 
-  async function save() {
-    if(!form.produto||!form.maquina||!form.quantidade||!form.data_inicio||!form.data_fim){
-      toast.error("Preencha todos os campos obrigatórios"); return;
-    }
-    setSaving(true);
-    const id=op?.id||crypto.randomUUID();
-    const numero=op?.numero||`OP-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
-    const data:OrdemPlanejamento={
-      id,numero,produto:form.produto,maquina:form.maquina,turno:form.turno,
-      quantidade:Number(form.quantidade),data_inicio:form.data_inicio,data_fim:form.data_fim,
-      status:op?.status||"planejada",prioridade:form.prioridade,
-      capacidade:Number(form.capacidade)||70,user_id:user?.id,
+  // Ao escolher a máquina numa ordem nova, sugere o próximo horário livre dela.
+  useEffect(() => {
+    if (!open || ordem || !maquina) return;
+    const d = proximoLivre(maquina);
+    setDiaIni(isoDia(d)); setHoraIni(isoHora(d));
+  }, [maquina, open, ordem, proximoLivre]);
+
+  const ritmo = ritmos.get(`${peca}|${maquina}`) ?? ritmos.get(`${peca}|*`);
+  const porHoraCad = pecas.find(p => p.codigo === peca)?.pecas_por_hora ?? 0;
+  const usarAprendido = !!ritmo && (ritmo.amostras >= 3 || porHoraCad <= 0);
+  const pph = usarAprendido ? ritmo!.ph : porHoraCad;
+  const fonte = usarAprendido ? `histórico de ${ritmo!.amostras} lançamento${ritmo!.amostras > 1 ? "s" : ""}` : porHoraCad > 0 ? "cadastro da peça" : "";
+  const qtdNum = parseInt(qtd) || 0;
+  const horasEstimadas = pph > 0 && qtdNum > 0 ? qtdNum / pph : 0;
+  const inicio = juntar(diaIni, horaIni);
+
+  // Fim previsto automático = início + horas estimadas (máquina rodando direto, os 2 turnos).
+  useEffect(() => {
+    if (fimManual || !inicio || horasEstimadas <= 0) return;
+    const f = new Date(inicio.getTime() + horasEstimadas * 3600000);
+    setDiaFim(isoDia(f)); setHoraFim(isoHora(f));
+  }, [fimManual, diaIni, horaIni, horasEstimadas]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fim = juntar(diaFim, horaFim);
+  const conflitos = useMemo(() => {
+    if (!inicio || !fim || !maquina) return [];
+    return ordens.filter(o => o.maquina === maquina && o.id !== ordem?.id && (o.status === "planejada" || o.status === "em_producao")
+      && o.inicio_previsto && o.fim_previsto
+      && new Date(o.inicio_previsto) < fim && new Date(o.fim_previsto) > inicio);
+  }, [inicio, fim, maquina, ordens, ordem]);
+
+  async function salvar() {
+    if (!navigator.onLine) { toast.error("O planejamento precisa de internet."); return; }
+    if (!peca || !maquina || qtdNum <= 0 || !inicio || !fim) { toast.error("Preencha peça, máquina, quantidade, início e fim."); return; }
+    if (fim <= inicio) { toast.error("O fim precisa ser depois do início."); return; }
+    setSalvando(true);
+    const base = {
+      produto: peca, descricao_produto: pecas.find(p => p.codigo === peca)?.descricao ?? null, maquina,
+      quantidade: qtdNum, prioridade, observacoes: obs.trim() || null, turno: "Dia inteiro",
+      inicio_previsto: inicio.toISOString(), fim_previsto: fim.toISOString(),
+      data_inicio: isoDia(inicio), data_fim: isoDia(fim),
+      capacidade: pph > 0 ? Math.round(pph * 100) / 100 : null,
     };
-    const {data:saved,error,savedOffline}=await saveWithFallback(
-      "ordens_planejamento","ordens_planejamento",isEdit?"UPDATE":"INSERT",data
-    );
-    setSaving(false);
-    if(error){toast.error("Erro ao salvar OP");return;}
-    toast.success(savedOffline?"Salvo offline":isEdit?"OP atualizada!":"OP criada!");
-    onSaved(saved||data); onClose();
+    let erro: string | null = null;
+    if (ordem) {
+      const { error } = await supabase.from("ordens_planejamento").update(base).eq("id", ordem.id);
+      if (error) erro = error.message;
+    } else {
+      // Número OP-AAAA-0001 sequencial no ano (tenta de novo se outro usuário pegar o mesmo número).
+      const ano = new Date().getFullYear();
+      for (let tentativa = 0; tentativa < 4; tentativa++) {
+        const { data: ult } = await supabase.from("ordens_planejamento").select("numero")
+          .like("numero", `OP-${ano}-%`).order("numero", { ascending: false }).limit(1);
+        const n = (parseInt((ult?.[0]?.numero ?? "").split("-")[2] ?? "0") || 0) + 1 + tentativa;
+        const { error } = await supabase.from("ordens_planejamento").insert({
+          ...base, numero: `OP-${ano}-${String(n).padStart(4, "0")}`, status: "planejada", user_id: user?.id,
+        });
+        if (!error) { erro = null; break; }
+        erro = error.message;
+        if (error.code !== "23505") break; // só repete em número duplicado
+      }
+    }
+    setSalvando(false);
+    if (erro) { toast.error("Não foi possível salvar a ordem."); return; }
+    toast.success(ordem ? "Ordem atualizada." : "Ordem criada.");
+    onSaved();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-t-2xl sm:rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">{isEdit?"Editar OP":"Nova Ordem de Produção"}</h3>
-          <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>
-        </div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Produto *</label>
-            {produtos.length>0
-              ? <select value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{produtos.map(p=><option key={p} value={p}>{p}</option>)}</select>
-              : <Input value={form.produto} onChange={e=>setForm(p=>({...p,produto:e.target.value}))} placeholder="Produto"/>}
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-xl max-h-[92dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{ordem ? `Editar ${ordem.numero}` : "Nova ordem de produção"}</DialogTitle>
+          <DialogDescription>Informe o dia e a hora de início — o fim é calculado pelo ritmo da peça (dá para ajustar).</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Peça</label>
+            <PecaCombobox pecas={pecas} value={peca} onChange={setPeca} placeholder="Buscar peça pelo código ou nome..." />
           </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Máquina *</label>
-            {maquinas.length>0
-              ? <select value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"><option value="">Selecione...</option>{maquinas.map(m=><option key={m} value={m}>{m}</option>)}</select>
-              : <Input value={form.maquina} onChange={e=>setForm(p=>({...p,maquina:e.target.value}))} placeholder="Máquina"/>}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Turno</label>
-              <select value={form.turno} onChange={e=>setForm(p=>({...p,turno:e.target.value}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
-                {TURNOS.map(t=><option key={t} value={t}>{t}</option>)}
-              </select>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Máquina</label>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {maquinas.map(m => (
+                <button key={m.codigo} type="button" onClick={() => setMaquina(m.codigo)} aria-pressed={maquina === m.codigo}
+                  className={cn("rounded-xl border-2 px-2 py-2 text-left transition-all",
+                    maquina === m.codigo ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}>
+                  <span className="block text-sm font-bold">{m.codigo}</span>
+                  <span className="block text-[11px] text-muted-foreground truncate">{m.nome}</span>
+                </button>
+              ))}
             </div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade *</label><Input type="number" value={form.quantidade} onChange={e=>setForm(p=>({...p,quantidade:e.target.value}))} placeholder="0"/></div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Início *</label><Input type="date" value={form.data_inicio} onChange={e=>setForm(p=>({...p,data_inicio:e.target.value}))}/></div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Fim *</label><Input type="date" value={form.data_fim} onChange={e=>setForm(p=>({...p,data_fim:e.target.value}))}/></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Prioridade</label>
-              <select value={form.prioridade} onChange={e=>setForm(p=>({...p,prioridade:e.target.value as Prioridade}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
-                {(Object.entries(PRIO_CFG)).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-              </select>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quantidade</label>
+              <Input type="number" min="1" inputMode="numeric" value={qtd} onChange={e => setQtd(e.target.value.replace(/\D/g, ""))}
+                placeholder="peças" className="h-11 text-base font-semibold tabular-nums" />
             </div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Capacidade (%)</label><Input type="number" min="0" max="100" value={form.capacidade} onChange={e=>setForm(p=>({...p,capacidade:e.target.value}))}/></div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prioridade</label>
+              <div className="flex rounded-xl border bg-muted/40 p-1">
+                {(["baixa", "normal", "alta", "urgente"] as Prioridade[]).map(p => (
+                  <button key={p} type="button" onClick={() => setPrioridade(p)} aria-pressed={prioridade === p}
+                    className={cn("flex-1 h-9 rounded-lg text-xs font-medium", prioridade === p ? cn("bg-card shadow-sm", PRIORIDADE[p].cls) : "text-muted-foreground")}>
+                    {PRIORIDADE[p].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="h-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center">Início (dia e hora)</label>
+              <div className="flex gap-2">
+                <Input type="date" value={diaIni} onChange={e => setDiaIni(e.target.value)} className="h-11 flex-1 min-w-0" aria-label="Dia de início" />
+                <Input type="time" value={horaIni} onChange={e => setHoraIni(e.target.value)} className="h-11 w-[7.25rem] shrink-0" aria-label="Hora de início" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2 h-5">
+                Fim previsto (dia e hora)
+                {fimManual && horasEstimadas > 0 && (
+                  <button type="button" onClick={() => setFimManual(false)} className="normal-case tracking-normal font-medium text-primary hover:underline">recalcular</button>
+                )}
+              </label>
+              <div className="flex gap-2">
+                <Input type="date" value={diaFim} onChange={e => { setDiaFim(e.target.value); setFimManual(true); }} className="h-11 flex-1 min-w-0" aria-label="Dia do fim" />
+                <Input type="time" value={horaFim} onChange={e => { setHoraFim(e.target.value); setFimManual(true); }} className="h-11 w-[7.25rem] shrink-0" aria-label="Hora do fim" />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-muted/40 px-3 py-2.5 text-sm space-y-0.5">
+            {horasEstimadas > 0 ? (
+              <p><Target className="inline h-4 w-4 text-primary mr-1.5 -mt-0.5" />
+                Tempo de máquina estimado: <strong>{fmtDur(horasEstimadas)}</strong>{" "}
+                <span className="text-muted-foreground">({pph.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} pç/h · {fonte})</span></p>
+            ) : (
+              <p className="text-muted-foreground">{peca ? "Esta peça ainda não tem ritmo conhecido — informe o fim previsto." : "Escolha a peça e a quantidade para calcular o fim."}</p>
+            )}
+            {inicio && fim && fim > inicio && <p className="text-muted-foreground">Período da ordem: {fmtDur(horasEntre(inicio.toISOString(), fim.toISOString()))} (pode atravessar os dois turnos)</p>}
+          </div>
+
+          {conflitos.length > 0 && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm flex gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">Conflito de horário em {maquina}</p>
+                {conflitos.map(c => <p key={c.id} className="text-muted-foreground">{c.numero} · {c.produto} · {fmtDataHora(c.inicio_previsto)} → {fmtDataHora(c.fim_previsto)}</p>)}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Observações (opcional)</label>
+            <textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} maxLength={500}
+              className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Ex.: pedido do cliente X, material separado..." />
           </div>
         </div>
-        <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Salvar"}</Button>
-        </div>
-      </div>
-    </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" className="h-11" onClick={onClose} disabled={salvando}>Cancelar</Button>
+          <Button className="h-11 gap-1.5" onClick={salvar} disabled={salvando}>
+            {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} {ordem ? "Salvar alterações" : "Criar ordem"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
+// ── Painel ───────────────────────────────────────────────────────────────────
+
 export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
-  const [ops,setOps]=useState<OrdemPlanejamento[]>([]);
-  const [maquinas,setMaquinas]=useState<string[]>([]);
-  const [produtos,setProdutos]=useState<string[]>([]);
-  const [loading,setLoading]=useState(true);
-  const [search,setSearch]=useState("");
-  const [filtroStatus,setFiltroStatus]=useState<"todos"|OPStatus>("todos");
-  const [modalOpen,setModalOpen]=useState(false);
-  const [editTarget,setEditTarget]=useState<OrdemPlanejamento|undefined>();
-  const {loadWithFallback,saveWithFallback}=useOfflineSync();
+  const { role } = useAuth();
+  const podeEditar = isAdmin || role === "producao";
+  const [ordens, setOrdens] = useState<Ordem[]>([]);
+  const [progresso, setProgresso] = useState<Map<string, number>>(new Map());
+  const [maquinas, setMaquinas] = useState<Maquina[]>([]);
+  const [pecas, setPecas] = useState<PecaOption[]>([]);
+  const [ritmos, setRitmos] = useState<Map<string, { ph: number; amostras: number }>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [filtro, setFiltro] = useState<Filtro>("abertas");
+  const [maqFiltro, setMaqFiltro] = useState("");
+  const [busca, setBusca] = useState("");
+  const [dialog, setDialog] = useState<{ open: boolean; ordem: Ordem | null }>({ open: false, ordem: null });
+  const [confirmarExcluir, setConfirmarExcluir] = useState<string | null>(null);
+  const [agora, setAgora] = useState(Date.now());
 
-  const load=useCallback(async()=>{
+  useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 60000); return () => clearInterval(t); }, []);
+
+  const load = useCallback(async () => {
     setLoading(true);
-    const data=await loadWithFallback<OrdemPlanejamento>("ordens_planejamento","ordens_planejamento");
-    setOps(data.sort((a,b)=>b.data_inicio.localeCompare(a.data_inicio)));
-    if(navigator.onLine){
-      const [{data:maq},{data:prod}]=await Promise.all([
-        supabase.from("maquinas_producao").select("codigo").order("codigo"),
-        supabase.from("produtos_producao").select("codigo,descricao").eq("ativo",true).order("codigo"),
-      ]);
-      if(maq) setMaquinas(maq.map((m:{codigo:string})=>m.codigo));
-      if(prod) setProdutos(prod.map((p:{codigo:string;descricao:string})=>`${p.codigo} ${p.descricao}`));
-    }
+    const desde = new Date(); desde.setDate(desde.getDate() - 120);
+    const [ordRes, progRes, maqRes, prodRes, tempoRes] = await Promise.all([
+      supabase.from("ordens_planejamento")
+        .select("id,numero,produto,descricao_produto,maquina,quantidade,status,prioridade,inicio_previsto,fim_previsto,inicio_real,fim_real,data_inicio,data_fim,observacoes")
+        .or(`status.in.(planejada,em_producao),data_fim.gte.${isoDia(desde)}`)
+        .order("inicio_previsto", { ascending: true }),
+      supabase.from("ordens_planejamento_progresso").select("id,quantidade_produzida"),
+      supabase.from("maquinas_producao").select("codigo,nome").order("codigo"),
+      supabase.from("produtos_producao").select("codigo,descricao,pecas_por_hora").eq("ativo", true).order("codigo"),
+      supabase.from("tempo_peca_padrao").select("produto,maquina,pecas_hora,amostras"),
+    ]);
+    if (ordRes.error) toast.error("Não foi possível carregar o planejamento.");
+    setOrdens((ordRes.data ?? []) as Ordem[]);
+    setProgresso(new Map((progRes.data ?? []).map(p => [p.id as string, Number(p.quantidade_produzida) || 0])));
+    setMaquinas((maqRes.data ?? []) as Maquina[]);
+    setPecas((prodRes.data ?? []).map(p => ({ codigo: p.codigo, descricao: p.descricao, pecas_por_hora: p.pecas_por_hora ?? 0, origem: "producao" as const })));
+    const r = new Map<string, { ph: number; amostras: number }>();
+    for (const t of tempoRes.data ?? []) if (t.pecas_hora && t.pecas_hora > 0) r.set(`${t.produto}|${t.maquina}`, { ph: Number(t.pecas_hora), amostras: t.amostras });
+    setRitmos(r);
     setLoading(false);
-  },[loadWithFallback]);
+  }, []);
 
-  useEffect(()=>{load();},[load]);
+  useEffect(() => { load(); }, [load]);
 
-  async function handleStatusChange(id:string,status:OPStatus){
-    const op=ops.find(o=>o.id===id);if(!op) return;
-    const updated={...op,status};
-    const {error,savedOffline}=await saveWithFallback("ordens_planejamento","ordens_planejamento","UPDATE",updated);
-    if(error){toast.error("Erro ao atualizar status");return;}
-    toast.success(savedOffline?"Salvo offline":"Status atualizado!");
-    setOps(prev=>prev.map(o=>o.id===id?updated:o));
+  async function mudarStatus(o: Ordem, status: OPStatus) {
+    const patch: Partial<Ordem> = { status };
+    if (status === "em_producao" && !o.inicio_real) patch.inicio_real = new Date().toISOString();
+    if (status === "concluida") { patch.fim_real = new Date().toISOString(); if (!o.inicio_real) patch.inicio_real = o.inicio_previsto ?? patch.fim_real; }
+    if (status === "planejada") { patch.inicio_real = null; patch.fim_real = null; }
+    const { error } = await supabase.from("ordens_planejamento").update(patch).eq("id", o.id);
+    if (error) { toast.error("Não foi possível atualizar a ordem."); return; }
+    toast.success(status === "em_producao" ? `${o.numero} iniciada.` : status === "concluida" ? `${o.numero} concluída.` : status === "cancelada" ? `${o.numero} cancelada.` : `${o.numero} reaberta.`);
+    load();
   }
 
-  async function handleDelete(id:string){
-    if(!confirm("Remover esta OP?")) return;
-    await saveWithFallback("ordens_planejamento","ordens_planejamento","DELETE",{id} as OrdemPlanejamento);
-    setOps(prev=>prev.filter(o=>o.id!==id));
-    toast.success("OP removida");
+  async function excluir(id: string) {
+    const { error } = await supabase.from("ordens_planejamento").delete().eq("id", id);
+    setConfirmarExcluir(null);
+    if (error) { toast.error("Só administradores podem excluir ordens."); return; }
+    toast.success("Ordem excluída."); load();
   }
 
-  const filtered=ops.filter(o=>{
-    const matchSearch=!search||[o.numero,o.produto,o.maquina].some(v=>v.toLowerCase().includes(search.toLowerCase()));
-    const matchStatus=filtroStatus==="todos"||o.status===filtroStatus;
-    return matchSearch&&matchStatus;
-  });
+  // ── Indicadores ──────────────────────────────────────────────────────────
+  const abertas = ordens.filter(o => o.status === "planejada" || o.status === "em_producao");
+  const atrasadas = abertas.filter(o => situacao(o, agora).tipo === "atrasada");
+  const concluidas = ordens.filter(o => o.status === "concluida" && o.fim_real && o.fim_previsto);
+  const noPrazo = concluidas.filter(o => situacao(o, agora).tipo === "no_prazo").length;
+  const cumprimento = concluidas.length ? (noPrazo / concluidas.length) * 100 : null;
 
-  // Dados de carga por máquina para gráfico
-  const cargaMap:Record<string,number>={};
-  ops.filter(o=>o.status==="em_producao"||o.status==="planejada").forEach(o=>{cargaMap[o.maquina]=Math.max(cargaMap[o.maquina]||0,o.capacidade);});
-  const cargaData=Object.entries(cargaMap).map(([maquina,carga])=>({maquina,carga}));
+  const lista = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return ordens.filter(o => {
+      if (maqFiltro && o.maquina !== maqFiltro) return false;
+      if (q && ![o.numero, o.produto, o.descricao_produto ?? "", o.maquina].some(v => v.toLowerCase().includes(q))) return false;
+      const aberta = o.status === "planejada" || o.status === "em_producao";
+      switch (filtro) {
+        case "abertas": return aberta;
+        case "atrasadas": return aberta && situacao(o, agora).tipo === "atrasada";
+        case "concluidas": return o.status === "concluida";
+        case "canceladas": return o.status === "cancelada";
+        default: return true;
+      }
+    }).sort((a, b) => {
+      const ea = a.status === "em_producao" ? 0 : 1, eb = b.status === "em_producao" ? 0 : 1;
+      if (filtro === "abertas" && ea !== eb) return ea - eb;
+      return (a.inicio_previsto ?? "").localeCompare(b.inicio_previsto ?? "") || PRIORIDADE[a.prioridade].peso - PRIORIDADE[b.prioridade].peso;
+    });
+  }, [ordens, filtro, maqFiltro, busca, agora]);
+
+  // Conflitos entre ordens abertas da mesma máquina (para marcar na tabela).
+  const emConflito = useMemo(() => {
+    const s = new Set<string>();
+    for (let i = 0; i < abertas.length; i++) for (let j = i + 1; j < abertas.length; j++) {
+      const a = abertas[i], b = abertas[j];
+      if (a.maquina !== b.maquina || !a.inicio_previsto || !a.fim_previsto || !b.inicio_previsto || !b.fim_previsto) continue;
+      if (new Date(a.inicio_previsto) < new Date(b.fim_previsto) && new Date(b.inicio_previsto) < new Date(a.fim_previsto)) { s.add(a.id); s.add(b.id); }
+    }
+    return s;
+  }, [abertas]);
+
+  const filtros: { id: Filtro; label: string; n?: number }[] = [
+    { id: "abertas", label: "Abertas", n: abertas.length },
+    { id: "atrasadas", label: "Atrasadas", n: atrasadas.length },
+    { id: "concluidas", label: "Concluídas" },
+    { id: "canceladas", label: "Canceladas" },
+    { id: "todas", label: "Todas" },
+  ];
+
+  const renderSituacao = (sit: ReturnType<typeof situacao>) => (
+    <>
+      {sit.tipo === "atrasada" && <p className="mt-0.5 text-[11px] font-semibold text-red-600 whitespace-nowrap">Atrasada {fmtDur(sit.horas)}</p>}
+      {sit.tipo === "inicio_atrasado" && <p className="mt-0.5 text-[11px] font-semibold text-amber-600 whitespace-nowrap">Início atrasado {fmtDur(sit.horas)}</p>}
+      {sit.tipo === "no_prazo" && <p className="mt-0.5 text-[11px] font-semibold text-green-600">No prazo</p>}
+      {sit.tipo === "atrasou" && <p className="mt-0.5 text-[11px] font-semibold text-red-600 whitespace-nowrap">Atrasou {fmtDur(sit.horas)}</p>}
+    </>
+  );
+  const renderAcoes = (o: Ordem, aberta: boolean, compacto = false) => (
+    <div className={cn("flex items-center gap-1", compacto ? "flex-wrap" : "justify-end")}>
+      {podeEditar && o.status === "planejada" && (
+        <Button size="sm" variant="outline" className="h-9 gap-1" onClick={() => mudarStatus(o, "em_producao")}><Play className="h-3.5 w-3.5" />Iniciar</Button>
+      )}
+      {podeEditar && o.status === "em_producao" && (
+        <Button size="sm" className="h-9 gap-1" onClick={() => mudarStatus(o, "concluida")}><CheckCircle2 className="h-3.5 w-3.5" />Concluir</Button>
+      )}
+      {podeEditar && (o.status === "concluida" || o.status === "cancelada") && (
+        <Button size="sm" variant="ghost" className="h-9" onClick={() => mudarStatus(o, "planejada")}>Reabrir</Button>
+      )}
+      {podeEditar && aberta && (
+        <>
+          <Button size="icon" variant="ghost" className="h-9 w-9" aria-label={`Editar ${o.numero}`} onClick={() => setDialog({ open: true, ordem: o })}><Pencil className="h-4 w-4" /></Button>
+          <Button size="icon" variant="ghost" className="h-9 w-9 text-muted-foreground" aria-label={`Cancelar ${o.numero}`} title="Cancelar ordem" onClick={() => mudarStatus(o, "cancelada")}><XCircle className="h-4 w-4" /></Button>
+        </>
+      )}
+      {isAdmin && (confirmarExcluir === o.id ? (
+        <Button size="sm" variant="destructive" className="h-9" onClick={() => excluir(o.id)}>Confirmar</Button>
+      ) : (
+        <Button size="icon" variant="ghost" className="h-9 w-9 text-destructive" aria-label={`Excluir ${o.numero}`}
+          onClick={() => { setConfirmarExcluir(o.id); setTimeout(() => setConfirmarExcluir(c => (c === o.id ? null : c)), 4000); }}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {cargaData.length>0 && (
-        <div className="rounded-2xl border bg-card/60 p-4">
-          <p className="text-sm font-medium mb-3">Carga por Máquina (%)</p>
-          <ResponsiveContainer width="100%" height={120}>
-            <BarChart data={cargaData} margin={{top:0,right:0,left:-20,bottom:0}}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
-              <XAxis dataKey="maquina" tick={{fontSize:10}}/>
-              <YAxis domain={[0,100]} tick={{fontSize:10}}/>
-              <Tooltip/>
-              <Bar dataKey="carga" fill="hsl(var(--primary))" radius={[4,4,0,0]}/>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      <div className="flex gap-2">
-        <div className="relative flex-1"><SearchInputWithBarcode value={search} onChange={setSearch} onSearch={setSearch} placeholder="Bipe o código ou busque OP..." height="h-9"/></div>
-        <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value as typeof filtroStatus)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm">
-          <option value="todos">Todos</option>
-          {(Object.keys(STATUS_CFG) as OPStatus[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
-        </select>
-        <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Nova OP</Button>
-        <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
+      {/* Indicadores */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { l: "Ordens abertas", v: String(abertas.length), Icon: CalendarClock, c: "text-foreground" },
+          { l: "Em produção", v: String(abertas.filter(o => o.status === "em_producao").length), Icon: Factory, c: "text-green-600" },
+          { l: "Atrasadas", v: String(atrasadas.length), Icon: AlertTriangle, c: atrasadas.length ? "text-red-600" : "text-foreground" },
+          { l: "Entregues no prazo", v: cumprimento === null ? "—" : `${cumprimento.toFixed(0)}%`, Icon: Clock,
+            c: cumprimento === null ? "text-muted-foreground" : cumprimento >= 90 ? "text-green-600" : cumprimento >= 75 ? "text-amber-600" : "text-red-600" },
+        ].map(k => (
+          <div key={k.l} className="rounded-2xl border bg-card p-4">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><k.Icon className="h-3.5 w-3.5" />{k.l}</p>
+            <p className={cn("mt-1 text-2xl font-bold tabular-nums", k.c)}>{k.v}</p>
+          </div>
+        ))}
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
-      ) : filtered.length===0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <CalendarClock className="h-8 w-8 opacity-30"/><p>{ops.length===0?"Nenhuma ordem criada":"Nenhum resultado"}</p>
+      {/* Filtros */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-1 rounded-xl border bg-muted/40 p-1" role="radiogroup" aria-label="Filtrar ordens">
+          {filtros.map(f => (
+            <button key={f.id} type="button" role="radio" aria-checked={filtro === f.id} onClick={() => setFiltro(f.id)}
+              className={cn("h-9 px-3 rounded-lg text-sm font-medium flex items-center gap-1.5",
+                filtro === f.id ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              {f.label}
+              {f.n !== undefined && f.n > 0 && <span className={cn("min-w-5 h-5 px-1 rounded-full text-[11px] font-bold flex items-center justify-center",
+                f.id === "atrasadas" ? "bg-red-500/15 text-red-600" : "bg-primary/15 text-primary")}>{f.n}</span>}
+            </button>
+          ))}
         </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map(op=>{
-            const sc=STATUS_CFG[op.status];
-            const pc=PRIO_CFG[op.prioridade];
-            return (
-              <div key={op.id} className="rounded-2xl border bg-card/60 p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-sm">{op.numero}</p>
-                      <span className={cn("text-[10px] font-medium",pc.color)}>{pc.label}</span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground truncate">{op.produto}</p>
-                    <p className="text-[10px] text-muted-foreground">{op.maquina} · {op.turno}</p>
-                  </div>
-                  <Badge variant="outline" className={cn("text-[10px] shrink-0",sc.color)}>{sc.label}</Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-[11px]">
-                  <div><span className="text-muted-foreground">Qtd:</span> <b>{op.quantidade.toLocaleString("pt-BR")}</b></div>
-                  <div><span className="text-muted-foreground">Início:</span> <b>{new Date(op.data_inicio+"T00:00:00").toLocaleDateString("pt-BR")}</b></div>
-                  <div><span className="text-muted-foreground">Fim:</span> <b>{new Date(op.data_fim+"T00:00:00").toLocaleDateString("pt-BR")}</b></div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Capacidade utilizada</span><span>{op.capacidade}%</span></div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden"><div className={cn("h-full rounded-full",op.capacidade>=90?"bg-red-500":op.capacidade>=70?"bg-amber-500":"bg-green-500")} style={{width:`${op.capacidade}%`}}/></div>
-                </div>
-                <div className="flex items-center gap-2 pt-1 border-t border-border/30">
-                  <select value={op.status} onChange={e=>handleStatusChange(op.id,e.target.value as OPStatus)}
-                    className="flex-1 h-7 rounded-lg border border-input bg-background px-2 text-[11px]">
-                    {(Object.keys(STATUS_CFG) as OPStatus[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
-                  </select>
-                  {isAdmin && <>
-                    <button onClick={()=>{setEditTarget(op);setModalOpen(true);}} aria-label="Editar operação" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
-                    <button onClick={()=>handleDelete(op.id)} aria-label="Excluir operação" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
-                  </>}
-                </div>
-              </div>
-            );
-          })}
+        <select value={maqFiltro} onChange={e => setMaqFiltro(e.target.value)} aria-label="Máquina" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
+          <option value="">Todas as máquinas</option>
+          {maquinas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo}</option>)}
+        </select>
+        <div className="relative flex-1 min-w-[10rem]">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="OP, peça ou máquina..." className="h-11 pl-9" />
         </div>
-      )}
+        <Button variant="outline" size="icon" className="h-11 w-11" onClick={load} disabled={loading} aria-label="Atualizar">
+          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+        </Button>
+        {podeEditar && (
+          <Button className="h-11 gap-1.5" onClick={() => setDialog({ open: true, ordem: null })}><Plus className="h-4 w-4" />Nova ordem</Button>
+        )}
+      </div>
 
-      <OPModal open={modalOpen} op={editTarget} onClose={()=>setModalOpen(false)}
-        onSaved={o=>{setOps(prev=>editTarget?prev.map(x=>x.id===o.id?o:x):[o,...prev]);}}
-        maquinas={maquinas} produtos={produtos}/>
+      {/* Tabela */}
+      <div className="rounded-2xl border bg-card overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando...</div>
+        ) : lista.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+            <CalendarClock className="h-8 w-8 opacity-40" />
+            <p>{ordens.length === 0 ? "Nenhuma ordem de produção ainda." : "Nenhuma ordem neste filtro."}</p>
+            {podeEditar && ordens.length === 0 && <Button size="sm" className="mt-1 gap-1.5" onClick={() => setDialog({ open: true, ordem: null })}><Plus className="h-4 w-4" />Criar a primeira</Button>}
+          </div>
+        ) : (
+          <>
+          {/* Celular: cartões */}
+          <ul className="md:hidden divide-y">
+            {lista.map(o => {
+              const prod = progresso.get(o.id) ?? 0;
+              const pct = o.quantidade > 0 ? Math.min(100, (prod / o.quantidade) * 100) : 0;
+              const sit = situacao(o, agora);
+              const aberta = o.status === "planejada" || o.status === "em_producao";
+              return (
+                <li key={o.id} className={cn("p-4 space-y-2.5", sit.tipo === "atrasada" && "bg-red-500/[0.04]")}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold tabular-nums">{o.numero} <span className={cn("text-[11px] font-medium", PRIORIDADE[o.prioridade].cls)}>· {PRIORIDADE[o.prioridade].label}</span></p>
+                      <p className="text-sm"><strong>{o.produto}</strong> <span className="text-muted-foreground">em</span> <strong>{o.maquina}</strong>
+                        {emConflito.has(o.id) && aberta && <AlertTriangle className="inline ml-1 h-3.5 w-3.5 text-amber-600" aria-label="Horário em conflito" />}</p>
+                      {o.descricao_produto && <p className="text-xs text-muted-foreground truncate">{o.descricao_produto}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap", STATUS[o.status].cls)}>{STATUS[o.status].label}</span>
+                      {renderSituacao(sit)}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm tabular-nums"><strong>{prod.toLocaleString("pt-BR")}</strong> <span className="text-muted-foreground">/ {o.quantidade.toLocaleString("pt-BR")} peças</span></p>
+                    <div className="mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div className={cn("h-full rounded-full", pct >= 100 ? "bg-green-500" : "bg-primary")} style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm tabular-nums">
+                    <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Início</p>{fmtDataHora(o.inicio_real ?? o.inicio_previsto)}</div>
+                    <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">{o.fim_real ? "Fim" : "Fim previsto"}</p>{fmtDataHora(o.fim_real ?? o.fim_previsto)}</div>
+                  </div>
+                  {renderAcoes(o, aberta, true)}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm min-w-[980px]">
+              <thead className="bg-muted/50">
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="px-3 py-2.5 font-semibold">OP</th>
+                  <th className="px-3 py-2.5 font-semibold">Peça</th>
+                  <th className="px-3 py-2.5 font-semibold">Máquina</th>
+                  <th className="px-3 py-2.5 font-semibold">Produzido / Planejado</th>
+                  <th className="px-3 py-2.5 font-semibold">Início</th>
+                  <th className="px-3 py-2.5 font-semibold">Fim previsto</th>
+                  <th className="px-3 py-2.5 font-semibold">Situação</th>
+                  <th className="px-3 py-2.5 font-semibold text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lista.map(o => {
+                  const prod = progresso.get(o.id) ?? 0;
+                  const pct = o.quantidade > 0 ? Math.min(100, (prod / o.quantidade) * 100) : 0;
+                  const sit = situacao(o, agora);
+                  const aberta = o.status === "planejada" || o.status === "em_producao";
+                  return (
+                    <tr key={o.id} className={cn("border-t align-middle", sit.tipo === "atrasada" && "bg-red-500/[0.04]")}>
+                      <td className="px-3 py-2.5">
+                        <p className="font-semibold tabular-nums whitespace-nowrap">{o.numero}</p>
+                        <p className={cn("text-[11px] font-medium", PRIORIDADE[o.prioridade].cls)}>{PRIORIDADE[o.prioridade].label}</p>
+                      </td>
+                      <td className="px-3 py-2.5 max-w-[14rem]">
+                        <p className="font-medium">{o.produto}</p>
+                        {o.descricao_produto && <p className="text-xs text-muted-foreground truncate">{o.descricao_produto}</p>}
+                        {o.observacoes && <p className="text-[11px] text-muted-foreground/80 truncate" title={o.observacoes}>“{o.observacoes}”</p>}
+                      </td>
+                      <td className="px-3 py-2.5 font-semibold">
+                        {o.maquina}
+                        {emConflito.has(o.id) && aberta && <span className="ml-1.5 inline-flex items-center text-amber-600" title="Horário em conflito com outra ordem desta máquina"><AlertTriangle className="h-3.5 w-3.5" /></span>}
+                      </td>
+                      <td className="px-3 py-2.5 min-w-[8.5rem]">
+                        <p className="tabular-nums"><strong>{prod.toLocaleString("pt-BR")}</strong> <span className="text-muted-foreground">/ {o.quantidade.toLocaleString("pt-BR")}</span></p>
+                        <div className="mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className={cn("h-full rounded-full", pct >= 100 ? "bg-green-500" : "bg-primary")} style={{ width: `${pct}%` }} />
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">
+                        {fmtDataHora(o.inicio_previsto)}
+                        {o.inicio_real && <p className="text-[11px] text-muted-foreground">real {fmtDataHora(o.inicio_real)}</p>}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">
+                        {fmtDataHora(o.fim_previsto)}
+                        {o.fim_real
+                          ? <p className="text-[11px] text-muted-foreground">real {fmtDataHora(o.fim_real)}</p>
+                          : <p className="text-[11px] text-muted-foreground">duração {fmtDur(horasEntre(o.inicio_previsto, o.fim_previsto))}</p>}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap", STATUS[o.status].cls)}>{STATUS[o.status].label}</span>
+                        {renderSituacao(sit)}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {renderAcoes(o, aberta)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          </>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        O produzido vem dos lançamentos (Diário e Controle) da mesma peça e máquina dentro do período da ordem. “Iniciar” e “Concluir” registram os horários reais usados no indicador de prazo.
+      </p>
+
+      <OrdemDialog open={dialog.open} ordem={dialog.ordem} onClose={() => setDialog({ open: false, ordem: null })}
+        onSaved={() => { setDialog({ open: false, ordem: null }); load(); }}
+        maquinas={maquinas} pecas={pecas} ritmos={ritmos} ordens={ordens} />
     </div>
   );
 }

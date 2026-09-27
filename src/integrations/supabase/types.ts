@@ -1377,6 +1377,12 @@ export type Database = {
       }
       ordens_planejamento: {
         Row: {
+          descricao_produto: string | null
+          fim_previsto: string | null
+          fim_real: string | null
+          inicio_previsto: string | null
+          inicio_real: string | null
+          observacoes: string | null
           capacidade: number | null
           created_at: string
           data_fim: string
@@ -1393,6 +1399,12 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          descricao_produto?: string | null
+          fim_previsto?: string | null
+          fim_real?: string | null
+          inicio_previsto?: string | null
+          inicio_real?: string | null
+          observacoes?: string | null
           capacidade?: number | null
           created_at?: string
           data_fim: string
@@ -1409,6 +1421,12 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          descricao_produto?: string | null
+          fim_previsto?: string | null
+          fim_real?: string | null
+          inicio_previsto?: string | null
+          inicio_real?: string | null
+          observacoes?: string | null
           capacidade?: number | null
           created_at?: string
           data_fim?: string
@@ -2369,6 +2387,16 @@ export type Database = {
       }
     }
     Views: {
+      ordens_planejamento_progresso: {
+        Row: {
+          horas_apontadas: number | null
+          id: string | null
+          primeiro_apontamento: string | null
+          quantidade_produzida: number | null
+          ultimo_apontamento: string | null
+        }
+        Relationships: []
+      }
       tempo_peca_mensal: {
         Row: {
           amostras: number | null

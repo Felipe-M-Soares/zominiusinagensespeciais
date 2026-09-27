@@ -650,3 +650,45 @@ $f01$;
 
 REVOKE EXECUTE ON FUNCTION public.criar_apontamento_ppi51(date, text, text, text, text, text, numeric, numeric, numeric, integer, numeric, numeric, numeric, numeric, text, text, text, numeric, numeric, text, jsonb, jsonb) FROM anon, PUBLIC;
 GRANT EXECUTE ON FUNCTION public.criar_apontamento_ppi51(date, text, text, text, text, text, numeric, numeric, numeric, integer, numeric, numeric, numeric, numeric, text, text, text, numeric, numeric, text, jsonb, jsonb) TO authenticated;
+
+-- ── R12. Planejamento por data e HORA (sem turno) ───────────────────────────
+-- A ordem de produção pode atravessar os dois turnos: agora guarda início e
+-- fim previstos com hora, e início/fim reais (para medir cumprimento de prazo).
+-- As colunas antigas data_inicio/data_fim continuam preenchidas (compatibilidade).
+ALTER TABLE public.ordens_planejamento
+  ADD COLUMN IF NOT EXISTS inicio_previsto    timestamptz,
+  ADD COLUMN IF NOT EXISTS fim_previsto       timestamptz,
+  ADD COLUMN IF NOT EXISTS inicio_real        timestamptz,
+  ADD COLUMN IF NOT EXISTS fim_real           timestamptz,
+  ADD COLUMN IF NOT EXISTS descricao_produto  text,
+  ADD COLUMN IF NOT EXISTS observacoes        text;
+ALTER TABLE public.ordens_planejamento ALTER COLUMN turno SET DEFAULT 'Dia inteiro';
+
+-- Ordens antigas: início às 06:00 do dia inicial, fim às 23:59 do dia final;
+-- o produto era salvo como "CÓDIGO descrição" — separa o código.
+UPDATE public.ordens_planejamento SET
+  inicio_previsto = COALESCE(inicio_previsto, (data_inicio + time '06:00') AT TIME ZONE 'America/Sao_Paulo'),
+  fim_previsto    = COALESCE(fim_previsto,    (data_fim    + time '23:59') AT TIME ZONE 'America/Sao_Paulo'),
+  descricao_produto = COALESCE(descricao_produto, NULLIF(trim(substring(produto FROM position(' ' IN produto))), '')),
+  produto = split_part(produto, ' ', 1)
+WHERE inicio_previsto IS NULL OR fim_previsto IS NULL OR position(' ' IN produto) > 0;
+
+CREATE INDEX IF NOT EXISTS idx_ordens_maquina_inicio ON public.ordens_planejamento (maquina, inicio_previsto);
+
+-- Progresso de cada ordem: peças apontadas para a mesma peça e máquina
+-- dentro do período da ordem (do início até o fim real, ou até hoje/fim previsto).
+DROP VIEW IF EXISTS public.ordens_planejamento_progresso;
+CREATE VIEW public.ordens_planejamento_progresso WITH (security_invoker = true) AS
+SELECT o.id,
+       COALESCE(SUM(a.quantidade), 0)::bigint           AS quantidade_produzida,
+       COALESCE(SUM(a.horas_planejadas), 0)             AS horas_apontadas,
+       MIN(a.data_apontamento)                          AS primeiro_apontamento,
+       MAX(a.data_apontamento)                          AS ultimo_apontamento
+FROM public.ordens_planejamento o
+LEFT JOIN public.apontamentos_producao a
+  ON a.produto = o.produto
+ AND a.maquina_codigo = o.maquina
+ AND a.data_apontamento >= (COALESCE(o.inicio_real, o.inicio_previsto) AT TIME ZONE 'America/Sao_Paulo')::date
+ AND a.data_apontamento <= (COALESCE(o.fim_real, GREATEST(o.fim_previsto, now())) AT TIME ZONE 'America/Sao_Paulo')::date
+GROUP BY o.id;
+GRANT SELECT ON public.ordens_planejamento_progresso TO authenticated;
