@@ -2052,6 +2052,44 @@ CREATE POLICY "rastr_write" ON public.rastreabilidade_pos_venda FOR ALL TO authe
   WITH CHECK (public.get_my_role() IN ('admin','gerente','qualidade','comercial'));
 
 -- ═════════════════════════════════════════════════════════════════════════════
+-- R16. Perfis de usuário — corrige "infinite recursion detected in policy"
+-- A policy profiles_own_update consultava a própria tabela profiles; o Postgres
+-- recusava QUALQUER update em profiles (bloquear, aprovar, trocar nome, tema).
+-- A proteção dos campos sensíveis passa para um trigger.
+-- ═════════════════════════════════════════════════════════════════════════════
+CREATE OR REPLACE FUNCTION public.profiles_protege_campos()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f_ppc$
+BEGIN
+  -- Sem usuário (service role, SQL editor, funções do servidor): livre.
+  IF auth.uid() IS NULL THEN RETURN NEW; END IF;
+  IF public.has_role(auth.uid(), 'admin') THEN
+    IF NEW.user_id = auth.uid() AND COALESCE(NEW.blocked, false) AND NOT COALESCE(OLD.blocked, false) THEN
+      RAISE EXCEPTION 'Você não pode bloquear a si mesmo.';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.user_id IS DISTINCT FROM OLD.user_id
+     OR NEW.approved IS DISTINCT FROM OLD.approved
+     OR NEW.blocked  IS DISTINCT FROM OLD.blocked
+     OR NEW.email    IS DISTINCT FROM OLD.email
+     OR NEW.login    IS DISTINCT FROM OLD.login THEN
+    RAISE EXCEPTION 'Sem permissão para alterar aprovação, bloqueio, e-mail ou login.';
+  END IF;
+  RETURN NEW;
+END;
+$f_ppc$;
+REVOKE EXECUTE ON FUNCTION public.profiles_protege_campos() FROM anon, PUBLIC;
+DROP TRIGGER IF EXISTS profiles_protege_campos ON public.profiles;
+CREATE TRIGGER profiles_protege_campos BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.profiles_protege_campos();
+
+DROP POLICY IF EXISTS "profiles_own_update" ON public.profiles;
+CREATE POLICY "profiles_own_update" ON public.profiles
+  FOR UPDATE TO authenticated
+  USING ((select auth.uid()) = user_id)
+  WITH CHECK ((select auth.uid()) = user_id);
+
+-- ═════════════════════════════════════════════════════════════════════════════
 -- R14. PERFIL "GERENTE" — tudo menos Admin
 -- ═════════════════════════════════════════════════════════════════════════════
 -- Recebe as permissões de TODOS os perfis operacionais (estoque, qualidade,
