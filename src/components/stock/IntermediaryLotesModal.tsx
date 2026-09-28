@@ -205,7 +205,7 @@ function PrintPreviewModal({ row, onClose }: PrintPreviewModalProps) {
   // Usa Dialog do Radix separado para evitar conflito com o Dialog pai
   return (
     <Dialog open={!!row} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm rounded-2xl p-0 overflow-hidden gap-0">
+      <DialogContent className="max-w-sm w-[calc(100vw-1.5rem)] max-h-[90vh] overflow-y-auto rounded-2xl p-0 gap-0">
         {/* Header */}
         <DialogHeader className="px-5 py-4 border-b border-border/30">
           <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
@@ -317,7 +317,7 @@ export function IntermediaryLotesModal({ open, onClose }: Props) {
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col gap-0 p-0 overflow-hidden rounded-2xl">
+        <DialogContent className="max-w-lg w-[calc(100vw-1.5rem)] max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden rounded-2xl">
 
           {/* Cabeçalho */}
           <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/40 shrink-0">

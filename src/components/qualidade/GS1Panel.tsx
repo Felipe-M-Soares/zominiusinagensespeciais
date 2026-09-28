@@ -16,12 +16,11 @@
  * 2. Configure os secrets (veja README abaixo ou .env.example):
  *      supabase secrets set GS1_CLIENT_ID=xxx GS1_CLIENT_SECRET=yyy \
  *        GS1_USERNAME=email@empresa.com GS1_PASSWORD=senha GS1_ENV=producao
- * 3. Este arquivo substitui o GS1Panel em src/pages/Qualidade.tsx
+ * 3. Aparece na aba "GS1" de src/pages/Qualidade.tsx
  */
 
 import { useState, useEffect, useMemo, memo } from "react";
 import {
-  Barcode,
   Search,
   RefreshCw,
   CheckCircle2,
@@ -44,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllPages } from "@/lib/supabaseUtils";
 import { toast } from "sonner";
+import { KpiCard, Segmentado } from "./shared";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -259,13 +259,15 @@ function ConsultarGTINTab() {
           onChange={e => setGtin(e.target.value.replace(/\D/g, "").slice(0, 14))}
           onKeyDown={e => e.key === "Enter" && handleSearch()}
           placeholder="GTIN (8, 12, 13 ou 14 dígitos)"
-          className="flex-1 h-10 rounded-xl border border-border/50 bg-background px-3 text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-teal-500/30"
+          inputMode="numeric"
+          aria-label="GTIN"
+          className="flex-1 min-w-0 h-11 rounded-xl border border-input bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
           maxLength={14}
         />
         <button
           onClick={handleSearch}
           disabled={loading}
-          className="h-10 px-4 rounded-xl bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-white text-[12px] font-semibold flex items-center gap-2 transition-colors"
+          className="h-11 px-4 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-semibold flex items-center gap-2 transition-colors shrink-0"
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
           Consultar
@@ -367,9 +369,9 @@ function ConsultarNCMTab() {
             key={t}
             onClick={() => setTipo(t)}
             className={cn(
-              "h-8 px-4 rounded-xl text-[12px] font-semibold border transition-colors",
+              "h-10 px-5 rounded-xl text-sm font-semibold border transition-colors",
               tipo === t
-                ? "bg-violet-500 text-white border-violet-500"
+                ? "bg-primary text-primary-foreground border-primary"
                 : "bg-background text-muted-foreground border-border/50 hover:border-violet-500/40"
             )}
           >
@@ -379,24 +381,25 @@ function ConsultarNCMTab() {
       </div>
 
       {/* Inputs */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <input
           value={valor}
           onChange={e => setValor(e.target.value)}
           onKeyDown={e => e.key === "Enter" && handleSearch()}
           placeholder={tipo === "NCM" ? "Ex: 90181990" : "Ex: 10000248"}
-          className="flex-1 h-10 rounded-xl border border-border/50 bg-background px-3 text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+          className="flex-1 min-w-[8rem] h-11 rounded-xl border border-input bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <input
           value={pagina}
           onChange={e => setPagina(e.target.value.replace(/\D/g, ""))}
           placeholder="Página"
-          className="w-20 h-10 rounded-xl border border-border/50 bg-background px-3 text-[13px] font-mono text-center focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+          aria-label="Página" inputMode="numeric"
+          className="w-20 h-11 rounded-xl border border-input bg-background px-3 text-sm font-mono text-center focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <button
           onClick={handleSearch}
           disabled={loading}
-          className="h-10 px-4 rounded-xl bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-white text-[12px] font-semibold flex items-center gap-2 transition-colors"
+          className="h-11 px-4 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-semibold flex items-center gap-2 transition-colors"
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
           Buscar
@@ -490,15 +493,15 @@ function CNPSyncTab({ devices }: { devices: DeviceGTIN[] }) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="text-[12px] text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
           {devicesComGtin.length} de {devices.length} peças com GTIN
         </p>
         {devicesComGtin.length > 0 && (
           <button
             onClick={verificarTodos}
             disabled={loadingId !== null}
-            className="h-8 px-3 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[11px] font-semibold border border-teal-500/20 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            className="h-11 px-4 rounded-xl border bg-card hover:bg-muted text-sm font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
           >
             {loadingId ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             Verificar todos
@@ -511,28 +514,22 @@ function CNPSyncTab({ devices }: { devices: DeviceGTIN[] }) {
           <AlertCircle className="h-6 w-6 text-amber-500 mx-auto mb-2" />
           <p className="text-[12px] text-amber-600 font-medium">Nenhuma peça com GTIN cadastrado</p>
           <p className="text-[11px] text-muted-foreground mt-1">
-            Cadastre o GTIN nas peças via aba Pipeline para habilitar a verificação.
+            Cadastre o GTIN das peças na aba ANVISA para habilitar a verificação.
           </p>
         </div>
       )}
 
-      <div className="rounded-2xl border border-border/30 overflow-hidden">
-        {devicesComGtin.map((d, idx) => {
+      {devicesComGtin.length > 0 && <div className="rounded-2xl border bg-card overflow-hidden divide-y">
+        {devicesComGtin.map((d) => {
           const r = results[d.id];
           const isLoading = loadingId === d.id;
 
           return (
-            <div
-              key={d.id}
-              className={cn(
-                "border-b border-border/10 last:border-0",
-                idx % 2 !== 0 && "bg-muted/5"
-              )}
-            >
-              <div className="px-3 py-2.5 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-medium truncate">{d.model}</p>
-                  <p className="text-[10px] font-mono text-muted-foreground">{d.gtin}</p>
+            <div key={d.id}>
+              <div className="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <div className="flex-1 min-w-[10rem]">
+                  <p className="text-sm font-medium truncate">{d.model}</p>
+                  <p className="text-xs font-mono text-muted-foreground">{d.gtin}</p>
                 </div>
 
                 {/* Status */}
@@ -561,7 +558,7 @@ function CNPSyncTab({ devices }: { devices: DeviceGTIN[] }) {
                 <button
                   onClick={() => verificar(d)}
                   disabled={isLoading}
-                  className="h-7 px-2 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-[10px] font-semibold border border-teal-500/20 transition-colors disabled:opacity-50 shrink-0"
+                  className="h-10 px-3 rounded-xl border bg-card hover:bg-muted text-xs font-semibold transition-colors disabled:opacity-50 shrink-0"
                 >
                   Verificar
                 </button>
@@ -586,7 +583,7 @@ function CNPSyncTab({ devices }: { devices: DeviceGTIN[] }) {
             </div>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -607,27 +604,9 @@ function VisaoGeralTab({
     <div className="space-y-4">
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-3 flex flex-col sm:flex-row items-center sm:gap-3 gap-0.5">
-          <Hash className="h-4 w-4 sm:h-5 sm:w-5 text-violet-500 shrink-0" />
-          <div className="flex flex-col items-center sm:items-start">
-            <p className="text-[10px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Total</p>
-            <p className="text-xl sm:text-2xl font-bold tabular-nums text-violet-500 leading-none">{devices.length}</p>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 flex flex-col sm:flex-row items-center sm:gap-3 gap-0.5">
-          <BadgeCheck className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-500 shrink-0" />
-          <div className="flex flex-col items-center sm:items-start">
-            <p className="text-[10px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Com GTIN</p>
-            <p className="text-xl sm:text-2xl font-bold tabular-nums text-emerald-500 leading-none">{comGtin}</p>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 flex flex-col sm:flex-row items-center sm:gap-3 gap-0.5">
-          <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500 shrink-0" />
-          <div className="flex flex-col items-center sm:items-start">
-            <p className="text-[10px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Sem GTIN</p>
-            <p className="text-xl sm:text-2xl font-bold tabular-nums text-amber-500 leading-none">{semGtin}</p>
-          </div>
-        </div>
+        <KpiCard label="Peças" value={devices.length} Icon={Hash} sub="cadastradas" />
+        <KpiCard label="Com GTIN" value={comGtin} Icon={BadgeCheck} tom="ok" onClick={() => onTabChange("cnp_sync")} sub="verificar no CNP" />
+        <KpiCard label="Sem GTIN" value={semGtin} Icon={AlertCircle} tom={semGtin > 0 ? "atencao" : "neutro"} sub={semGtin > 0 ? "cadastre na aba ANVISA" : "tudo certo"} />
       </div>
 
       {/* Ações rápidas */}
@@ -673,7 +652,7 @@ function VisaoGeralTab({
           href="https://cnp.gs1br.org"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 h-9 rounded-xl bg-teal-500 hover:bg-teal-400 text-white text-[12px] font-semibold transition-colors"
+          className="flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors"
         >
           <ExternalLink className="h-3.5 w-3.5" />
           Portal CNP — Cadastro Nacional de Produtos
@@ -682,7 +661,7 @@ function VisaoGeralTab({
           href="https://swagger-api.gs1br.org"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 h-9 rounded-xl bg-muted/30 hover:bg-muted/50 text-foreground text-[12px] font-semibold border border-border/40 transition-colors"
+          className="flex items-center justify-center gap-2 h-11 px-4 rounded-xl border bg-card hover:bg-muted text-foreground text-sm font-semibold transition-colors"
         >
           <ExternalLink className="h-3.5 w-3.5" />
           Swagger GS1 Brasil
@@ -691,26 +670,24 @@ function VisaoGeralTab({
 
       {/* Lista de peças sem GTIN */}
       {semGtin > 0 && (
-        <div className="space-y-2">
-          <p className="text-[11px] font-semibold text-amber-600 flex items-center gap-1.5">
-            <AlertCircle className="h-3.5 w-3.5" />
-            Peças sem GTIN ({semGtin}) — regularize no Pipeline ANVISA
+        <section className="rounded-2xl border bg-card overflow-hidden">
+          <p className="px-4 py-3 border-b text-sm font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Peças sem GTIN ({semGtin}) — cadastre na aba ANVISA
           </p>
-          <div className="rounded-xl border border-amber-500/15 overflow-hidden">
-            {devices.filter(d => !d.gtin).slice(0, 5).map((d, i) => (
-              <div key={d.id} className={cn("px-3 py-2 flex items-center gap-3 border-b border-border/10 last:border-0", i % 2 !== 0 && "bg-muted/5")}>
-                <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <p className="text-[12px] truncate flex-1">{d.model}</p>
-                <p className="text-[10px] font-mono text-muted-foreground">{d.reference}</p>
-              </div>
+          <ul className="divide-y">
+            {devices.filter(d => !d.gtin).slice(0, 5).map(d => (
+              <li key={d.id} className="px-4 py-2.5 flex items-center gap-3">
+                <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+                <p className="text-sm truncate flex-1 min-w-0">{d.model}</p>
+                <p className="text-xs font-mono text-muted-foreground shrink-0">{d.reference}</p>
+              </li>
             ))}
-            {semGtin > 5 && (
-              <p className="px-3 py-2 text-[10px] text-muted-foreground/60 text-center">
-                + {semGtin - 5} peças sem GTIN
-              </p>
-            )}
-          </div>
-        </div>
+          </ul>
+          {semGtin > 5 && (
+            <p className="px-4 py-2 border-t text-xs text-muted-foreground text-center">+ {semGtin - 5} peças sem GTIN</p>
+          )}
+        </section>
       )}
     </div>
   );
@@ -718,11 +695,11 @@ function VisaoGeralTab({
 
 // ─── GS1 Panel Principal ──────────────────────────────────────────────────────
 
-const GS1_SUBTABS: { id: TabGS1; label: string; Icon: React.ElementType }[] = [
-  { id: "visao_geral",     label: "Visão Geral",    Icon: Barcode     },
-  { id: "consultar_gtin",  label: "Consultar GTIN", Icon: Globe       },
-  { id: "consultar_ncm",   label: "NCM / GPC",      Icon: FileSearch  },
-  { id: "cnp_sync",        label: "Verificar CNP",  Icon: ShieldCheck },
+const GS1_SUBTABS: { id: TabGS1; label: string }[] = [
+  { id: "visao_geral",     label: "Visão geral" },
+  { id: "consultar_gtin",  label: "Consultar GTIN" },
+  { id: "consultar_ncm",   label: "NCM / GPC" },
+  { id: "cnp_sync",        label: "Verificar CNP" },
 ];
 
 export const GS1Panel = memo(function GS1Panel() {
@@ -752,28 +729,13 @@ export const GS1Panel = memo(function GS1Panel() {
   return (
     <div className="space-y-4">
       {/* Sub-abas */}
-      <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-none">
-        {GS1_SUBTABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            className={cn(
-              "flex items-center gap-1.5 h-8 px-3 rounded-xl text-[11px] font-semibold whitespace-nowrap border transition-colors shrink-0",
-              activeTab === t.id
-                ? "bg-cyan-500 text-white border-cyan-500"
-                : "bg-background text-muted-foreground border-border/50 hover:border-cyan-500/30 hover:text-cyan-600"
-            )}
-          >
-            <t.Icon className="h-3 w-3" />
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Segmentado<TabGS1> valor={activeTab} onChange={setActiveTab} className="w-full sm:w-auto sm:inline-flex"
+        opcoes={GS1_SUBTABS.map(t => ({ id: t.id, label: t.label }))} />
 
       {/* Conteúdo */}
       {loading ? (
         <div className="flex justify-center py-10">
-          <div className="h-5 w-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       ) : (
         <>

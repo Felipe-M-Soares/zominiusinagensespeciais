@@ -1,154 +1,194 @@
+/**
+ * FornecedoresPanel — cadastro de fornecedores (usado em Processos › Fornecedores).
+ * Remover = desativar (ativo=false); o histórico de compras continua ligado ao fornecedor.
+ */
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Search, RefreshCw, Building2, X, Pencil, Trash2 } from "lucide-react";
+import { Building2, Loader2, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { friendlyError } from "@/lib/errorMessages";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Fornecedor {
-  id:string; razao_social:string; nome_fantasia:string|null; cnpj:string|null;
-  telefone:string|null; email:string|null; contato:string|null; cidade:string|null;
-  uf:string|null; categoria:string; prazo_entrega_dias:number; ativo:boolean;
+  id: string; razao_social: string; nome_fantasia: string | null; cnpj: string | null;
+  telefone: string | null; email: string | null; contato: string | null; cidade: string | null;
+  uf: string | null; categoria: string; prazo_entrega_dias: number; ativo: boolean;
 }
 
-const CATS = ["materia_prima","servico","embalagem","ferramental","outros"];
+const CATS: [string, string][] = [
+  ["materia_prima", "Matéria-prima"], ["servico", "Serviço"], ["embalagem", "Embalagem"],
+  ["ferramental", "Ferramental"], ["outros", "Outros"],
+];
+const catLabel = (c: string) => CATS.find(x => x[0] === c)?.[1] ?? c.replace("_", " ");
+const catColor = (c: string) =>
+  c === "materia_prima" ? "text-blue-700 bg-blue-500/10 dark:text-blue-300"
+  : c === "ferramental" ? "text-orange-700 bg-orange-500/10 dark:text-orange-300"
+  : c === "servico" ? "text-purple-700 bg-purple-500/10 dark:text-purple-300"
+  : c === "embalagem" ? "text-cyan-700 bg-cyan-500/10 dark:text-cyan-300"
+  : "text-muted-foreground bg-muted";
 
-function FornModal({item,onClose,onSaved}:{item:Fornecedor|null;onClose:()=>void;onSaved:()=>void}) {
-  const [form,setForm] = useState({
-    razao_social:item?.razao_social||"", nome_fantasia:item?.nome_fantasia||"",
-    cnpj:item?.cnpj||"", telefone:item?.telefone||"", email:item?.email||"",
-    contato:item?.contato||"", cidade:item?.cidade||"", uf:item?.uf||"",
-    categoria:item?.categoria||"materia_prima", prazo_entrega_dias:String(item?.prazo_entrega_dias||0),
+const LBL = "text-xs font-semibold uppercase tracking-wide text-muted-foreground";
+const SEL = "h-11 w-full rounded-xl border border-input bg-background px-3 text-sm";
+
+function FornDialog({ item, onClose, onSaved }: { item: Fornecedor | null; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    razao_social: item?.razao_social || "", nome_fantasia: item?.nome_fantasia || "",
+    cnpj: item?.cnpj || "", telefone: item?.telefone || "", email: item?.email || "",
+    contato: item?.contato || "", cidade: item?.cidade || "", uf: item?.uf || "",
+    categoria: item?.categoria || "materia_prima", prazo_entrega_dias: String(item?.prazo_entrega_dias || 0),
   });
-  const [saving,setSaving] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const f = (k: keyof typeof form) => ({ value: form[k], onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [k]: e.target.value })) });
 
   async function save() {
-    if(!form.razao_social){toast.error("Razão social obrigatória");return;}
+    if (!form.razao_social.trim()) { toast.error("Informe a razão social."); return; }
     setSaving(true);
-    const payload = {...form, prazo_entrega_dias:parseInt(form.prazo_entrega_dias)||0};
-    const{error}=item
-      ? await supabase.from("fornecedores").update(payload).eq("id",item.id)
+    const payload = { ...form, razao_social: form.razao_social.trim(), uf: form.uf.toUpperCase(), prazo_entrega_dias: parseInt(form.prazo_entrega_dias) || 0 };
+    const { error } = item
+      ? await supabase.from("fornecedores").update(payload).eq("id", item.id)
       : await supabase.from("fornecedores").insert(payload);
     setSaving(false);
-    if(error){toast.error(error.message);return;}
-    toast.success(item?"Fornecedor atualizado!":"Fornecedor cadastrado!");
+    if (error) { toast.error(friendlyError(error, "Não foi possível salvar o fornecedor.")); return; }
+    toast.success(item ? "Fornecedor atualizado." : "Fornecedor cadastrado.");
     onSaved(); onClose();
   }
 
-  const lbl = "text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 block";
-  const sel = "w-full h-9 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
-  const f = (k:string)=>({value:(form as Record<string,string>)[k],onChange:(e:React.ChangeEvent<HTMLInputElement>)=>setForm(p=>({...p,[k]:e.target.value}))});
-
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
-      <div className="w-full max-w-lg bg-card rounded-t-2xl sm:rounded-2xl border border-border/40 shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30 shrink-0">
-          <h3 className="font-semibold text-sm">{item?"Editar":"Novo"} Fornecedor</h3>
-          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40"><X className="h-4 w-4"/></button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-          <div><label className={lbl}>Razão Social *</label><Input {...f("razao_social")} className="h-9"/></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className={lbl}>Nome Fantasia</label><Input {...f("nome_fantasia")} className="h-9"/></div>
-            <div><label className={lbl}>CNPJ</label><Input {...f("cnpj")} placeholder="00.000.000/0001-00" className="h-9"/></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className={lbl}>Telefone</label><Input {...f("telefone")} className="h-9"/></div>
-            <div><label className={lbl}>Email</label><Input {...f("email")} type="email" className="h-9"/></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className={lbl}>Contato</label><Input {...f("contato")} className="h-9"/></div>
-            <div><label className={lbl}>Categoria</label>
-              <select value={form.categoria} onChange={e=>setForm(p=>({...p,categoria:e.target.value}))} className={sel}>
-                {CATS.map(c=><option key={c} value={c}>{c.replace("_"," ")}</option>)}
+    <Dialog open onOpenChange={v => { if (!v && !saving) onClose(); }}>
+      <DialogContent className="max-w-lg w-[calc(100vw-1.5rem)] max-h-[90vh] overflow-y-auto rounded-2xl">
+        <DialogHeader className="text-left"><DialogTitle>{item ? "Editar fornecedor" : "Novo fornecedor"}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <label className="block space-y-1.5"><span className={LBL}>Razão social *</span><Input {...f("razao_social")} className="h-11" /></label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="block space-y-1.5"><span className={LBL}>Nome fantasia</span><Input {...f("nome_fantasia")} className="h-11" /></label>
+            <label className="block space-y-1.5"><span className={LBL}>CNPJ</span><Input {...f("cnpj")} placeholder="00.000.000/0001-00" inputMode="numeric" className="h-11" /></label>
+            <label className="block space-y-1.5"><span className={LBL}>Telefone</span><Input {...f("telefone")} inputMode="tel" className="h-11" /></label>
+            <label className="block space-y-1.5"><span className={LBL}>E-mail</span><Input {...f("email")} type="email" className="h-11" /></label>
+            <label className="block space-y-1.5"><span className={LBL}>Contato</span><Input {...f("contato")} className="h-11" /></label>
+            <label className="block space-y-1.5"><span className={LBL}>Categoria</span>
+              <select value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))} className={SEL}>
+                {CATS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
-            </div>
+            </label>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2"><label className={lbl}>Cidade</label><Input {...f("cidade")} className="h-9"/></div>
-            <div><label className={lbl}>UF</label><Input {...f("uf")} maxLength={2} className="h-9"/></div>
+          <div className="grid grid-cols-[1fr_5rem] gap-3">
+            <label className="block space-y-1.5"><span className={LBL}>Cidade</span><Input {...f("cidade")} className="h-11" /></label>
+            <label className="block space-y-1.5"><span className={LBL}>UF</span><Input {...f("uf")} maxLength={2} className="h-11 uppercase" /></label>
           </div>
-          <div><label className={lbl}>Prazo de Entrega (dias)</label><Input type="number" min="0" {...f("prazo_entrega_dias")} className="h-9"/></div>
+          <label className="block space-y-1.5"><span className={LBL}>Prazo de entrega (dias)</span><Input type="number" min="0" inputMode="numeric" {...f("prazo_entrega_dias")} className="h-11" /></label>
         </div>
-        <div className="flex gap-3 px-5 py-4 border-t border-border/30 shrink-0">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
-          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Salvar"}</Button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" className="h-11" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button className="h-11 gap-1.5" onClick={save} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin" />}Salvar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 export function FornecedoresPanel() {
-  const [items,setItems] = useState<Fornecedor[]>([]);
-  const [loading,setLoading] = useState(true);
-  const [search,setSearch] = useState("");
-  const [modal,setModal] = useState<Fornecedor|null|"novo">(null);
+  const [items, setItems] = useState<Fornecedor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [modal, setModal] = useState<Fornecedor | null | "novo">(null);
+  const [remover, setRemover] = useState<Fornecedor | null>(null);
+  const [removendo, setRemovendo] = useState(false);
 
-  const load = useCallback(async()=>{
+  const load = useCallback(async () => {
     setLoading(true);
-    const{data}=await supabase.from("fornecedores").select("*").eq("ativo",true).order("razao_social");
-    if(data) setItems(data as Fornecedor[]);
+    const { data, error } = await supabase.from("fornecedores").select("*").eq("ativo", true).order("razao_social");
+    if (error) toast.error(friendlyError(error, "Não foi possível carregar os fornecedores."));
+    if (data) setItems(data as Fornecedor[]);
     setLoading(false);
-  },[]);
+  }, []);
 
-  useEffect(()=>{load();},[load]);
+  useEffect(() => { load(); }, [load]);
 
-  const filtered = useMemo(()=>items.filter(f=>
-    !search||[f.razao_social,f.nome_fantasia||"",f.cnpj||"",f.contato||""].some(v=>v.toLowerCase().includes(search.toLowerCase()))
-  ),[items,search]);
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return items.filter(f => !q || [f.razao_social, f.nome_fantasia || "", f.cnpj || "", f.contato || "", f.cidade || ""].some(v => v.toLowerCase().includes(q)));
+  }, [items, search]);
 
-  async function excluir(id:string) {
-    await supabase.from("fornecedores").update({ativo:false}).eq("id",id);
+  async function confirmarRemocao() {
+    if (!remover) return;
+    setRemovendo(true);
+    const { error } = await supabase.from("fornecedores").update({ ativo: false }).eq("id", remover.id);
+    setRemovendo(false);
+    if (error) { toast.error(friendlyError(error, "Não foi possível remover o fornecedor.")); return; }
+    toast.success("Fornecedor removido.");
+    setRemover(null);
     load();
-    toast.success("Fornecedor removido");
   }
 
-  const catColor = (c:string) => c==="materia_prima"?"text-blue-600 bg-blue-500/10":c==="ferramental"?"text-orange-600 bg-orange-500/10":c==="servico"?"text-purple-600 bg-purple-500/10":"text-muted-foreground bg-muted/20";
-
   return (
-    <div className="space-y-4 animate-in fade-in duration-200">
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/>
-          <Input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar fornecedor..." className="pl-9 h-9"/>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Nome, CNPJ, contato ou cidade..." className="pl-9 h-11" />
         </div>
-        <Button size="sm" className="h-9 gap-1" onClick={()=>setModal("novo")}><Plus className="h-4 w-4"/>Novo</Button>
-        <button onClick={load} className="h-9 w-9 flex items-center justify-center rounded-lg border border-input hover:bg-muted/40"><RefreshCw className={cn("h-4 w-4 text-muted-foreground",loading&&"animate-spin")}/></button>
+        <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" onClick={load} disabled={loading} aria-label="Atualizar">
+          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+        </Button>
+        <Button className="h-11 gap-1.5 shrink-0" onClick={() => setModal("novo")}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Novo fornecedor</span><span className="sm:hidden">Novo</span></Button>
       </div>
 
-      {loading&&items.length===0?(
-        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
-      ):filtered.length===0?(
-        <div className="text-center py-12 text-muted-foreground text-sm"><Building2 className="h-8 w-8 mx-auto opacity-20 mb-2"/><p>Nenhum fornecedor encontrado</p></div>
-      ):(
-        <div className="space-y-2">
-          {filtered.map(f=>(
-            <div key={f.id} className="rounded-2xl border border-border/40 bg-card px-4 py-3 flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <Building2 className="h-4 w-4 text-primary"/>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate">{f.razao_social}</p>
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
-                  {f.nome_fantasia&&<span>{f.nome_fantasia}</span>}
-                  {f.cnpj&&<span>{f.cnpj}</span>}
-                  {f.telefone&&<span>{f.telefone}</span>}
-                  {f.cidade&&<span>{f.cidade}/{f.uf}</span>}
-                  {f.prazo_entrega_dias>0&&<span>{f.prazo_entrega_dias}d prazo</span>}
-                  <span className={cn("px-1.5 py-0.5 rounded-full font-medium",catColor(f.categoria))}>{f.categoria.replace("_"," ")}</span>
+      {loading && items.length === 0 ? (
+        <div className="flex items-center justify-center py-16 text-muted-foreground text-sm gap-2"><Loader2 className="h-4 w-4 animate-spin" />Carregando...</div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-2xl border border-dashed bg-card py-12 px-4 text-center space-y-2">
+          <Building2 className="h-9 w-9 mx-auto text-muted-foreground/40" />
+          <p className="font-medium">{search ? "Nenhum fornecedor encontrado" : "Nenhum fornecedor cadastrado"}</p>
+          {!search && <Button className="h-11 gap-1.5 mt-1" onClick={() => setModal("novo")}><Plus className="h-4 w-4" />Cadastrar fornecedor</Button>}
+        </div>
+      ) : (
+        <ul className="rounded-2xl border bg-card divide-y overflow-hidden">
+          {filtered.map(f => (
+            <li key={f.id} className="p-3 sm:px-4 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <p className="font-semibold truncate">{f.razao_social}</p>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", catColor(f.categoria))}>{catLabel(f.categoria)}</span>
                 </div>
+                <p className="text-xs text-muted-foreground mt-0.5 break-words">
+                  {[f.nome_fantasia, f.cnpj, f.contato, f.telefone, f.cidade ? `${f.cidade}${f.uf ? "/" + f.uf : ""}` : null, f.prazo_entrega_dias > 0 ? `prazo ${f.prazo_entrega_dias} dias` : null].filter(Boolean).join(" · ")}
+                </p>
               </div>
               <div className="flex gap-1 shrink-0">
-                <button onClick={()=>setModal(f)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"><Pencil className="h-3.5 w-3.5"/></button>
-                <button onClick={()=>excluir(f.id)} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="h-3.5 w-3.5"/></button>
+                <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setModal(f)} aria-label="Editar fornecedor"><Pencil className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" className="h-10 w-10 text-muted-foreground hover:text-red-600" onClick={() => setRemover(f)} aria-label="Remover fornecedor"><Trash2 className="h-4 w-4" /></Button>
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-      {modal&&<FornModal item={modal==="novo"?null:modal} onClose={()=>setModal(null)} onSaved={load}/>}
+
+      {modal && <FornDialog item={modal === "novo" ? null : modal} onClose={() => setModal(null)} onSaved={load} />}
+
+      <AlertDialog open={!!remover} onOpenChange={v => { if (!v && !removendo) setRemover(null); }}>
+        <AlertDialogContent className="w-[calc(100vw-1.5rem)] rounded-2xl">
+          <AlertDialogHeader className="text-left">
+            <AlertDialogTitle>Remover fornecedor?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {remover?.razao_social} deixa de aparecer nas listas. Pedidos de compra antigos continuam com o nome dele.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-11" disabled={removendo}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={removendo}
+              onClick={e => { e.preventDefault(); confirmarRemocao(); }}>
+              {removendo && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,229 +1,185 @@
 /**
- * RelatoriosPanel — Relatórios Industriais
- * ✓ Dados reais via Supabase
- * ✓ Fallback offline com IndexedDB
+ * RelatoriosPanel — Desempenho → Relatórios.
+ * Período livre + 4 relatórios (produção por dia, disponibilidade das
+ * máquinas, paradas e refugo) com gráfico legível no celular e exportação CSV.
  */
 
-import { useState, useCallback } from "react";
-import { FileBarChart2, Download, RefreshCw, BarChart2, Clock, ShieldAlert } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { FileBarChart2, Download, BarChart2, Clock, ShieldAlert, Gauge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
+import { Carregando, Vazio, Campo, COR, tooltipStyle, eixoTick, gradeCor, fmtInt, fmtHorasCurto, hojeISO, isoDiaLocal } from "@/components/producao/ProducaoUI";
 
-type RelatorioTipo = "producao_diaria"|"eficiencia"|"paradas"|"refugo";
+type RelatorioTipo = "producao_diaria" | "eficiencia" | "paradas" | "refugo";
 
-const RELATORIOS: {id:RelatorioTipo;label:string;descricao:string;Icon:React.ElementType;color:string;bg:string}[] = [
-  {id:"producao_diaria", label:"Produção Diária",    descricao:"Peças produzidas por dia e turno",           Icon:BarChart2,    color:"text-blue-500",   bg:"bg-blue-500/10"},
-  {id:"eficiencia",      label:"Eficiência / OEE",   descricao:"Disponibilidade e desempenho das máquinas",  Icon:FileBarChart2, color:"text-green-500",  bg:"bg-green-500/10"},
-  {id:"paradas",         label:"Análise de Paradas",  descricao:"Tempo perdido, motivos e frequência",        Icon:Clock,        color:"text-red-500",    bg:"bg-red-500/10"},
-  {id:"refugo",          label:"Refugo e Qualidade",  descricao:"Índice de refugo, defeitos e destinações",   Icon:ShieldAlert,  color:"text-orange-500", bg:"bg-orange-500/10"},
+const RELATORIOS: { id: RelatorioTipo; label: string; descricao: string; Icon: React.ElementType }[] = [
+  { id: "producao_diaria", label: "Produção por dia", descricao: "Peças boas lançadas em cada dia", Icon: BarChart2 },
+  { id: "eficiencia",      label: "Disponibilidade", descricao: "Disponibilidade cadastrada de cada máquina", Icon: Gauge },
+  { id: "paradas",         label: "Paradas",         descricao: "Tempo perdido e frequência por motivo", Icon: Clock },
+  { id: "refugo",          label: "Refugo",          descricao: "Peças refugadas por tipo de defeito", Icon: ShieldAlert },
 ];
 
 interface RelData {
-  producaoDiaria?: {dia:string;producao:number}[];
-  eficiencia?: {maquina:string;disponib:number}[];
-  paradas?: {motivo:string;minutos:number;ocorrencias:number}[];
-  refugo?: {tipo:string;quantidade:number}[];
+  producaoDiaria?: { dia: string; producao: number }[];
+  eficiencia?: { maquina: string; disponib: number }[];
+  paradas?: { motivo: string; minutos: number; ocorrencias: number }[];
+  refugo?: { tipo: string; quantidade: number }[];
 }
 
-export function RelatoriosPanel({ onImport }: { onImport?: () => void } = {}) {
-  const [relatorio,setRelatorio]=useState<RelatorioTipo|null>(null);
-  const [dataInicio,setDataInicio]=useState(()=>{const d=new Date();d.setDate(d.getDate()-14);return d.toISOString().split("T")[0];});
-  const [dataFim,setDataFim]=useState(()=>new Date().toISOString().split("T")[0]);
-  const [loading,setLoading]=useState(false);
-  const [relData,setRelData]=useState<RelData|null>(null);
+const diasAtras = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return isoDiaLocal(d); };
 
-  const gerarRelatorio=useCallback(async(tipo:RelatorioTipo)=>{
+export function RelatoriosPanel() {
+  const [relatorio, setRelatorio] = useState<RelatorioTipo>("producao_diaria");
+  const [dataInicio, setDataInicio] = useState(() => diasAtras(14));
+  const [dataFim, setDataFim] = useState(hojeISO);
+  const [loading, setLoading] = useState(false);
+  const [relData, setRelData] = useState<RelData | null>(null);
+
+  const gerarRelatorio = useCallback(async (tipo: RelatorioTipo) => {
     setRelatorio(tipo);
     setLoading(true);
     setRelData(null);
-
-    if(!navigator.onLine){
-      toast.warning("Relatórios detalhados requerem conexão com a internet");
-      setLoading(false);
-      return;
-    }
-
+    if (!navigator.onLine) { toast.warning("Relatórios precisam de internet."); setLoading(false); return; }
     try {
-      const inicioISO=`${dataInicio}T00:00:00`;
-      const fimISO=`${dataFim}T23:59:59`;
-
-      if(tipo==="producao_diaria"){
-        const {data}=await supabase.from("apontamentos_producao").select("quantidade,created_at").gte("created_at",inicioISO).lte("created_at",fimISO);
-        const diasMap:Record<string,number>={};
-        (data||[]).forEach((a:{quantidade:number;created_at:string})=>{
-          const dia=new Date(a.created_at).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
-          diasMap[dia]=(diasMap[dia]||0)+(a.quantidade||0);
+      const inicioISO = new Date(`${dataInicio}T00:00:00`).toISOString();
+      const fimISO = new Date(`${dataFim}T23:59:59`).toISOString();
+      if (tipo === "producao_diaria") {
+        // Agrupa pelo dia DO LANÇAMENTO (data_apontamento), não pelo dia em que foi digitado.
+        const { data } = await supabase.from("apontamentos_producao").select("quantidade,data_apontamento").gte("data_apontamento", dataInicio).lte("data_apontamento", dataFim);
+        const dias: Record<string, number> = {};
+        (data || []).forEach((a: { quantidade: number; data_apontamento: string }) => { dias[a.data_apontamento] = (dias[a.data_apontamento] || 0) + (a.quantidade || 0); });
+        setRelData({ producaoDiaria: Object.keys(dias).sort().map(k => ({ dia: `${k.slice(8, 10)}/${k.slice(5, 7)}`, producao: dias[k] })) });
+      } else if (tipo === "eficiencia") {
+        const { data } = await supabase.from("maquinas_producao").select("codigo,disponibilidade,status");
+        setRelData({ eficiencia: (data || []).map((m: { codigo: string; disponibilidade: number }) => ({ maquina: m.codigo, disponib: Number(m.disponibilidade) || 0 })).sort((a, b) => a.maquina.localeCompare(b.maquina)) });
+      } else if (tipo === "paradas") {
+        const { data } = await supabase.from("paradas_producao").select("motivo,duracao_min").gte("created_at", inicioISO).lte("created_at", fimISO);
+        const map: Record<string, { minutos: number; ocorrencias: number }> = {};
+        (data || []).forEach((p: { motivo: string; duracao_min: number | null }) => {
+          if (p.motivo?.startsWith("Produzindo")) return; // cronômetro interno do Diário, não é parada
+          map[p.motivo] ??= { minutos: 0, ocorrencias: 0 };
+          map[p.motivo].minutos += p.duracao_min || 0; map[p.motivo].ocorrencias++;
         });
-        setRelData({producaoDiaria:Object.entries(diasMap).map(([dia,producao])=>({dia,producao}))});
+        setRelData({ paradas: Object.entries(map).map(([motivo, v]) => ({ motivo, ...v })).sort((a, b) => b.minutos - a.minutos) });
+      } else {
+        const { data } = await supabase.from("refugos_producao").select("tipo_defeito,quantidade").gte("created_at", inicioISO).lte("created_at", fimISO);
+        const map: Record<string, number> = {};
+        (data || []).forEach((r: { tipo_defeito: string; quantidade: number }) => { map[r.tipo_defeito] = (map[r.tipo_defeito] || 0) + r.quantidade; });
+        setRelData({ refugo: Object.entries(map).map(([t, quantidade]) => ({ tipo: t, quantidade })).sort((a, b) => b.quantidade - a.quantidade) });
       }
-      else if(tipo==="eficiencia"){
-        const {data}=await supabase.from("maquinas_producao").select("codigo,disponibilidade,status");
-        setRelData({eficiencia:(data||[]).map((m:{codigo:string;disponibilidade:number})=>({maquina:m.codigo,disponib:m.disponibilidade}))});
-      }
-      else if(tipo==="paradas"){
-        const {data}=await supabase.from("paradas_producao").select("motivo,duracao_min").gte("created_at",inicioISO).lte("created_at",fimISO);
-        const motivoMap:Record<string,{minutos:number;ocorrencias:number}>={};
-        (data||[]).forEach((p:{motivo:string;duracao_min:number|null})=>{
-          if(!motivoMap[p.motivo]) motivoMap[p.motivo]={minutos:0,ocorrencias:0};
-          motivoMap[p.motivo].minutos+=(p.duracao_min||0);
-          motivoMap[p.motivo].ocorrencias++;
-        });
-        setRelData({paradas:Object.entries(motivoMap).map(([motivo,v])=>({motivo,...v})).sort((a,b)=>b.minutos-a.minutos)});
-      }
-      else if(tipo==="refugo"){
-        const {data}=await supabase.from("refugos_producao").select("tipo_defeito,quantidade").gte("created_at",inicioISO).lte("created_at",fimISO);
-        const tipoMap:Record<string,number>={};
-        (data||[]).forEach((r:{tipo_defeito:string;quantidade:number})=>{tipoMap[r.tipo_defeito]=(tipoMap[r.tipo_defeito]||0)+r.quantidade;});
-        setRelData({refugo:Object.entries(tipoMap).map(([tipo,quantidade])=>({tipo,quantidade})).sort((a,b)=>b.quantidade-a.quantidade)});
-      }
-    } catch(e){
-      toast.error("Erro ao gerar relatório");
+    } catch (e) {
+      toast.error("Erro ao gerar relatório.");
       logger.error("RelatoriosPanel buscarDados error:", e);
     }
     setLoading(false);
-  },[dataInicio,dataFim]);
+  }, [dataInicio, dataFim]);
 
-  function exportarCSV(){
-    if(!relData){toast.error("Gere um relatório antes de exportar");return;}
-    const rows:string[][]=[];
-    if(relData.producaoDiaria){rows.push(["Dia","Produção"]);relData.producaoDiaria.forEach(r=>rows.push([r.dia,String(r.producao)]));}
-    if(relData.eficiencia){rows.push(["Máquina","Disponibilidade %"]);relData.eficiencia.forEach(r=>rows.push([r.maquina,String(r.disponib)]));}
-    if(relData.paradas){rows.push(["Motivo","Minutos","Ocorrências"]);relData.paradas.forEach(r=>rows.push([r.motivo,String(r.minutos),String(r.ocorrencias)]));}
-    if(relData.refugo){rows.push(["Tipo Defeito","Quantidade"]);relData.refugo.forEach(r=>rows.push([r.tipo,String(r.quantidade)]));}
-    const csv=rows.map(r=>r.map(c=>`"${c}"`).join(",")).join("\n");
-    const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;a.download=`relatorio_${relatorio}_${dataInicio}_${dataFim}.csv`;a.click();
+  useEffect(() => { gerarRelatorio(relatorio); }, [dataInicio, dataFim]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function exportarCSV() {
+    if (!relData) { toast.error("Gere um relatório antes de exportar."); return; }
+    const rows: string[][] = [];
+    if (relData.producaoDiaria) { rows.push(["Dia", "Produção"]); relData.producaoDiaria.forEach(r => rows.push([r.dia, String(r.producao)])); }
+    if (relData.eficiencia) { rows.push(["Máquina", "Disponibilidade %"]); relData.eficiencia.forEach(r => rows.push([r.maquina, String(r.disponib)])); }
+    if (relData.paradas) { rows.push(["Motivo", "Minutos", "Ocorrências"]); relData.paradas.forEach(r => rows.push([r.motivo, String(r.minutos), String(r.ocorrencias)])); }
+    if (relData.refugo) { rows.push(["Tipo Defeito", "Quantidade"]); relData.refugo.forEach(r => rows.push([r.tipo, String(r.quantidade)])); }
+    const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(";")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `relatorio_${relatorio}_${dataInicio}_${dataFim}.csv`; a.click();
     URL.revokeObjectURL(url);
-    toast.success("Relatório exportado!");
+    toast.success("Relatório exportado.");
   }
+
+  const vazio = !!relData && ((relData.producaoDiaria?.length === 0) || (relData.eficiencia?.length === 0) || (relData.paradas?.length === 0) || (relData.refugo?.length === 0));
+  const atalhos = [{ l: "7 dias", n: 6 }, { l: "15 dias", n: 14 }, { l: "30 dias", n: 29 }, { l: "90 dias", n: 89 }];
+  const listaBarras = (itens: { nome: string; v: number; extra?: string }[], cor: string, fmt: (v: number) => string) => {
+    const max = itens[0]?.v || 1;
+    return (
+      <ul className="space-y-3">
+        {itens.map(i => (
+          <li key={i.nome} className="text-sm">
+            <div className="flex justify-between gap-2"><span className="truncate">{i.nome}</span>
+              <span className="shrink-0 tabular-nums"><strong>{fmt(i.v)}</strong>{i.extra && <span className="text-xs text-muted-foreground"> · {i.extra}</span>}</span></div>
+            <div className="mt-1 h-2 rounded-full bg-muted overflow-hidden"><div className={cn("h-full rounded-full", cor)} style={{ width: `${(i.v / max) * 100}%` }} /></div>
+          </li>
+        ))}
+      </ul>
+    );
+  };
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {onImport && (
-        <button
-          onClick={onImport}
-          className="w-full flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/5 hover:bg-green-500/10 px-4 py-3 transition-colors"
-        >
-          <span className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center text-green-600">
-            📥
-          </span>
-          <div className="text-left">
-            <p className="text-sm font-semibold text-green-700 dark:text-green-400">Importar PPI-51 (Excel)</p>
-            <p className="text-[11px] text-muted-foreground">Migre dados históricos do arquivo Excel para o sistema</p>
-          </div>
-        </button>
-      )}
-      {/* Filtro de período */}
-      <div className="rounded-2xl border bg-card/60 p-4">
-        <p className="text-sm font-medium mb-3">Período</p>
-        <div className="flex gap-3">
-          <div className="flex-1"><label className="text-xs text-muted-foreground mb-1 block">De</label><Input type="date" value={dataInicio} onChange={e=>setDataInicio(e.target.value)}/></div>
-          <div className="flex-1"><label className="text-xs text-muted-foreground mb-1 block">Até</label><Input type="date" value={dataFim} onChange={e=>setDataFim(e.target.value)}/></div>
+      {/* Período */}
+      <section className="rounded-2xl border bg-card p-4 space-y-3">
+        <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+          <Campo label="De"><Input type="date" value={dataInicio} max={dataFim} onChange={e => e.target.value && setDataInicio(e.target.value)} className="h-11" /></Campo>
+          <Campo label="Até"><Input type="date" value={dataFim} min={dataInicio} onChange={e => e.target.value && setDataFim(e.target.value)} className="h-11" /></Campo>
         </div>
-      </div>
+        <div className="flex flex-wrap gap-2">
+          {atalhos.map(a => (
+            <Button key={a.l} size="sm" variant={dataInicio === diasAtras(a.n) && dataFim === hojeISO() ? "secondary" : "outline"} className="h-9"
+              onClick={() => { setDataInicio(diasAtras(a.n)); setDataFim(hojeISO()); }}>{a.l}</Button>
+          ))}
+        </div>
+      </section>
 
-      {/* Tipos de relatório */}
-      <div className="grid grid-cols-2 gap-3">
-        {RELATORIOS.map(r=>(
-          <button key={r.id} onClick={()=>gerarRelatorio(r.id)}
-            className={cn("rounded-2xl border p-4 text-left transition-all hover:shadow-sm active:scale-[0.99]",
-              relatorio===r.id?`${r.bg} ${r.color} border-current/30`:"bg-card/60 hover:bg-muted/20")}>
-            <r.Icon className={cn("h-5 w-5 mb-2",relatorio===r.id?r.color:"text-muted-foreground")}/>
-            <p className={cn("font-semibold text-sm",relatorio===r.id?r.color:"")}>{r.label}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{r.descricao}</p>
+      {/* Tipos */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {RELATORIOS.map(r => (
+          <button key={r.id} type="button" onClick={() => gerarRelatorio(r.id)} aria-pressed={relatorio === r.id}
+            className={cn("rounded-2xl border bg-card p-3.5 text-left transition hover:border-primary/40",
+              relatorio === r.id && "border-primary ring-1 ring-primary/30 bg-primary/5")}>
+            <r.Icon className={cn("h-5 w-5 mb-1.5", relatorio === r.id ? "text-primary" : "text-muted-foreground")} />
+            <p className="font-semibold text-sm">{r.label}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{r.descricao}</p>
           </button>
         ))}
       </div>
 
       {/* Resultado */}
-      {loading && (
-        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <RefreshCw className="h-4 w-4 animate-spin"/>Gerando relatório...
+      <section className="rounded-2xl border bg-card">
+        <div className="px-4 py-3 border-b flex items-center gap-2">
+          <FileBarChart2 className="h-4 w-4 text-primary" />
+          <h3 className="font-semibold text-sm flex-1">{RELATORIOS.find(r => r.id === relatorio)?.label}</h3>
+          <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={exportarCSV} disabled={!relData || vazio}><Download className="h-4 w-4" />CSV</Button>
         </div>
-      )}
-
-      {relData && !loading && (
-        <div className="rounded-2xl border bg-card/60 p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">{RELATORIOS.find(r=>r.id===relatorio)?.label}</p>
-            <Button size="sm" variant="outline" className="gap-1 h-8 text-xs" onClick={exportarCSV}>
-              <Download className="h-3.5 w-3.5"/>CSV
-            </Button>
-          </div>
-
-          {relData.producaoDiaria && relData.producaoDiaria.length > 0 && (
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={relData.producaoDiaria} margin={{top:0,right:0,left:-20,bottom:0}}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
-                <XAxis dataKey="dia" tick={{fontSize:10}}/>
-                <YAxis tick={{fontSize:10}}/>
-                <Tooltip/>
-                <Line type="monotone" dataKey="producao" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} name="Peças"/>
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-
-          {relData.eficiencia && relData.eficiencia.length > 0 && (
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={relData.eficiencia} margin={{top:0,right:0,left:-20,bottom:0}}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
-                <XAxis dataKey="maquina" tick={{fontSize:10}}/>
-                <YAxis domain={[0,100]} tick={{fontSize:10}}/>
-                <Tooltip/>
-                <Bar dataKey="disponib" fill="#22c55e" radius={[4,4,0,0]} name="Disponib. %"/>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-
-          {relData.paradas && relData.paradas.length > 0 && (
-            <div className="space-y-2">
-              {relData.paradas.map((p,i)=>(
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <span className="truncate text-[12px]">{p.motivo}</span>
-                  <div className="flex items-center gap-3 shrink-0 text-[11px] text-muted-foreground">
-                    <span>{p.ocorrencias}x</span>
-                    <span className="font-medium text-foreground">{p.minutos}min</span>
+        <div className="p-4">
+          {loading ? <Carregando texto="Gerando relatório..." /> : !relData ? (
+            <Vazio Icon={FileBarChart2} titulo="Escolha um relatório" />
+          ) : vazio ? (
+            <Vazio Icon={FileBarChart2} titulo="Nenhum dado no período" dica="Amplie o período ou escolha outro relatório." />
+          ) : (
+            <>
+              {relData.producaoDiaria && (
+                <>
+                  <p className="mb-2 text-sm text-muted-foreground">Total: <strong className="text-foreground">{fmtInt(relData.producaoDiaria.reduce((s, d) => s + d.producao, 0))} peças</strong> · média {fmtInt(relData.producaoDiaria.reduce((s, d) => s + d.producao, 0) / relData.producaoDiaria.length)}/dia</p>
+                  <div className="h-[260px] -ml-2">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={relData.producaoDiaria} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={gradeCor} vertical={false} />
+                        <XAxis dataKey="dia" tick={eixoTick} axisLine={false} tickLine={false} minTickGap={8} />
+                        <YAxis tick={eixoTick} axisLine={false} tickLine={false} width={44} />
+                        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "hsl(var(--muted))" }} formatter={(v: number) => [`${fmtInt(v)} pç`, "Produzido"]} />
+                        <Bar dataKey="producao" name="Peças" fill={COR.primaria} radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {relData.refugo && relData.refugo.length > 0 && (
-            <ResponsiveContainer width="100%" height={140}>
-              <BarChart data={relData.refugo} margin={{top:0,right:0,left:-20,bottom:0}}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
-                <XAxis dataKey="tipo" tick={{fontSize:9}}/>
-                <YAxis tick={{fontSize:10}}/>
-                <Tooltip/>
-                <Bar dataKey="quantidade" fill="#f97316" radius={[4,4,0,0]} name="Qtd"/>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-
-          {/* Estado vazio */}
-          {((relData.producaoDiaria?.length===0)||(relData.eficiencia?.length===0)||(relData.paradas?.length===0)||(relData.refugo?.length===0)) && (
-            <div className="text-center py-6 text-muted-foreground text-sm">
-              <FileBarChart2 className="h-8 w-8 mx-auto mb-2 opacity-30"/>
-              Nenhum dado no período selecionado
-            </div>
+                </>
+              )}
+              {relData.eficiencia && listaBarras(relData.eficiencia.map(e => ({ nome: e.maquina, v: e.disponib })), "bg-green-500", v => `${v}%`)}
+              {relData.paradas && listaBarras(relData.paradas.map(p => ({ nome: p.motivo, v: p.minutos, extra: `${p.ocorrencias}×` })), "bg-amber-500", v => fmtHorasCurto(v / 60))}
+              {relData.refugo && listaBarras(relData.refugo.map(r => ({ nome: r.tipo, v: r.quantidade })), "bg-red-500", v => `${fmtInt(v)} pç`)}
+            </>
           )}
         </div>
-      )}
-
-      {!relatorio && !loading && (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <FileBarChart2 className="h-8 w-8 opacity-30"/>
-          <p>Selecione um tipo de relatório acima</p>
-        </div>
-      )}
+      </section>
     </div>
   );
 }

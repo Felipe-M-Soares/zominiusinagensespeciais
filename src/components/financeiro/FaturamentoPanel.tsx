@@ -13,6 +13,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   AlertTriangle, Ban, CheckCircle2, ClipboardCopy, Download, ExternalLink, FileCheck2, FilePen, FileText, FileUp,
   Loader2, MoreHorizontal, Receipt, RefreshCw, Search, Send, Upload,
+  FileStack,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { formatBRL } from "@/lib/format";
 import { friendlyError } from "@/lib/errorMessages";
 import { buscarCep, buscarCodigoIbge } from "@/lib/brasilApi";
+import { EmitirLoteDialog, ImportarXmlsDialog } from "./FaturamentoLote";
 import {
   abrirArquivoFiscal, baixarCsv, chaveValida, enviarArquivoFiscal, fmtData, fmtDataHora, formatarChave, FORMAS_PAGAMENTO,
   hojeISO, lerChave, lerXmlNota, mascaraDoc, mesISO, parseValor,
@@ -78,6 +80,8 @@ function AFaturar({ emissor, onIrConfig, onContagem }: { emissor: EmissorStatus;
   const [busca, setBusca] = useState("");
   const [emitir, setEmitir] = useState<PedidoFaturar | null>(null);
   const [registrar, setRegistrar] = useState<PedidoFaturar | null>(null);
+  const [importar, setImportar] = useState(false);
+  const [lote, setLote] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +114,12 @@ function AFaturar({ emissor, onIrConfig, onContagem }: { emissor: EmissorStatus;
           <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Cliente, vendedora ou nº do pedido..." className="h-11 pl-9" />
         </div>
         <Button variant="outline" size="icon" className="h-11 w-11" onClick={load} disabled={loading} aria-label="Atualizar"><RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /></Button>
+        <Button variant="outline" className="h-11 gap-1.5 flex-1 sm:flex-none" onClick={() => setImportar(true)} disabled={!pedidos.length} title="Registrar várias notas de uma vez pelos XMLs">
+          <FileStack className="h-4 w-4" />Registrar vários XMLs
+        </Button>
+        {emissor.ativo && pedidos.length > 1 && (
+          <Button className="h-11 gap-1.5 flex-1 sm:flex-none" onClick={() => setLote(true)}><Send className="h-4 w-4" />Emitir em lote</Button>
+        )}
       </div>
       <div className="rounded-2xl border bg-card overflow-hidden">
         {loading ? (
@@ -149,6 +159,8 @@ function AFaturar({ emissor, onIrConfig, onContagem }: { emissor: EmissorStatus;
           </ul>
         )}
       </div>
+      {importar && <ImportarXmlsDialog pedidos={pedidos} onClose={() => setImportar(false)} onFeito={() => { setImportar(false); load(); }} />}
+      {lote && <EmitirLoteDialog pedidos={pedidos} emissor={emissor} onClose={() => setLote(false)} onFeito={() => { setLote(false); load(); }} />}
       {emitir && <EmitirNotaDialog pedido={emitir} onClose={() => setEmitir(null)} onFeito={() => { setEmitir(null); load(); }} />}
       {registrar && (
         <RegistrarNotaDialog tipo="venda" pedidoId={registrar.id} valorSugerido={totalPedido(registrar)}

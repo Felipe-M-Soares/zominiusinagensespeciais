@@ -24,7 +24,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, Upload, RefreshCw, ShieldAlert, FileImage, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, RefreshCw, ShieldAlert, FileImage, FileText, MoreVertical, Cpu } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { logger } from "@/lib/logger";
@@ -95,6 +98,7 @@ export function AdminDevices() {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [importConfirm, setImportConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── helpers de parse (mesmo padrão da Edge Function, mas no browser) ─────────
@@ -522,108 +526,158 @@ export function AdminDevices() {
     setEditDevice(prev => prev ? { ...prev, [key]: value } : prev);
   };
 
+  const totalPaginas = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const abrirEdicao = (d: Device) => { setEditDevice({ ...d }); setIsNew(false); };
+
   return (
     <>
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+    <div className="space-y-3">
+      <input type="file" accept=".json,.csv" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
+
+      {/* Barra de ações */}
+      <div className="flex flex-col lg:flex-row gap-2">
+        <div className="relative flex-1 min-w-0">
           <SearchInputWithBarcode
             value={search}
             onChange={handleSearchChange}
             onSearch={handleSearchChange}
             placeholder="Bipe o código ou busque dispositivos..."
-            height="h-9"
+            height="h-11"
           />
         </div>
-        <div className="flex items-center gap-2">
-          {/* FIX CSV: aceita apenas .json e .csv */}
-          <input type="file" accept=".json,.csv" ref={fileInputRef} onChange={handleImportFile} className="hidden" />
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
-            {importing ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
-            {importing ? "Importando..." : "Importar"}
+        <div className="grid grid-cols-[repeat(3,minmax(0,1fr))_auto] gap-2 lg:flex">
+          <Button className="h-11 rounded-xl gap-1.5 px-2 sm:px-4" onClick={() => { setEditDevice({ ...emptyDevice }); setIsNew(true); }}>
+            <Plus className="h-4 w-4" /> Novo
           </Button>
-          <Button
-            variant="outline"
-            className="gap-1.5 border-violet-500/40 text-violet-600 hover:bg-violet-500/10"
-            onClick={() => setImgUploaderOpen(true)}
-          >
-            <FileImage className="h-4 w-4" />
-            Imagens
+          <Button variant="outline" className="h-11 rounded-xl gap-1.5 px-2 sm:px-4" onClick={() => setImgUploaderOpen(true)}>
+            <FileImage className="h-4 w-4 text-violet-600" /> Imagens
           </Button>
-          <Button
-            variant="outline"
-            className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
-            onClick={() => setDesenhoUploaderOpen(true)}
-          >
-            <FileText className="h-4 w-4" />
-            Desenhos
+          <Button variant="outline" className="h-11 rounded-xl gap-1.5 px-2 sm:px-4" onClick={() => setDesenhoUploaderOpen(true)}>
+            <FileText className="h-4 w-4 text-primary" /> Desenhos
           </Button>
-          <Button
-            variant="outline"
-            className="text-destructive border-destructive/40 hover:bg-destructive/10"
-            onClick={() => setDeleteAllConfirm(true)}
-            disabled={deletingAll || totalCount === 0}
-            title="Excluir todas as peças do catálogo"
-          >
-            <ShieldAlert className="h-4 w-4 mr-1" />
-            Excluir Tudo
-          </Button>
-          <Button onClick={() => { setEditDevice({ ...emptyDevice }); setIsNew(true); }}>
-            <Plus className="h-4 w-4 mr-1" /> Novo
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="h-11 w-11 rounded-xl shrink-0" aria-label="Mais ações do catálogo" disabled={importing || deletingAll}>
+                {importing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem className="gap-2 py-2.5" onClick={() => setImportConfirm(true)}>
+                <Upload className="h-4 w-4" /> Importar catálogo (.csv / .json)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="gap-2 py-2.5 text-destructive focus:text-destructive" disabled={totalCount === 0} onClick={() => setDeleteAllConfirm(true)}>
+                <ShieldAlert className="h-4 w-4" /> Excluir todas as peças
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{totalCount.toLocaleString("pt-BR")} dispositivos cadastrados</p>
+      <p className="text-xs text-muted-foreground">
+        {importing ? "Importando catálogo… não feche esta tela." : `${totalCount.toLocaleString("pt-BR")} dispositivos cadastrados`}
+      </p>
 
-      {loading ? (
-        <div className="flex justify-center py-10"><div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" /></div>
-      ) : (
-        <div className="rounded-lg border overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Modelo</TableHead>
-                <TableHead>Referência</TableHead>
-                <TableHead>UDI-DI</TableHead>
-                <TableHead>Material</TableHead>
-                <TableHead>Classe</TableHead>
-                <TableHead className="w-[100px]">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+      <div className="rounded-2xl border bg-card overflow-hidden">
+        {loading ? (
+          <div className="flex justify-center py-12"><div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center text-center gap-2 px-6 py-12">
+            <div className="h-12 w-12 rounded-2xl bg-muted flex items-center justify-center"><Cpu className="h-6 w-6 text-muted-foreground" /></div>
+            <p className="text-sm font-semibold">{debouncedSearch ? "Nenhum dispositivo encontrado" : "Catálogo vazio"}</p>
+            <p className="text-xs text-muted-foreground max-w-sm">
+              {debouncedSearch ? "Confira o código ou tente outra palavra." : "Cadastre um dispositivo em “Novo” ou importe o catálogo pelo menu ⋮."}
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Celular: lista em cards */}
+            <ul className="divide-y md:hidden">
               {filtered.map(d => (
-                <TableRow key={d.id}>
-                  <TableCell className="font-medium text-sm max-w-[200px] truncate">{d.model}</TableCell>
-                  <TableCell className="text-sm font-mono">{d.reference}</TableCell>
-                  <TableCell className="text-xs font-mono">{d.udi_di}</TableCell>
-                  <TableCell className="text-sm">{d.primary_material}</TableCell>
-                  <TableCell className="text-sm">{d.classification_code}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => { setEditDevice({ ...d }); setIsNew(false); }}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirmId(d.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <li key={d.id} className="flex items-center gap-2 p-3">
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => abrirEdicao(d)}>
+                    <p className="text-sm font-semibold truncate">{d.model}</p>
+                    <p className="text-xs text-muted-foreground truncate"><span className="font-mono">{d.reference}</span> · {d.primary_material || "—"}</p>
+                    <p className="text-[11px] text-muted-foreground font-mono truncate">UDI {d.udi_di} · Classe {d.classification_code}</p>
+                  </button>
+                  <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" aria-label={`Editar ${d.model}`} onClick={() => abrirEdicao(d)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" aria-label={`Excluir ${d.model}`} onClick={() => setDeleteConfirmId(d.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </li>
               ))}
-            </TableBody>
-          </Table>
-          {totalCount > PAGE_SIZE && (
-            <div className="flex items-center justify-between px-4 py-2 border-t text-sm text-muted-foreground">
-              <span>Página {page + 1} de {Math.ceil(totalCount / PAGE_SIZE)} ({totalCount.toLocaleString("pt-BR")} total)</span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Anterior</Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount}>Próxima</Button>
-              </div>
+            </ul>
+
+            {/* Computador: tabela */}
+            <div className="hidden md:block overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Modelo</TableHead>
+                    <TableHead>Referência</TableHead>
+                    <TableHead>UDI-DI</TableHead>
+                    <TableHead>Material</TableHead>
+                    <TableHead>Classe</TableHead>
+                    <TableHead className="w-[100px] text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map(d => (
+                    <TableRow key={d.id}>
+                      <TableCell className="font-medium text-sm max-w-[280px] truncate">{d.model}</TableCell>
+                      <TableCell className="text-sm font-mono">{d.reference}</TableCell>
+                      <TableCell className="text-xs font-mono">{d.udi_di}</TableCell>
+                      <TableCell className="text-sm">{d.primary_material}</TableCell>
+                      <TableCell className="text-sm">{d.classification_code}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1 justify-end">
+                          <Button variant="ghost" size="icon" aria-label={`Editar ${d.model}`} onClick={() => abrirEdicao(d)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" aria-label={`Excluir ${d.model}`} onClick={() => setDeleteConfirmId(d.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-          )}
-        </div>
-      )}
+          </>
+        )}
+        {totalCount > PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-t text-xs sm:text-sm text-muted-foreground">
+            <span>Página {page + 1} de {totalPaginas}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-9" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Anterior</Button>
+              <Button variant="outline" size="sm" className="h-9" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount}>Próxima</Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Confirmar importação (substitui o catálogo inteiro) */}
+      <AlertDialog open={importConfirm} onOpenChange={setImportConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Importar e substituir o catálogo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A importação <strong>apaga o catálogo atual</strong> ({totalCount.toLocaleString("pt-BR")} dispositivos) e cadastra os do arquivo.
+              Aceita .csv (colunas <span className="font-mono">udi_di</span> e <span className="font-mono">model</span> obrigatórias) ou .json.
+              Peças novas entram no estoque intermediário com quantidade 0.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setImportConfirm(false); fileInputRef.current?.click(); }}>
+              Escolher arquivo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialog confirmar exclusão de TODAS as peças */}
       <AlertDialog open={deleteAllConfirm} onOpenChange={(open) => { setDeleteAllConfirm(open); if (!open) setDeleteAllTyped(""); }}>
@@ -667,7 +721,7 @@ export function AdminDevices() {
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir dispositivo?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir {devices.find(d => d.id === deleteConfirmId)?.model ?? "dispositivo"}?</AlertDialogTitle>
             <AlertDialogDescription>
               Esta ação não pode ser desfeita. O dispositivo será removido permanentemente do catálogo.
             </AlertDialogDescription>
@@ -682,7 +736,7 @@ export function AdminDevices() {
       </AlertDialog>
 
       <Dialog open={!!editDevice} onOpenChange={() => setEditDevice(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isNew ? "Novo Dispositivo" : "Editar Dispositivo"}</DialogTitle>
           </DialogHeader>
@@ -717,15 +771,15 @@ export function AdminDevices() {
               <div className="flex items-center gap-3"><Switch checked={editDevice.implantable !== false} onCheckedChange={v => updateField("implantable", v)} /><Label>Implantável</Label></div>
 
               {/* Campos fiscais: preenchidos automaticamente pelo banco */}
-              <div className="sm:col-span-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3 space-y-2">
-                <p style={{fontSize:"11px",fontWeight:700,color:"#7c3aed",textTransform:"uppercase",letterSpacing:"0.05em"}}>
-                  🧾 Dados Fiscais — preenchidos automaticamente ao salvar
+              <div className="sm:col-span-2 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-3 space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-violet-600 dark:text-violet-400">
+                  Dados fiscais — preenchidos automaticamente ao salvar
                 </p>
-                <p style={{fontSize:"10px",color:"var(--muted-foreground)",lineHeight:1.5}}>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
                   NCM e CFOP são calculados pelo banco com base na Classe de Risco, Implantável, Região do Corpo e Material.
-                  Para personalizar, use a aba <strong>Tabela de Preços</strong> no Financeiro.
+                  Para personalizar, use <strong>Preços e custos</strong> no Financeiro.
                 </p>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",fontSize:"11px"}}>
+                <div className="grid grid-cols-3 gap-2">
                   {(() => {
                     const b = (editDevice.body_region ?? "").toLowerCase();
                     const c = (editDevice.classification_code ?? "").toLowerCase();
@@ -744,22 +798,22 @@ export function AdminDevices() {
                     }
                     return [
                       { label: "NCM estimado", value: ncm, desc: ncmDesc },
-                      { label: "CFOP padrão",  value: "5102", desc: "Venda intra-estadual" },
+                      { label: "CFOP padrão",  value: "5102", desc: "Venda intraestadual" },
                       { label: "Unidade",       value: "UN",   desc: "Unidade padrão" },
                     ].map(f => (
-                      <div key={f.label} style={{borderRadius:10,border:"1px solid hsl(var(--border))",background:"hsl(var(--background))",padding:"8px",textAlign:"center"}}>
-                        <p style={{fontSize:"9px",color:"var(--muted-foreground)",textTransform:"uppercase",letterSpacing:"0.05em"}}>{f.label}</p>
-                        <p style={{fontSize:"15px",fontWeight:900,color:"#7c3aed",fontFamily:"monospace"}}>{f.value}</p>
-                        <p style={{fontSize:"9px",color:"var(--muted-foreground)",opacity:0.7,marginTop:2}}>{f.desc}</p>
+                      <div key={f.label} className="rounded-xl border bg-background p-2 text-center min-w-0">
+                        <p className="text-[9px] uppercase tracking-wide text-muted-foreground">{f.label}</p>
+                        <p className="text-sm sm:text-[15px] font-black font-mono text-violet-600 dark:text-violet-400 truncate">{f.value}</p>
+                        <p className="text-[9px] text-muted-foreground/80 mt-0.5 truncate">{f.desc}</p>
                       </div>
                     ));
                   })()}
                 </div>
               </div>
 
-              <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setEditDevice(null)}>Cancelar</Button>
-                <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+              <div className="sm:col-span-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                <Button variant="outline" className="h-11" onClick={() => setEditDevice(null)}>Cancelar</Button>
+                <Button className="h-11" onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
               </div>
             </div>
           )}

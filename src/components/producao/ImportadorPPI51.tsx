@@ -217,7 +217,7 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
             <FileSpreadsheet className="h-4 w-4 text-green-600" />
             <h3 className="font-semibold text-sm">Importar PPI-51</h3>
           </div>
-          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40">
+          <button onClick={onClose} aria-label="Fechar" className="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-muted/40">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -249,12 +249,12 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
                 <span className="ml-auto text-[11px] text-muted-foreground">{preview.length} registros</span>
               </div>
               <div className="rounded-xl border border-border/40 overflow-hidden">
-                <div className="grid grid-cols-4 gap-2 px-3 py-2 bg-muted/30 text-[10px] font-semibold uppercase text-muted-foreground">
+                <div className="grid grid-cols-[3rem_5.5rem_1fr_auto] gap-2 px-3 py-2 bg-muted/30 text-[10px] font-semibold uppercase text-muted-foreground">
                   <span>Seq</span><span>Data</span><span>Máquina / Produto</span><span>Produzido</span>
                 </div>
                 <div className="max-h-52 overflow-y-auto divide-y divide-border/20">
                   {preview.slice(0, 50).map(r => (
-                    <div key={r.seq} className="grid grid-cols-4 gap-2 px-3 py-1.5 text-[11px]">
+                    <div key={r.seq} className="grid grid-cols-[3rem_5.5rem_1fr_auto] gap-2 px-3 py-1.5 text-xs">
                       <span className="font-mono text-muted-foreground">#{r.seq}</span>
                       <span>{r.data}</span>
                       <span className="truncate">{r.maquina} · {r.produto}</span>
@@ -303,12 +303,12 @@ export function ImportadorPPI51({ onClose }: { onClose: () => void }) {
 
         {/* Footer */}
         <div className="flex gap-3 px-5 py-4 border-t border-border/30 shrink-0">
-          <Button variant="outline" className="flex-1" onClick={onClose}>
+          <Button variant="outline" className="flex-1 h-11" onClick={onClose}>
             {result ? "Fechar" : "Cancelar"}
           </Button>
           {preview.length > 0 && !result && (
             <Button
-              className="flex-1 gap-2 bg-green-600 hover:bg-green-500"
+              className="flex-1 h-11 gap-2 bg-green-600 hover:bg-green-500 text-white"
               onClick={handleImport}
               disabled={loading}
             >

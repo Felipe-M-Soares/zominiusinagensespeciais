@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { MessageSquare, X, Send } from "lucide-react";
+import { Loader2, MessageSquare, Send } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { Comentario } from "@/types/comercial";
 
@@ -52,50 +54,43 @@ export function ComentariosModal({ pedidoId, onClose }: { pedidoId: string | nul
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-card border border-border/30 shadow-xl flex flex-col max-h-[75vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4 text-violet-500" />
-            <p className="text-sm font-semibold">Comentários internos</p>
-          </div>
-          <button type="button" onClick={onClose}
-            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-          {loading && <div className="flex justify-center py-6"><div className="h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-md p-0 gap-0 max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="px-5 py-4 border-b text-left">
+          <DialogTitle className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-primary" />Recados internos</DialogTitle>
+          <DialogDescription>Conversa entre comercial, estoque e financeiro sobre este pedido.</DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-[10rem]">
+          {loading && <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
           {!loading && comentarios.length === 0 && (
-            <p className="text-center text-sm text-muted-foreground py-8">Nenhum comentário ainda.</p>
+            <p className="text-center text-sm text-muted-foreground py-8">Nenhum recado ainda.</p>
           )}
           {comentarios.map(cm => (
             <div key={cm.id} className={cn(
-              "rounded-xl px-3 py-2 max-w-[88%] text-[12px]",
+              "rounded-xl px-3 py-2 max-w-[88%] text-sm",
               cm.user_name === user?.email
-                ? "ml-auto bg-violet-500/10 border border-violet-500/20 text-violet-700 dark:text-violet-300"
-                : "bg-muted/30 border border-border/20 text-foreground"
+                ? "ml-auto bg-primary/10 border border-primary/20"
+                : "bg-muted/50 border"
             )}>
-              <p className="font-semibold text-[10px] text-muted-foreground mb-0.5">{cm.user_name}</p>
+              <p className="font-semibold text-xs text-muted-foreground mb-0.5">{cm.user_name}</p>
               <p className="leading-relaxed whitespace-pre-wrap">{cm.texto}</p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1 text-right">
+              <p className="text-[11px] text-muted-foreground mt-1 text-right">
                 {new Date(cm.created_at).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}
               </p>
             </div>
           ))}
           <div ref={bottomRef} />
         </div>
-        <div className="flex gap-2 px-4 py-3 border-t border-border/20 shrink-0">
+        <div className="flex gap-2 px-4 py-3 border-t shrink-0">
           <input type="text" value={texto} onChange={e => setTexto(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleEnviar(); } }}
-            placeholder="Escreva um comentário..." maxLength={2000}
-            className="flex-1 h-9 rounded-xl border border-border/50 bg-background text-[12px] px-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
-          <button type="button" onClick={handleEnviar} disabled={!texto.trim() || saving}
-            className="h-9 w-9 flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-40">
-            {saving ? <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-          </button>
+            placeholder="Escreva um recado..." maxLength={2000} aria-label="Recado"
+            className="flex-1 min-w-0 h-11 rounded-xl border border-input bg-background text-sm px-3 focus:outline-none focus:ring-2 focus:ring-ring" />
+          <Button type="button" size="icon" onClick={handleEnviar} disabled={!texto.trim() || saving} className="h-11 w-11 shrink-0" aria-label="Enviar recado">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

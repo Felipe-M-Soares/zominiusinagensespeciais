@@ -108,7 +108,7 @@ export function TransferirExpedicaoModal({ item, open, onClose, onSuccess }: Pro
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-sm p-0 rounded-2xl overflow-hidden border-border/30">
+      <DialogContent className="max-w-sm p-0 w-[calc(100vw-1.5rem)] max-h-[90vh] overflow-y-auto rounded-2xl border-border/30">
         {/* Header */}
         <div className="relative px-5 pt-5 pb-4">
           <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent" />

@@ -1,21 +1,50 @@
-import { useState, useEffect } from "react";
+/**
+ * Detalhe do cliente: cadastro, contato rápido, números (total comprado,
+ * pedidos, último pedido, crédito de devolução) e histórico de pedidos.
+ */
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { History, X } from "lucide-react";
-import type { Cliente } from "@/types/comercial";
+import { formatBRL } from "@/lib/format";
+import { Loader2, MapPin, Pencil, ShoppingCart, Wallet } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { ContatoBotoes } from "@/components/comercial/ContatoBotoes";
+import { STATUS_VENDA, SITUACAO_PEDIDO, type Cliente, type PedidoCompleto } from "@/types/comercial";
 
-export function HistoricoClienteModal({ clienteId, clientes, onClose }: {
+interface PedidoHist {
+  id: string; status: string; created_at: string; frete: number; nota_fiscal: string | null;
+  itens: { device_model?: string; quantidade: number; valor_unitario: number }[];
+}
+
+const COR_STATUS: Record<string, string> = {
+  pendente: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  separando: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+  pronto: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  faturado: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
+  enviado: "bg-teal-500/10 text-teal-700 dark:text-teal-400",
+  cancelado: "bg-muted text-muted-foreground",
+  retorno: "bg-orange-500/10 text-orange-700 dark:text-orange-400",
+};
+
+export function HistoricoClienteModal({ clienteId, clientes, onClose, onEditar, onNovoPedido, onAbrirPedido }: {
   clienteId: string | null;
   clientes: Cliente[];
   onClose: () => void;
+  onEditar?: (c: Cliente) => void;
+  onNovoPedido?: (c: Cliente) => void;
+  /** Abre o pedido (card completo) — opcional. */
+  onAbrirPedido?: (pedidoId: string) => void;
 }) {
-  const [pedidos, setPedidos] = useState<{ id: string; status: string; created_at: string; itens: { device_model?: string; quantidade: number }[] }[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoHist[]>([]);
   const [loading, setLoading] = useState(false);
   const [saldo, setSaldo] = useState(0);
   const cliente = clientes.find(c => c.id === clienteId);
 
   useEffect(() => {
     if (!clienteId) return;
+    let cancel = false;
+    setSaldo(0);
     supabase
       .from("contas_financeiras")
       .select("valor, pedidos_comerciais!inner(cliente_id)")
@@ -23,101 +52,131 @@ export function HistoricoClienteModal({ clienteId, clientes, onClose }: {
       .eq("status", "aberto")
       .eq("pedidos_comerciais.cliente_id", clienteId)
       .then(({ data }) => {
-        setSaldo((data ?? []).reduce((s, r) => s + (Number(r.valor) || 0), 0));
+        if (!cancel) setSaldo((data ?? []).reduce((s, r) => s + (Number(r.valor) || 0), 0));
       });
+    return () => { cancel = true; };
   }, [clienteId]);
 
   useEffect(() => {
     if (!clienteId) return;
+    let cancel = false;
     setLoading(true);
     supabase
       .from("pedidos_comerciais")
-      .select("id, status, created_at, pedido_itens(quantidade, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model)))")
+      .select("id, status, created_at, frete, nota_fiscal, pedido_itens(quantidade, valor_unitario, stock_items!pedido_itens_stock_item_id_fkey(devices!stock_items_device_id_fkey(model)))")
       .eq("cliente_id", clienteId)
       .order("created_at", { ascending: false })
-      .limit(30)
+      .limit(50)
       .then(({ data }) => {
+        if (cancel) return;
         setPedidos((data ?? []).map((p: Record<string, unknown>) => ({
           id: p.id as string,
           status: p.status as string,
           created_at: p.created_at as string,
-          itens: ((p.pedido_itens as Record<string,unknown>[]) ?? []).map((i: Record<string,unknown>) => ({
+          frete: Number(p.frete ?? 0),
+          nota_fiscal: (p.nota_fiscal as string | null) ?? null,
+          itens: ((p.pedido_itens as Record<string, unknown>[]) ?? []).map((i: Record<string, unknown>) => ({
             device_model: ((i.stock_items as { devices?: { model?: string } } | null)?.devices?.model),
             quantidade: i.quantidade as number,
+            valor_unitario: Number(i.valor_unitario ?? 0),
           })),
         })));
         setLoading(false);
       });
+    return () => { cancel = true; };
   }, [clienteId]);
 
-  if (!clienteId) return null;
+  const numeros = useMemo(() => {
+    const vendas = pedidos.filter(p => STATUS_VENDA.includes(p.status as PedidoCompleto["status"]));
+    const total = vendas.reduce((s, p) => s + p.frete + p.itens.reduce((si, i) => si + i.valor_unitario * i.quantidade, 0), 0);
+    const ultimo = pedidos.find(p => p.status !== "cancelado")?.created_at ?? null;
+    return { total, qtd: vendas.length, ultimo };
+  }, [pedidos]);
 
-  const statusColors: Record<string, string> = {
-    pendente: "bg-amber-500/10 text-amber-600",
-    separando: "bg-blue-500/10 text-blue-600",
-    pronto: "bg-emerald-500/10 text-emerald-600",
-    faturado: "bg-violet-500/10 text-violet-600",
-    enviado: "bg-green-500/10 text-green-600",
-    cancelado: "bg-muted/30 text-muted-foreground",
-    retorno: "bg-orange-500/10 text-orange-600",
-  };
-  const statusLabels: Record<string, string> = {
-    pendente: "Pendente", separando: "Separando", pronto: "Pronto",
-    faturado: "Faturado", enviado: "Enviado", cancelado: "Cancelado", retorno: "Retorno",
-  };
+  const endereco = cliente ? (cliente.endereco || [cliente.logradouro, cliente.numero, cliente.bairro, cliente.municipio, cliente.uf].filter(Boolean).join(", ")) : "";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh] sm:max-h-[85vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
-          <div className="flex items-center gap-2">
-            <History className="h-4 w-4 text-violet-500" />
-            <div>
-              <p className="text-sm font-semibold">Histórico de Compras</p>
-              <p className="text-[11px] text-muted-foreground">{cliente?.nome ?? "Cliente"}</p>
+    <Dialog open={!!clienteId} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto overflow-x-hidden p-0 gap-0 grid-cols-[minmax(0,1fr)]">
+        <DialogHeader className="px-5 pt-5 pb-4 text-left space-y-1 border-b">
+          <DialogTitle className="pr-6 leading-snug">{cliente?.nome ?? "Cliente"}</DialogTitle>
+          <DialogDescription>
+            {[cliente?.documento, cliente?.municipio && `${cliente.municipio}${cliente.uf ? `/${cliente.uf}` : ""}`, cliente?.ie && `IE ${cliente.ie}`].filter(Boolean).join(" · ") || "Cadastro sem documento"}
+          </DialogDescription>
+          {cliente && <ContatoBotoes telefone={cliente.telefone} email={cliente.email} className="pt-2" />}
+        </DialogHeader>
+
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-2xl border bg-card p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Comprado</p>
+              <p className="text-base sm:text-lg font-bold tabular-nums leading-tight mt-0.5">{formatBRL(numeros.total)}</p>
+            </div>
+            <div className="rounded-2xl border bg-card p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pedidos</p>
+              <p className="text-base sm:text-lg font-bold tabular-nums leading-tight mt-0.5">{numeros.qtd}</p>
+            </div>
+            <div className="rounded-2xl border bg-card p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Último</p>
+              <p className="text-base sm:text-lg font-bold tabular-nums leading-tight mt-0.5">{numeros.ultimo ? new Date(numeros.ultimo).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—"}</p>
             </div>
           </div>
-          <button type="button" onClick={onClose}
-            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+
           {saldo > 0 && (
-            <div className="flex items-center gap-1.5 text-[12px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-500/10 border border-orange-500/25 rounded-xl px-3 py-2 mb-1">
-              💰 Crédito de devolução disponível: {saldo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            <div className="flex items-center gap-2 text-sm font-medium text-sky-800 dark:text-sky-300 bg-sky-500/10 border border-sky-500/25 rounded-xl px-3 py-2">
+              <Wallet className="h-4 w-4 shrink-0" />Crédito de devolução disponível: {formatBRL(saldo)}
             </div>
           )}
-          {loading && <div className="flex items-center justify-center py-10"><div className="h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>}
-          {!loading && pedidos.length === 0 && (
-            <div className="text-center py-10 text-sm text-muted-foreground">Nenhum pedido encontrado</div>
+          {endereco && (
+            <p className="text-sm text-muted-foreground flex items-start gap-1.5"><MapPin className="h-4 w-4 shrink-0 mt-0.5" />{endereco}{cliente?.cep ? ` · CEP ${cliente.cep}` : ""}</p>
           )}
-          {!loading && pedidos.map(p => {
-            const totalItens = p.itens.reduce((s, i) => s + i.quantidade, 0);
-            return (
-              <div key={p.id} className="rounded-xl border border-border/20 bg-background/50 p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground/70">
-                    {new Date(p.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
-                  </span>
-                  <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full", statusColors[p.status] ?? "bg-muted/20 text-muted-foreground")}>
-                    {statusLabels[p.status] ?? p.status}
-                  </span>
-                </div>
-                <div className="space-y-0.5">
-                  {p.itens.slice(0, 3).map((i, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-[11px]">
-                      <span className="text-muted-foreground truncate">{i.device_model ?? "—"}</span>
-                      <span className="font-semibold shrink-0 ml-2">{i.quantidade} un.</span>
-                    </div>
-                  ))}
-                  {p.itens.length > 3 && <p className="text-[10px] text-muted-foreground/50">+{p.itens.length - 3} itens · {totalItens} un. total</p>}
-                </div>
-              </div>
-            );
-          })}
+          {cliente?.observacoes && <p className="text-sm rounded-xl bg-muted/40 px-3 py-2 whitespace-pre-wrap">{cliente.observacoes}</p>}
+
+          {cliente && (onEditar || onNovoPedido) && (
+            <div className="flex gap-2">
+              {onNovoPedido && <Button className="flex-1 h-11 gap-1.5" onClick={() => onNovoPedido(cliente)}><ShoppingCart className="h-4 w-4" />Novo pedido</Button>}
+              {onEditar && <Button variant="outline" className="flex-1 h-11 gap-1.5" onClick={() => onEditar(cliente)}><Pencil className="h-4 w-4" />Editar cadastro</Button>}
+            </div>
+          )}
+
+          <section className="rounded-2xl border bg-card overflow-hidden">
+            <h3 className="px-4 py-3 border-b text-sm font-semibold">Histórico de pedidos</h3>
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando...</div>
+            ) : pedidos.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">Este cliente ainda não tem pedidos.</p>
+            ) : (
+              <ul className="divide-y">
+                {pedidos.map(p => {
+                  const total = p.frete + p.itens.reduce((s, i) => s + i.valor_unitario * i.quantidade, 0);
+                  const pecas = p.itens.reduce((s, i) => s + i.quantidade, 0);
+                  const Tag = onAbrirPedido ? "button" : "div";
+                  return (
+                    <li key={p.id}>
+                      <Tag {...(onAbrirPedido ? { type: "button" as const, onClick: () => onAbrirPedido(p.id) } : {})}
+                        className={cn("w-full text-left px-4 py-3 space-y-1", onAbrirPedido && "hover:bg-muted/50")}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium tabular-nums">{new Date(p.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}</span>
+                          <span className="text-xs text-muted-foreground">#{p.id.slice(0, 8).toUpperCase()}{p.nota_fiscal ? ` · NF ${p.nota_fiscal}` : ""}</span>
+                          <span className="ml-auto font-semibold tabular-nums text-sm">{formatBRL(total)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap shrink-0", COR_STATUS[p.status] ?? "bg-muted text-muted-foreground")}>
+                            {SITUACAO_PEDIDO[p.status as PedidoCompleto["status"]] ?? p.status}
+                          </span>
+                          <span className="text-xs text-muted-foreground truncate min-w-0">
+                            {pecas} peça{pecas !== 1 ? "s" : ""} · {p.itens.slice(0, 2).map(i => i.device_model ?? "—").join(", ")}{p.itens.length > 2 ? ` +${p.itens.length - 2}` : ""}
+                          </span>
+                        </div>
+                      </Tag>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

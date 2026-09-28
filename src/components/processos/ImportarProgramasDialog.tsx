@@ -125,14 +125,14 @@ export function ImportarProgramasDialog({ open, onOpenChange, maquinas, existent
                       <p className="text-xs text-muted-foreground truncate">{it.arquivo}{!it.erro && ` · ${it.linhas.toLocaleString("pt-BR")} linhas`}</p>
                       {it.erro ? <p className="text-sm font-medium text-destructive">{it.erro}</p> : (
                         <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-[1fr_11rem_8rem] gap-2">
-                          <Input value={it.nome} onChange={e => atualizar(it.chave, { nome: e.target.value })} aria-label="Nome do programa" className="h-9" />
+                          <Input value={it.nome} onChange={e => atualizar(it.chave, { nome: e.target.value })} aria-label="Nome do programa" className="h-10" />
                           <select value={it.maquina ?? ""} onChange={e => atualizar(it.chave, { maquina: e.target.value || null })} aria-label="Máquina"
-                            className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                            className="h-10 rounded-md border border-input bg-background px-2 text-sm">
                             <option value="">Sem máquina</option>
                             {maquinas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} · {m.nome}</option>)}
                           </select>
                           <select value={it.linguagem} onChange={e => atualizar(it.chave, { linguagem: e.target.value as LinguagemCnc })} aria-label="Linguagem"
-                            className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                            className="h-10 rounded-md border border-input bg-background px-2 text-sm">
                             {LINGUAGENS_CNC.map(l => <option key={l} value={l}>{l}</option>)}
                           </select>
                         </div>

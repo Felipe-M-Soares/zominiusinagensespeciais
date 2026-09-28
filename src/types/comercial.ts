@@ -64,6 +64,10 @@ export interface PedidoCompleto {
   rastreio_envio?: string | null;
   /** Crédito do cliente abatido neste pedido (R$). */
   credito_aplicado?: number;
+  /** Endereço de entrega gravado no pedido (quando não usa o do cliente). */
+  endereco_entrega?: string | null;
+  /** true = entrega no endereço do cadastro do cliente. */
+  usar_endereco_cliente?: boolean | null;
   itens: Array<{
     id: string;
     stock_item_id: string;
@@ -75,6 +79,31 @@ export interface PedidoCompleto {
     valor_unitario?: number;
     device_id?: string;
   }>;
+}
+
+/** Rótulos das formas de pagamento usadas nos pedidos comerciais. */
+export const FORMAS_PGTO_PEDIDO: Record<string, string> = {
+  pix: "PIX", boleto: "Boleto", cartao_credito: "Cartão crédito", cartao_debito: "Cartão débito", dinheiro: "Dinheiro",
+};
+
+/** Situação do pedido — rótulo curto para listas/filtros. */
+export const SITUACAO_PEDIDO: Record<PedidoCompleto["status"], string> = {
+  pendente: "Aguardando confirmação", separando: "Em separação", pronto: "Pronto (aguardando NF)",
+  faturado: "Faturado", enviado: "Enviado", cancelado: "Cancelado", retorno: "Voltou do estoque",
+};
+
+/** Pedidos que contam como venda (confirmados pela vendedora e não cancelados). */
+export const STATUS_VENDA: PedidoCompleto["status"][] = ["separando", "pronto", "faturado", "enviado"];
+
+/** Total do pedido: itens (valor unitário já líquido) + frete. */
+export function totalPedido(p: Pick<PedidoCompleto, "itens" | "frete">): number {
+  return p.itens.reduce((s, i) => s + (i.valor_unitario ?? 0) * i.quantidade, 0) + (p.frete ?? 0);
+}
+
+/** Pedido com prazo de entrega vencido e ainda não faturado/enviado/cancelado. */
+export function pedidoAtrasado(p: Pick<PedidoCompleto, "prazo_entrega" | "status">, agora = new Date()): boolean {
+  return !!p.prazo_entrega && !["cancelado", "enviado", "faturado"].includes(p.status)
+    && new Date(`${p.prazo_entrega}T23:59:59`) < agora;
 }
 
 export interface Comentario {

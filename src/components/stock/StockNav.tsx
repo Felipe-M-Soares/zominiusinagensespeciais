@@ -9,7 +9,6 @@
 import { useMemo } from "react";
 import { LayoutDashboard, Package, Truck, Wrench, Inbox, ShoppingBag } from "lucide-react";
 import { PageNav, type PageNavTab } from "@/components/PageNav";
-import type { StockItem } from "@/hooks/useStock";
 
 export type ActiveView =
   | "dashboard"
@@ -22,10 +21,6 @@ export type ActiveView =
 interface StockNavProps {
   activeView: ActiveView;
   onViewChange: (view: ActiveView) => void;
-  /** Mantidos por compatibilidade — as contagens vêm de `qtyByFase`. */
-  intermediariaItems?: StockItem[];
-  expedicaoItems?: StockItem[];
-  retrabalhoItems?: StockItem[];
   loading: boolean;
   pedidosPendentes?: number;
   qtyByFase?: {

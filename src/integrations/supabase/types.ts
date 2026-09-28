@@ -2808,6 +2808,7 @@ export type Database = {
       eh_gerente: { Args: Record<PropertyKey, never>; Returns: boolean }
       nf_pode_cancelar: { Args: { p_nf_id: string }; Returns: Json }
       editar_pedido_retorno: { Args: { p_pedido_id: string; p_itens: Json; p_dados: Json }; Returns: Json }
+      catalogo_venda: { Args: Record<PropertyKey, never>; Returns: Json }
       criar_pedido_venda: { Args: { p_cliente_id: string; p_itens: Json; p_dados: Json }; Returns: Json }
       adicionar_item_pedido: { Args: { p_pedido_id: string; p_stock_item_id: string; p_quantidade: number; p_valor_unitario: number }; Returns: Json }
       mesclar_clientes: { Args: { p_manter: string; p_remover: string }; Returns: Json }

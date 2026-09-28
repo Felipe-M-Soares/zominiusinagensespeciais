@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
-import { Clock, LogOut, ShieldOff, Loader2 } from "lucide-react";
+import { Clock, LogOut, ShieldOff, Loader2, RefreshCw } from "lucide-react";
 import { logger } from "@/lib/logger";
 
 export default function PendingApproval() {
@@ -36,88 +36,44 @@ export default function PendingApproval() {
 
 
 
-  // ── TELA DE BLOQUEADO ──────────────────────────────────────────────────────
-  if (blocked) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-transparent via-transparent to-accent/20 flex items-center justify-center px-4">
-        <div className="w-full max-w-sm text-center space-y-6">
-          <Logo className="h-14 object-contain mx-auto" />
+  const bloqueado = blocked;
 
-          <div className="bg-card border border-border rounded-2xl p-8 shadow-xl space-y-5">
-            {/* Ícone */}
-            <div className="h-16 w-16 mx-auto rounded-2xl bg-destructive/10 flex items-center justify-center">
-              <ShieldOff className="h-8 w-8 text-destructive" />
-            </div>
-
-            <div className="space-y-2">
-              <h1 className="text-lg font-semibold text-destructive">Acesso Bloqueado</h1>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                O seu acesso foi bloqueado pelo administrador.
-              </p>
-              <p className="text-xs text-muted-foreground/70">
-                Entre em contato com o suporte para mais informações.
-              </p>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full gap-2 text-muted-foreground text-xs"
-              onClick={signOut}
-            >
-              <LogOut className="h-4 w-4" />
-              Sair
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── TELA DE ACESSO SUSPENSO (approved=false, definido manualmente pelo admin) ──
   return (
-    <div className="min-h-screen bg-gradient-to-br from-transparent via-transparent to-accent/20 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm text-center space-y-6">
-        <Logo className="h-14 object-contain mx-auto" />
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center px-4 py-8 bg-background">
+      <div className="w-full max-w-[400px] text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <Logo className="h-9 w-auto object-contain mx-auto mb-8" />
 
-        <div className="bg-card border border-border rounded-2xl p-8 shadow-xl space-y-5">
-          {/* Ícone */}
-          <div className="h-16 w-16 mx-auto rounded-2xl bg-amber-500/10 flex items-center justify-center">
-            <Clock className="h-8 w-8 text-amber-500" />
+        <div className="rounded-2xl border bg-card p-6 sm:p-8 shadow-sm space-y-5">
+          <div className={`h-16 w-16 mx-auto rounded-2xl flex items-center justify-center ${bloqueado ? "bg-destructive/10" : "bg-warning/15"}`}>
+            {bloqueado ? <ShieldOff className="h-8 w-8 text-destructive" /> : <Clock className="h-8 w-8 text-warning" />}
           </div>
 
           <div className="space-y-2">
-            <h1 className="text-lg font-semibold">Acesso Suspenso</h1>
+            <h1 className={`text-xl font-bold tracking-tight ${bloqueado ? "text-destructive" : ""}`}>
+              {bloqueado ? "Acesso bloqueado" : "Acesso suspenso"}
+            </h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              O administrador suspendeu temporariamente o acesso desta conta.
+              {bloqueado
+                ? "O seu acesso foi bloqueado pelo administrador."
+                : "O administrador suspendeu temporariamente o acesso desta conta."}
             </p>
-            <p className="text-xs text-muted-foreground/70">
-              Você recupera o acesso assim que o administrador reativar sua conta no painel.
+            <p className="text-xs text-muted-foreground">
+              {bloqueado
+                ? "Fale com o administrador do sistema para saber mais."
+                : "Assim que o administrador reativar sua conta, você volta a entrar normalmente."}
             </p>
           </div>
 
-<Button
-            variant="outline"
-            size="sm"
-            className="w-full text-xs h-8"
-            onClick={checkApproval}
-            disabled={checking}
-          >
-            {checking
-              ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Verificando...</>
-              : "Já fui reativado? Verificar agora"
-            }
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full gap-2 text-muted-foreground text-xs"
-            onClick={signOut}
-          >
-            <LogOut className="h-4 w-4" />
-            Sair
-          </Button>
+          <div className="space-y-2">
+            {!bloqueado && (
+              <Button variant="outline" className="w-full h-11 rounded-xl gap-2" onClick={checkApproval} disabled={checking}>
+                {checking ? <><Loader2 className="h-4 w-4 animate-spin" />Verificando…</> : <><RefreshCw className="h-4 w-4" />Já fui reativado? Verificar agora</>}
+              </Button>
+            )}
+            <Button variant="ghost" className="w-full h-11 rounded-xl gap-2 text-muted-foreground" onClick={signOut}>
+              <LogOut className="h-4 w-4" /> Sair
+            </Button>
+          </div>
         </div>
       </div>
     </div>

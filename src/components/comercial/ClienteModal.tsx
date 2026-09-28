@@ -172,32 +172,35 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
-          <div className="flex items-center gap-2">
-            <User className="h-4 w-4 text-violet-500" />
-            <p className="text-sm font-semibold">{inicial ? "Editar Cliente" : "Novo Cliente"}</p>
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm"
+      onKeyDown={e => { if (e.key === "Escape" && !saving) { e.stopPropagation(); onClose(); } }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="cliente-modal-titulo"
+        className="w-full sm:max-w-lg max-h-[94vh] sm:max-h-[90vh] flex flex-col rounded-t-2xl sm:rounded-2xl bg-card border shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex items-center justify-between gap-2 px-5 py-4 border-b shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <User className="h-4 w-4 text-primary shrink-0" />
+            <p id="cliente-modal-titulo" className="font-semibold truncate">{inicial ? "Editar cliente" : "Novo cliente"}</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Fechar" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors">
+          <button type="button" onClick={onClose} aria-label="Fechar" className="h-10 w-10 -mr-2 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="p-5 space-y-3 max-h-[65vh] overflow-y-auto">
+        <div className="p-5 space-y-3 flex-1 overflow-y-auto">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Identificação</p>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Nome *</label>
-            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome completo ou razão social" className="h-9 text-sm" autoFocus maxLength={200} />
+            <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome completo ou razão social" className="h-11 text-sm" autoFocus maxLength={200} />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">CPF / CNPJ</label>
+              <label className="text-xs font-medium text-muted-foreground">CPF / CNPJ {somenteDigitos(documento).length === 14 && <span className="font-normal">(lupa preenche pela Receita)</span>}</label>
               <div className="relative">
                 <Input
                   value={documento}
                   onChange={e => setDocumento(formatarDocumento(e.target.value))}
                   placeholder="CPF ou CNPJ"
                   inputMode="numeric"
-                  className="h-9 text-sm pr-9"
+                  className="h-11 text-sm pr-9"
                   maxLength={18}
                   aria-invalid={!!documento && somenteDigitos(documento).length >= 11 && !validarDocumento(documento)}
                 />
@@ -208,7 +211,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
                     disabled={buscandoCnpj}
                     title="Buscar dados do CNPJ na Receita"
                     aria-label="Buscar dados do CNPJ"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-md text-violet-600 hover:bg-violet-500/10 disabled:opacity-50"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 flex items-center justify-center rounded-md text-primary hover:bg-primary/10 disabled:opacity-50"
                   >
                     {buscandoCnpj
                       ? <div className="h-3.5 w-3.5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
@@ -222,7 +225,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Telefone</label>
-              <Input value={telefone} onChange={e => setTelefone(formatarTelefone(e.target.value))} placeholder="(00) 00000-0000" inputMode="tel" className="h-9 text-sm" maxLength={20} />
+              <Input value={telefone} onChange={e => setTelefone(formatarTelefone(e.target.value))} placeholder="(00) 00000-0000" inputMode="tel" className="h-11 text-sm" maxLength={20} />
             </div>
           </div>
           {(duplicados.mesmoDoc.length > 0 || duplicados.parecidos.length > 0) && (
@@ -241,14 +244,15 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
           )}
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Inscrição estadual</label>
-            <Input value={ie} onChange={e => setIe(e.target.value)} placeholder="Número, ISENTO ou vazio (consumidor)" className="h-9 text-sm" maxLength={20} />
+            <Input value={ie} onChange={e => setIe(e.target.value)} placeholder="Número, ISENTO ou vazio (consumidor)" className="h-11 text-sm" maxLength={20} />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">E-mail</label>
-            <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="cliente@email.com" type="email" className="h-9 text-sm" maxLength={200} />
+            <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="cliente@email.com" type="email" className="h-11 text-sm" maxLength={200} />
           </div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground pt-2">Endereço (usado na NF-e)</p>
           {/* CEP com busca automática */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">CEP</label>
               <div className="relative">
@@ -261,7 +265,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
                     if (v.length === 8) buscarCep(v);
                   }}
                   placeholder="00000-000"
-                  className="h-9 text-sm pr-8"
+                  className="h-11 text-sm pr-8"
                   maxLength={9}
                 />
                 {buscandoCep && (
@@ -271,34 +275,34 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Número</label>
-              <Input value={numero} onChange={e => setNumero(e.target.value)} placeholder="123" className="h-9 text-sm" maxLength={20} />
+              <Input value={numero} onChange={e => setNumero(e.target.value)} placeholder="123" className="h-11 text-sm" maxLength={20} />
             </div>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Logradouro</label>
-            <Input value={logradouro} onChange={e => setLogradouro(e.target.value)} placeholder="Rua, Av..." className="h-9 text-sm" maxLength={200} />
+            <Input value={logradouro} onChange={e => setLogradouro(e.target.value)} placeholder="Rua, Av..." className="h-11 text-sm" maxLength={200} />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Bairro</label>
-              <Input value={bairro} onChange={e => setBairro(e.target.value)} placeholder="Bairro" className="h-9 text-sm" maxLength={100} />
+              <Input value={bairro} onChange={e => setBairro(e.target.value)} placeholder="Bairro" className="h-11 text-sm" maxLength={100} />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Cidade / UF</label>
               <div className="flex gap-1.5">
-                <Input value={municipio} onChange={e => { setMunicipio(e.target.value); setCMun(""); }} placeholder="Cidade" className="h-9 text-sm flex-1" maxLength={100} />
-                <Input value={uf} onChange={e => { setUf(e.target.value.toUpperCase().slice(0,2)); setCMun(""); }} placeholder="UF" className="h-9 text-sm w-12 text-center" maxLength={2} />
+                <Input value={municipio} onChange={e => { setMunicipio(e.target.value); setCMun(""); }} placeholder="Cidade" className="h-11 text-sm flex-1" maxLength={100} />
+                <Input value={uf} onChange={e => { setUf(e.target.value.toUpperCase().slice(0,2)); setCMun(""); }} placeholder="UF" className="h-11 text-sm w-14 text-center" maxLength={2} />
               </div>
             </div>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 pt-1">
             <label className="text-xs font-medium text-muted-foreground">Observações</label>
-            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Informações adicionais..." className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none min-h-[60px] focus:outline-none focus:ring-2 focus:ring-ring" maxLength={1000} />
+            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Informações adicionais..." className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none min-h-[72px] focus:outline-none focus:ring-2 focus:ring-ring" maxLength={1000} />
           </div>
         </div>
-        <div className="flex gap-2 p-5 pt-0">
-          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
-          <button type="button" onClick={handleSave} disabled={saving || !nome.trim() || duplicados.mesmoDoc.length > 0} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+        <div className="flex gap-2 px-5 py-3 border-t shrink-0 bg-card">
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-11 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors">Cancelar</button>
+          <button type="button" onClick={handleSave} disabled={saving || !nome.trim() || duplicados.mesmoDoc.length > 0} className="flex-1 h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
             {inicial ? "Salvar" : "Cadastrar"}
           </button>

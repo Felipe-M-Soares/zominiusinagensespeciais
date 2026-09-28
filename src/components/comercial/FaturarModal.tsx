@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { formatBRL } from "@/lib/format";
 import { toast } from "sonner";
-import type { PedidoCompleto } from "@/types/comercial";
+import { totalPedido, type PedidoCompleto } from "@/types/comercial";
 
 interface FaturarModalProps {
   pedido: PedidoCompleto | null;
@@ -38,33 +41,26 @@ export function FaturarModal({ pedido, onClose, onSuccess }: FaturarModalProps) 
   }
 
   const total = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
+  const valor = totalPedido(pedido);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="flex items-start gap-3">
-          <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="h-4 w-4 text-violet-500" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold">Confirmar Pedido?</p>
-            <p className="text-[12px] text-muted-foreground mt-0.5">{pedido.cliente_nome}</p>
-          </div>
+    <Dialog open onOpenChange={v => !v && !saving && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader className="text-left">
+          <DialogTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-primary" />Confirmar pedido?</DialogTitle>
+          <DialogDescription className="truncate">{pedido.cliente_nome} · {formatBRL(valor)}</DialogDescription>
+        </DialogHeader>
+        <div className="rounded-xl bg-muted/40 border px-3 py-2.5 space-y-1 text-sm">
+          <p><strong>{total} unidade{total !== 1 ? "s" : ""}</strong> serão encaminhadas ao estoque para separação.</p>
+          <p className="text-xs text-muted-foreground">As peças já estão reservadas. Depois de confirmado, o pedido não pode mais ser editado por aqui.</p>
         </div>
-        <div className="rounded-xl bg-muted/20 border border-border/30 px-3 py-2.5 space-y-1">
-          <p className="text-[12px] text-muted-foreground">
-            <strong className="text-foreground">{total} unidade{total !== 1 ? "s" : ""}</strong> serão encaminhadas ao estoque para separação.
-          </p>
-          <p className="text-[11px] text-muted-foreground/70">As peças já estão reservadas. O estoque irá separar os lotes e confirmar o envio.</p>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
-          <button type="button" onClick={handleConfirmar} disabled={saving} className="flex-1 h-9 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-500 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
-            {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-            Confirmar Pedido
-          </button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter className="flex-row gap-2">
+          <Button variant="outline" className="flex-1 h-11" onClick={onClose} disabled={saving}>Voltar</Button>
+          <Button className="flex-1 h-11 gap-1.5" onClick={handleConfirmar} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

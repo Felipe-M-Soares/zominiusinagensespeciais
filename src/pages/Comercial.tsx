@@ -18,16 +18,19 @@ import { useConfirmEnter } from "@/hooks/useConfirmEnter";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 
-import { useStock } from "@/hooks/useStock";
 
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   ShoppingBag,
-  UserPlus,
   User,
   Search,
   X,
@@ -36,23 +39,14 @@ import {
   CheckCircle2,
   PackageCheck,
   Clock,
-  Package,
   Tag,
   ChevronDown,
   ChevronUp,
   FileText,
-  Phone,
-  Mail,
-  MapPin,
-  ShoppingCart,
   Ban,
   Truck,
-  Boxes,
   LayoutDashboard,
   History,
-  Trophy,
-  TrendingUp,
-  Download,
   Bell,
   Copy,
   MessageSquare,
@@ -61,19 +55,20 @@ import {
   Pencil,
   FileDown,
   Loader2,
-  Users,
 } from "lucide-react";
 import { PageNav } from "@/components/PageNav";
 
 import { displayLote } from "@/lib/lote";
 import { TabelaPrecos } from "@/components/TabelaPrecos";
-import { escHtml } from "@/lib/escHtml";
 
 import type { Cliente, PedidoCompleto } from "@/types/comercial";
-import { logAudit } from "@/types/comercial";
+import { FORMAS_PGTO_PEDIDO, logAudit, pedidoAtrasado } from "@/types/comercial";
 import { excluirClienteSeguro } from "@/lib/pedidoUtils";
 import { DuplicadosClientesDialog } from "@/components/comercial/DuplicadosClientesDialog";
 import { agruparDuplicados } from "@/lib/clientesDuplicados";
+import { DashboardComercial, type FiltroPedidosDash } from "@/components/comercial/DashboardComercial";
+import { ClientesPanel } from "@/components/comercial/ClientesPanel";
+import { HistoricoPanel, FILTRO_HISTORICO_PADRAO, type FiltroHistorico } from "@/components/comercial/HistoricoPanel";
 
 // ─── Modais extraídos — lazy-loaded para reduzir o bundle inicial da página ────
 // (ver src/components/comercial/). Cada um só baixa quando de fato abre.
@@ -84,6 +79,7 @@ const FaturarModal           = lazy(() => import("@/components/comercial/Faturar
 const HistoricoClienteModal  = lazy(() => import("@/components/comercial/HistoricoClienteModal").then(m => ({ default: m.HistoricoClienteModal })));
 const ComentariosModal       = lazy(() => import("@/components/comercial/ComentariosModal").then(m => ({ default: m.ComentariosModal })));
 const HistoricoGeralModal    = lazy(() => import("@/components/comercial/HistoricoGeralModal").then(m => ({ default: m.HistoricoGeralModal })));
+const EditarDadosPedidoDialog = lazy(() => import("@/components/comercial/EditarDadosPedidoDialog").then(m => ({ default: m.EditarDadosPedidoDialog })));
 
 // ─── Botão Reenviar Pedido Retornado ──────────────────────────────────────────
 
@@ -134,6 +130,9 @@ interface PedidoCardProps {
   onReenviar: (p: PedidoCompleto) => void;
   onRemoverItemComercial: (pedido: PedidoCompleto, item: PedidoCompleto["itens"][0]) => void;
   onEditarPedido: (p: PedidoCompleto) => void;
+  /** Pode editar os dados (pagamento, prazo, frete, endereço, obs.) do pedido pendente. */
+  podeEditarDados?: boolean;
+  onEditarDados?: (p: PedidoCompleto) => void;
 }
 
 // Sinaliza, no próprio pedido original, que parte (ou tudo) dele já voltou
@@ -200,8 +199,8 @@ const STATUS_PEDIDO: Record<string, { label: string; cls: string; Icon: typeof C
 };
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar, onRemoverItemComercial, onEditarPedido }: PedidoCardProps) {
-  const [expanded, setExpanded] = useState(false);
+function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar, onRemoverItemComercial, onEditarPedido, podeEditarDados, onEditarDados, expandido }: PedidoCardProps & { expandido?: boolean }) {
+  const [expanded, setExpanded] = useState(!!expandido);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const totalPecas = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
   // valor_unitario já é líquido (com o desconto de cada peça)
@@ -211,8 +210,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
   const etapa = ORDEM_ETAPA[pedido.status] ?? 0;
   const numero = pedido.id.slice(0, 8).toUpperCase();
   const criado = new Date(pedido.created_at);
-  const prazoAtrasado = !!pedido.prazo_entrega && !["cancelado", "enviado", "faturado"].includes(pedido.status)
-    && new Date(`${pedido.prazo_entrega}T23:59:59`) < new Date();
+  const prazoAtrasado = pedidoAtrasado(pedido);
 
   async function handleGerarPdf() {
     if (gerandoPdf) return;
@@ -300,7 +298,8 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
                 )}
               </li>
             ))}
-            {pedido.observacoes && <li className="px-3 py-2 text-xs text-muted-foreground italic">{pedido.observacoes}</li>}
+            {pedido.usar_endereco_cliente === false && pedido.endereco_entrega && <li className="px-3 py-2 text-xs text-muted-foreground">Entrega: {pedido.endereco_entrega}</li>}
+            {pedido.observacoes && <li className="px-3 py-2 text-xs text-muted-foreground italic whitespace-pre-wrap">{pedido.observacoes}</li>}
           </ul>
         )}
       </div>
@@ -309,10 +308,16 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
       <div className="border-t bg-muted/20 p-3 space-y-2">
         {pedido.status === "pendente" && (isAdmin || canConfirm) && (
           <div className="flex gap-2">
-            <Button className="flex-1 h-10 gap-1.5" onClick={() => onFaturar(pedido)}><CheckCircle2 className="h-4 w-4" />Confirmar pedido</Button>
-            <Button variant="outline" className="h-10 gap-1.5" onClick={() => onAdicionarPeca(pedido)}><Plus className="h-4 w-4" />Peça</Button>
-            <Button variant="outline" size="icon" className="h-10 w-10 text-muted-foreground hover:text-destructive" onClick={() => onCancelar(pedido)} title="Cancelar pedido" aria-label="Cancelar pedido"><Ban className="h-4 w-4" /></Button>
+            <Button className="flex-1 min-w-0 h-10 gap-1.5 px-3" onClick={() => onFaturar(pedido)}><CheckCircle2 className="h-4 w-4 shrink-0" /><span className="truncate">Confirmar<span className="hidden sm:inline"> pedido</span></span></Button>
+            <Button variant="outline" className="h-10 gap-1 px-3" onClick={() => onAdicionarPeca(pedido)}><Plus className="h-4 w-4" />Peça</Button>
+            {podeEditarDados && onEditarDados && (
+              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => onEditarDados(pedido)} title="Editar dados (pagamento, prazo, frete, entrega, observações)" aria-label="Editar dados do pedido"><Pencil className="h-4 w-4" /></Button>
+            )}
+            <Button variant="outline" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => onCancelar(pedido)} title="Cancelar pedido" aria-label="Cancelar pedido"><Ban className="h-4 w-4" /></Button>
           </div>
+        )}
+        {pedido.status === "pendente" && !(isAdmin || canConfirm) && podeEditarDados && onEditarDados && (
+          <Button variant="outline" className="w-full h-10 gap-1.5" onClick={() => onEditarDados(pedido)}><Pencil className="h-4 w-4" />Editar dados</Button>
         )}
         {pedido.status === "retorno" && (
           <div className="space-y-2">
@@ -333,58 +338,7 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
     </div>
   );
 }
-const FORMA_PGTO: Record<string, string> = { pix: "PIX", boleto: "Boleto", dinheiro: "Dinheiro", cartao_credito: "Cartão crédito", cartao_debito: "Cartão débito" };
-
-// ─── Card de Cliente ──────────────────────────────────────────────────────────
-
-interface ClienteCardProps {
-  cliente: Cliente;
-  isAdmin: boolean;
-  onPedido: (c: Cliente) => void;
-  onEditar: (c: Cliente) => void;
-  onExcluir: (c: Cliente) => void;
-  onHistorico?: (c: Cliente) => void;
-}
-
-function ClienteCard({ cliente: c, isAdmin, onPedido, onEditar, onExcluir, onHistorico }: ClienteCardProps) {
-  return (
-    <div className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5" style={{ boxShadow: "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)" }}>
-      <div className="h-0.5 bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
-      <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="text-[13px] font-semibold truncate">{c.nome}</h3>
-            {c.documento && <p className="text-[11px] text-muted-foreground/70 font-mono">{c.documento}</p>}
-          </div>
-          <div className="h-8 w-8 rounded-full bg-violet-500/10 flex items-center justify-center shrink-0">
-            <User className="h-4 w-4 text-violet-500" />
-          </div>
-        </div>
-        <div className="space-y-1">
-          {c.telefone && <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70"><Phone className="h-3 w-3" /><span>{c.telefone}</span></div>}
-          {c.email && <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70"><Mail className="h-3 w-3" /><span className="truncate">{c.email}</span></div>}
-          {c.endereco && <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70"><MapPin className="h-3 w-3 shrink-0" /><span className="truncate">{c.endereco}</span></div>}
-        </div>
-        <div className="flex gap-1.5 pt-1 border-t border-border/20">
-          <button type="button" onClick={() => onPedido(c)} className="flex-1 h-7 flex items-center justify-center gap-1 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-[10px] font-medium transition-colors">
-            <ShoppingCart className="h-3 w-3" /> Pedido
-          </button>
-          <button type="button" onClick={() => onHistorico && onHistorico(c)} className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground transition-colors" title="Histórico de compras">
-            <History className="h-3 w-3" />
-          </button>
-          <button type="button" onClick={() => onEditar(c)} className="h-7 flex items-center justify-center px-2 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[10px] transition-colors">
-            Editar
-          </button>
-          {isAdmin && (
-            <button type="button" onClick={() => onExcluir(c)} className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors">
-              <Trash2 className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+const FORMA_PGTO = FORMAS_PGTO_PEDIDO;
 
 // ─── Notificações Bell ───────────────────────────────────────────────────────
 
@@ -478,246 +432,10 @@ function NotificacoesBell({ userId }: { userId: string }) {
   );
 }
 
-interface DashboardComercialProps {
-  pedidos: PedidoCompleto[];
-  loading: boolean;
-  currentUserName: string | null;
-  isAdmin: boolean;
-}
-
-function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: DashboardComercialProps) {
-  // Pedidos "confirmados" = qualquer status além de pendente e cancelado
-  const CONFIRMADOS: PedidoCompleto["status"][] = ["separando", "pronto", "faturado", "enviado"];
-  const confirmados = pedidos.filter(p => CONFIRMADOS.includes(p.status));
-
-  // Para vendedoras: filtra apenas os próprios pedidos; admin vê todos
-  const meusPedidos = isAdmin ? confirmados : confirmados.filter(p => p.vendedora_nome === currentUserName);
-
-  const totalPedidosConfirmados = meusPedidos.length;
-  const totalPecasConfirmadas = meusPedidos.reduce((sum, p) => sum + p.itens.reduce((s, i) => s + i.quantidade, 0), 0);
-
-  // Ranking vendedoras — admin vê todos; vendedora só vê a si mesma (não faz sentido mostrar ranking)
-  const rankingVendedoras: Record<string, number> = {};
-  for (const p of confirmados) {
-    const nome = p.vendedora_nome ?? "—";
-    rankingVendedoras[nome] = (rankingVendedoras[nome] ?? 0) + p.itens.reduce((s, i) => s + i.quantidade, 0);
-  }
-  const rankingVendList = Object.entries(rankingVendedoras)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-
-  // Ranking clientes — vendedora vê só os seus clientes; admin vê todos
-  const pedidosParaRankingClientes = isAdmin ? confirmados : confirmados.filter(p => p.vendedora_nome === currentUserName);
-  const rankingClientes: Record<string, number> = {};
-  for (const p of pedidosParaRankingClientes) {
-    rankingClientes[p.cliente_nome] = (rankingClientes[p.cliente_nome] ?? 0) + p.itens.reduce((s, i) => s + i.quantidade, 0);
-  }
-  const rankingClientesList = Object.entries(rankingClientes)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-
-  // PDF da vendedora atual
-  function downloadPdfVendedora() {
-    const meusPdfPedidos = isAdmin
-      ? confirmados.filter(p => p.vendedora_nome === currentUserName)
-      : meusPedidos;
-    if (meusPdfPedidos.length === 0) { toast.error("Nenhum pedido confirmado seu encontrado."); return; }
-
-    // Agrupa por modelo de peça (device_model) — mais robusto que stock_item_id
-    // pois pedidos faturados podem ter itens sem join de stock_items
-    const pecas: Record<string, { model: string; ref: string; total: number }> = {};
-    for (const p of meusPdfPedidos) {
-      for (const i of p.itens) {
-        const model = i.device_model?.trim() || "—";
-        const ref   = i.device_reference?.trim() || "—";
-        const key   = `${model}||${ref}`;
-        if (!pecas[key]) pecas[key] = { model, ref, total: 0 };
-        pecas[key].total += (i.quantidade ?? 0);
-      }
-    }
-    const pecasList = Object.values(pecas)
-      .filter(p => p.model !== "—" || p.total > 0)
-      .sort((a, b) => b.total - a.total);
-
-    // XSS: escape all user-supplied values before injecting into HTML blob
-    const esc = escHtml;
-
-    // Monta HTML para impressão
-    const html = `
-      <!DOCTYPE html><html><head><meta charset="UTF-8">
-      <title>Relatório de Pedidos — ${esc(currentUserName ?? "")}</title>
-      <style>
-        body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
-        h1 { font-size: 18px; margin-bottom: 4px; }
-        p.sub { font-size: 12px; color: #666; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { text-align: left; padding: 8px 10px; background: #f3f0ff; color: #5b21b6; border-bottom: 2px solid #ddd6fe; }
-        td { padding: 7px 10px; border-bottom: 1px solid #eee; }
-        tr:last-child td { border-bottom: none; }
-        .total { font-weight: bold; font-size: 15px; color: #5b21b6; }
-        .footer { margin-top: 20px; font-size: 11px; color: #999; }
-      </style></head><body>
-      <h1>📋 Relatório de Pedidos</h1>
-      <p class="sub">Vendedora: <strong>${esc(currentUserName ?? "")}</strong> &nbsp;·&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
-      ${pecasList.length > 0 ? `
-      <table>
-        <thead><tr><th>#</th><th>Peça</th><th>Referência</th><th>Qtd. Vendida</th></tr></thead>
-        <tbody>
-          ${pecasList.map((p, idx2) => `<tr><td>${idx2 + 1}</td><td>${esc(p.model)}</td><td>${esc(p.ref)}</td><td class="total">${p.total}</td></tr>`).join("")}
-        </tbody>
-      </table>` : `<p style="color:#888;font-size:13px">Detalhes das peças não disponíveis para este período.</p>`}
-      <h2 style="font-size:14px;margin:20px 0 8px;color:#5b21b6">Pedidos</h2>
-      <table>
-        <thead><tr><th>#</th><th>Cliente</th><th>Status</th><th>Data</th><th>Peças</th></tr></thead>
-        <tbody>
-          ${meusPdfPedidos.map((p, idx2) => `<tr><td>${idx2 + 1}</td><td>${esc(p.cliente_nome)}</td><td>${esc(p.status)}</td><td>${new Date(p.created_at).toLocaleDateString("pt-BR")}</td><td>${p.itens.reduce((s,i) => s + i.quantidade, 0)}</td></tr>`).join("")}
-        </tbody>
-      </table>
-      <p class="footer">Total de ${meusPdfPedidos.length} pedido(s) confirmado(s) &nbsp;·&nbsp; ${pecasList.reduce((s, p) => s + p.total, 0)} peças no total</p>
-      </body></html>
-    `;
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const w = window.open(url, "_blank");
-    if (!w) {
-      URL.revokeObjectURL(url);
-      toast.error("Popup bloqueado. Permita popups para imprimir.");
-      return;
-    }
-    w.addEventListener("load", () => {
-      w.print();
-      URL.revokeObjectURL(url);
-    }, { once: true });
-  }
-
-  if (loading) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-2xl border bg-muted/20 p-4 h-24 animate-pulse" />
-        ))}
-      </div>
-    );
-  }
-
-  const maxVend = rankingVendList[0]?.[1] ?? 1;
-  const maxCli = rankingClientesList[0]?.[1] ?? 1;
-
-  return (
-    <div className="space-y-4">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 flex items-start gap-3">
-          <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
-            <Package className="h-5 w-5 text-violet-500" />
-          </div>
-          <div>
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Pedidos Efetuados</p>
-            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{totalPedidosConfirmados.toLocaleString("pt-BR")}</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">confirmados pela vendedora</p>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-start gap-3">
-          <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
-            <Boxes className="h-5 w-5 text-emerald-500" />
-          </div>
-          <div>
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">Total de Peças</p>
-            <p className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{totalPecasConfirmadas.toLocaleString("pt-BR")}</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">nos pedidos confirmados</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Ranking Vendedoras — só admin vê */}
-      {isAdmin && (
-      <div className="rounded-2xl border border-border/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
-          <Trophy className="h-4 w-4 text-amber-500" />
-          <p className="text-sm font-semibold">Ranking de Vendedoras</p>
-          <span className="text-[11px] text-muted-foreground/60">(peças em pedidos confirmados)</span>
-        </div>
-        {rankingVendList.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
-        ) : (
-          <div className="divide-y divide-border/20">
-            {rankingVendList.map(([nome, total], idx) => (
-              <div key={nome} className="flex items-center gap-3 px-4 py-2.5">
-                <span className={cn(
-                  "h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
-                  idx === 0 ? "bg-amber-400/20 text-amber-600" :
-                  idx === 1 ? "bg-slate-300/20 text-slate-500" :
-                  idx === 2 ? "bg-orange-300/20 text-orange-600" :
-                  "bg-muted/40 text-muted-foreground"
-                )}>{idx + 1}º</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[12px] font-medium truncate">{nome}</span>
-                    <span className="text-[12px] font-bold text-violet-600 dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-violet-400 transition-all"
-                      style={{ width: `${Math.round((total / maxVend) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      )}
-
-      {/* Ranking Clientes */}
-      <div className="rounded-2xl border border-border/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-violet-500" />
-          <p className="text-sm font-semibold">Clientes que Mais Compraram</p>
-          <span className="text-[11px] text-muted-foreground/60">(peças em pedidos confirmados)</span>
-        </div>
-        {rankingClientesList.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground/60">Nenhum dado disponível</div>
-        ) : (
-          <div className="divide-y divide-border/20">
-            {rankingClientesList.map(([nome, total], idx) => (
-              <div key={nome} className="flex items-center gap-3 px-4 py-2.5">
-                <span className={cn(
-                  "h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
-                  idx === 0 ? "bg-violet-500/20 text-violet-600" : "bg-muted/40 text-muted-foreground"
-                )}>{idx + 1}º</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[12px] font-medium truncate">{nome}</span>
-                    <span className="text-[12px] font-bold text-violet-600 dark:text-violet-400 shrink-0 ml-2">{total} un.</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-violet-400 to-violet-300 transition-all"
-                      style={{ width: `${Math.round((total / maxCli) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Botão PDF da vendedora */}
-      <button
-        type="button"
-        onClick={downloadPdfVendedora}
-        className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-violet-500/30 text-violet-600 dark:text-violet-400 text-sm font-medium hover:bg-violet-500/10 transition-colors"
-      >
-        <Download className="h-4 w-4" />
-        Baixar meu relatório em PDF
-      </button>
-    </div>
-  );
-}
-
 // ─── Página Principal ─────────────────────────────────────────────────────────
+
+type SubTab = "dashboard" | "pedidos" | "clientes" | "historico" | "precos";
+type FiltroStatus = "todos" | "pendente" | "separando" | "pronto" | "enviado" | "retorno" | "cancelado" | "atrasados";
 
 export default function Comercial() {
   const { isAdmin, role, user } = useAuth();
@@ -736,36 +454,37 @@ export default function Comercial() {
       .then(({ data }) => setCurrentUserName((data as { display_name?: string } | null)?.display_name ?? userEmail));
   }, [user?.id, userEmail]);
 
-  // Tema
+  // Pedido é "meu" (vendedora logada): pelo id e, para pedidos antigos sem id, pelo nome.
+  const uid = user?.id ?? null;
+  const meus = useCallback((p: PedidoCompleto) =>
+    (!!uid && p.vendedora_id === uid) || (!p.vendedora_id && !!currentUserName && p.vendedora_nome === currentUserName),
+  [uid, currentUserName]);
 
   // Sub-tabs
-  type SubTab = "dashboard" | "pedidos" | "clientes" | "historico" | "precos";
   const [subTab, setSubTab] = useState<SubTab>("pedidos");
-  const [historicoOpen, setHistoricoOpen] = useState(false);
+  const [movimentacoesOpen, setMovimentacoesOpen] = useState(false);
   const [duplicadosOpen, setDuplicadosOpen] = useState(false);
+  const [filtroHist, setFiltroHist] = useState<{ key: number; f: FiltroHistorico }>({ key: 0, f: FILTRO_HISTORICO_PADRAO });
 
-  // Peças da expedição (para criar pedidos)
-  const { items: allItems, refetch: refetchStock } = useStock("");
-  const expedicaoItems = allItems.filter(i => i.fase === "expedicao");
+  // Peças da expedição (NovoPedidoModal ainda recebe; "Adicionar peça" usa o catálogo do banco)
 
   // Pedidos
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>([]);
   const [loadingPedidos, setLoadingPedidos] = useState(true);
-  const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "separando" | "pronto" | "enviado" | "retorno" | "cancelado">("todos");
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>("todos");
   const [buscaPedido, setBuscaPedido] = useState("");
   const [novoPedidoOpen, setNovoPedidoOpen] = useState(false);
   const [faturarPedido, setFaturarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<PedidoCompleto | null>(null);
   const [adicionarPecaPedido, setAdicionarPecaPedido] = useState<PedidoCompleto | null>(null);
+  const [editarDadosPedido, setEditarDadosPedido] = useState<PedidoCompleto | null>(null);
+  const [pedidoAbertoId, setPedidoAbertoId] = useState<string | null>(null);
   const [cancelando, setCancelando] = useState(false);
   const [pedidoComCliente, setPedidoComCliente] = useState<Cliente | null>(null);
 
   // Clientes
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loadingClientes, setLoadingClientes] = useState(true);
-  const [clienteSearchFilter, setClienteSearchFilter] = useState(""); // só atualiza em debounce
-  const clienteSearchRef = useRef<HTMLInputElement>(null);
-  const clienteSearchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadPedidosAbortRef = useRef<AbortController | null>(null);
   const [clienteModal, setClienteModal] = useState(false);
   const [editCliente, setEditCliente] = useState<Cliente | null>(null);
@@ -780,6 +499,7 @@ export default function Comercial() {
   const [filtroDataFim, setFiltroDataFim] = useState("");
 
   function handleDuplicar(pedido: PedidoCompleto) {
+    setPedidoAbertoId(null);
     setDuplicandoPedido(pedido);
     setNovoPedidoOpen(true);
   }
@@ -833,7 +553,7 @@ export default function Comercial() {
 
       setPedidos(pedidosData.map((p: Record<string, unknown>) => {
         const c = p.clientes as Record<string, unknown> | null;
-        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, vendedora_id: (p.vendedora_id as string | null) ?? null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, frete: (p.frete as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, nota_fiscal: (p.nota_fiscal as string | null) ?? null, forma_pagamento: (p.forma_pagamento as string | null) ?? null, parcelas: (p.parcelas as number | null) ?? null, rastreio_envio: (p.rastreio_envio as string | null) ?? null, credito_aplicado: Number(p.credito_aplicado ?? 0), itens: itensPorPedido.get(p.id as string) ?? [] };
+        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, vendedora_id: (p.vendedora_id as string | null) ?? null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, frete: (p.frete as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, nota_fiscal: (p.nota_fiscal as string | null) ?? null, forma_pagamento: (p.forma_pagamento as string | null) ?? null, parcelas: (p.parcelas as number | null) ?? null, rastreio_envio: (p.rastreio_envio as string | null) ?? null, credito_aplicado: Number(p.credito_aplicado ?? 0), endereco_entrega: (p.endereco_entrega as string | null) ?? null, usar_endereco_cliente: (p.usar_endereco_cliente as boolean | null) ?? null, itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
     } catch (_e) {
       toast.error("Erro ao carregar pedidos.", {
@@ -890,7 +610,7 @@ export default function Comercial() {
       toast.success("Pedido cancelado.");
       setCancelarPedido(null);
       loadPedidos();
-      refetchStock();
+     
     } catch (_e) {
       toast.error("Erro inesperado ao cancelar pedido.");
     } finally {
@@ -933,74 +653,54 @@ export default function Comercial() {
     loadClientes();
   }
 
-  const pedidosFiltrados = useMemo(() => pedidos.filter(p => {
-    if (filtroStatus === "enviado" ? !["faturado", "enviado"].includes(p.status) : filtroStatus !== "todos" && p.status !== filtroStatus) return false;
-    const q = buscaPedido.trim().toLowerCase();
-    if (q && !`${p.cliente_nome} ${p.id.slice(0, 8)} ${p.nota_fiscal ?? ""} ${p.vendedora_nome ?? ""}`.toLowerCase().includes(q)) return false;
-    if (filtroDataInicio && p.created_at < filtroDataInicio) return false;
-    if (filtroDataFim && p.created_at > filtroDataFim + "T23:59:59") return false;
-    return true;
-  }), [pedidos, filtroStatus, filtroDataInicio, filtroDataFim, buscaPedido]);
+  const pedidosFiltrados = useMemo(() => {
+    const agora = new Date();
+    return pedidos.filter(p => {
+      if (filtroStatus === "atrasados") { if (!pedidoAtrasado(p, agora)) return false; }
+      else if (filtroStatus === "enviado" ? !["faturado", "enviado"].includes(p.status) : filtroStatus !== "todos" && p.status !== filtroStatus) return false;
+      const q = buscaPedido.trim().toLowerCase();
+      if (q && !`${p.cliente_nome} ${p.id.slice(0, 8)} ${p.nota_fiscal ?? ""} ${p.vendedora_nome ?? ""}`.toLowerCase().includes(q)) return false;
+      if (filtroDataInicio && p.created_at < filtroDataInicio) return false;
+      if (filtroDataFim && p.created_at > filtroDataFim + "T23:59:59") return false;
+      return true;
+    });
+  }, [pedidos, filtroStatus, filtroDataInicio, filtroDataFim, buscaPedido]);
   const pedidosPendentes  = useMemo(() => pedidos.filter(p => p.status === "pendente").length, [pedidos]);
+  const qtdAtrasados = useMemo(() => pedidos.filter(p => pedidoAtrasado(p)).length, [pedidos]);
   const qtdDuplicados = useMemo(() => agruparDuplicados(clientes).reduce((n, g) => n + g.length - 1, 0), [clientes]);
-  const clientesFiltrados = useMemo(() => clientes.filter(c =>
-    c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
-    (c.documento ?? "").includes(clienteSearchFilter) ||
-    (c.telefone ?? "").includes(clienteSearchFilter)
-  ), [clientes, clienteSearchFilter]);
+  const pedidoAberto = pedidoAbertoId ? pedidos.find(p => p.id === pedidoAbertoId) ?? null : null;
+
+  // Vendedora dona do pedido, admin e gerente podem editar os dados de um pedido pendente.
+  const podeEditarDados = useCallback((p: PedidoCompleto) => verTudo || (!!uid && p.vendedora_id === uid) || (isVendedora && !p.vendedora_id), [verTudo, uid, isVendedora]);
+
+  function irParaPedidos(filtro: FiltroPedidosDash, vendedoraChave: string) {
+    setFiltroStatus(filtro);
+    setFiltroDataInicio(""); setFiltroDataFim("");
+    // Para a vendedora (ou filtro de uma vendedora no painel) a busca já traz só os pedidos dela.
+    const nome = vendedoraChave
+      ? pedidos.find(p => (p.vendedora_id ?? `nome:${p.vendedora_nome ?? "—"}`) === vendedoraChave)?.vendedora_nome ?? ""
+      : !verTudo ? currentUserName ?? "" : "";
+    setBuscaPedido(nome);
+    setSubTab("pedidos");
+  }
+
+  function irParaHistorico(f: Partial<FiltroHistorico>) {
+    setFiltroHist(v => ({ key: v.key + 1, f: { ...FILTRO_HISTORICO_PADRAO, ...f } }));
+    setSubTab("historico");
+  }
+
+  function abrirNovoPedidoCom(c: Cliente | null) {
+    setHistoricoClienteId(null);
+    setPedidoComCliente(c);
+    setNovoPedidoOpen(true);
+  }
 
   const COMERCIAL_TABS = [
-    {
-      id: "dashboard" as SubTab,
-      label: "Dashboard",
-      Icon: LayoutDashboard,
-      activeColor: "text-primary",
-      activeBg: "bg-primary/10",
-      activeBorder: "border-primary/40",
-      badgeBg: "bg-primary/15",
-      badgeText: "text-primary",
-    },
-    {
-      id: "pedidos" as SubTab,
-      label: "Pedidos",
-      Icon: ShoppingBag,
-      badge: pedidosPendentes,
-      activeColor: "text-amber-600 dark:text-amber-400",
-      activeBg: "bg-amber-500/10",
-      activeBorder: "border-amber-500/40",
-      badgeBg: "bg-amber-500/15",
-      badgeText: "text-amber-600 dark:text-amber-400",
-    },
-    {
-      id: "clientes" as SubTab,
-      label: "Clientes",
-      Icon: User,
-      activeColor: "text-violet-600 dark:text-violet-400",
-      activeBg: "bg-violet-500/10",
-      activeBorder: "border-violet-500/40",
-      badgeBg: "bg-violet-500/15",
-      badgeText: "text-violet-600 dark:text-violet-400",
-    },
-    {
-      id: "historico" as SubTab,
-      label: "Histórico",
-      Icon: History,
-      activeColor: "text-cyan-600 dark:text-cyan-400",
-      activeBg: "bg-cyan-500/10",
-      activeBorder: "border-cyan-500/40",
-      badgeBg: "bg-cyan-500/15",
-      badgeText: "text-cyan-600 dark:text-cyan-400",
-    },
-    {
-      id: "precos" as SubTab,
-      label: "Tabela de Preços",
-      Icon: Tag,
-      activeColor: "text-emerald-600 dark:text-emerald-400",
-      activeBg: "bg-emerald-500/10",
-      activeBorder: "border-emerald-500/40",
-      badgeBg: "bg-emerald-500/15",
-      badgeText: "text-emerald-600 dark:text-emerald-400",
-    },
+    { id: "dashboard" as SubTab, label: "Painel", Icon: LayoutDashboard, activeColor: "text-primary", activeBg: "bg-primary/10", activeBorder: "border-primary/40", badgeBg: "bg-primary/15", badgeText: "text-primary" },
+    { id: "pedidos" as SubTab, label: "Pedidos", Icon: ShoppingBag, badge: pedidosPendentes, activeColor: "text-amber-600 dark:text-amber-400", activeBg: "bg-amber-500/10", activeBorder: "border-amber-500/40", badgeBg: "bg-amber-500/15", badgeText: "text-amber-600 dark:text-amber-400" },
+    { id: "clientes" as SubTab, label: "Clientes", Icon: User, activeColor: "text-violet-600 dark:text-violet-400", activeBg: "bg-violet-500/10", activeBorder: "border-violet-500/40", badgeBg: "bg-violet-500/15", badgeText: "text-violet-600 dark:text-violet-400" },
+    { id: "historico" as SubTab, label: "Histórico", Icon: History, activeColor: "text-cyan-600 dark:text-cyan-400", activeBg: "bg-cyan-500/10", activeBorder: "border-cyan-500/40", badgeBg: "bg-cyan-500/15", badgeText: "text-cyan-600 dark:text-cyan-400" },
+    { id: "precos" as SubTab, label: "Preços", Icon: Tag, activeColor: "text-emerald-600 dark:text-emerald-400", activeBg: "bg-emerald-500/10", activeBorder: "border-emerald-500/40", badgeBg: "bg-emerald-500/15", badgeText: "text-emerald-600 dark:text-emerald-400" },
   ];
 
   // Enter confirma os modais abaixo, igual ao clique no mouse.
@@ -1008,23 +708,49 @@ export default function Comercial() {
   useConfirmEnter(!!removerItemPendente, handleRemoverItemConfirm, false);
   useConfirmEnter(!!deleteCliente, handleDeleteCliente, deletingCliente);
 
+  const renderPedidoCard = (p: PedidoCompleto, expandido?: boolean) => (
+    <PedidoCard key={p.id} pedido={p} isAdmin={verTudo} canConfirm={verTudo || isVendedora} clientes={clientes} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)}
+      onReenviar={p => setPedidos(prev => prev.map(x => x.id === p.id ? { ...x, status: "pendente" as const } : x))}
+      onRemoverItemComercial={(pedido, item) => setRemoverItemPendente({ pedido, item })}
+      onEditarPedido={p => { setPedidoAbertoId(null); setEditarPedidoRetorno(p); }}
+      podeEditarDados={podeEditarDados(p)} onEditarDados={setEditarDadosPedido} expandido={expandido} />
+  );
+
+  const chipsStatus: [FiltroStatus, string, number][] = [
+    ["todos", "Todos", pedidos.length],
+    ["pendente", "Aguardando", pedidosPendentes],
+    ["separando", "Em separação", pedidos.filter(p => p.status === "separando").length],
+    ["pronto", "Prontos", pedidos.filter(p => p.status === "pronto").length],
+    ["enviado", "Faturados", pedidos.filter(p => p.status === "faturado" || p.status === "enviado").length],
+    ["retorno", "Voltaram", pedidos.filter(p => p.status === "retorno").length],
+    ["atrasados", "Atrasados", qtdAtrasados],
+    ["cancelado", "Cancelados", pedidos.filter(p => p.status === "cancelado").length],
+  ];
+
   return (
     <div className="flex flex-col h-full bg-transparent">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
-          <div className="flex items-center gap-2">
-            <ShoppingBag className="h-4 w-4 text-violet-500" />
+          <div className="flex items-center gap-2 min-w-0">
+            <ShoppingBag className="h-4 w-4 text-violet-500 shrink-0" />
             <h1 className="text-sm font-semibold">Comercial</h1>
             {!loadingPedidos && pedidosPendentes > 0 && (
-              <span className="flex items-center gap-0.5 bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                <Clock className="h-2.5 w-2.5" />
+              <button type="button" onClick={() => irParaPedidos("pendente", "")} title="Pedidos aguardando confirmação"
+                className="h-8 flex items-center gap-1 bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-xs font-bold px-2.5 rounded-full">
+                <Clock className="h-3.5 w-3.5" />
                 {pedidosPendentes}
-              </span>
+              </button>
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            {user && <NotificacoesBell userId={user.id} />}
+            {canAccess && (
+              <Button size="sm" className="h-9 gap-1.5" onClick={() => abrirNovoPedidoCom(null)}>
+                <Plus className="h-4 w-4" /><span className="hidden min-[400px]:inline">Novo pedido</span><span className="min-[400px]:hidden">Pedido</span>
+              </Button>
+            )}
+            {/* Admin já tem o sino global no AppShell (mesma tabela) — evita sino e toast duplicados */}
+            {user && !isAdmin && <NotificacoesBell userId={user.id} />}
           </div>
         </div>
       </header>
@@ -1038,29 +764,25 @@ export default function Comercial() {
           </div>
         ) : (
           <>
-            {/* Info */}
-            <div className="rounded-xl border bg-violet-500/5 border-violet-500/20 text-violet-700 dark:text-violet-300 px-4 py-3 text-[12px]">
-              Cadastre clientes, visualize peças disponíveis na expedição e crie pedidos de venda. O estoque fatura e as peças saem automaticamente.
-            </div>
-
-            {/* Nav harmonizada */}
             <PageNav
               tabs={COMERCIAL_TABS}
               activeTab={subTab}
-              onTabChange={(tab) => {
-                if (tab === "historico") { setHistoricoOpen(true); return; }
-                setSubTab(tab);
-              }}
+              onTabChange={setSubTab}
               loading={loadingPedidos}
+              ariaLabel="Seções do Comercial"
             />
 
-            {/* ── Aba Dashboard ── */}
+            {/* ── Aba Painel ── */}
             {subTab === "dashboard" && (
               <DashboardComercial
                 pedidos={pedidos}
                 loading={loadingPedidos}
                 currentUserName={currentUserName}
-                isAdmin={verTudo}
+                verTudo={verTudo}
+                meus={meus}
+                onIrPedidos={irParaPedidos}
+                onIrHistorico={irParaHistorico}
+                onAbrirCliente={setHistoricoClienteId}
               />
             )}
 
@@ -1071,27 +793,20 @@ export default function Comercial() {
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="relative flex-1 min-w-[12rem]">
                       <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <input value={buscaPedido} onChange={e => setBuscaPedido(e.target.value)} placeholder="Cliente, nº do pedido, NF ou vendedora..."
-                        className="w-full h-11 pl-9 pr-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                      <input value={buscaPedido} onChange={e => setBuscaPedido(e.target.value)} placeholder="Cliente, nº do pedido, NF ou vendedora..." aria-label="Buscar pedido"
+                        className="w-full h-11 pl-9 pr-9 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                      {buscaPedido && (
+                        <button type="button" onClick={() => setBuscaPedido("")} aria-label="Limpar busca" className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
+                      )}
                     </div>
-                    <Button className="h-11 gap-1.5" onClick={() => { setPedidoComCliente(null); setNovoPedidoOpen(true); }}>
-                      <Plus className="h-4 w-4" /> Novo pedido
-                    </Button>
                   </div>
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-                    {([
-                      ["todos", "Todos", pedidos.length],
-                      ["pendente", "Aguardando", pedidos.filter(p => p.status === "pendente").length],
-                      ["separando", "Em separação", pedidos.filter(p => p.status === "separando").length],
-                      ["pronto", "Prontos", pedidos.filter(p => p.status === "pronto").length],
-                      ["enviado", "Faturados", pedidos.filter(p => p.status === "faturado" || p.status === "enviado").length],
-                      ["retorno", "Voltaram", pedidos.filter(p => p.status === "retorno").length],
-                      ["cancelado", "Cancelados", pedidos.filter(p => p.status === "cancelado").length],
-                    ] as const).map(([id, label, n]) => (
-                      <button key={id} type="button" onClick={() => setFiltroStatus(id)}
+                    {chipsStatus.filter(([id, , n]) => id !== "atrasados" || n > 0 || filtroStatus === id).map(([id, label, n]) => (
+                      <button key={id} type="button" onClick={() => setFiltroStatus(id)} aria-pressed={filtroStatus === id}
                         className={cn("h-9 px-3 rounded-full text-sm font-medium border whitespace-nowrap flex items-center gap-1.5",
                           filtroStatus === id ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:border-primary/40",
-                          id === "retorno" && n > 0 && filtroStatus !== id && "border-orange-500/50 text-orange-700 dark:text-orange-400")}>
+                          id === "retorno" && n > 0 && filtroStatus !== id && "border-orange-500/50 text-orange-700 dark:text-orange-400",
+                          id === "atrasados" && n > 0 && filtroStatus !== id && "border-red-500/50 text-red-700 dark:text-red-400")}>
                         {label}<span className={cn("text-xs tabular-nums", filtroStatus === id ? "opacity-90" : "opacity-70")}>{n}</span>
                       </button>
                     ))}
@@ -1099,10 +814,10 @@ export default function Comercial() {
                   <div className="flex items-center gap-1.5 text-sm">
                     <span className="text-muted-foreground shrink-0">Período</span>
                     <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)} aria-label="De"
-                      className="h-9 min-w-0 rounded-lg border border-input bg-background px-2 text-sm" />
+                      className="h-9 min-w-0 flex-1 sm:flex-none rounded-lg border border-input bg-background px-2 text-sm" />
                     <span className="text-muted-foreground shrink-0">até</span>
                     <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)} aria-label="Até"
-                      className="h-9 min-w-0 rounded-lg border border-input bg-background px-2 text-sm" />
+                      className="h-9 min-w-0 flex-1 sm:flex-none rounded-lg border border-input bg-background px-2 text-sm" />
                     {(filtroDataInicio || filtroDataFim) && (
                       <button type="button" onClick={() => { setFiltroDataInicio(""); setFiltroDataFim(""); }} aria-label="Limpar período"
                         className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground"><X className="h-4 w-4" /></button>
@@ -1111,23 +826,20 @@ export default function Comercial() {
                 </div>
 
                 {loadingPedidos ? (
-                  <div className="flex items-center justify-center py-16"><div className="h-7 w-7 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>
+                  <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando pedidos...</div>
                 ) : pedidosFiltrados.length === 0 ? (
-                  <div className="text-center py-16 space-y-2">
+                  <div className="rounded-2xl border bg-card text-center py-14 px-6 space-y-3">
                     <ShoppingBag className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-                    <p className="text-muted-foreground font-medium">Nenhum pedido encontrado</p>
-                    <button type="button" onClick={() => setNovoPedidoOpen(true)} className="mt-2 inline-flex items-center gap-1.5 h-8 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors">
-                      <Plus className="h-3.5 w-3.5" /> Criar primeiro pedido
-                    </button>
+                    <p className="font-medium">Nenhum pedido encontrado</p>
+                    {(filtroStatus !== "todos" || buscaPedido || filtroDataInicio || filtroDataFim) ? (
+                      <Button variant="outline" onClick={() => { setFiltroStatus("todos"); setBuscaPedido(""); setFiltroDataInicio(""); setFiltroDataFim(""); }}>Limpar filtros</Button>
+                    ) : (
+                      <Button onClick={() => abrirNovoPedidoCom(null)} className="gap-1.5"><Plus className="h-4 w-4" />Criar primeiro pedido</Button>
+                    )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {pedidosFiltrados.map(p => (
-                      <PedidoCard key={p.id} pedido={p} isAdmin={verTudo} canConfirm={verTudo || isVendedora} clientes={clientes} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)}
-                        onReenviar={p => setPedidos(prev => prev.map(x => x.id === p.id ? { ...x, status: "pendente" as const } : x))}
-                        onRemoverItemComercial={(pedido, item) => setRemoverItemPendente({ pedido, item })}
-                        onEditarPedido={p => setEditarPedidoRetorno(p)} />
-                    ))}
+                    {pedidosFiltrados.map(p => renderPedidoCard(p))}
                   </div>
                 )}
               </div>
@@ -1135,66 +847,34 @@ export default function Comercial() {
 
             {/* ── Aba Clientes ── */}
             {subTab === "clientes" && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                    <input
-                      ref={clienteSearchRef}
-                      type="text"
-                      placeholder="Buscar cliente..."
-                      defaultValue=""
-                      onChange={e => {
-                        if (clienteSearchDebounce.current) clearTimeout(clienteSearchDebounce.current);
-                        const v = e.target.value;
-                        clienteSearchDebounce.current = setTimeout(() => setClienteSearchFilter(v), 300);
-                      }}
-                      className="pl-9 pr-8 h-9 w-full text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    />
-                    {clienteSearchFilter && (
-                      <button type="button" onClick={() => { if (clienteSearchRef.current) clienteSearchRef.current.value = ""; setClienteSearchFilter(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  {verTudo && qtdDuplicados > 0 && (
-                    <Button size="sm" variant="outline" className="h-9 gap-1.5 text-xs rounded-lg shrink-0 border-amber-500/40 text-amber-700 dark:text-amber-400" onClick={() => setDuplicadosOpen(true)} title="Cadastros com o mesmo CPF/CNPJ ou nome">
-                      <Users className="h-3.5 w-3.5" /> {qtdDuplicados} repetido{qtdDuplicados > 1 ? "s" : ""}
-                    </Button>
-                  )}
-                  <Button size="sm" className="h-9 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setEditCliente(null); setClienteModal(true); }}>
-                    <UserPlus className="h-3.5 w-3.5" /> Novo
-                  </Button>
-                </div>
+              <ClientesPanel
+                clientes={clientes}
+                pedidos={pedidos}
+                loading={loadingClientes}
+                isAdmin={isAdmin}
+                verTudo={verTudo}
+                qtdDuplicados={qtdDuplicados}
+                onNovo={() => { setEditCliente(null); setClienteModal(true); }}
+                onEditar={cl => { setEditCliente(cl); setClienteModal(true); }}
+                onExcluir={setDeleteCliente}
+                onPedido={cl => abrirNovoPedidoCom(cl)}
+                onDetalhe={cl => setHistoricoClienteId(cl.id)}
+                onDuplicados={() => setDuplicadosOpen(true)}
+              />
+            )}
 
-                {loadingClientes ? (
-                  <div className="flex items-center justify-center py-16"><div className="h-7 w-7 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>
-                ) : clientesFiltrados.length === 0 ? (
-                  <div className="text-center py-16 space-y-2">
-                    <User className="h-10 w-10 text-muted-foreground/30 mx-auto" />
-                    <p className="text-muted-foreground font-medium">{clienteSearchFilter ? "Nenhum cliente encontrado" : "Nenhum cliente cadastrado"}</p>
-                    {!clienteSearchFilter && (
-                      <button type="button" onClick={() => { setEditCliente(null); setClienteModal(true); }} className="mt-2 inline-flex items-center gap-1.5 h-8 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold transition-colors">
-                        <UserPlus className="h-3.5 w-3.5" /> Cadastrar primeiro cliente
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                    {clientesFiltrados.map(c => (
-                      <ClienteCard
-                        key={c.id}
-                        cliente={c}
-                        isAdmin={isAdmin}
-                        onPedido={(cl) => { setPedidoComCliente(cl); setNovoPedidoOpen(true); setSubTab("pedidos"); }}
-                        onEditar={(cl) => { setEditCliente(cl); setClienteModal(true); }}
-                        onExcluir={setDeleteCliente}
-                        onHistorico={(cl) => setHistoricoClienteId(cl.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+            {/* ── Aba Histórico ── */}
+            {subTab === "historico" && (
+              <HistoricoPanel
+                key={filtroHist.key}
+                pedidos={pedidos}
+                loading={loadingPedidos}
+                verTudo={verTudo}
+                meus={meus}
+                inicial={filtroHist.f}
+                onAbrirPedido={p => setPedidoAbertoId(p.id)}
+                onMovimentacoes={() => setMovimentacoesOpen(true)}
+              />
             )}
 
             {/* ── Aba Tabela de Preços ── */}
@@ -1206,16 +886,26 @@ export default function Comercial() {
       </div>
       </main>
 
+      {/* ── Pedido aberto (do Histórico / detalhe do cliente) ── */}
+      <Dialog open={!!pedidoAberto} onOpenChange={v => !v && setPedidoAbertoId(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden p-3 sm:p-4 gap-3 grid-cols-[minmax(0,1fr)]">
+          <DialogHeader className="text-left px-1 pt-1">
+            <DialogTitle>Pedido #{pedidoAberto?.id.slice(0, 8).toUpperCase()}</DialogTitle>
+            <DialogDescription>{pedidoAberto ? new Date(pedidoAberto.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : ""}</DialogDescription>
+          </DialogHeader>
+          {pedidoAberto && renderPedidoCard(pedidoAberto, true)}
+        </DialogContent>
+      </Dialog>
+
       {/* ── Modais ── */}
       <Suspense fallback={null}>
         <NovoPedidoModal
           open={novoPedidoOpen || !!editarPedidoRetorno}
           onClose={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); setDuplicandoPedido(null); setEditarPedidoRetorno(null); }}
-          onSuccess={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); setDuplicandoPedido(null); setEditarPedidoRetorno(null); loadPedidos(); refetchStock(); }}
+          onSuccess={() => { setNovoPedidoOpen(false); setPedidoComCliente(null); setDuplicandoPedido(null); setEditarPedidoRetorno(null); loadPedidos(); }}
           clienteFixo={pedidoComCliente}
           duplicarDe={duplicandoPedido}
           editarPedido={editarPedidoRetorno}
-          expedicaoItems={expedicaoItems}
         />
       </Suspense>
 
@@ -1232,99 +922,97 @@ export default function Comercial() {
         <FaturarModal
           pedido={faturarPedido}
           onClose={() => setFaturarPedido(null)}
-          onSuccess={() => { setFaturarPedido(null); loadPedidos(); refetchStock(); }}
+          onSuccess={() => { setFaturarPedido(null); loadPedidos(); }}
         />
       </Suspense>
 
       <Suspense fallback={null}>
         <AdicionarPecaModal
           pedido={adicionarPecaPedido}
-          expedicaoItems={expedicaoItems}
           onClose={() => setAdicionarPecaPedido(null)}
-          onSuccess={() => { setAdicionarPecaPedido(null); loadPedidos(); refetchStock(); }}
+          onSuccess={() => { setAdicionarPecaPedido(null); loadPedidos(); }}
+        />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <EditarDadosPedidoDialog
+          pedido={editarDadosPedido}
+          cliente={editarDadosPedido ? clientes.find(c => c.id === editarDadosPedido.cliente_id) ?? null : null}
+          onClose={() => setEditarDadosPedido(null)}
+          onSalvo={p => { setPedidos(prev => prev.map(x => x.id === p.id ? p : x)); setEditarDadosPedido(null); }}
         />
       </Suspense>
 
       {/* Cancelar pedido */}
-      {cancelarPedido && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0"><Ban className="h-4 w-4 text-destructive" /></div>
-              <div>
-                <p className="text-sm font-semibold">Cancelar pedido?</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">{cancelarPedido.cliente_nome}</p>
-              </div>
-            </div>
-            <p className="text-[12px] text-muted-foreground">As peças reservadas voltarão a ficar disponíveis na expedição.</p>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setCancelarPedido(null)} disabled={cancelando} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Voltar</button>
-              <button type="button" onClick={handleCancelar} disabled={cancelando} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
-                {cancelando ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
-                Cancelar pedido
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertDialog open={!!cancelarPedido} onOpenChange={v => { if (!v && !cancelando) setCancelarPedido(null); }}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><Ban className="h-4 w-4 text-destructive" />Cancelar pedido?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong className="text-foreground">{cancelarPedido?.cliente_nome}</strong><br />
+              As peças reservadas voltarão a ficar disponíveis na expedição.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row gap-2">
+            <AlertDialogCancel disabled={cancelando} className="flex-1 mt-0 h-11">Voltar</AlertDialogCancel>
+            <AlertDialogAction disabled={cancelando} onClick={e => { e.preventDefault(); handleCancelar(); }} className="flex-1 h-11 gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {cancelando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}Cancelar pedido
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Excluir cliente */}
-      {deleteCliente && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0"><Trash2 className="h-4 w-4 text-destructive" /></div>
-              <div>
-                <p className="text-sm font-semibold">Excluir cliente?</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">{deleteCliente.nome}</p>
-              </div>
-            </div>
-            <p className="text-[12px] text-muted-foreground">{isAdmin ? "Como admin, você pode excluir este cliente mesmo que tenha pedidos vinculados. Os pedidos também serão removidos." : "Clientes com pedidos vinculados não podem ser excluídos."}</p>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setDeleteCliente(null)} disabled={deletingCliente} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
-              <button type="button" onClick={handleDeleteCliente} disabled={deletingCliente} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
-                {deletingCliente ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertDialog open={!!deleteCliente} onOpenChange={v => { if (!v && !deletingCliente) setDeleteCliente(null); }}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><Trash2 className="h-4 w-4 text-destructive" />Excluir cliente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong className="text-foreground">{deleteCliente?.nome}</strong><br />
+              {isAdmin ? "Como admin, você pode excluir este cliente mesmo que tenha pedidos vinculados. Os pedidos também serão removidos." : "Clientes com pedidos vinculados não podem ser excluídos."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row gap-2">
+            <AlertDialogCancel disabled={deletingCliente} className="flex-1 mt-0 h-11">Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={deletingCliente} onClick={e => { e.preventDefault(); handleDeleteCliente(); }} className="flex-1 h-11 gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deletingCliente ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Remover item de pedido pendente */}
-      {removerItemPendente && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
-                <X className="h-4 w-4 text-destructive" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">Remover peça do pedido?</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5">{removerItemPendente.item.device_model}</p>
-              </div>
-            </div>
-            <p className="text-[12px] text-muted-foreground">{removerItemPendente.item.quantidade} un. voltam ao estoque disponível.</p>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setRemoverItemPendente(null)} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
-              <button type="button" onClick={handleRemoverItemConfirm} className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors flex items-center justify-center gap-1.5">
-                <X className="h-3.5 w-3.5" /> Remover
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertDialog open={!!removerItemPendente} onOpenChange={v => { if (!v) setRemoverItemPendente(null); }}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><X className="h-4 w-4 text-destructive" />Remover peça do pedido?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong className="text-foreground">{removerItemPendente?.item.device_model}</strong><br />
+              {removerItemPendente?.item.quantidade} un. voltam ao estoque disponível.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row gap-2">
+            <AlertDialogCancel className="flex-1 mt-0 h-11">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={e => { e.preventDefault(); handleRemoverItemConfirm(); }} className="flex-1 h-11 gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <X className="h-4 w-4" />Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      {/* Histórico Geral */}
+      {/* Cadastros repetidos e movimentações da expedição */}
       <Suspense fallback={null}>
         <DuplicadosClientesDialog open={duplicadosOpen} onClose={() => setDuplicadosOpen(false)} clientes={clientes} onMesclado={() => { loadClientes(); loadPedidos(); }} />
-        <HistoricoGeralModal open={historicoOpen} onClose={() => setHistoricoOpen(false)} isAdmin={verTudo} />
+        <HistoricoGeralModal open={movimentacoesOpen} onClose={() => setMovimentacoesOpen(false)} isAdmin={verTudo} />
       </Suspense>
       <Suspense fallback={null}>
         <HistoricoClienteModal
           clienteId={historicoClienteId}
           clientes={clientes}
           onClose={() => setHistoricoClienteId(null)}
+          onEditar={cl => { setEditCliente(cl); setClienteModal(true); }}
+          onNovoPedido={cl => abrirNovoPedidoCom(cl)}
+          onAbrirPedido={id => { setHistoricoClienteId(null); setPedidoAbertoId(id); }}
         />
       </Suspense>
       <Suspense fallback={null}>

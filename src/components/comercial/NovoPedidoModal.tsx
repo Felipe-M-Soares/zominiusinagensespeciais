@@ -21,23 +21,22 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { useStock } from "@/hooks/useStock";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { temPapel } from "@/types/roles";
 import { parseValor } from "@/lib/financeiro";
 import { ClienteModal } from "@/components/comercial/ClienteModal";
+import { carregarCatalogoVenda, filtrarCatalogo, type PecaCatalogo } from "@/lib/catalogoVenda";
 import type { Cliente, PedidoItem, PedidoCompleto } from "@/types/comercial";
 
-type ItemEstoque = ReturnType<typeof useStock>["items"][0];
 
 interface NovoPedidoModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
   clienteFixo?: Cliente | null;
-  expedicaoItems: ItemEstoque[];
   duplicarDe?: PedidoCompleto | null;
   editarPedido?: PedidoCompleto | null;
 }
@@ -52,8 +51,10 @@ const PAGAMENTOS = [
 interface Preco { venda: number; descMax: number }
 interface InfoCliente { vencido: number; credito: number; ultimoPedido: string | null; compradas: Map<string, number> }
 
-export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedicaoItems, duplicarDe, editarPedido }: NovoPedidoModalProps) {
-  const { user } = useAuth();
+export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, duplicarDe, editarPedido }: NovoPedidoModalProps) {
+  const { user, role } = useAuth();
+  // Admin, financeiro e gerente podem passar do desconto máximo (o banco aplica a mesma regra).
+  const liberaDesconto = temPapel(role, "financeiro");
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clienteId, setClienteId] = useState("");
   const [buscaCliente, setBuscaCliente] = useState("");
@@ -61,6 +62,8 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
   const [novoCliente, setNovoCliente] = useState(false);
 
   const [precos, setPrecos] = useState<Map<string, Preco>>(new Map());
+  const [catalogoBase, setCatalogoBase] = useState<PecaCatalogo[]>([]);
+  const [carregandoPecas, setCarregandoPecas] = useState(false);
   const [favoritas, setFavoritas] = useState<Set<string>>(new Set());
   const [buscaPeca, setBuscaPeca] = useState("");
   const [filtro, setFiltro] = useState<"todas" | "compradas" | "favoritas">("todas");
@@ -83,17 +86,14 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
     if (!open) return;
     supabase.from("clientes").select("*").order("nome").then(({ data }) => setClientes((data as Cliente[]) ?? []));
     supabase.from("peca_favoritas").select("device_id").then(({ data }) => setFavoritas(new Set((data ?? []).map((r: { device_id: string }) => r.device_id))));
-    (async () => {
-      const m = new Map<string, Preco>();
-      for (let de = 0; de < 50000; de += 1000) {
-        const { data, error } = await supabase.from("devices").select("id,preco_venda,desconto_max_pct").range(de, de + 999);
-        if (error) { toast.error("Não foi possível carregar os preços."); break; }
-        (data ?? []).forEach((r: { id: string; preco_venda: number | null; desconto_max_pct: number | null }) =>
-          m.set(r.id, { venda: Number(r.preco_venda ?? 0), descMax: Number(r.desconto_max_pct ?? 0) }));
-        if ((data?.length ?? 0) < 1000) break;
-      }
-      setPrecos(m);
-    })();
+    setCarregandoPecas(true);
+    carregarCatalogoVenda()
+      .then(lista => {
+        setCatalogoBase(lista);
+        setPrecos(new Map(lista.map(p => [p.device_id, { venda: p.preco_venda, descMax: p.desconto_max_pct }])));
+      })
+      .catch(() => toast.error("Não foi possível carregar as peças."))
+      .finally(() => setCarregandoPecas(false));
   }, [open]);
 
   // Reset / preenchimento ao abrir
@@ -172,32 +172,32 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
 
   // ── Catálogo ───────────────────────────────────────────────────────────────
   const noCarrinho = useCallback((stockId: string) => itens.filter(i => i.stock_item_id === stockId).reduce((s, i) => s + i.quantidade, 0), [itens]);
+  // Saldo que este pedido já tinha reservado (na edição, o banco libera antes de reservar de novo).
+  const reservaPropria = useCallback((stockId: string | null) =>
+    stockId && editarPedido ? editarPedido.itens.filter(i => i.stock_item_id === stockId).reduce((s, i) => s + i.quantidade, 0) : 0, [editarPedido]);
+  const livre = useCallback((p: PecaCatalogo) => p.stock_item_id ? p.disponivel + reservaPropria(p.stock_item_id) : 0, [reservaPropria]);
   const catalogo = useMemo(() => {
-    // uma linha por peça (o item de expedição com mais saldo)
-    const porDevice = new Map<string, ItemEstoque>();
-    for (const i of expedicaoItems) {
-      const atual = porDevice.get(i.device_id);
-      if (!atual || i.quantity_available > atual.quantity_available) porDevice.set(i.device_id, i);
-    }
-    const termos = norm(buscaPeca.trim()).split(/\s+/).filter(Boolean);
-    return [...porDevice.values()]
+    return filtrarCatalogo(catalogoBase, buscaPeca)
       .filter(i => filtro !== "compradas" || info?.compradas.has(i.device_id))
       .filter(i => filtro !== "favoritas" || favoritas.has(i.device_id))
-      .filter(i => !termos.length || termos.every(t => norm(`${i.device?.model ?? ""} ${i.device?.reference ?? ""} ${i.device?.internal_code ?? ""}`).includes(t)))
-      .sort((a, b) => Number(favoritas.has(b.device_id)) - Number(favoritas.has(a.device_id)) || (a.device?.model ?? "").localeCompare(b.device?.model ?? ""))
-      .slice(0, 150);
-  }, [expedicaoItems, buscaPeca, filtro, favoritas, info]);
+      .sort((a, b) => Number(favoritas.has(b.device_id)) - Number(favoritas.has(a.device_id))
+        || Number(livre(b) > 0) - Number(livre(a) > 0)
+        || (a.model ?? "").localeCompare(b.model ?? ""))
+      .slice(0, 200);
+  }, [catalogoBase, buscaPeca, filtro, favoritas, info, livre]);
 
-  function adicionar(i: ItemEstoque, qtd = 1) {
-    const disp = i.quantity_available - noCarrinho(i.id);
+  function adicionar(i: PecaCatalogo, qtd = 1) {
+    if (!i.stock_item_id) return;
+    const disp = livre(i) - noCarrinho(i.stock_item_id);
     if (disp <= 0) { toast.error("Sem saldo disponível na expedição."); return; }
     const q = Math.min(qtd, disp);
+    const sid = i.stock_item_id;
     setItens(prev => {
-      const idx = prev.findIndex(x => x.stock_item_id === i.id);
+      const idx = prev.findIndex(x => x.stock_item_id === sid);
       if (idx >= 0) return prev.map((x, j) => j === idx ? { ...x, quantidade: x.quantidade + q } : x);
       return [...prev, {
-        stock_item_id: i.id, device_id: i.device_id, lote: "", quantidade: q,
-        device_model: i.device?.model ?? "", device_reference: i.device?.reference ?? "",
+        stock_item_id: sid, device_id: i.device_id, lote: "", quantidade: q,
+        device_model: i.model ?? "", device_reference: i.reference ?? "",
         preco_unitario: precos.get(i.device_id)?.venda ?? 0, desconto_pct: 0,
       }];
     });
@@ -205,8 +205,8 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
   function mudarQtd(idx: number, q: number) {
     setItens(prev => prev.map((x, j) => {
       if (j !== idx) return x;
-      const est = expedicaoItems.find(e => e.id === x.stock_item_id);
-      const max = est ? est.quantity_available - (noCarrinho(x.stock_item_id) - x.quantidade) : x.quantidade;
+      const est = catalogoBase.find(e => e.stock_item_id === x.stock_item_id);
+      const max = est ? livre(est) - (noCarrinho(x.stock_item_id) - x.quantidade) : x.quantidade;
       const nova = Math.max(1, Math.min(q || 1, Math.max(1, max)));
       if ((q || 1) > max) toast.error(`Disponível: ${max} un.`);
       return { ...x, quantidade: nova };
@@ -216,7 +216,7 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
     setItens(prev => prev.map((x, j) => {
       if (j !== idx) return x;
       const v = Math.max(0, Number(txt.replace(",", ".")) || 0);
-      const max = x.device_id ? precos.get(x.device_id)?.descMax ?? 0 : 0;
+      const max = liberaDesconto ? 100 : x.device_id ? precos.get(x.device_id)?.descMax ?? 0 : 0;
       if (v > max) toast.error(`Desconto máximo desta peça: ${max}%`, { id: `desc-${x.stock_item_id}` });
       return { ...x, desconto_pct: Math.min(v, max) };
     }));
@@ -358,28 +358,32 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
       <ul className="divide-y rounded-xl border max-h-[26rem] overflow-y-auto">
         {catalogo.map(i => {
           const p = precos.get(i.device_id);
-          const disp = i.quantity_available - noCarrinho(i.id);
+          const disp = livre(i) - noCarrinho(i.stock_item_id ?? "");
           const jaComprou = info?.compradas.get(i.device_id);
           return (
-            <li key={i.id} className="flex items-center gap-2 px-3 py-2.5">
-              <button type="button" onClick={() => toggleFavorita(i.device_id)} aria-label="Favorita" className="shrink-0">
+            <li key={i.device_id} className={cn("flex items-center gap-2 px-3 py-2.5", disp <= 0 && "bg-muted/30")}>
+              <button type="button" onClick={() => toggleFavorita(i.device_id)} aria-label="Favorita" className="shrink-0 h-8 w-6 flex items-center justify-center">
                 <Star className={cn("h-4 w-4", favoritas.has(i.device_id) ? "fill-amber-400 text-amber-400" : "text-muted-foreground/40")} />
               </button>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate">{i.device?.model}</p>
-                <p className="text-xs text-muted-foreground truncate">{i.device?.reference}{jaComprou ? ` · última compra: ${jaComprou} un.` : ""}</p>
+                <p className={cn("text-sm font-medium truncate", disp <= 0 && "text-muted-foreground")}>{i.model}</p>
+                <p className="text-xs text-muted-foreground truncate">{[i.reference, i.internal_code && i.internal_code !== i.reference ? i.internal_code : null].filter(Boolean).join(" · ")}{jaComprou ? ` · última compra: ${jaComprou} un.` : ""}</p>
               </div>
-              <div className="text-right shrink-0">
+              <div className="text-right shrink-0 max-w-[45%]">
                 <p className={cn("text-sm font-semibold tabular-nums", !p?.venda && "text-amber-600")}>{p?.venda ? brl(p.venda) : "sem preço"}</p>
-                <p className={cn("text-xs", disp > 0 ? "text-muted-foreground" : "text-red-600")}>{disp > 0 ? `${disp} disp.` : "sem saldo"}</p>
+                <p className={cn("text-xs", disp > 0 ? "text-muted-foreground" : "text-red-600")}>
+                  {disp > 0 ? `${disp} disp.` : i.em_producao > 0 ? `sem saldo · ${i.em_producao} em produção` : "sem saldo na expedição"}
+                </p>
               </div>
-              <Button size="icon" className="h-10 w-10 shrink-0" disabled={disp <= 0} onClick={() => adicionar(i, jaComprou && !noCarrinho(i.id) ? Math.min(jaComprou, disp) : 1)} aria-label={`Adicionar ${i.device?.model}`}>
+              <Button size="icon" className="h-10 w-10 shrink-0" disabled={disp <= 0} onClick={() => adicionar(i, jaComprou && !noCarrinho(i.stock_item_id ?? "") ? Math.min(jaComprou, disp) : 1)} aria-label={`Adicionar ${i.model}`}>
                 <Plus className="h-4 w-4" />
               </Button>
             </li>
           );
         })}
-        {!catalogo.length && <li className="px-3 py-8 text-sm text-center text-muted-foreground">{expedicaoItems.length ? "Nenhuma peça encontrada." : "Nenhuma peça com saldo na expedição."}</li>}
+        {!catalogo.length && <li className="px-3 py-8 text-sm text-center text-muted-foreground">
+          {carregandoPecas ? "Carregando peças..." : !catalogoBase.length ? "Nenhuma peça cadastrada em Componentes." : filtro !== "todas" ? "Nenhuma peça neste filtro — toque em \"Todas\"." : "Nenhuma peça encontrada com esse nome, referência ou código."}
+        </li>}
       </ul>
     </section>
   );
@@ -480,12 +484,12 @@ export function NovoPedidoModal({ open, onClose, onSuccess, clienteFixo, expedic
       </header>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-7xl mx-auto p-3 sm:p-5 grid gap-4 lg:grid-cols-[1fr_420px]">
-          <div className={cn("space-y-4", etapaMobile === "revisar" && "hidden lg:block")}>
+        <div className="max-w-7xl mx-auto p-3 sm:p-5 grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+          <div className={cn("min-w-0 space-y-4", etapaMobile === "revisar" && "hidden lg:block")}>
             {blocoCliente}
             {(cliente || editarPedido) && blocoCatalogo}
           </div>
-          <div className={cn("space-y-4", etapaMobile === "montar" && "hidden lg:block")}>
+          <div className={cn("min-w-0 space-y-4", etapaMobile === "montar" && "hidden lg:block")}>
             {blocoCarrinho}
             {blocoCondicoes}
           </div>

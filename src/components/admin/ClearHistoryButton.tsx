@@ -89,14 +89,16 @@ export function ClearHistoryButton({
         type="button"
         onClick={() => setConfirmOpen(true)}
         title={confirmTitle}
+        aria-label={label}
         className={cn(
-          "h-8 px-3 rounded-xl border border-destructive/30 text-[12px] text-destructive font-medium",
+          "h-8 px-2.5 sm:px-3 rounded-xl border border-destructive/30 text-[12px] text-destructive font-medium",
           "hover:bg-destructive/10 transition-colors flex items-center gap-1.5 shrink-0",
           className
         )}
       >
         <Trash2 className="h-3.5 w-3.5" />
-        {label}
+        {/* No celular só o ícone (o cabeçalho das páginas é estreito). */}
+        <span className="hidden sm:inline">{label}</span>
       </button>
 
       {confirmOpen && createPortal(
@@ -123,7 +125,7 @@ export function ClearHistoryButton({
                 placeholder="EXCLUIR"
                 autoFocus
                 disabled={clearing}
-                className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-destructive/30"
+                className="w-full h-11 rounded-xl border border-border bg-background px-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-destructive/30"
               />
             </div>
             <div className="flex gap-2">
@@ -131,7 +133,7 @@ export function ClearHistoryButton({
                 type="button"
                 onClick={closeModal}
                 disabled={clearing}
-                className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
+                className="flex-1 h-11 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
               >
                 Cancelar
               </button>
@@ -139,7 +141,7 @@ export function ClearHistoryButton({
                 type="button"
                 onClick={handleClear}
                 disabled={clearing || typed !== "EXCLUIR"}
-                className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="flex-1 h-11 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {clearing
                   ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />

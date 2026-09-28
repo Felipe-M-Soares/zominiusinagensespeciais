@@ -1,477 +1,262 @@
-import { Package, TrendingDown, Wrench, ArrowDownCircle, ArrowUpCircle, Truck, Activity, PackageCheck, X } from "lucide-react";
-import type { StockItem, AllMovement } from "@/hooks/useStock";
-import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+/**
+ * StockDashboard — aba "Visão geral" do Estoque.
+ *
+ *  - KPIs clicáveis: saldo por fase, abaixo do mínimo, pedidos para separar
+ *  - Ações rápidas grandes: Entrada, Retirada, Mover p/ Expedição, Separar pedido
+ *  - Pesquisa geral (todas as fases, lotes e reservas)
+ *  - Precisa de atenção (estoque baixo) + últimas movimentações
+ *  - Distribuição da expedição por peça
+ *
+ * Os números vêm dos dados já carregados pela página (RPC load_stock_page) —
+ * antes o painel refazia várias consultas pesadas por conta própria.
+ */
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity, AlertTriangle, ArrowDownCircle, ArrowUpCircle, ChevronRight, ClipboardList,
+  Package, ShoppingBag, Truck, Wrench,
+} from "lucide-react";
+import type { AllMovement, StockItem } from "@/hooks/useStock";
 import { fetchAllMovements } from "@/hooks/useStock";
-import { supabase } from "@/integrations/supabase/client";
-import { StockGlobalSearch } from "@/components/stock/StockGlobalSearch";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { StockGlobalSearch } from "./StockGlobalSearch";
+import { LIMITE_EXPEDICAO_BAIXA } from "./EstoqueDialogs";
+import { FASE_CFG, abaixoDoMinimo, fmtDataHora, fmtNum, saldoUtil } from "./estoqueUi";
+import type { ActiveView } from "./StockNav";
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { toast } from "sonner";
+type QtyByFase = {
+  intermediaria: number; expedicao: number; retrabalho: number;
+  count_intermediaria: number; count_expedicao: number; count_retrabalho: number;
+};
 
 interface Props {
   items: StockItem[];
+  qtyByFase: QtyByFase;
+  loteMap: Map<string, number>;
   loading: boolean;
-  onEstoqueBaixo?: () => void;
+  pedidosParaSeparar: number;
+  onIrPara: (v: ActiveView) => void;
+  onEstoqueBaixo: () => void;
+  onAcaoRapida: (a: "entrada" | "saida" | "transferir") => void;
+  onAbrirItem: (i: StockItem) => void;
 }
 
-interface KpiCardProps {
-  icon: React.ElementType;
-  label: string;
-  value: number | string;
-  color: string;
-  bg: string;
-  border: string;
-  description?: string;
-  onClick?: () => void;
-}
-
-function KpiCard({ icon: Icon, label, value, color, bg, border, description, onClick }: KpiCardProps) {
-  return (
-    <div
-      className={cn(
-        "rounded-2xl border p-4 flex items-start gap-3",
-        bg,
-        border,
-        onClick && "cursor-pointer hover:brightness-110 transition-all active:scale-[0.98]"
-      )}
-      onClick={onClick}
-    >
-      <div className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0", bg)}>
-        <Icon className={cn("h-5 w-5", color)} />
-      </div>
-      <div>
-        <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
-        <p className={cn("text-2xl font-bold tabular-nums", color)}>{value}</p>
-        {description && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{description}</p>}
-      </div>
-    </div>
-  );
-}
-
-interface LoteBaixo {
-  device_id: string;
-  device_model: string;
-  quantity: number;
-}
-
-interface EstoqueBaixoModalProps {
-  open: boolean;
-  onClose: () => void;
-  lotes: LoteBaixo[];
-}
-
-function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
-  if (!open) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
-          <div className="flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-warning" />
-            <p className="text-sm font-semibold">Lotes com Estoque Baixo na Expedição</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-muted/40 transition-colors"
-          >
-            <X className="h-4 w-4 text-muted-foreground" />
-          </button>
-        </div>
-
-        <div className="max-h-96 overflow-y-auto divide-y divide-border/20">
-          {lotes.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground/60">
-              Nenhum lote com estoque baixo
-            </div>
-          ) : (
-            lotes.map((lote, idx) => (
-              <div key={idx} className="flex items-center justify-between px-5 py-3 hover:bg-muted/10 transition-colors">
-                <p className="text-[13px] font-medium truncate flex-1 pr-4">{lote.device_model}</p>
-                <span className={cn(
-                  "text-sm font-bold tabular-nums px-2.5 py-0.5 rounded-lg",
-                  lote.quantity === 0 ? "text-red-500 bg-red-500/10" : "text-warning bg-warning/10"
-                )}>
-                  {lote.quantity} un.
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="px-5 py-3 border-t border-border/40 bg-muted/10">
-          <p className="text-[11px] text-muted-foreground/60">
-            {lotes.length} {lotes.length === 1 ? "lote abaixo" : "lotes abaixo"} de 100 unidades na expedição (incluindo zerados)
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function StockDashboard({ loading, onEstoqueBaixo }: Props) {
+export function StockDashboard({
+  items, qtyByFase, loteMap, loading, pedidosParaSeparar, onIrPara, onEstoqueBaixo, onAcaoRapida, onAbrirItem,
+}: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [movLoading, setMovLoading] = useState(true);
-  const [pedidosSeparando, setPedidosSeparando] = useState(0);
-  const [totalExpedicao, setTotalExpedicao] = useState(0);
-  const [totalRetrabalho, setTotalRetrabalho] = useState(0);
-  const [totalTipos, setTotalTipos] = useState(0);
-  const [lotesExpedicao, setLotesExpedicao] = useState(0);
-  const [lotesRetrabalho, setLotesRetrabalho] = useState(0);
-  const [lotesBaixo, setLotesBaixo] = useState<LoteBaixo[]>([]);
-  const [modalBaixoOpen, setModalBaixoOpen] = useState(false);
-  const [giroData, setGiroData] = useState<{ name: string; giro: number; color: string }[]>([]);
-  const alertedRef = useRef(false);
-
-  // Realtime: notifica quando estoque baixo aparece pela primeira vez nesta sessão
-  useEffect(() => {
-    if (lotesBaixo.length > 0 && !alertedRef.current) {
-      alertedRef.current = true;
-      toast.warning(
-        `${lotesBaixo.length} ${lotesBaixo.length === 1 ? "produto" : "produtos"} com estoque baixo na expedição.`,
-        { duration: 6000, action: { label: "Ver", onClick: () => onEstoqueBaixo?.() } }
-      );
-    }
-  }, [lotesBaixo, onEstoqueBaixo]);
 
   useEffect(() => {
     let cancelled = false;
-    setMovLoading(true);
-    // Busca mais para compensar os filtrados; exclui movimentos comerciais e financeiros
     fetchAllMovements(50).then(data => {
-      if (!cancelled) {
-        const soEstoque = data.filter(m => {
-          const r = m.reason ?? "";
-          // Exclui saídas de pedido comercial (separação concluída)
-          if (r.startsWith("Pedido comercial")) return false;
-          // Exclui faturamentos (NF emitida pelo financeiro)
-          if (/^NF\s/i.test(r)) return false;
-          return true;
-        }).slice(0, 10);
-        setMovements(soEstoque);
-        setMovLoading(false);
-      }
+      if (cancelled) return;
+      // Mostra só o que é do estoque: tira baixas de pedido comercial e de NF
+      setMovements(data.filter(m => {
+        const r = m.reason ?? "";
+        return !r.startsWith("Pedido comercial") && !/^NF\s/i.test(r);
+      }).slice(0, 8));
+      setMovLoading(false);
     }).catch(() => { if (!cancelled) setMovLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    supabase
-      .from("pedidos_comerciais")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "separando")
-      .then(({ count }) => setPedidosSeparando(count ?? 0));
+  const r = useMemo(() => {
+    const porFase = (f: StockItem["fase"]) => items.filter(i => i.fase === f);
+    const exp = porFase("expedicao");
+    const soma = (arr: StockItem[], k: "quantity" | "quantity_reserved") => arr.reduce((s, i) => s + (i[k] ?? 0), 0);
+    const lotesDe = (arr: StockItem[]) => arr.reduce((s, i) => s + (loteMap.get(i.id) ?? 0), 0);
+    const abaixoMin = items.filter(abaixoDoMinimo);
+    const expBaixa = exp.filter(i => i.quantity < LIMITE_EXPEDICAO_BAIXA);
+    const topExp = [...exp].filter(i => i.quantity > 0).sort((a, b) => b.quantity - a.quantity).slice(0, 8);
+    const atencao = [...abaixoMin, ...expBaixa.filter(i => !abaixoMin.includes(i))]
+      .sort((a, b) => saldoUtil(a) - saldoUtil(b)).slice(0, 6);
+    return {
+      inter: { un: qtyByFase.intermediaria || soma(porFase("intermediaria"), "quantity"), tipos: qtyByFase.count_intermediaria || porFase("intermediaria").length, lotes: lotesDe(porFase("intermediaria")) },
+      exp: { un: qtyByFase.expedicao || soma(exp, "quantity"), tipos: qtyByFase.count_expedicao || exp.length, lotes: lotesDe(exp), reservado: soma(exp, "quantity_reserved") },
+      ret: { un: qtyByFase.retrabalho || soma(porFase("retrabalho"), "quantity"), tipos: qtyByFase.count_retrabalho || porFase("retrabalho").filter(i => i.quantity > 0).length, lotes: lotesDe(porFase("retrabalho")) },
+      abaixoMin: abaixoMin.length,
+      expBaixa: expBaixa.length,
+      topExp,
+      maxExp: Math.max(1, ...topExp.map(i => i.quantity)),
+      atencao,
+    };
+  }, [items, qtyByFase, loteMap]);
 
-    async function loadTotals() {
-      const PAGE_SIZE = 1000;
+  const pl = (n: number, s: string, p: string) => `${fmtNum(n)} ${n === 1 ? s : p}`;
+  const itemPorId = useMemo(() => new Map(items.map(i => [i.id, i])), [items]);
 
-      // 1. Busca todos os stock_items
-      let allRows: { id: string; device_id: string; quantity: number; fase: string }[] = [];
-      let page = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("stock_items")
-          .select("id, device_id, quantity, fase")
-          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
-        if (error || !data || data.length === 0) break;
-        allRows = allRows.concat(data as { id: string; device_id: string; quantity: number; fase: string }[]);
-        if (data.length < PAGE_SIZE) break;
-        page++;
-      }
-
-      if (!allRows.length) return;
-
-      // 2. Agrupa por fase
-      let exped = 0, retrab = 0;
-      const tiposSet = new Set<string>();
-      const expByDevice = new Map<string, number>();
-      const expedicaoItemIds: string[] = [];
-      const retrabalhoItemIds: string[] = [];
-
-      for (const row of allRows) {
-        const qty = (row.quantity as number) ?? 0;
-        const fase = row.fase as string;
-        const deviceId = row.device_id as string;
-        tiposSet.add(deviceId);
-
-        if (fase === "expedicao") {
-          exped += qty;
-          expByDevice.set(deviceId, (expByDevice.get(deviceId) ?? 0) + qty);
-          expedicaoItemIds.push(row.id);
-        } else if (fase === "retrabalho") {
-          retrab += qty;
-          retrabalhoItemIds.push(row.id);
-        }
-      }
-
-      // 3. Conta lotes distintos com saldo > 0 na expedição
-      async function countLotesComSaldo(itemIds: string[]): Promise<number> {
-        if (itemIds.length === 0) return 0;
-        const BATCH = 500;
-        const movMap = new Map<string, number>();
-        for (let i = 0; i < itemIds.length; i += BATCH) {
-          const chunk = itemIds.slice(i, i + BATCH);
-          let movPage = 0;
-          while (true) {
-            const { data: movData } = await supabase
-              .from("stock_movements")
-              .select("lote, type, quantity")
-              .in("stock_item_id", chunk)
-              .neq("lote", null)
-              .range(movPage * PAGE_SIZE, (movPage + 1) * PAGE_SIZE - 1);
-            if (!movData || movData.length === 0) break;
-            for (const m of movData as { lote: string; type: string; quantity: number }[]) {
-              if (!m.lote) continue;
-              const key = m.lote.toUpperCase();
-              movMap.set(key, (movMap.get(key) ?? 0) + (m.type === "entrada" ? m.quantity : -m.quantity));
-            }
-            if (movData.length < PAGE_SIZE) break;
-            movPage++;
-          }
-        }
-        return Array.from(movMap.values()).filter(s => s > 0).length;
-      }
-
-      const [lotesExpCount, lotesRetrabCount] = await Promise.all([
-        countLotesComSaldo(expedicaoItemIds),
-        countLotesComSaldo(retrabalhoItemIds),
-      ]);
-
-      // 4. Lotes (devices) na expedição com quantidade < 100 (incluindo zerados)
-      const baixoDeviceIds: string[] = [];
-      for (const [deviceId, qty] of expByDevice.entries()) {
-        if (qty < 100) baixoDeviceIds.push(deviceId);
-      }
-
-      let baixoLotes: LoteBaixo[] = [];
-      if (baixoDeviceIds.length > 0) {
-        const { data: devData } = await supabase
-          .from("devices")
-          .select("id, model")
-          .in("id", baixoDeviceIds);
-        if (devData) {
-          const modelMap = new Map((devData as { id: string; model: string }[]).map(d => [d.id, d.model]));
-          baixoLotes = baixoDeviceIds
-            .map(id => ({
-              device_id: id,
-              device_model: modelMap.get(id) ?? id,
-              quantity: expByDevice.get(id) ?? 0,
-            }))
-            .sort((a, b) => a.quantity - b.quantity);
-        }
-      }
-
-      // 5. Atualiza estados
-      setTotalExpedicao(exped);
-      setTotalRetrabalho(retrab);
-      setTotalTipos(tiposSet.size);
-      setLotesExpedicao(lotesExpCount);
-      setLotesRetrabalho(lotesRetrabCount);
-      setLotesBaixo(baixoLotes);
-
-      // 6. Giro de estoque — top 8 devices na expedição por quantidade
-      const COLORS = ["hsl(197 100% 47%)", "hsl(152 60% 40%)", "hsl(38 92% 50%)",
-        "hsl(280 60% 55%)", "hsl(15 80% 55%)", "hsl(200 70% 50%)", "hsl(340 70% 55%)", "hsl(80 60% 45%)"];
-      if (baixoDeviceIds.length > 0 || expByDevice.size > 0) {
-        const { data: devData2 } = await supabase
-          .from("devices").select("id, model")
-          .in("id", Array.from(expByDevice.keys()).slice(0, 20));
-        if (devData2) {
-          const modelMap2 = new Map((devData2 as { id: string; model: string }[]).map(d => [d.id, d.model]));
-          const sorted = Array.from(expByDevice.entries())
-            .sort((a, b) => b[1] - a[1]).slice(0, 8);
-          const totalQty = sorted.reduce((s, [, q]) => s + q, 0);
-          const giro = sorted.map(([id, qty], i) => ({
-            name: (modelMap2.get(id) ?? id).length > 14
-              ? (modelMap2.get(id) ?? id).slice(0, 13) + "…"
-              : (modelMap2.get(id) ?? id),
-            giro: totalQty > 0 ? Math.round((qty / totalQty) * 100) : 0,
-            color: COLORS[i % COLORS.length],
-          }));
-          setGiroData(giro);
-        }
-      }
-    }
-
-    loadTotals();
-  }, []);
-
-  if (loading) {
+  if (loading && items.length === 0) {
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="rounded-2xl border bg-muted/20 p-4 h-24 animate-pulse" />
-          ))}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          {[...Array(5)].map((_, i) => <div key={i} className="rounded-2xl border bg-muted/30 h-24 animate-pulse" />)}
         </div>
-        <div className="rounded-2xl border bg-muted/20 h-48 animate-pulse" />
-        <div className="rounded-2xl border bg-muted/20 h-36 animate-pulse" />
+        <div className="rounded-2xl border bg-muted/30 h-40 animate-pulse" />
       </div>
     );
   }
 
+  const kpis: { id: string; l: string; v: number; sub: string; Icon: React.ElementType; cls: string; onClick: () => void; destaque?: boolean }[] = [
+    { id: "inter", l: "Intermediário", v: r.inter.un, sub: `${pl(r.inter.tipos, "peça", "peças")} · ${pl(r.inter.lotes, "lote", "lotes")}`, Icon: FASE_CFG.intermediaria.Icon, cls: FASE_CFG.intermediaria.text, onClick: () => onIrPara("intermediaria") },
+    { id: "exp", l: "Expedição", v: r.exp.un, sub: r.exp.reservado > 0 ? `${fmtNum(r.exp.reservado)} reservadas · ${pl(r.exp.lotes, "lote", "lotes")}` : `${pl(r.exp.tipos, "peça", "peças")} · ${pl(r.exp.lotes, "lote", "lotes")}`, Icon: FASE_CFG.expedicao.Icon, cls: FASE_CFG.expedicao.text, onClick: () => onIrPara("expedicao") },
+    { id: "ret", l: "Retrabalho", v: r.ret.un, sub: `${pl(r.ret.tipos, "peça", "peças")} · ${pl(r.ret.lotes, "lote", "lotes")}`, Icon: FASE_CFG.retrabalho.Icon, cls: FASE_CFG.retrabalho.text, onClick: () => onIrPara("retrabalho") },
+    { id: "baixo", l: "Abaixo do mínimo", v: r.abaixoMin, sub: `${fmtNum(r.expBaixa)} na expedição com < ${LIMITE_EXPEDICAO_BAIXA} un.`, Icon: AlertTriangle, cls: r.abaixoMin > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground", onClick: onEstoqueBaixo, destaque: r.abaixoMin > 0 },
+    { id: "ped", l: "Pedidos para separar", v: pedidosParaSeparar, sub: pedidosParaSeparar > 0 ? "Aguardando o estoque" : "Nada pendente", Icon: ShoppingBag, cls: pedidosParaSeparar > 0 ? "text-blue-600 dark:text-blue-400" : "text-foreground", onClick: () => onIrPara("pedidos"), destaque: pedidosParaSeparar > 0 },
+  ];
+
+  const acoes: { l: string; d: string; Icon: React.ElementType; cls: string; onClick: () => void; badge?: number }[] = [
+    { l: "Registrar entrada", d: "Chegou peça da produção", Icon: ArrowDownCircle, cls: "bg-primary/10 text-primary", onClick: () => onAcaoRapida("entrada") },
+    { l: "Mover p/ Expedição", d: "Peça embalada e pronta", Icon: Truck, cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", onClick: () => onAcaoRapida("transferir") },
+    { l: "Registrar retirada", d: "Saída da expedição", Icon: ArrowUpCircle, cls: "bg-red-500/10 text-red-600 dark:text-red-400", onClick: () => onAcaoRapida("saida") },
+    { l: "Separar pedido", d: "Pedidos do Comercial", Icon: ClipboardList, cls: "bg-blue-500/10 text-blue-600 dark:text-blue-400", onClick: () => onIrPara("pedidos"), badge: pedidosParaSeparar },
+  ];
+
   return (
     <div className="space-y-4">
-      {/* ── Pesquisa Global de Estoque ── */}
-      <div className="rounded-2xl border border-border/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
-          <Package className="h-4 w-4 text-muted-foreground" />
-          <p className="text-sm font-semibold">Pesquisa Geral do Estoque</p>
-          <span className="text-[10px] text-muted-foreground/50 ml-auto">Localização · Lotes · Reservas · Retrabalho</span>
-        </div>
-        <div className="p-4">
-          <StockGlobalSearch />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Card 1 — Total de Peças na Expedição */}
-        <KpiCard
-          icon={Package}
-          label="Total de Peças"
-          value={totalExpedicao.toLocaleString("pt-BR")}
-          color="text-primary"
-          bg="bg-primary/5"
-          border="border-primary/20"
-          description={`${totalTipos} tipos · ${lotesExpedicao} lotes na expedição`}
-        />
-
-        {/* Card 2 — Peças em Retrabalho */}
-        <KpiCard
-          icon={Wrench}
-          label="Peças em Retrabalho"
-          value={totalRetrabalho.toLocaleString("pt-BR")}
-          color="text-amber-500"
-          bg="bg-amber-500/5"
-          border="border-amber-500/20"
-          description={`${lotesRetrabalho} ${lotesRetrabalho === 1 ? "lote" : "lotes"} em retrabalho`}
-        />
-
-        {/* Card 3 — Estoque Baixo (clicável) */}
-        <KpiCard
-          icon={TrendingDown}
-          label="Estoque Baixo"
-          value={lotesBaixo.length}
-          color="text-warning"
-          bg="bg-warning/5"
-          border="border-warning/20"
-          description="Lotes na expedição zerados ou abaixo de 100 un."
-          onClick={() => setModalBaixoOpen(true)}
-        />
-
-        {/* Card 4 — Pedidos Separando (inalterado) */}
-        <KpiCard
-          icon={PackageCheck}
-          label="Pedidos Separando"
-          value={pedidosSeparando}
-          color="text-blue-500"
-          bg="bg-blue-500/5"
-          border="border-blue-500/20"
-          description="Em separação no estoque"
-        />
-      </div>
-
-      <EstoqueBaixoModal
-        open={modalBaixoOpen}
-        onClose={() => setModalBaixoOpen(false)}
-        lotes={lotesBaixo}
-      />
-
-      {/* Giro de Estoque — Distribuição por Produto (Expedição) */}
-      {giroData.length > 0 && (
-        <div className="rounded-2xl border border-border/40 overflow-hidden">
-          <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm font-semibold">Distribuição de Estoque por Produto</p>
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {kpis.map((k, idx) => (
+          <button key={k.id} type="button" onClick={k.onClick}
+            className={cn(
+              "rounded-2xl border bg-card p-4 text-left transition-colors hover:bg-muted/40 active:scale-[0.99]",
+              k.destaque && (k.id === "baixo" ? "border-amber-500/40" : "border-blue-500/40"),
+              idx === kpis.length - 1 && "col-span-2 lg:col-span-1"
+            )}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{k.l}</p>
+              <k.Icon className={cn("h-4 w-4 shrink-0", k.cls)} />
             </div>
-            <span className="text-[11px] text-muted-foreground/60">Top {giroData.length} produtos · Expedição</span>
-          </div>
-          <div className="p-4">
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={giroData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
-                barCategoryGap="25%">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))"
-                  interval={0} angle={-25} textAnchor="end" height={44} />
-                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))"
-                  tickFormatter={v => `${v}%`} />
-                <Tooltip
-                  contentStyle={{
-                    background: "hsl(var(--card))", border: "1px solid hsl(var(--border))",
-                    borderRadius: 12, fontSize: 12,
-                  }}
-                  formatter={(v: number) => [`${v}% do estoque`, "Participação"]}
-                />
-                <Bar dataKey="giro" radius={[6, 6, 0, 0]}>
-                  {giroData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+            <p className={cn("mt-1 text-2xl font-bold tabular-nums", k.cls)}>{fmtNum(k.v)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{k.sub}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* Ações rápidas */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {acoes.map(a => (
+          <button key={a.l} type="button" onClick={a.onClick}
+            className="relative rounded-2xl border bg-card p-3 sm:p-4 flex items-center gap-3 text-left hover:bg-muted/40 active:scale-[0.99] min-h-[64px]">
+            <span className={cn("h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center shrink-0", a.cls)}><a.Icon className="h-5 w-5" /></span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold leading-tight">{a.l}</span>
+              <span className="block text-xs text-muted-foreground leading-tight mt-0.5">{a.d}</span>
+            </span>
+            {!!a.badge && a.badge > 0 && (
+              <span className="absolute top-2 right-2 min-w-[20px] h-5 px-1 rounded-full bg-blue-600 text-white text-[11px] font-bold inline-flex items-center justify-center">{a.badge}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Pesquisa geral */}
+      <section className="rounded-2xl border bg-card">
+        <div className="px-4 py-3 border-b">
+          <p className="text-sm font-semibold">Onde está a peça?</p>
+          <p className="text-xs text-muted-foreground">Busca em todas as fases: saldo, lotes, localização, reservas e retrabalho.</p>
         </div>
+        <div className="p-3 sm:p-4"><StockGlobalSearch /></div>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Precisa de atenção */}
+        <section className="rounded-2xl border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" />Precisa de atenção</p>
+            <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs" onClick={onEstoqueBaixo}>Ver tudo<ChevronRight className="h-3.5 w-3.5" /></Button>
+          </div>
+          {r.atencao.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">Nenhuma peça com estoque baixo.</p>
+          ) : (
+            <ul className="divide-y">
+              {r.atencao.map(i => (
+                <li key={i.id}>
+                  <button type="button" onClick={() => onAbrirItem(i)} className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-muted/40">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{i.device.model}</p>
+                      <p className="text-xs text-muted-foreground">{FASE_CFG[i.fase].label}{i.min_quantity > 0 ? ` · mínimo ${fmtNum(i.min_quantity)}` : ""}</p>
+                    </div>
+                    <span className={cn("text-base font-bold tabular-nums", saldoUtil(i) === 0 ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400")}>{fmtNum(saldoUtil(i))}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Últimas movimentações */}
+        <section className="rounded-2xl border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b">
+            <p className="text-sm font-semibold flex items-center gap-2"><Activity className="h-4 w-4 text-muted-foreground" />Últimas movimentações</p>
+          </div>
+          {movLoading ? (
+            <div className="p-4 space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-10 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+          ) : movements.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">Nenhuma movimentação registrada.</p>
+          ) : (
+            <ul className="divide-y">
+              {movements.map(m => {
+                const entrada = m.type === "entrada";
+                const it = itemPorId.get(m.stock_item_id);
+                return (
+                  <li key={m.id}>
+                    <button type="button" disabled={!it} onClick={() => it && onAbrirItem(it)}
+                      className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-muted/40 disabled:hover:bg-transparent">
+                      {entrada
+                        ? <ArrowDownCircle className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        : <ArrowUpCircle className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{m.device_model}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {FASE_CFG[m.fase].label}{m.lote ? ` · Lote ${m.lote}` : ""} · {m.user_display_name ?? "—"} · {fmtDataHora(m.created_at)}
+                        </p>
+                      </div>
+                      <span className={cn("text-sm font-bold tabular-nums shrink-0", entrada ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400")}>
+                        {entrada ? "+" : "−"}{fmtNum(m.quantity)}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {/* Distribuição da expedição */}
+      {r.topExp.length > 0 && (
+        <section className="rounded-2xl border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold flex items-center gap-2"><Package className="h-4 w-4 text-muted-foreground" />Maiores saldos na expedição</p>
+            <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs" onClick={() => onIrPara("expedicao")}>Abrir<ChevronRight className="h-3.5 w-3.5" /></Button>
+          </div>
+          <ul className="p-4 space-y-2.5">
+            {r.topExp.map(i => (
+              <li key={i.id}>
+                <button type="button" onClick={() => onAbrirItem(i)} className="w-full text-left group">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="truncate group-hover:underline">{i.device.model}</span>
+                    <span className="font-semibold tabular-nums shrink-0">{fmtNum(i.quantity)} un.</span>
+                  </div>
+                  <div className="mt-1 h-2 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full rounded-full bg-emerald-500/70" style={{ width: `${Math.max(2, Math.round((i.quantity / r.maxExp) * 100))}%` }} />
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
-      {/* Últimas Movimentações */}
-      <div className="rounded-2xl border border-border/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
-          <Activity className="h-4 w-4 text-muted-foreground" />
-          <p className="text-sm font-semibold">Últimas Movimentações</p>
-        </div>
-        {movLoading ? (
-          <div className="p-4 space-y-2">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-10 rounded-xl bg-muted/30 animate-pulse" />
-            ))}
-          </div>
-        ) : movements.length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground/60">Nenhuma movimentação registrada</div>
-        ) : (
-          <div className="divide-y divide-border/20">
-            {movements.map(m => {
-              const isEntrada = m.type === "entrada";
-              return (
-                <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/10 transition-colors">
-                  <div className={cn(
-                    "h-7 w-7 rounded-lg flex items-center justify-center shrink-0",
-                    isEntrada ? "bg-primary/10" : "bg-success/10"
-                  )}>
-                    {isEntrada
-                      ? <ArrowDownCircle className="h-3.5 w-3.5 text-primary" />
-                      : <ArrowUpCircle className="h-3.5 w-3.5 text-success" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-medium truncate">{m.device_model}</p>
-                    <p className="text-[10px] text-muted-foreground/60">
-                      {m.user_display_name ?? "—"} · {new Date(m.created_at).toLocaleDateString("pt-BR")}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className={cn("text-[13px] font-bold tabular-nums", isEntrada ? "text-primary" : "text-success")}>
-                      {isEntrada ? "+" : "-"}{m.quantity}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/50">un.</span>
-                    {m.fase === "expedicao" && (
-                      <span title="Expedição">
-                        <Truck className="h-3 w-3 text-muted-foreground/40" />
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {r.ret.un > 0 && (
+        <button type="button" onClick={() => onIrPara("retrabalho")}
+          className="w-full rounded-2xl border border-orange-500/30 bg-orange-500/5 px-4 py-3 flex items-center gap-3 text-left hover:bg-orange-500/10">
+          <Wrench className="h-5 w-5 text-orange-600 dark:text-orange-400 shrink-0" />
+          <span className="text-sm flex-1"><strong>{fmtNum(r.ret.un)} un.</strong> em retrabalho aguardando conclusão.</span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+      )}
     </div>
   );
 }

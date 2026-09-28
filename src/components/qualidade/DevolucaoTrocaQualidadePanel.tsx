@@ -11,7 +11,7 @@
  *     (mesma tabela do Financeiro — notas_devolucao_troca) e dá entrada das
  *     peças no Retrabalho do Estoque, com o MESMO LOTE da venda, travando o
  *     pedido contra uma segunda análise concorrente.
- *  2. Lista as análises em aberto e já concluídas.
+ *  2. Lista as análises em aberto e já concluídas (KPIs clicáveis, busca).
  *  3. "Analisar" — conclui a análise (devolução / troca / reprovado), grava
  *     o laudo, e altera a MESMA nota já criada (não cria uma nova). Isso:
  *       • Devolução aprovada → peça sai do Retrabalho e volta à Expedição
@@ -20,19 +20,29 @@
  *         decidir o reaproveitamento (fluxo "Concluir Retrabalho" já
  *         existente); o Financeiro fica livre para emitir a NF de troca.
  *       • Reprovado → nota cancelada, peça permanece retida, sem crédito.
+ *
+ * Escrita só pelas RPCs (a tabela não libera UPDATE direto para Qualidade):
+ * análise concluída fica somente leitura — é o registro de rastreabilidade.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  RefreshCw, PlusCircle, X, Search, Undo2, Repeat2, Loader2, ChevronRight,
-  AlertTriangle, CheckCircle2, Ban, User, FileText, Lock, ClipboardCheck,
+  AlertTriangle, Ban, CheckCircle2, ChevronRight, ClipboardCheck, FileText, Loader2, Lock, Minus, Plus, PlusCircle,
+  RefreshCw, Repeat2, Undo2, User,
 } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { untypedRpc } from "@/lib/untypedRpc";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
 import { friendlyError } from "@/lib/errorMessages";
 import { formatBRL } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import { CampoBusca, Chip, Etapas, KpiCard, ListaSkeleton, SELECT_CLS, Vazio, fmtDia, type Tom } from "./shared";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -48,7 +58,7 @@ interface Registro {
   motivo: string; itens: ItemNota[]; valor_total: number;
   status: "rascunho" | "autorizada" | "rejeitada" | "cancelada";
   status_msg: string | null; numero: string | null; tipo_nota: string;
-  created_at: string;
+  created_at: string; updated_at?: string | null;
 }
 
 interface PedidoBusca {
@@ -58,8 +68,6 @@ interface PedidoBusca {
     device_id?: string; device_model?: string; ncm?: string; cfop_padrao?: string;
   }[];
 }
-
-const BRL = formatBRL;
 
 // Deriva um "sub-status" de qualidade a partir do status_msg (convenção
 // "[QUALIDADE:xxx] laudo..." — não é uma coluna nova, reaproveita o campo
@@ -77,22 +85,33 @@ function qLaudo(r: Registro): string {
   return (r.status_msg ?? "").replace(/^\[QUALIDADE:[a-z_]+\]\s*/, "");
 }
 
-const Q_LABEL: Record<QStatus, string> = {
-  em_analise: "Em análise", aprovado_devolucao: "Devolução aprovada",
-  aprovado_troca: "Troca aprovada", reprovado: "Reprovado", outro: "—",
-};
-const Q_COLOR: Record<QStatus, string> = {
-  em_analise: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30",
-  aprovado_devolucao: "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30",
-  aprovado_troca: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/30",
-  reprovado: "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30",
-  outro: "bg-muted/40 text-muted-foreground border-border/40",
+const Q_INFO: Record<QStatus, { label: string; tom: Tom }> = {
+  em_analise:         { label: "Aguardando análise", tom: "atencao" },
+  aprovado_devolucao: { label: "Devolução aprovada", tom: "laranja" },
+  aprovado_troca:     { label: "Troca aprovada",     tom: "ciano" },
+  reprovado:          { label: "Reprovado",          tom: "perigo" },
+  outro:              { label: "—",                  tom: "neutro" },
 };
 
-export function DevolucaoTrocaQualidadePanel() {
+const ETAPAS_DEV = ["Retorno recebido", "Em análise", "Decisão"];
+
+type Filtro = "aberto" | "concluido" | "todos" | "aprovado_devolucao" | "aprovado_troca" | "reprovado";
+const FILTROS: { id: Filtro; label: string }[] = [
+  { id: "aberto", label: "Aguardando análise" },
+  { id: "concluido", label: "Concluídas" },
+  { id: "aprovado_devolucao", label: "Devoluções aprovadas" },
+  { id: "aprovado_troca", label: "Trocas aprovadas" },
+  { id: "reprovado", label: "Reprovadas" },
+  { id: "todos", label: "Todas" },
+];
+
+// ─── Painel ──────────────────────────────────────────────────────────────────
+
+export function DevolucaoTrocaQualidadePanel({ filtroInicial, onMudou }: { filtroInicial?: string | null; onMudou?: () => void } = {}) {
   const [registros, setRegistros] = useState<Registro[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filtro, setFiltro] = useState<"aberto" | "concluido" | "todos">("aberto");
+  const [filtro, setFiltro] = useState<Filtro>(() => FILTROS.some(f => f.id === filtroInicial) ? filtroInicial as Filtro : "aberto");
+  const [busca, setBusca] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [analisar, setAnalisar] = useState<Registro | null>(null);
 
@@ -105,105 +124,128 @@ export function DevolucaoTrocaQualidadePanel() {
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) { toast.error(friendlyError(error)); setLoading(false); return; }
-    setRegistros((data ?? []) as unknown as Registro[]);
+    setRegistros(((data ?? []) as unknown as Registro[]).map(r => ({ ...r, itens: Array.isArray(r.itens) ? r.itens : [], valor_total: Number(r.valor_total ?? 0) })));
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtrados = registros.filter(r => {
-    const q = qStatus(r);
-    if (filtro === "aberto") return q === "em_analise";
-    if (filtro === "concluido") return q !== "em_analise";
-    return true;
-  });
+  const cont = useMemo(() => {
+    const c = { aberto: 0, aprovado_devolucao: 0, aprovado_troca: 0, reprovado: 0, valorAberto: 0 };
+    for (const r of registros) {
+      const q = qStatus(r);
+      if (q === "em_analise") { c.aberto++; c.valorAberto += r.valor_total; }
+      else if (q === "aprovado_devolucao") c.aprovado_devolucao++;
+      else if (q === "aprovado_troca") c.aprovado_troca++;
+      else if (q === "reprovado") c.reprovado++;
+    }
+    return c;
+  }, [registros]);
 
-  const abertos = registros.filter(r => qStatus(r) === "em_analise").length;
+  const filtrados = useMemo(() => {
+    const b = busca.trim().toLowerCase();
+    return registros.filter(r => {
+      const q = qStatus(r);
+      if (filtro === "aberto" && q !== "em_analise") return false;
+      if (filtro === "concluido" && q === "em_analise") return false;
+      if ((filtro === "aprovado_devolucao" || filtro === "aprovado_troca" || filtro === "reprovado") && q !== filtro) return false;
+      if (!b) return true;
+      const texto = `${r.cliente_nome} ${r.nf_original_numero ?? ""} ${r.itens.map(i => `${i.descricao} ${i.lote ?? ""}`).join(" ")}`.toLowerCase();
+      return texto.includes(b);
+    }).sort((a, b) => filtro === "aberto" ? a.created_at.localeCompare(b.created_at) : 0);
+  }, [registros, filtro, busca]);
+
+  const alternar = (f: Filtro) => setFiltro(atual => atual === f ? "todos" : f);
+  const recarregar = () => { load(); onMudou?.(); };
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-200">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-base font-bold">Devolução / Troca — Análise da Qualidade</h2>
-          <p className="text-[12px] text-muted-foreground">
-            Peças que voltaram com a NF de venda original, aguardando ou já analisadas pela Qualidade
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={load}
-            className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/30 text-muted-foreground">
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          </button>
-          <button type="button" onClick={() => setModalOpen(true)}
-            className="h-9 px-3 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-[12px] font-semibold flex items-center gap-1.5 transition-colors">
-            <PlusCircle size={14} />
-            Registrar retorno
-          </button>
-        </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm text-muted-foreground flex-1 min-w-[14rem]">
+          Peças que voltaram com a NF de venda original. Registre o retorno quando chegar e conclua com o laudo — só então o Financeiro gera o crédito ou a NF de troca.
+        </p>
+        <Button className="h-11 gap-1.5 w-full sm:w-auto" onClick={() => setModalOpen(true)}>
+          <PlusCircle className="h-4 w-4" />Registrar retorno
+        </Button>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        {([
-          { id: "aberto", label: "Em análise", count: abertos },
-          { id: "concluido", label: "Concluídas", count: registros.length - abertos },
-          { id: "todos", label: "Todas", count: registros.length },
-        ] as const).map(f => (
-          <button key={f.id} type="button" onClick={() => setFiltro(f.id)}
-            className={cn("h-8 px-3 rounded-full text-[11px] font-semibold border transition-all flex items-center gap-1.5",
-              filtro === f.id ? "bg-orange-600 text-white border-orange-600"
-                               : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50")}>
-            {f.label}
-            <span className={cn("text-[10px] px-1.5 rounded-full", filtro === f.id ? "bg-white/20" : "bg-muted")}>{f.count}</span>
-          </button>
-        ))}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Aguardando análise" value={cont.aberto} Icon={Lock} tom={cont.aberto > 0 ? "atencao" : "ok"}
+          sub={cont.aberto > 0 ? `${formatBRL(cont.valorAberto)} travados` : "nada pendente"} ativo={filtro === "aberto"} onClick={() => alternar("aberto")} />
+        <KpiCard label="Devoluções aprovadas" value={cont.aprovado_devolucao} Icon={Undo2} tom="laranja"
+          sub="voltaram ao estoque + crédito" ativo={filtro === "aprovado_devolucao"} onClick={() => alternar("aprovado_devolucao")} />
+        <KpiCard label="Trocas aprovadas" value={cont.aprovado_troca} Icon={Repeat2} tom="ciano"
+          sub="retidas no retrabalho" ativo={filtro === "aprovado_troca"} onClick={() => alternar("aprovado_troca")} />
+        <KpiCard label="Reprovadas" value={cont.reprovado} Icon={Ban} tom={cont.reprovado > 0 ? "perigo" : "neutro"}
+          sub="não procede — sem crédito" ativo={filtro === "reprovado"} onClick={() => alternar("reprovado")} />
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-orange-500" /></div>
-      ) : filtrados.length === 0 ? (
-        <div className="text-center py-16 space-y-3">
-          <div className="h-16 w-16 rounded-2xl mx-auto flex items-center justify-center bg-muted/30">
-            <ClipboardCheck size={28} className="text-muted-foreground/40" />
-          </div>
-          <p className="text-sm font-semibold">Nenhum retorno {filtro === "aberto" ? "em análise" : "registrado"}</p>
-          <p className="text-[12px] text-muted-foreground/70">Clique em "Registrar retorno" quando uma peça voltar com a NF de venda</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-          {filtrados.map(r => {
-            const q = qStatus(r);
-            return (
-              <button key={r.id} type="button" onClick={() => setAnalisar(r)}
-                className="text-left rounded-2xl border border-border/50 bg-card p-3.5 hover:border-orange-400/50 transition-colors space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={cn("h-6 w-6 rounded-lg flex items-center justify-center shrink-0",
-                    r.tipo === "devolucao" ? "bg-orange-500/10 text-orange-600" : "bg-cyan-500/10 text-cyan-600")}>
-                    {r.tipo === "devolucao" ? <Undo2 size={13} /> : <Repeat2 size={13} />}
-                  </span>
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground flex-1">
-                    {q === "em_analise" ? "Aguardando decisão" : r.tipo === "devolucao" ? "Devolução" : "Troca"}
-                  </span>
-                  <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border shrink-0", Q_COLOR[q])}>
-                    {q === "em_analise" && <Lock size={9} className="inline mr-0.5 -mt-0.5" />}
-                    {Q_LABEL[q]}
-                  </span>
-                </div>
-                <p className="text-[13px] font-semibold truncate">{r.cliente_nome}</p>
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>NF original: {r.nf_original_numero ?? "—"}</span>
-                  <span className="font-semibold text-foreground">{BRL(r.valor_total)}</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <CampoBusca value={busca} onChange={setBusca} placeholder="Cliente, NF original, produto ou lote..." />
+        <select value={filtro} onChange={e => setFiltro(e.target.value as Filtro)} aria-label="Situação" className={cn(SELECT_CLS, "w-auto flex-1 sm:flex-none")}>
+          {FILTROS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+        </select>
+        <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" onClick={load} disabled={loading} aria-label="Atualizar">
+          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+        </Button>
+      </div>
+
+      <div className="rounded-2xl border bg-card overflow-hidden">
+        {loading && registros.length === 0 ? <ListaSkeleton /> : filtrados.length === 0 ? (
+          <Vazio Icon={ClipboardCheck}
+            titulo={busca ? "Nenhum retorno encontrado" : filtro === "aberto" ? "Nenhum retorno aguardando análise" : "Nenhum retorno neste filtro"}
+            dica={busca ? "Confira o nome do cliente ou o número da NF." : "Quando uma peça voltar com a NF de venda, clique em “Registrar retorno”."}
+            acao={!busca ? <Button variant="outline" className="h-11 gap-1.5" onClick={() => setModalOpen(true)}><PlusCircle className="h-4 w-4" />Registrar retorno</Button> : undefined} />
+        ) : (
+          <ul className="divide-y">
+            {filtrados.map(r => {
+              const q = qStatus(r);
+              const info = Q_INFO[q];
+              const pecas = r.itens.reduce((s, i) => s + (Number(i.quantidade) || 0), 0);
+              const concluido = q !== "em_analise";
+              return (
+                <li key={r.id}>
+                  <button type="button" onClick={() => setAnalisar(r)}
+                    className="w-full text-left p-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_20rem_9rem] lg:items-center hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <span className={cn("h-9 w-9 rounded-xl flex items-center justify-center shrink-0",
+                        !concluido ? "bg-amber-500/10 text-amber-600" : r.tipo === "devolucao" ? "bg-orange-500/10 text-orange-600" : "bg-cyan-500/10 text-cyan-600")}>
+                        {!concluido ? <Lock className="h-4 w-4" /> : r.tipo === "devolucao" ? <Undo2 className="h-4 w-4" /> : <Repeat2 className="h-4 w-4" />}
+                      </span>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-semibold truncate">{r.cliente_nome}</p>
+                          <p className="font-bold tabular-nums shrink-0 lg:hidden">{formatBRL(r.valor_total)}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          NF original {r.nf_original_numero ?? "—"} · {pecas} peça{pecas !== 1 ? "s" : ""} · recebido em {fmtDia(r.created_at)}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Chip tom={info.tom}>{!concluido && <Lock className="h-3 w-3" />}{info.label}</Chip>
+                          {r.itens.slice(0, 2).map(i => i.lote && <Chip key={i.id} className="font-mono">lote {i.lote}</Chip>)}
+                          {r.itens.length > 2 && <Chip>+{r.itens.length - 2}</Chip>}
+                        </div>
+                      </div>
+                    </div>
+                    <Etapas etapas={ETAPAS_DEV} atual={concluido ? 2 : 1} concluido={concluido}
+                      tom={q === "reprovado" ? "perigo" : concluido ? "ok" : "atencao"} />
+                    <div className="hidden lg:flex items-center gap-3 justify-end">
+                      <p className="font-bold tabular-nums">{formatBRL(r.valor_total)}</p>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
 
       {modalOpen && (
-        <RegistrarRetornoModal onClose={() => setModalOpen(false)} onSuccess={() => { setModalOpen(false); load(); }} />
+        <RegistrarRetornoModal onClose={() => setModalOpen(false)} onSuccess={() => { setModalOpen(false); setFiltro("aberto"); recarregar(); }} />
       )}
       {analisar && (
-        <AnalisarModal registro={analisar} onClose={() => setAnalisar(null)} onDone={() => { setAnalisar(null); load(); }} />
+        <AnalisarModal registro={analisar} onClose={() => setAnalisar(null)} onDone={() => { setAnalisar(null); recarregar(); }} />
       )}
     </div>
   );
@@ -214,17 +256,14 @@ export function DevolucaoTrocaQualidadePanel() {
 function RegistrarRetornoModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [busca, setBusca] = useState("");
   const [todos, setTodos] = useState<PedidoBusca[]>([]);
-  const [carregado, setCarregado] = useState(false);
-  const [buscando, setBuscando] = useState(false);
-  const [resultados, setResultados] = useState<PedidoBusca[]>([]);
+  const [buscando, setBuscando] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
   const [pedido, setPedido] = useState<PedidoBusca | null>(null);
   const [selecionados, setSelecionados] = useState<Record<string, number>>({});
   const [observacao, setObservacao] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (carregado) return;
-    setBuscando(true);
     supabase
       .from("pedidos_comerciais")
       .select(`
@@ -237,8 +276,8 @@ function RegistrarRetornoModal({ onClose, onSuccess }: { onClose: () => void; on
       .order("created_at", { ascending: false })
       .limit(500)
       .then(({ data, error }) => {
-        if (error) { logger.error("busca pedido retorno qualidade:", error); setBuscando(false); return; }
-        const mapped: PedidoBusca[] = ((data ?? []) as Record<string, unknown>[]).map(p => ({
+        if (error) { logger.error("busca pedido retorno qualidade:", error); setErroCarga(true); setBuscando(false); return; }
+        setTodos(((data ?? []) as Record<string, unknown>[]).map(p => ({
           id: p.id as string,
           cliente_nome: ((p.clientes as Record<string, unknown> | null)?.nome as string) ?? "(sem nome)",
           nota_fiscal: p.nota_fiscal as string | null,
@@ -256,29 +295,29 @@ function RegistrarRetornoModal({ onClose, onSuccess }: { onClose: () => void; on
               cfop_padrao: dev?.cfop_padrao as string | undefined,
             };
           }),
-        }));
-        setTodos(mapped);
-        setCarregado(true);
+        })));
         setBuscando(false);
       });
-  }, [carregado]);
+  }, []);
 
-  useEffect(() => {
+  const resultados = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    if (q.length < 2) { setResultados([]); return; }
-    setResultados(todos.filter(p =>
+    if (q.length < 2) return [];
+    return todos.filter(p =>
       p.cliente_nome.toLowerCase().includes(q) ||
       (p.nota_fiscal ?? "").toLowerCase().includes(q) ||
       p.id.slice(0, 8).toLowerCase().includes(q)
-    ).slice(0, 15));
+    ).slice(0, 15);
   }, [busca, todos]);
 
   function selecionarPedido(p: PedidoBusca) {
     setPedido(p);
     setSelecionados({});
-    setResultados([]);
-    setBusca(p.nota_fiscal ?? p.cliente_nome);
   }
+
+  const setQtd = (id: string, max: number, v: number) => setSelecionados(prev => ({ ...prev, [id]: Math.max(0, Math.min(max, v || 0)) }));
+  const totalSel = pedido ? pedido.itens.reduce((s, i) => s + (selecionados[i.stock_item_id] ?? 0) * i.valor_unitario, 0) : 0;
+  const pecasSel = Object.values(selecionados).reduce((s, n) => s + n, 0);
 
   async function confirmar() {
     if (!pedido) return;
@@ -291,7 +330,7 @@ function RegistrarRetornoModal({ onClose, onSuccess }: { onClose: () => void; on
         aliqICMS: "12.00", cst: "00",
         device_id: i.device_id, lote: i.lote ?? undefined, stock_item_id: i.stock_item_id,
       }));
-    if (itens.length === 0) { toast.error("Selecione ao menos um item recebido"); return; }
+    if (itens.length === 0) { toast.error("Informe a quantidade de ao menos um item que voltou"); return; }
     if (itens.some(i => !i.lote)) {
       toast.error("Um dos itens selecionados não tem lote registrado na venda — não é possível preservar a rastreabilidade. Verifique o pedido.");
       return;
@@ -299,12 +338,12 @@ function RegistrarRetornoModal({ onClose, onSuccess }: { onClose: () => void; on
     setSaving(true);
     try {
       const { data, error } = await untypedRpc("iniciar_analise_qualidade_devolucao", {
-        p_pedido_id: pedido.id, p_itens: itens, p_observacao: observacao || null,
+        p_pedido_id: pedido.id, p_itens: itens, p_observacao: observacao.trim() || null,
       });
       if (error) throw error;
       const r = data as { ok?: boolean; error?: string } | null;
       if (!r?.ok) { toast.error(r?.error ?? "Erro ao registrar retorno"); return; }
-      toast.success("Retorno registrado! Peças deram entrada no Retrabalho — nota travada até a análise concluir.");
+      toast.success("Retorno registrado! Peças deram entrada no Retrabalho — pedido travado até a análise concluir.");
       onSuccess();
     } catch (err) {
       toast.error(friendlyError(err));
@@ -313,96 +352,113 @@ function RegistrarRetornoModal({ onClose, onSuccess }: { onClose: () => void; on
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-orange-500/15 flex items-center justify-center">
-              <Undo2 className="h-4 w-4 text-orange-500" />
-            </div>
-            <span className="text-sm font-semibold">Registrar retorno físico</span>
-          </div>
-          <button type="button" onClick={onClose} disabled={saving}
-            className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground disabled:opacity-40">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-          <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2.5 flex gap-2">
-            <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-[10.5px] text-amber-800 dark:text-amber-300">
-              Registre aqui apenas quando a peça chegar fisicamente com a NF de venda. O tipo (devolução ou
-              troca) você decide depois de analisar — por enquanto isto só dá entrada no Retrabalho e trava o
-              pedido contra outra ação até a análise terminar.
-            </p>
-          </div>
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
-            <input value={busca} onChange={e => { setBusca(e.target.value); setPedido(null); }}
-              placeholder="Buscar por número da NF ou nome do cliente..."
-              className="w-full h-9 pl-8 pr-3 rounded-xl border border-border bg-muted/20 text-[12px] outline-none focus:border-orange-400" />
-          </div>
-          {buscando && <p className="text-[11px] text-muted-foreground flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> Carregando pedidos faturados...</p>}
-          {resultados.length > 0 && (
-            <div className="space-y-1 max-h-48 overflow-y-auto rounded-xl border border-border/30 p-1.5">
-              {resultados.map(p => (
-                <button key={p.id} type="button" onClick={() => selecionarPedido(p)}
-                  className="w-full text-left rounded-lg px-2.5 py-2 hover:bg-muted/30 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-[12px] font-semibold truncate">{p.cliente_nome}</p>
-                    <p className="text-[10px] text-muted-foreground">Pedido {p.id.slice(0, 8).toUpperCase()} · {p.nota_fiscal ?? "sem NF"}</p>
-                  </div>
-                  <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                </button>
-              ))}
-            </div>
-          )}
-          {pedido && (
-            <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-3 space-y-2">
-              <div className="flex items-center gap-2"><User size={13} className="text-orange-600" /><p className="text-[12px] font-semibold">{pedido.cliente_nome}</p></div>
-              <div className="flex items-center gap-2"><FileText size={13} className="text-orange-600" /><p className="text-[11px] text-muted-foreground">NF original: {pedido.nota_fiscal ?? "—"}</p></div>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground pt-1">Itens que voltaram fisicamente</p>
-              <div className="space-y-1.5">
-                {pedido.itens.map(i => (
-                  <div key={i.stock_item_id} className="flex items-center justify-between gap-2 rounded-lg bg-card px-2.5 py-1.5 border border-border/30">
-                    <span className="text-[11px] truncate flex-1">
-                      {i.device_model ?? "Produto"} <span className="text-muted-foreground">(máx. {i.quantidade}{i.lote ? ` · lote ${i.lote}` : " · sem lote!"})</span>
-                    </span>
-                    <input type="number" min={0} max={i.quantidade}
-                      value={selecionados[i.stock_item_id] ?? 0}
-                      onChange={e => setSelecionados(prev => ({ ...prev, [i.stock_item_id]: Math.max(0, Math.min(i.quantidade, parseInt(e.target.value) || 0)) }))}
-                      className="w-16 h-7 rounded-lg border border-border/50 text-center text-[11px] outline-none focus:border-orange-400" />
-                  </div>
+    <Dialog open onOpenChange={o => !o && !saving && onClose()}>
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogHeader className="text-left pr-6">
+          <DialogTitle className="flex items-center gap-2"><Undo2 className="h-5 w-5 text-orange-500" />Registrar retorno físico</DialogTitle>
+          <DialogDescription>
+            Só registre quando a peça chegar com a NF de venda. Devolução ou troca você decide depois, na análise — agora as peças só entram no Retrabalho (mesmo lote) e o pedido fica travado.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!pedido ? (
+          <div className="space-y-3">
+            <CampoBusca value={busca} onChange={setBusca} placeholder="Nº da NF, nome do cliente ou nº do pedido..." autoFocus className="min-w-0" />
+            {buscando ? (
+              <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Carregando pedidos faturados...</p>
+            ) : erroCarga ? (
+              <p className="text-sm text-red-600">Não foi possível carregar os pedidos faturados. Feche e tente de novo.</p>
+            ) : busca.trim().length < 2 ? (
+              <p className="text-xs text-muted-foreground">Digite ao menos 2 letras. {todos.length} pedidos faturados/enviados disponíveis.</p>
+            ) : resultados.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum pedido faturado encontrado.</p>
+            ) : (
+              <ul className="rounded-2xl border divide-y overflow-hidden">
+                {resultados.map(p => (
+                  <li key={p.id}>
+                    <button type="button" onClick={() => selecionarPedido(p)} className="w-full text-left px-3 py-3 hover:bg-muted/40 flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold truncate">{p.cliente_nome}</p>
+                        <p className="text-xs text-muted-foreground">Pedido #{p.id.slice(0, 8).toUpperCase()} · {p.nota_fiscal ? `NF ${p.nota_fiscal}` : "sem NF"} · {p.itens.length} item(ns)</p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    </button>
+                  </li>
                 ))}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-2xl border border-orange-500/30 bg-orange-500/5 p-3 flex items-start gap-3">
+              <div className="flex-1 min-w-0 space-y-1">
+                <p className="text-sm font-semibold flex items-center gap-1.5"><User className="h-4 w-4 text-orange-600 shrink-0" /><span className="truncate">{pedido.cliente_nome}</span></p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 shrink-0" />NF original {pedido.nota_fiscal ?? "—"} · pedido #{pedido.id.slice(0, 8).toUpperCase()}</p>
               </div>
-              <textarea value={observacao} onChange={e => setObservacao(e.target.value)} rows={2}
-                placeholder="Observação inicial (opcional) — ex: cliente relatou defeito no encaixe"
-                className="w-full px-3 py-2 rounded-xl border border-border bg-muted/20 text-[12px] outline-none focus:border-orange-400 resize-none" />
+              <Button variant="ghost" size="sm" className="h-9 shrink-0" onClick={() => setPedido(null)} disabled={saving}>Outro pedido</Button>
             </div>
-          )}
-        </div>
-        <div className="p-4 border-t border-border/20 shrink-0">
-          <button type="button" onClick={confirmar} disabled={saving || !pedido}
-            className="w-full h-10 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-[12px] font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
-            {saving ? <><Loader2 size={14} className="animate-spin" /> Registrando...</> : <><Undo2 size={14} /> Registrar retorno e travar pedido</>}
-          </button>
-        </div>
-      </div>
-    </div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quantas peças voltaram fisicamente?</p>
+            <ul className="rounded-2xl border divide-y">
+              {pedido.itens.map(i => {
+                const v = selecionados[i.stock_item_id] ?? 0;
+                return (
+                  <li key={i.stock_item_id} className="p-3 flex flex-wrap items-center gap-3">
+                    <div className="flex-1 min-w-[10rem]">
+                      <p className="text-sm font-medium">{i.device_model ?? "Produto"}</p>
+                      <p className={cn("text-xs", i.lote ? "text-muted-foreground" : "text-red-600 font-medium")}>
+                        vendidas {i.quantidade} · {i.lote ? `lote ${i.lote}` : "sem lote na venda!"} · {formatBRL(i.valor_unitario)}/un.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button type="button" variant="outline" size="icon" className="h-11 w-11" onClick={() => setQtd(i.stock_item_id, i.quantidade, v - 1)} disabled={v <= 0} aria-label="Diminuir"><Minus className="h-4 w-4" /></Button>
+                      <input type="number" inputMode="numeric" min={0} max={i.quantidade} value={v}
+                        onChange={e => setQtd(i.stock_item_id, i.quantidade, parseInt(e.target.value))}
+                        aria-label={`Quantidade devolvida de ${i.device_model ?? "produto"}`}
+                        className="w-16 h-11 rounded-xl border border-input bg-background text-center text-sm tabular-nums" />
+                      <Button type="button" variant="outline" size="icon" className="h-11 w-11" onClick={() => setQtd(i.stock_item_id, i.quantidade, v + 1)} disabled={v >= i.quantidade} aria-label="Aumentar"><Plus className="h-4 w-4" /></Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <Textarea value={observacao} onChange={e => setObservacao(e.target.value)} rows={2}
+              placeholder="Observação inicial (opcional) — ex: cliente relatou defeito no encaixe" />
+            {pecasSel > 0 && <p className="text-sm text-right">{pecasSel} peça(s) · <strong>{formatBRL(totalSel)}</strong></p>}
+          </div>
+        )}
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" className="h-11" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button className="h-11 gap-1.5" onClick={confirmar} disabled={saving || !pedido || pecasSel === 0}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+            {saving ? "Registrando..." : "Registrar e travar pedido"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 // ─── Modal: analisar e concluir ──────────────────────────────────────────────
 
+const DECISOES = [
+  { id: "devolucao" as const, label: "Devolução", desc: "Volta à Expedição (mesmo lote) + crédito do cliente", Icon: Undo2, cor: "border-orange-500 bg-orange-500/10" },
+  { id: "troca" as const, label: "Troca", desc: "Fica retida no Retrabalho; Financeiro emite NF de troca", Icon: Repeat2, cor: "border-cyan-500 bg-cyan-500/10" },
+  { id: "reprovado" as const, label: "Reprovar", desc: "Não procede: nota cancelada, sem crédito", Icon: Ban, cor: "border-red-500 bg-red-500/10" },
+];
+
 function AnalisarModal({ registro, onClose, onDone }: { registro: Registro; onClose: () => void; onDone: () => void }) {
   const q = qStatus(registro);
   const jaConcluido = q !== "em_analise";
   const [decisao, setDecisao] = useState<"devolucao" | "troca" | "reprovado">("devolucao");
-  const [laudo, setLaudo] = useState(jaConcluido ? qLaudo(registro) : "");
+  const [laudo, setLaudo] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirmar, setConfirmar] = useState(false);
+  const info = Q_INFO[q];
+  const dec = DECISOES.find(d => d.id === decisao)!;
 
   async function concluir() {
-    if (!laudo.trim()) { toast.error("Descreva o laudo da análise"); return; }
     setSaving(true);
     try {
       const { data, error } = await untypedRpc("finalizar_analise_qualidade_devolucao", {
@@ -421,76 +477,104 @@ function AnalisarModal({ registro, onClose, onDone }: { registro: Registro; onCl
     } catch (err) {
       toast.error(friendlyError(err));
       logger.error("AnalisarModal:", err);
-    } finally { setSaving(false); }
+    } finally { setSaving(false); setConfirmar(false); }
+  }
+
+  function pedirConfirmacao() {
+    if (!laudo.trim()) { toast.error("Descreva o laudo da análise"); return; }
+    setConfirmar(true);
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl bg-card border border-border/40 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        <div className="px-5 pt-5 pb-3 border-b border-border/20 shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className={cn("h-7 w-7 rounded-lg flex items-center justify-center", Q_COLOR[q])}>
-              {q === "em_analise" ? <Lock size={14} /> : <CheckCircle2 size={14} />}
-            </span>
-            <span className="text-sm font-semibold">{jaConcluido ? "Análise concluída" : "Analisar retorno"}</span>
+    <>
+      <Dialog open onOpenChange={o => !o && !saving && onClose()}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+          <DialogHeader className="text-left pr-6">
+            <DialogTitle>{jaConcluido ? "Análise concluída" : "Analisar retorno"}</DialogTitle>
+            <DialogDescription className="flex flex-wrap items-center gap-2">
+              <span>{registro.cliente_nome} · NF original {registro.nf_original_numero ?? "—"}</span>
+              <Chip tom={info.tom}>{!jaConcluido && <Lock className="h-3 w-3" />}{info.label}</Chip>
+            </DialogDescription>
+          </DialogHeader>
+
+          <Etapas etapas={ETAPAS_DEV} atual={jaConcluido ? 2 : 1} concluido={jaConcluido}
+            tom={q === "reprovado" ? "perigo" : jaConcluido ? "ok" : "atencao"} />
+
+          <div className="rounded-2xl border overflow-hidden">
+            <ul className="divide-y">
+              {registro.itens.map(it => (
+                <li key={it.id} className="px-3 py-2.5 flex items-center gap-3 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{it.descricao}</p>
+                    <p className="text-xs text-muted-foreground">{it.quantidade} un.{it.lote ? ` · lote ${it.lote}` : ""} · {formatBRL(parseFloat(it.valorUnitario) || 0)}/un.</p>
+                  </div>
+                  <p className="font-semibold tabular-nums shrink-0">{formatBRL(it.quantidade * (parseFloat(it.valorUnitario) || 0))}</p>
+                </li>
+              ))}
+            </ul>
+            <div className="px-3 py-2.5 border-t bg-muted/30 flex items-center justify-between text-sm font-bold">
+              <span>Total</span><span className="tabular-nums">{formatBRL(registro.valor_total)}</span>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 text-[12px]">
-          <div><span className="text-muted-foreground">Cliente:</span> <strong>{registro.cliente_nome}</strong></div>
-          <div><span className="text-muted-foreground">NF original:</span> {registro.nf_original_numero ?? "—"}</div>
-          <div className="space-y-1.5 pt-2 border-t border-border/20">
-            {registro.itens.map(it => (
-              <div key={it.id} className="flex items-center justify-between rounded-lg bg-muted/20 px-2.5 py-1.5">
-                <span className="truncate">{it.descricao} <span className="text-muted-foreground">×{it.quantidade}{it.lote ? ` · lote ${it.lote}` : ""}</span></span>
-                <span className="font-semibold shrink-0 ml-2">{BRL(it.quantidade * (parseFloat(it.valorUnitario) || 0))}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between pt-2 border-t border-border/20 font-bold">
-            <span>Total</span><span>{BRL(registro.valor_total)}</span>
-          </div>
+          <p className="text-xs text-muted-foreground">Recebido em {fmtDia(registro.created_at)}{jaConcluido && registro.updated_at ? ` · concluído em ${fmtDia(registro.updated_at)}` : ""}</p>
 
           {jaConcluido ? (
-            <div className={cn("rounded-lg p-3 border", Q_COLOR[q])}>
-              <p className="font-bold mb-1">{Q_LABEL[q]}</p>
-              <p className="whitespace-pre-wrap">{qLaudo(registro) || "(sem laudo registrado)"}</p>
+            <div className="rounded-2xl border p-3 space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" />Laudo (registro fechado — rastreabilidade)</p>
+              <p className="text-sm whitespace-pre-wrap">{qLaudo(registro) || "(sem laudo registrado)"}</p>
             </div>
           ) : (
-            <>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground pt-1">Decisão da Qualidade</p>
-              <div className="grid grid-cols-3 gap-2">
-                {([
-                  { id: "devolucao" as const, label: "Devolução", desc: "Volta ao estoque + crédito", Icon: Undo2, cor: "border-orange-500 bg-orange-500/5" },
-                  { id: "troca" as const, label: "Troca", desc: "Fica em retrabalho", Icon: Repeat2, cor: "border-cyan-500 bg-cyan-500/5" },
-                  { id: "reprovado" as const, label: "Reprovar", desc: "Não procede", Icon: Ban, cor: "border-red-500 bg-red-500/5" },
-                ]).map(d => (
-                  <button key={d.id} type="button" onClick={() => setDecisao(d.id)}
-                    className={cn("rounded-xl border-2 p-2.5 text-left transition-all", decisao === d.id ? d.cor : "border-border/40 hover:border-border")}>
-                    <d.Icon size={14} className="mb-1" />
-                    <p className="text-[11px] font-bold">{d.label}</p>
-                    <p className="text-[10px] text-muted-foreground">{d.desc}</p>
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Decisão da Qualidade</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Decisão">
+                {DECISOES.map(d => (
+                  <button key={d.id} type="button" role="radio" aria-checked={decisao === d.id} onClick={() => setDecisao(d.id)}
+                    className={cn("rounded-xl border-2 p-3 text-left transition-colors flex sm:block items-start gap-3", decisao === d.id ? d.cor : "border-border hover:border-muted-foreground/40")}>
+                    <d.Icon className="h-5 w-5 shrink-0 sm:mb-1.5" />
+                    <span className="block">
+                      <span className="block text-sm font-bold">{d.label}</span>
+                      <span className="block text-xs text-muted-foreground">{d.desc}</span>
+                    </span>
                   </button>
                 ))}
               </div>
-              <textarea value={laudo} onChange={e => setLaudo(e.target.value)} rows={3}
-                placeholder="Laudo da análise — o que foi constatado no lote, por que essa decisão..."
-                className="w-full px-3 py-2 rounded-xl border border-border bg-muted/20 text-[12px] outline-none focus:border-orange-400 resize-none" />
-            </>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Laudo da análise *</span>
+                <Textarea value={laudo} onChange={e => setLaudo(e.target.value)} rows={4}
+                  placeholder="O que foi constatado no lote e por que essa decisão..." />
+              </label>
+            </div>
           )}
-        </div>
-        {!jaConcluido && (
-          <div className="p-4 border-t border-border/20 shrink-0">
-            <button type="button" onClick={concluir} disabled={saving}
-              className="w-full h-10 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-[12px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60">
-              {saving ? <><Loader2 size={14} className="animate-spin" /> Concluindo...</> : <><CheckCircle2 size={14} /> Concluir análise</>}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="h-11" onClick={onClose} disabled={saving}>{jaConcluido ? "Fechar" : "Cancelar"}</Button>
+            {!jaConcluido && (
+              <Button className="h-11 gap-1.5" onClick={pedirConfirmacao} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Concluir análise
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmar} onOpenChange={o => !saving && setConfirmar(o)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-500" />Concluir como “{dec.label}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {dec.desc}. Depois de concluída, a análise não pode ser alterada (fica registrada para rastreabilidade).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Voltar</AlertDialogCancel>
+            <AlertDialogAction disabled={saving} onClick={e => { e.preventDefault(); concluir(); }}
+              className={cn(decisao === "reprovado" && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

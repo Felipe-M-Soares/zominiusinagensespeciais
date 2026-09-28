@@ -94,7 +94,7 @@ interface TipoParada { id: number; nome: string; categoria: string; }
 interface TipoRefugo { id: number; nome: string; }
 interface MateriaPrima { id: string; codigo: string; descricao: string; lote_atual?: string | null; unidade: string; }
 
-interface ApontamentoHoje {
+export interface ApontamentoHoje {
   id: string; maquina_codigo: string | null; maquina: string; produto: string;
   quantidade: number; qtde_plan_disp: number; horas_planejadas: number; turno: string;
   operador: string; created_at: string;
@@ -1176,7 +1176,8 @@ function BotaoExcluir({ onConfirm, disabled }: { onConfirm: () => void; disabled
   );
 }
 
-function EditarApontamentoDialog({ apontamento, onClose, onSaved, maquinas, pecas, tiposParada, tiposRefugo }: {
+/** Também usado pela aba Controle para corrigir apontamentos já sincronizados. */
+export function EditarApontamentoDialog({ apontamento, onClose, onSaved, maquinas, pecas, tiposParada, tiposRefugo }: {
   apontamento: ApontamentoHoje | null; onClose: () => void; onSaved: () => void;
   maquinas: Maquina[]; pecas: PecaOption[]; tiposParada: TipoParada[]; tiposRefugo: TipoRefugo[];
 }) {

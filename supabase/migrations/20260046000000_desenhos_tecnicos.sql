@@ -1941,6 +1941,116 @@ $f_vp$;
 REVOKE EXECUTE ON FUNCTION public.valor_pedido(uuid) FROM anon, PUBLIC;
 GRANT EXECUTE ON FUNCTION public.valor_pedido(uuid) TO authenticated;
 
+-- Catálogo de venda: TODAS as peças cadastradas (Componentes) com o saldo real
+-- na expedição. Antes o Comercial usava a lista do Estoque, limitada a 500
+-- linhas de todas as fases — peças ficavam de fora da busca do novo pedido.
+CREATE OR REPLACE FUNCTION public.catalogo_venda()
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f_cv$
+BEGIN
+  IF auth.uid() IS NULL OR NOT EXISTS (SELECT 1 FROM public.profiles WHERE user_id = auth.uid() AND approved AND NOT COALESCE(blocked, false)) THEN
+    RAISE EXCEPTION 'Sem permissão.';
+  END IF;
+  RETURN COALESCE((
+    SELECT jsonb_agg(jsonb_build_object(
+      'device_id', d.id, 'model', d.model, 'reference', d.reference, 'internal_code', d.internal_code,
+      'preco_venda', d.preco_venda, 'desconto_max_pct', d.desconto_max_pct, 'unidade', d.unidade,
+      'stock_item_id', e.id, 'disponivel', COALESCE(e.disp, 0), 'disponivel_total', COALESCE(e.total, 0),
+      'em_producao', COALESCE(i.qtd, 0)
+    ) ORDER BY d.model, d.reference)
+    FROM public.devices d
+    LEFT JOIN LATERAL (
+      SELECT si.id, GREATEST(si.quantity - si.quantity_reserved, 0) AS disp,
+             SUM(GREATEST(si.quantity - si.quantity_reserved, 0)) OVER () AS total
+      FROM public.stock_items si
+      WHERE si.device_id = d.id AND si.fase = 'expedicao'
+      ORDER BY si.quantity - si.quantity_reserved DESC, si.updated_at DESC
+      LIMIT 1
+    ) e ON true
+    LEFT JOIN LATERAL (
+      SELECT SUM(si.quantity) AS qtd FROM public.stock_items si
+      WHERE si.device_id = d.id AND si.fase IN ('intermediaria', 'retrabalho')
+    ) i ON true
+    WHERE COALESCE(d.ativo, true)
+  ), '[]'::jsonb);
+END;
+$f_cv$;
+REVOKE EXECUTE ON FUNCTION public.catalogo_venda() FROM anon, PUBLIC;
+GRANT EXECUTE ON FUNCTION public.catalogo_venda() TO authenticated;
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- R15. Estoque e Qualidade — permissões da reformulação
+-- ═════════════════════════════════════════════════════════════════════════════
+-- Estoque: perfil "gerente" (= tudo menos admin) também pode gravar no estoque.
+-- Hoje can_write_stock() só aceita admin/estoque/comercial, então o gerente vê os
+-- botões (temPapel libera) mas o servidor recusa entradas, saídas e ajustes.
+CREATE OR REPLACE FUNCTION public.can_write_stock()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $f_cws$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = (SELECT auth.uid())
+      AND role IN ('admin', 'estoque', 'comercial', 'gerente')
+  )
+$f_cws$;
+GRANT EXECUTE ON FUNCTION public.can_write_stock() TO authenticated;
+
+-- Opcional (rastreabilidade): cancel_movement APAGA a movimentação. O front não
+-- usa mais essa RPC (correção agora é por estorno). Para impedir uso direto:
+REVOKE EXECUTE ON FUNCTION public.cancel_movement(uuid, uuid) FROM authenticated;
+
+
+-- 1) Qualidade/Gerente editarem SÓ os campos regulatórios de devices
+--    (a policy devices_admin_update libera apenas admin/financeiro).
+--    O front já chama esta RPC para perfis não-admin e mostra aviso claro se ela não existir.
+CREATE OR REPLACE FUNCTION public.qualidade_atualizar_regularizacao(p_device_id uuid, p_dados jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fq1$
+DECLARE
+  v_role text := public.get_my_role();
+BEGIN
+  IF v_role IS NULL OR v_role NOT IN ('admin', 'gerente', 'qualidade') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão para alterar a regularização.');
+  END IF;
+  IF p_dados->>'status_regularizacao' IS NOT NULL
+     AND p_dados->>'status_regularizacao' NOT IN ('pendente','em_processo','notificado','registrado','cancelado') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Situação inválida.');
+  END IF;
+
+  UPDATE public.devices SET
+    empresa_lf             = COALESCE((p_dados->>'empresa_lf')::boolean, empresa_lf),
+    empresa_afe            = COALESCE((p_dados->>'empresa_afe')::boolean, empresa_afe),
+    empresa_bpf            = COALESCE((p_dados->>'empresa_bpf')::boolean, empresa_bpf),
+    risk_class             = COALESCE(p_dados->>'risk_class', risk_class),
+    classification_code    = COALESCE(p_dados->>'classification_code', classification_code),
+    status_regularizacao   = COALESCE(p_dados->>'status_regularizacao', status_regularizacao),
+    anvisa_registration    = CASE WHEN p_dados ? 'anvisa_registration' THEN NULLIF(p_dados->>'anvisa_registration', '') ELSE anvisa_registration END,
+    numero_processo_anvisa = CASE WHEN p_dados ? 'numero_processo_anvisa' THEN NULLIF(p_dados->>'numero_processo_anvisa', '') ELSE numero_processo_anvisa END,
+    data_registro_anvisa   = CASE WHEN p_dados ? 'data_registro_anvisa' THEN NULLIF(p_dados->>'data_registro_anvisa', '')::date ELSE data_registro_anvisa END,
+    data_vencimento_anvisa = CASE WHEN p_dados ? 'data_vencimento_anvisa' THEN NULLIF(p_dados->>'data_vencimento_anvisa', '')::date ELSE data_vencimento_anvisa END,
+    udi_di                 = CASE WHEN p_dados ? 'udi_di' THEN NULLIF(p_dados->>'udi_di', '') ELSE udi_di END,
+    gtin                   = CASE WHEN p_dados ? 'gtin' THEN NULLIF(p_dados->>'gtin', '') ELSE gtin END,
+    rotulo_udi_ok          = COALESCE((p_dados->>'rotulo_udi_ok')::boolean, rotulo_udi_ok),
+    siud_transmitido_em    = CASE WHEN p_dados ? 'siud_transmitido_em' THEN NULLIF(p_dados->>'siud_transmitido_em', '')::timestamptz ELSE siud_transmitido_em END
+  WHERE id = p_device_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Peça não encontrada.');
+  END IF;
+  RETURN jsonb_build_object('ok', true);
+END;
+$fq1$;
+REVOKE ALL ON FUNCTION public.qualidade_atualizar_regularizacao(uuid, jsonb) FROM anon, public;
+GRANT EXECUTE ON FUNCTION public.qualidade_atualizar_regularizacao(uuid, jsonb) TO authenticated;
+
+-- 2) Perfil gerente também pode atualizar status de recall/destino clínico
+--    (hoje rastr_write só aceita admin/qualidade/comercial; o front detecta 0 linhas e avisa).
+DROP POLICY IF EXISTS "rastr_write" ON public.rastreabilidade_pos_venda;
+CREATE POLICY "rastr_write" ON public.rastreabilidade_pos_venda FOR ALL TO authenticated
+  USING (public.get_my_role() IN ('admin','gerente','qualidade','comercial'))
+  WITH CHECK (public.get_my_role() IN ('admin','gerente','qualidade','comercial'));
+
 -- ═════════════════════════════════════════════════════════════════════════════
 -- R14. PERFIL "GERENTE" — tudo menos Admin
 -- ═════════════════════════════════════════════════════════════════════════════

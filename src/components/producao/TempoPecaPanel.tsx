@@ -107,7 +107,7 @@ export function TempoPecaPanel() {
           <option value="*">Todas as máquinas</option>
           {maquinas.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
-        <div className="relative flex-1 min-w-[12rem] max-w-sm">
+        <div className="relative flex-1 min-w-[10rem] sm:max-w-sm">
           <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar peça..." className="h-11 pl-9" />
         </div>
@@ -116,19 +116,45 @@ export function TempoPecaPanel() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-2xl border bg-card p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Peças no mês</p><p className="text-2xl font-bold tabular-nums mt-1">{filtradas.filter(l => l.pecasMes > 0).length}</p></div>
-        <div className="rounded-2xl border bg-card p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Mais rápidas</p><p className="text-2xl font-bold tabular-nums mt-1 text-green-600">{maisRapidas}</p></div>
-        <div className="rounded-2xl border bg-card p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Mais lentas</p><p className="text-2xl font-bold tabular-nums mt-1 text-red-600">{maisLentas}</p></div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="rounded-2xl border bg-card p-3 sm:p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Peças no mês</p><p className="text-2xl font-bold tabular-nums mt-1">{filtradas.filter(l => l.pecasMes > 0).length}</p></div>
+        <div className="rounded-2xl border bg-card p-3 sm:p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Mais rápidas</p><p className="text-2xl font-bold tabular-nums mt-1 text-green-600">{maisRapidas}</p></div>
+        <div className="rounded-2xl border bg-card p-3 sm:p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Mais lentas</p><p className="text-2xl font-bold tabular-nums mt-1 text-red-600">{maisLentas}</p></div>
       </div>
 
-      <div className="rounded-2xl border bg-card p-4 overflow-x-auto">
+      <div className="rounded-2xl border bg-card md:p-4 md:overflow-x-auto">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Calculando...</div>
         ) : filtradas.length === 0 ? (
           <p className="py-16 text-center text-sm text-muted-foreground">Nenhuma peça produzida em {labelMes(mesRef)} ou {labelMes(mesAnterior)}.</p>
         ) : (
-          <table className="w-full text-sm min-w-[720px]">
+          <>
+          <ul className="md:hidden divide-y">
+            {filtradas.map(l => {
+              const v = l.variacao;
+              return (
+                <li key={l.produto} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{l.produto}</p>
+                      <p className="text-xs text-muted-foreground truncate">{l.descricao}</p>
+                    </div>
+                    <span className={cn("text-sm font-bold tabular-nums shrink-0", v === null ? "text-muted-foreground" : v < -2 ? "text-green-600" : v > 2 ? "text-red-600" : "text-muted-foreground")}>
+                      {v === null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1).replace(".", ",")}%`}
+                      {v !== null && <span className="block text-[11px] font-normal text-right">{v < -2 ? "mais rápida" : v > 2 ? "mais lenta" : "estável"}</span>}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-4 gap-2 text-xs tabular-nums">
+                    <div><p className="text-muted-foreground">{labelMes(mesAnterior)}</p><p>{l.anterior ? fmtCiclo(l.anterior) : "—"}</p></div>
+                    <div><p className="text-muted-foreground">{labelMes(mesRef)}</p><p className="font-semibold">{l.atual ? fmtCiclo(l.atual) : "—"}</p></div>
+                    <div><p className="text-muted-foreground">Padrão</p><p>{l.padrao ? fmtCiclo(l.padrao) : "—"}</p></div>
+                    <div><p className="text-muted-foreground">Peças</p><p>{fmtNum(l.pecasMes)}</p></div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <table className="hidden md:table w-full text-sm min-w-[720px]">
             <thead><tr className="text-left text-xs text-muted-foreground border-b">
               <th className="py-2 font-medium">Peça</th>
               <th className="py-2 font-medium text-right">{labelMes(mesAnterior)}</th>
@@ -164,6 +190,7 @@ export function TempoPecaPanel() {
               })}
             </tbody>
           </table>
+          </>
         )}
       </div>
       <p className="text-xs text-muted-foreground">

@@ -1,58 +1,52 @@
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
-import { createPortal } from "react-dom";
-import { useClickOutside } from "@/hooks/useClickOutside";
-import { useConfirmEnter } from "@/hooks/useConfirmEnter";
-import { useAuth } from "@/hooks/useAuth";
-import { useStock } from "@/hooks/useStock";
-import type { StockItem } from "@/hooks/useStock";
-import { Button } from "@/components/ui/button";
+/**
+ * Estoque — 6 abas: Visão geral · Intermediário · Expedição · Retrabalho ·
+ * Recebimento · Pedidos (separação dos pedidos do Comercial).
+ *
+ * Fluxo das peças: Intermediário (entrada por lote) → Expedição (embalada,
+ * pronta p/ venda) ⇄ Retrabalho. Pedidos do Comercial são separados por lote
+ * na aba Pedidos (Separar → Pronto → Faturado/Enviado).
+ *
+ * Tocar numa peça abre o detalhe (lotes, movimentações e ajustes de mínimo,
+ * localização e observações). Movimentações não são apagadas: correções são
+ * feitas por estorno/ajuste (rastreabilidade ANVISA).
+ */
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  ArrowDownCircle,
-  ArrowUpCircle,
-  ChevronDown,
-  Clock,
-  Plus,
-  Search,
-  Package,
-  AlertTriangle,
-  TrendingDown,
-  TrendingUp,
-  Boxes,
-  List,
-  Trash2,
-  Tag,
-  Menu,
-  Shield,
-  Activity,
-  Truck,
-  PackageCheck,
-  Filter,
-  Wrench,
-  Archive,
-  FileSpreadsheet,
+  AlertTriangle, Boxes, ChevronDown, FileSpreadsheet, FileText, History, List, Loader2, MoreVertical,
+  PackageCheck, Plus, SlidersHorizontal, Tag, Trash2, X,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useConfirmEnter } from "@/hooks/useConfirmEnter";
+import { useStock, deleteStockItem } from "@/hooks/useStock";
+import type { StockFase, StockItem } from "@/hooks/useStock";
+import { temPapel } from "@/types/roles";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageSkeleton } from "@/components/PageSkeleton";
-import { StockNav } from "@/components/stock/StockNav";
-// Lazy: todos os modais e painéis pesados só carregam quando abertos/acessados
-import { lazy, Suspense } from "react";
-import { LoadingScreen } from "@/components/LoadingScreen";
+import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
+import { StockNav, type ActiveView } from "@/components/stock/StockNav";
+import { ListaItensEstoque } from "@/components/stock/ListaItensEstoque";
+import { ItemEstoqueDialog, type AbaDetalhe } from "@/components/stock/ItemEstoqueDialog";
+import { EscolherItemDialog, EstoqueBaixoDialog, LIMITE_EXPEDICAO_BAIXA } from "@/components/stock/EstoqueDialogs";
+import { zerarSaldoPorAjuste } from "@/components/stock/acoesEstoque";
+import { FASE_CFG, abaixoDoMinimo, fmtNum, situacaoItem, type Situacao } from "@/components/stock/estoqueUi";
+import { friendlyError } from "@/lib/errorMessages";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+// Lazy: modais e painéis pesados só carregam quando abertos/acessados
 const MovementModal           = lazy(() => import("@/components/stock/MovementModal").then(m => ({ default: m.MovementModal })));
-const StockHistoryPanel       = lazy(() => import("@/components/stock/StockHistoryPanel").then(m => ({ default: m.StockHistoryPanel })));
 const AddToStockModal         = lazy(() => import("@/components/stock/AddToStockModal").then(m => ({ default: m.AddToStockModal })));
 const StockListModal          = lazy(() => import("@/components/stock/StockListModal").then(m => ({ default: m.StockListModal })));
-const LotesPanel              = lazy(() => import("@/components/stock/LotesPanel").then(m => ({ default: m.LotesPanel })));
 const IntermediaryLotesModal  = lazy(() => import("@/components/stock/IntermediaryLotesModal").then(m => ({ default: m.IntermediaryLotesModal })));
 const StockCsvImport          = lazy(() => import("@/components/stock/StockCsvImport").then(m => ({ default: m.StockCsvImport })));
 const ExcelStockImport        = lazy(() => import("@/components/stock/ExcelStockImport").then(m => ({ default: m.ExcelStockImport })));
@@ -63,788 +57,198 @@ const ConcluirRetrabalhoModal = lazy(() => import("@/components/stock/ConcluirRe
 const StockDashboard          = lazy(() => import("@/components/stock/StockDashboard").then(m => ({ default: m.StockDashboard })));
 const RecebimentoPanel        = lazy(() => import("@/components/stock/RecebimentoPanel").then(m => ({ default: m.RecebimentoPanel })));
 const PedidosEstoquePanel     = lazy(() => import("@/components/stock/PedidosEstoquePanel").then(m => ({ default: m.PedidosEstoquePanel })));
-import { supabase } from "@/integrations/supabase/client";
-import { deleteStockItem } from "@/hooks/useStock";
-import { cn } from "@/lib/utils";
-import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { countryFlag } from "@/components/DeviceCard";
-import { toast } from "sonner";
 
-// ─── Card de Intermediária ────────────────────────────────────────────────────
+const ABAS: ActiveView[] = ["dashboard", "intermediaria", "expedicao", "retrabalho", "recebimento", "pedidos"];
+const FASES: ActiveView[] = ["intermediaria", "expedicao", "retrabalho"];
+type FiltroSituacao = "todos" | Situacao;
+const ITENS_POR_PAGINA = 60;
 
-interface IntermediaryCardProps {
-  item: StockItem;
-  onEntrada: (item: StockItem) => void;
-  onTransfer: (item: StockItem) => void;
-  onHistory: (item: StockItem) => void;
-  onDelete: (item: StockItem) => void;
-  onLotes: (item: StockItem) => void;
-  onReset: (item: StockItem) => void;
-  loteCount: number;
-  isAdmin: boolean;
-}
-
-const IntermediaryCard = memo(function IntermediaryCard({
-  item, onEntrada, onTransfer, onHistory, onDelete, onLotes, onReset, loteCount, isAdmin,
-}: IntermediaryCardProps) {
-  const d = item.device;
-  const qty = item.quantity;
-  const isLow = qty > 0 && qty <= item.min_quantity;
-  const isEmpty = qty === 0;
-
-  return (
-    <div
-      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
-      style={{
-        boxShadow:
-          "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
-      }}
-    >
-      <div className={cn(
-        "h-0.5 bg-gradient-to-r from-transparent to-transparent transition-opacity group-hover:opacity-100",
-        isEmpty ? "via-destructive opacity-80" : isLow ? "via-warning opacity-70" : "via-primary opacity-50"
-      )} />
-
-      <div className="p-5 space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 space-y-1">
-            <h3 className="text-[17px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[14px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
-          </div>
-          <Badge variant="outline" className="shrink-0 text-[13px] font-mono px-2 py-1 border-primary/25 text-primary/80 bg-primary/5 rounded-lg">
-            {d.classification_code}
-          </Badge>
-        </div>
-
-        {d.brand_name && <p className="text-[14px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
-
-        <div className="flex flex-wrap gap-1 -mt-1">
-          {d.sterile && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2.5 py-1 text-[13px] font-medium text-success">
-              <Shield className="h-[13px] w-[13px]" /> Estéril
-            </span>
-          )}
-          {d.single_use && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2.5 py-1 text-[13px] font-medium text-orange-500">
-              <Package className="h-[13px] w-[13px]" /> Uso único
-            </span>
-          )}
-          {d.implantable && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-[13px] font-medium text-primary">
-              <Activity className="h-[13px] w-[13px]" /> Implantável
-            </span>
-          )}
-        </div>
-
-        <div className={cn(
-          "flex items-center justify-between rounded-xl px-4 py-2.5 border",
-          isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-primary/8 border-primary/25"
-        )}>
-          <div className="flex items-center gap-2">
-            <PackageCheck className={cn("h-[18px] w-[18px]", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")} />
-            <span className="text-[14px] font-medium text-muted-foreground">Intermediário</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {isEmpty && <AlertTriangle className="h-4 w-4 text-destructive" />}
-            {isLow && !isEmpty && <TrendingDown className="h-4 w-4 text-warning" />}
-            <span className={cn("text-[20px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-primary")}>
-              {qty}
-            </span>
-            <span className="text-[13px] text-muted-foreground">un.</span>
-          </div>
-        </div>
-
-        {loteCount > 0 && (
-          <button
-            type="button"
-            onClick={() => onLotes(item)}
-            className="flex items-center gap-2 text-[14px] text-primary/70 hover:text-primary transition-colors -mt-1"
-          >
-            <Tag className="h-4 w-4" />
-            <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""}</span>
-            <span className="text-muted-foreground/40">→</span>
-          </button>
-        )}
-
-        <div className="space-y-2 pt-1 border-t border-border/20">
-          <button
-            type="button"
-            onClick={() => onEntrada(item)}
-            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-primary/8 hover:bg-primary/15 text-primary text-[14px] font-medium transition-colors"
-          >
-            <ArrowDownCircle className="h-[18px] w-[18px]" />
-            Registrar Entrada
-          </button>
-          <button
-            type="button"
-            onClick={() => onTransfer(item)}
-            disabled={qty === 0}
-            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 text-[14px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <Truck className="h-[18px] w-[18px]" />
-            Mover para Expedição
-          </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => onHistory(item)}
-              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
-              title="Histórico"
-            >
-              <Clock className="h-4 w-4" /> Histórico
-            </button>
-            <button
-              type="button"
-              onClick={() => onLotes(item)}
-              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-primary/10 hover:text-primary text-muted-foreground text-[13px] transition-colors"
-              title="Lotes"
-            >
-              <Tag className="h-4 w-4" /> Lotes
-            </button>
-            {isAdmin && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onReset(item)}
-                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
-                  title="Zerar estoque e histórico"
-                >
-                  <PackageCheck className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDelete(item)}
-                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-                  title="Remover"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
-interface RetrabalhoCardProps {
-  item: StockItem;
-  onConcluir: (item: StockItem) => void;
-  onHistory: (item: StockItem) => void;
-  onLotes: (item: StockItem) => void;
-  loteCount: number;
-}
-
-const RetrabalhoCard = memo(function RetrabalhoCard({ item, onConcluir, onHistory, onLotes, loteCount }: RetrabalhoCardProps) {
-  const d = item.device;
-
-  return (
-    <div
-      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
-      style={{
-        boxShadow:
-          "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
-      }}
-    >
-      <div className="h-0.5 bg-gradient-to-r from-transparent via-orange-500 to-transparent opacity-70 group-hover:opacity-100 transition-opacity" />
-
-      <div className="p-5 space-y-4">
-        {/* Cabeçalho */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0 space-y-1">
-            <h3 className="text-[17px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[14px] text-muted-foreground font-mono tracking-tight truncate">{d.reference}</p>
-          </div>
-          <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/25 px-2.5 py-1 text-[13px] font-medium text-orange-500 whitespace-nowrap">
-            <Wrench className="h-[13px] w-[13px]" /> Retrabalho
-          </span>
-        </div>
-
-        {d.brand_name && <p className="text-[14px] text-muted-foreground/70 truncate">{d.brand_name}</p>}
-
-        {/* Quantidade em retrabalho */}
-        <div className="flex items-center justify-between rounded-xl px-4 py-2.5 border bg-orange-500/8 border-orange-500/25">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <Wrench className="h-[18px] w-[18px] text-orange-500 shrink-0" />
-            <span className="text-[14px] font-medium text-muted-foreground truncate">Em retrabalho</span>
-          </div>
-          <div className="flex items-center gap-1 shrink-0 ml-2">
-            <span className="text-[20px] font-bold tabular-nums text-orange-500">{item.quantity}</span>
-            <span className="text-[13px] text-muted-foreground">un.</span>
-          </div>
-        </div>
-
-        {/* Lotes */}
-        {loteCount > 0 && (
-          <button
-            type="button"
-            onClick={() => onLotes(item)}
-            className="flex items-center gap-2 text-[14px] text-orange-500/70 hover:text-orange-500 transition-colors -mt-1"
-          >
-            <Tag className="h-4 w-4" />
-            <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""}</span>
-            <span className="text-muted-foreground/40">→</span>
-          </button>
-        )}
-
-        {/* Info */}
-        <div className="flex items-center justify-between text-[13px] text-muted-foreground/60">
-          <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
-          {d.manufacturer_country && (
-            <span className="flex items-center gap-1 shrink-0 ml-2">
-              <span>{countryFlag(d.manufacturer_country)}</span>
-            </span>
-          )}
-        </div>
-
-        {/* Botões */}
-        <div className="space-y-2 pt-1 border-t border-border/20">
-          <button
-            type="button"
-            onClick={() => onConcluir(item)}
-            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[14px] font-medium transition-colors"
-          >
-            <PackageCheck className="h-[18px] w-[18px]" />
-            Concluir Retrabalho → Expedição
-          </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => onHistory(item)}
-              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
-            >
-              <Clock className="h-4 w-4" /> Histórico
-            </button>
-            <button
-              type="button"
-              onClick={() => onLotes(item)}
-              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-orange-500/10 hover:text-orange-500 text-muted-foreground text-[13px] transition-colors"
-            >
-              <Tag className="h-4 w-4" /> Lotes
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-// ─── Card de Expedição ────────────────────────────────────────────────────────
-
-interface ExpedicaoCardProps {
-  item: StockItem;
-  onSaida: (item: StockItem) => void;
-  onHistory: (item: StockItem) => void;
-  onDelete: (item: StockItem) => void;
-  onLotes: (item: StockItem) => void;
-  onRetrabalho: (item: StockItem) => void;
-  onReset: (item: StockItem) => void;
-  loteCount: number;
-  isAdmin: boolean;
-}
-
-const ExpedicaoCard = memo(function ExpedicaoCard({
-  item, onSaida, onHistory, onDelete, onLotes, onRetrabalho, onReset, loteCount, isAdmin,
-}: ExpedicaoCardProps) {
-  const d = item.device;
-  const available = item.quantity_available;
-  const isLow = available > 0 && available <= item.min_quantity;
-  const isEmpty = available === 0;
-
-  return (
-    <div
-      className="group relative rounded-2xl bg-card overflow-hidden transition-all duration-300 hover:-translate-y-0.5"
-      style={{
-        boxShadow:
-          "0 1px 2px hsl(var(--border) / 0.3), 0 4px 12px -2px hsl(var(--border) / 0.15), inset 0 1px 0 hsl(0 0% 100% / 0.06)",
-      }}
-    >
-      <div className={cn(
-        "h-0.5 bg-gradient-to-r from-transparent to-transparent transition-opacity group-hover:opacity-100",
-        isEmpty ? "via-destructive opacity-80" : isLow ? "via-warning opacity-70" : "via-success opacity-50"
-      )} />
-
-      <div className="p-5 space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 space-y-1">
-            <h3 className="text-[17px] font-semibold leading-snug text-foreground line-clamp-2">{d.model}</h3>
-            <p className="text-[14px] text-muted-foreground font-mono tracking-tight">{d.reference}</p>
-          </div>
-          <Badge variant="outline" className="shrink-0 text-[13px] font-mono px-2 py-1 border-success/25 text-success/80 bg-success/5 rounded-lg">
-            {d.classification_code}
-          </Badge>
-        </div>
-
-        {d.brand_name && <p className="text-[14px] text-muted-foreground/70 truncate -mt-1">{d.brand_name}</p>}
-
-        <div className="flex flex-wrap gap-1 -mt-1">
-          {d.sterile && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success/8 px-2.5 py-1 text-[13px] font-medium text-success">
-              <Shield className="h-[13px] w-[13px]" /> Estéril
-            </span>
-          )}
-          {d.single_use && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/12 px-2.5 py-1 text-[13px] font-medium text-orange-500">
-              <Package className="h-[13px] w-[13px]" /> Uso único
-            </span>
-          )}
-          {d.implantable && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-[13px] font-medium text-primary">
-              <Activity className="h-[13px] w-[13px]" /> Implantável
-            </span>
-          )}
-        </div>
-
-        <div className={cn(
-          "flex items-center justify-between rounded-xl px-4 py-2.5 border",
-          isEmpty ? "bg-destructive/8 border-destructive/25" : isLow ? "bg-warning/8 border-warning/25" : "bg-success/8 border-success/25"
-        )}>
-          <div className="flex items-center gap-2">
-            <PackageCheck className={cn("h-[18px] w-[18px]", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")} />
-            <span className="text-[14px] font-medium text-muted-foreground">Expedição</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {isEmpty && <AlertTriangle className="h-4 w-4 text-destructive" />}
-            {isLow && !isEmpty && <TrendingDown className="h-4 w-4 text-warning" />}
-            <span className={cn("text-[20px] font-bold tabular-nums", isEmpty ? "text-destructive" : isLow ? "text-warning" : "text-success")}>
-              {available}
-            </span>
-            <span className="text-[13px] text-muted-foreground">un.</span>
-          </div>
-        </div>
-
-        {item.quantity_reserved > 0 && (
-          <div className="flex items-center justify-between rounded-xl px-4 py-2.5 border bg-amber-500/8 border-amber-500/25 -mt-1">
-            <div className="flex items-center gap-2">
-              <Archive className={cn("h-[18px] w-[18px] text-amber-500")} />
-              <span className="text-[14px] font-medium text-muted-foreground">Reservado</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[20px] font-bold tabular-nums text-amber-500">
-                {item.quantity_reserved}
-              </span>
-              <span className="text-[13px] text-muted-foreground">un.</span>
-            </div>
-          </div>
-        )}
-
-        {loteCount > 0 && (
-          <button
-            type="button"
-            onClick={() => onLotes(item)}
-            className="flex items-center gap-2 text-[14px] text-success/70 hover:text-success transition-colors -mt-1"
-          >
-            <Tag className="h-4 w-4" />
-            <span className="font-medium">{loteCount} lote{loteCount > 1 ? "s" : ""} prontos</span>
-            <span className="text-muted-foreground/40">→</span>
-          </button>
-        )}
-
-        <div className="flex items-center justify-between text-[13px] text-muted-foreground/60">
-          <span>Mín: {item.min_quantity} un.</span>
-          {item.location && <span className="truncate ml-2">📍 {item.location}</span>}
-        </div>
-
-        <div className="flex items-center justify-between text-[13px] text-muted-foreground/60 pt-1 border-t border-border/20">
-          <span className="font-mono truncate">{d.anvisa_registration || d.udi_di}</span>
-          {d.manufacturer_country && (
-            <span className="flex items-center gap-1 shrink-0 ml-2" title={d.manufacturer_country}>
-              <span>{countryFlag(d.manufacturer_country)}</span>
-            </span>
-          )}
-        </div>
-
-        <div className="space-y-2 pt-1 border-t border-border/20">
-          <button
-            type="button"
-            onClick={() => onSaida(item)}
-            disabled={item.quantity === 0}
-            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-success/10 hover:bg-success/20 text-success text-[14px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <ArrowUpCircle className="h-[18px] w-[18px]" />
-            Retirada
-          </button>
-          <button
-            type="button"
-            onClick={() => onRetrabalho(item)}
-            disabled={item.quantity === 0}
-            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 text-[14px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <Wrench className="h-[18px] w-[18px]" />
-            Retrabalho
-          </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => onHistory(item)}
-              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-muted/60 text-muted-foreground text-[13px] transition-colors"
-            >
-              <Clock className="h-4 w-4" /> Histórico
-            </button>
-            <button
-              type="button"
-              onClick={() => onLotes(item)}
-              className="flex-1 h-9 flex items-center justify-center gap-1 rounded-lg bg-muted/30 hover:bg-success/10 hover:text-success text-muted-foreground text-[13px] transition-colors"
-            >
-              <Tag className="h-4 w-4" /> Lotes
-            </button>
-            {isAdmin && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onReset(item)}
-                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-warning/15 hover:text-warning text-muted-foreground transition-colors"
-                  title="Zerar estoque e histórico"
-                >
-                  <PackageCheck className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDelete(item)}
-                  className="h-9 w-9 flex items-center justify-center rounded-lg bg-muted/30 hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
-                  title="Remover"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-// ─── Página principal ─────────────────────────────────────────────────────────
-
-type FilterStatus = "all" | "ok" | "baixo" | "zerado";
-type ActiveView = "dashboard" | "intermediaria" | "expedicao" | "retrabalho" | "recebimento" | "pedidos";
-
-const HIDE_EMPTY_INTERMEDIARIA = false;
+const Carregando = () => <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
 
 export default function Estoque() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, role, user } = useAuth();
+  const podeEditar = temPapel(role, "estoque");
+  const displayName = (user?.user_metadata?.display_name as string | undefined) ?? user?.email ?? null;
 
-  // ── Estado principal ──────────────────────────────────────────────────────
-  const [activeView, setActiveView] = useState<ActiveView>("dashboard");
-  const [search, setSearch] = useState("");
+  // ── Aba (na URL, como no Financeiro — voltar/atualizar mantém a aba) ─────────
+  const [params, setParams] = useSearchParams();
+  const abaUrl = params.get("aba") as ActiveView | null;
+  const activeView: ActiveView = abaUrl && ABAS.includes(abaUrl) ? abaUrl : "dashboard";
+  const ehFase = FASES.includes(activeView);
+  const fase = (ehFase ? activeView : "expedicao") as StockFase;
+
+  // ── Busca e filtros ──────────────────────────────────────────────────────
   const [querySearch, setQuerySearch] = useState("");
+  const [filtroSituacao, setFiltroSituacao] = useState<FiltroSituacao>("todos");
+  const [filterLocation, setFilterLocation] = useState("");
+  const [filterBrand, setFilterBrand] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(ITENS_POR_PAGINA);
 
-  // Pedidos pendentes (badge na aba) — com Realtime para atualizar sem refresh
-  const [pedidosPendentes, setPedidosPendentes] = useState(0);
+  const irPara = useCallback((v: ActiveView) => {
+    setParams(p => { const n = new URLSearchParams(p); n.set("aba", v); return n; }, { replace: true });
+    setVisibleCount(ITENS_POR_PAGINA);
+    setFiltroSituacao("todos");
+    setQuerySearch("");
+  }, [setParams]);
+
+  // ── Dados ────────────────────────────────────────────────────────────────
+  const { items: allItems, loteMap, qtyByFase, loading, error, refetch } = useStock(querySearch);
+
+  // Pedidos aguardando separação (badge da aba) — Realtime para atualizar sem refresh
+  const [pedidosParaSeparar, setPedidosParaSeparar] = useState(0);
   const loadPedidosPendentes = useCallback(async () => {
     const { count } = await supabase
       .from("pedidos_comerciais")
       .select("id", { count: "exact", head: true })
       .eq("status", "separando");
-    setPedidosPendentes(count ?? 0);
+    setPedidosParaSeparar(count ?? 0);
   }, []);
-
   useEffect(() => { loadPedidosPendentes(); }, [loadPedidosPendentes]);
-
   useEffect(() => {
     const channel = supabase
       .channel(`estoque-badge-${Math.random().toString(36).slice(2, 8)}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pedidos_comerciais" },
-        () => { loadPedidosPendentes(); }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos_comerciais" }, () => { loadPedidosPendentes(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [loadPedidosPendentes]);
 
-  // Filtros
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
-  const [filterLocation, setFilterLocation] = useState("");
-  const [filterBrand, setFilterBrand] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Autocomplete
-  const [, setAutocompleteItems] = useState<string[]>([]);
-  const [, setShowAutocomplete] = useState(false);
-
-  // Alertas — apenas no dashboard
-
-  // Menu admin
-  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
-
-  // Modais e painéis
-  const [movementState, setMovementState] = useState<{
-    item: StockItem;
-    type: "entrada" | "saida";
-    lockedType: "entrada" | "saida";
-  } | null>(null);
-  const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
+  // ── Modais ───────────────────────────────────────────────────────────────
+  const [detalhe, setDetalhe] = useState<{ item: StockItem; aba: AbaDetalhe } | null>(null);
+  const [movementState, setMovementState] = useState<{ item: StockItem; type: "entrada" | "saida" } | null>(null);
+  const [transferItem, setTransferItem] = useState<StockItem | null>(null);
+  const [retrabalhoItem, setRetrabalhoItem] = useState<StockItem | null>(null);
+  const [concluirItem, setConcluirItem] = useState<StockItem | null>(null);
+  const [escolher, setEscolher] = useState<"entrada" | "saida" | "transferir" | null>(null);
+  const [baixoOpen, setBaixoOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [intermediaryLotesOpen, setIntermediaryLotesOpen] = useState(false);
   const [allMovOpen, setAllMovOpen] = useState(false);
-  const [baixoOpen, setBaixoOpen] = useState(false);
-  const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [lotesItem, setLotesItem] = useState<StockItem | null>(null);
   const [csvOpen, setCsvOpen] = useState(false);
   const [excelImportOpen, setExcelImportOpen] = useState(false);
-  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
-  const [deleteAllTyped, setDeleteAllTyped] = useState("");
+  const [resetItem, setResetItem] = useState<StockItem | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [clearHistConfirm, setClearHistConfirm] = useState(false);
   const [clearingHist, setClearingHist] = useState(false);
 
+  // Mantém o detalhe aberto sincronizado com o dado recarregado (ex.: após salvar ajuste)
+  useEffect(() => {
+    if (!detalhe) return;
+    const atualizado = allItems.find(i => i.id === detalhe.item.id);
+    if (atualizado && atualizado !== detalhe.item) setDetalhe(d => d ? { ...d, item: atualizado } : d);
+  }, [allItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Derivados ────────────────────────────────────────────────────────────
+  const porFase = useMemo(() => ({
+    intermediaria: allItems.filter(i => i.fase === "intermediaria"),
+    expedicao: allItems.filter(i => i.fase === "expedicao"),
+    retrabalho: allItems.filter(i => i.fase === "retrabalho" && i.quantity > 0),
+  }), [allItems]);
+
+  const faseItems = useMemo(() => (ehFase ? porFase[fase] : []), [ehFase, porFase, fase]);
+  const baseFiltrada = useMemo(() => faseItems.filter(item => {
+    if (!item.device) return false;
+    if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
+    if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
+    return true;
+  }), [faseItems, filterLocation, filterBrand]);
+  const contagem = useMemo(() => {
+    const c = { todos: baseFiltrada.length, ok: 0, baixo: 0, zerado: 0 };
+    for (const i of baseFiltrada) c[situacaoItem(i)]++;
+    return c;
+  }, [baseFiltrada]);
+  const filteredItems = useMemo(
+    () => filtroSituacao === "todos" ? baseFiltrada : baseFiltrada.filter(i => situacaoItem(i) === filtroSituacao),
+    [baseFiltrada, filtroSituacao]
+  );
+  const pagedItems = useMemo(() => filteredItems.slice(0, visibleCount), [filteredItems, visibleCount]);
+  const totalUnidades = filteredItems.reduce((s, i) => s + i.quantity, 0);
+  const abaixoMinCount = useMemo(() => allItems.filter(abaixoDoMinimo).length, [allItems]);
+  const filtrosExtras = !!filterLocation || !!filterBrand;
+  const hasSearch = !!querySearch.trim();
+
+  // ── Alerta em tempo real: expedição ficou baixa ────────────────────────────
+  useEffect(() => {
+    const channel = supabase
+      .channel(`estoque-lowstock-${Math.random().toString(36).slice(2, 8)}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "stock_items" }, (payload) => {
+        const u = payload.new as { quantity?: number; fase?: string };
+        if (u.fase === "expedicao" && typeof u.quantity === "number" && u.quantity > 0 && u.quantity < LIMITE_EXPEDICAO_BAIXA) {
+          toast.warning(`Estoque baixo na expedição (${u.quantity} un.)`, {
+            duration: 5000, action: { label: "Ver", onClick: () => setBaixoOpen(true) },
+          });
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  // Aviso único por sessão quando há peças abaixo do mínimo
+  const avisouRef = useRef(false);
+  useEffect(() => {
+    if (avisouRef.current || loading || abaixoMinCount === 0) return;
+    avisouRef.current = true;
+    toast.warning(`${abaixoMinCount} peça${abaixoMinCount > 1 ? "s" : ""} abaixo do estoque mínimo.`, {
+      duration: 6000, action: { label: "Ver", onClick: () => setBaixoOpen(true) },
+    });
+  }, [loading, abaixoMinCount]);
+
+  // ── Callbacks estáveis ───────────────────────────────────────────────────
+  const abrir = useCallback((i: StockItem, aba: AbaDetalhe = "lotes") => setDetalhe({ item: i, aba }), []);
+  const onEntrada = useCallback((i: StockItem) => setMovementState({ item: i, type: "entrada" }), []);
+  const onSaida = useCallback((i: StockItem) => setMovementState({ item: i, type: "saida" }), []);
+  const onTransferir = useCallback((i: StockItem) => setTransferItem(i), []);
+  const onRetrabalho = useCallback((i: StockItem) => setRetrabalhoItem(i), []);
+  const onConcluir = useCallback((i: StockItem) => setConcluirItem(i), []);
+  const acoesItem = useMemo(() => ({
+    onEntrada, onSaida, onTransferir, onRetrabalho, onConcluir,
+    onZerar: (i: StockItem) => setResetItem(i),
+    onRemover: (i: StockItem) => setDeleteItem(i),
+  }), [onEntrada, onSaida, onTransferir, onRetrabalho, onConcluir]);
+
+  const escolherCfg = escolher === "entrada"
+    ? { titulo: "Registrar entrada", descricao: "Escolha a peça do Intermediário que está chegando.", itens: porFase.intermediaria, acao: onEntrada }
+    : escolher === "transferir"
+    ? { titulo: "Mover para Expedição", descricao: "Escolha a peça do Intermediário que já foi embalada.", itens: porFase.intermediaria.filter(i => i.quantity > 0), acao: onTransferir }
+    : { titulo: "Registrar retirada", descricao: "Escolha a peça da Expedição que vai sair.", itens: porFase.expedicao.filter(i => i.quantity > 0), acao: onSaida };
+
+  // ── Ações de administrador ───────────────────────────────────────────────
   async function clearAllHistory() {
     setClearingHist(true);
     try {
-      // IMPORTANTE: NÃO apaga rastreabilidade_pos_venda — são dados de
-      // rastreabilidade/validação ANVISA (lote → cliente/recall) e devem
-      // sobreviver à limpeza de histórico, igual às demais rotinas de
-      // limpeza do app (ver admin_clear_comercial no banco). A versão
-      // anterior deste botão apagava essa tabela direto do client, fazendo
-      // as peças "perderem" a validação ANVISA sempre que o histórico
-      // completo era apagado — corrigido aqui.
-      //
-      // Usa as RPCs seguras (admin-only, com auditoria) em vez de DELETE
-      // direto do client — mesmo padrão já usado no restante do app.
+      // NÃO apaga rastreabilidade_pos_venda (dados de recall ANVISA) — usa as
+      // RPCs admin_clear_* (admin-only, com auditoria).
       const { data: comercialData, error: eComercial } = await supabase.rpc("admin_clear_comercial");
       const comercialResult = comercialData as { ok?: boolean; error?: string } | null;
-      if (eComercial || comercialResult?.ok === false) {
-        throw new Error(comercialResult?.error ?? eComercial?.message ?? "Erro ao apagar pedidos comerciais.");
-      }
-
+      if (eComercial || comercialResult?.ok === false) throw new Error(comercialResult?.error ?? eComercial?.message ?? "Erro ao apagar pedidos comerciais.");
       const { data: movData, error: eMov } = await supabase.rpc("admin_clear_stock_movements");
       const movResult = movData as { ok?: boolean; error?: string } | null;
-      if (eMov || movResult?.ok === false) {
-        throw new Error(movResult?.error ?? eMov?.message ?? "Erro ao apagar movimentações de estoque.");
-      }
-
-      // Zera quantidades mas MANTÉM os stock_items (peças regularizadas ficam com qty=0)
+      if (eMov || movResult?.ok === false) throw new Error(movResult?.error ?? eMov?.message ?? "Erro ao apagar movimentações de estoque.");
+      // Zera quantidades mas MANTÉM os stock_items (peças cadastradas ficam com qty=0)
       const { error: e4 } = await supabase.from("stock_items").update({ quantity: 0, quantity_reserved: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
       if (e4) throw e4;
       toast.success("Histórico apagado. Peças cadastradas e validações ANVISA mantidas, com saldo zerado.");
       setClearHistConfirm(false);
       refetch();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : (err as {message?:string})?.message ?? "Erro desconhecido";
-      toast.error(`Erro ao apagar histórico: ${msg}`);
+      toast.error(friendlyError(err, "Erro ao apagar histórico."));
     } finally {
       setClearingHist(false);
-    }
-  }
-  const [deletingAll, setDeletingAll] = useState(false);
-  const [transferItem, setTransferItem] = useState<StockItem | null>(null);
-  const [retrabalhoItem, setRetrabalhoItem] = useState<StockItem | null>(null);
-  const [concluirRetrabalhoItem, setConcluirRetrabalhoItem] = useState<StockItem | null>(null);
-  const [resetItem, setResetItem] = useState<StockItem | null>(null);
-  const [resetting, setResetting] = useState(false);
-
-  // Paginação
-  const ITEMS_PER_PAGE = 60;
-  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
-
-  // ── Refs ──────────────────────────────────────────────────────────────────
-  const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<HTMLDivElement>(null);
-  const adminMenuRef = useRef<HTMLDivElement>(null);
-
-  // ── Dados do servidor ─────────────────────────────────────────────────────
-  const { items: allItems, loteMap, qtyByFase, loading, error, refetch } = useStock(querySearch);
-
-  // Derivados dos dados — memoizados para evitar re-filtro a cada render
-  const intermediariaItems = useMemo(() => {
-    const all = allItems.filter((i) => i.fase === "intermediaria");
-    return HIDE_EMPTY_INTERMEDIARIA ? all.filter((i) => i.quantity > 0) : all;
-  }, [allItems]);
-  const expedicaoItems  = useMemo(() => allItems.filter((i) => i.fase === "expedicao"), [allItems]);
-  const retrabalhoItems = useMemo(() => allItems.filter((i) => i.fase === "retrabalho" && i.quantity > 0), [allItems]);
-
-  // ── useMemo ───────────────────────────────────────────────────────────────
-
-  // Items da aba ativa, com filtros aplicados
-  const rawItems = useMemo(() => {
-    if (activeView === "expedicao") return expedicaoItems;
-    if (activeView === "intermediaria") return intermediariaItems;
-    if (activeView === "retrabalho") return retrabalhoItems;
-    return []; // dashboard, recebimento — rawItems não é usado nessa view
-  }, [activeView, expedicaoItems, intermediariaItems, retrabalhoItems]);
-
-  const filteredItems = useMemo(() => rawItems.filter(item => {
-    if (!item.device) return false; // item órfão sem device associado
-    if (filterStatus === "ok" && !(item.quantity > item.min_quantity)) return false;
-    if (filterStatus === "baixo" && !(item.quantity > 0 && item.quantity <= item.min_quantity)) return false;
-    if (filterStatus === "zerado" && item.quantity !== 0) return false;
-    if (filterLocation && !item.location?.toLowerCase().includes(filterLocation.toLowerCase())) return false;
-    if (filterBrand && !item.device.brand_name?.toLowerCase().includes(filterBrand.toLowerCase())) return false;
-    return true;
-  }), [rawItems, filterStatus, filterLocation, filterBrand]);
-
-  // ── useEffect ─────────────────────────────────────────────────────────────
-
-  // Realtime: notifica quando um item da expedição é atualizado para quantidade baixa
-  useEffect(() => {
-    const channel = supabase
-      .channel(`estoque-lowstock-${Math.random().toString(36).slice(2, 8)}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "stock_items" },
-        (payload) => {
-          const updated = payload.new as { quantity?: number; fase?: string; device_id?: string };
-          if (
-            updated.fase === "expedicao" &&
-            typeof updated.quantity === "number" &&
-            updated.quantity > 0 &&
-            updated.quantity < 100
-          ) {
-            toast.warning(
-              `Estoque baixo detectado na expedição (${updated.quantity} un.)`,
-              { duration: 5000, action: { label: "Ver", onClick: () => setBaixoOpen(true) } }
-            );
-          }
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  // Autocomplete: busca sugestões de modelo
-  useEffect(() => {
-    if (!search.trim() || search.trim().length < 2) {
-      setAutocompleteItems([]);
-      setShowAutocomplete(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      const q = search.trim().toLowerCase();
-      // Usa allItems diretamente — filteredItems não é estável (nova referência a cada render)
-      const suggestions = allItems
-        .filter(i => i.device?.model)
-        .map(i => i.device.model)
-        .filter((m, idx, arr) => m.toLowerCase().includes(q) && arr.indexOf(m) === idx)
-        .slice(0, 6);
-      setAutocompleteItems(suggestions);
-      setShowAutocomplete(suggestions.length > 0);
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [search, allItems]);
-
-  // FIX: useClickOutside substitui document.addEventListener duplicado
-  useClickOutside(autocompleteRef, () => setShowAutocomplete(false));
-  useClickOutside(adminMenuRef,    () => { if (adminMenuOpen) setAdminMenuOpen(false); });
-
-  const hasSearch = !!querySearch.trim();
-  const hasActiveFilters = filterStatus !== "all" || !!filterLocation || !!filterBrand;
-
-  function handleSelectSuggestion(suggestion: string) {
-    if (inputRef.current) inputRef.current.value = suggestion;
-    setSearch(suggestion);
-    setQuerySearch(suggestion);
-    setShowAutocomplete(false);
-    setVisibleCount(ITEMS_PER_PAGE);
-  }
-
-  // Callbacks estáveis para os cards — evita recriar funções a cada render
-  const handleEntrada = useCallback((i: StockItem) => setMovementState({ item: i, type: "entrada", lockedType: "entrada" }), []);
-  const handleSaida = useCallback((i: StockItem) => setMovementState({ item: i, type: "saida", lockedType: "saida" }), []);
-  const handleTransfer = useCallback((i: StockItem) => setTransferItem(i), []);
-  const handleHistory = useCallback((i: StockItem) => setHistoryItem(i), []);
-  const handleDelete = useCallback((i: StockItem) => setDeleteItem(i), []);
-  const handleLotes = useCallback((i: StockItem) => setLotesItem(i), []);
-  const handleReset = useCallback((i: StockItem) => setResetItem(i), []);
-  const handleRetrabalho = useCallback((i: StockItem) => setRetrabalhoItem(i), []);
-  const handleConcluir = useCallback((i: StockItem) => setConcluirRetrabalhoItem(i), []);
-
-  // Stats da aba atual (filtrados)
-  // Conta apenas peças com min_quantity configurado para ok/baixo (ignora min=0)
-  const { statsLow, statsOk, statsEmpty } = useMemo(() => ({
-    statsLow:   filteredItems.filter((i) => i.min_quantity > 0 && i.quantity > 0 && i.quantity <= i.min_quantity).length,
-    statsOk:    filteredItems.filter((i) => i.quantity > 0 && (i.min_quantity === 0 || i.quantity > i.min_quantity)).length,
-    statsEmpty: filteredItems.filter((i) => i.min_quantity > 0 && i.quantity === 0).length,
-  }), [filteredItems]);
-  // Usa qtyByFase do RPC para mostrar o total real de todas as peças (não só a página atual)
-  const totalQty = activeView === "intermediaria"
-    ? (qtyByFase.intermediaria || filteredItems.reduce((s, i) => s + i.quantity, 0))
-    : activeView === "expedicao"
-    ? (qtyByFase.expedicao || filteredItems.reduce((s, i) => s + i.quantity, 0))
-    : activeView === "retrabalho"
-    ? (qtyByFase.retrabalho || filteredItems.reduce((s, i) => s + i.quantity, 0))
-    : filteredItems.reduce((s, i) => s + i.quantity, 0);
-
-  // Alerta global de estoque baixo (badge no header)
-  const globalLowCount = allItems.filter(i => i.quantity > 0 && i.quantity <= i.min_quantity).length;
-
-  const hasMore = visibleCount < filteredItems.length;
-  const pagedItems = useMemo(
-    () => filteredItems.slice(0, visibleCount),
-    [filteredItems, visibleCount]
-  );
-
-  // PERF: loteMap vem diretamente do RPC load_stock_page embutido no useStock.
-  // Não há mais useEffect nem request extra pós-render para buscar contagem de lotes.
-
-  async function handleDeleteAll() {
-    setDeletingAll(true);
-    const { error } = await supabase.from("stock_items").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    setDeletingAll(false);
-    if (error) {
-      toast.error("Erro ao excluir estoque.");
-    } else {
-      toast.success("Todo o estoque foi excluído.");
-      setDeleteAllOpen(false);
-      setDeleteAllTyped("");
-      refetch();
     }
   }
 
   async function handleResetItem() {
     if (!resetItem) return;
     setResetting(true);
-
-    // Check for active orders referencing this item before deleting
-    const { data: ativos } = await supabase
-      .from("pedido_itens")
-      .select("pedido_id, pedidos_comerciais!inner(status)")
-      .eq("stock_item_id", resetItem.id)
-      .in("pedidos_comerciais.status", ["aberto", "separando", "pendente"]);
-
-    if (ativos && ativos.length > 0) {
-      toast.error(
-        `Existem ${ativos.length} pedido(s) ativo(s) usando este item. ` +
-        "Cancele-os antes de zerar o estoque."
-      );
-      setResetting(false);
-      return;
-    }
-
-    try {
-      // Deleta pedido_itens vinculados (FK restrict impede alterações cascata)
-      await supabase.from("pedido_itens").delete().eq("stock_item_id", resetItem.id);
-
-      // Zera a quantidade e reserva do item
-      const { error: updateErr } = await supabase
-        .from("stock_items")
-        .update({ quantity: 0, quantity_reserved: 0 })
-        .eq("id", resetItem.id);
-      if (updateErr) throw updateErr;
-
-      // Deleta todos os movimentos do item (limpa histórico de lotes)
-      const { error: movErr } = await supabase
-        .from("stock_movements")
-        .delete()
-        .eq("stock_item_id", resetItem.id);
-
-      if (movErr) {
-        toast.error("Estoque zerado, mas não foi possível limpar o histórico.");
-      } else {
-        toast.success("Estoque e histórico zerados com sucesso.");
-      }
-      setResetItem(null);
-      refetch();
-    } catch (_e) {
-      toast.error("Erro ao zerar estoque. Tente novamente.", {
-        action: { label: "Tentar novamente", onClick: handleResetItem }
-      });
-    } finally {
-      setResetting(false);
-    }
+    const r = await zerarSaldoPorAjuste(resetItem, user?.id ?? null, displayName);
+    setResetting(false);
+    if (!r.ok) { toast.error(r.error ?? "Não foi possível zerar o saldo."); return; }
+    toast.success("Saldo zerado por ajuste. O histórico foi mantido.");
+    setResetItem(null);
+    refetch();
   }
 
   async function handleDeleteItemConfirm() {
@@ -857,707 +261,311 @@ export default function Estoque() {
       setDeleteItem(null);
       refetch();
     } else {
-      toast.error("Erro ao remover peça. Tente novamente.");
+      toast.error(result.error ?? "Erro ao remover peça. Tente novamente.");
     }
   }
 
-  // Enter confirma os modais abaixo, igual ao clique no mouse.
   useConfirmEnter(!!resetItem, handleResetItem, resetting);
   useConfirmEnter(clearHistConfirm, clearAllHistory, clearingHist);
-  useConfirmEnter(deleteAllOpen, handleDeleteAll, deletingAll || deleteAllTyped !== "EXCLUIR");
   useConfirmEnter(!!deleteItem, handleDeleteItemConfirm, deleting);
 
-  // Loading state — mostra skeleton enquanto estoque carrega
-  if (loading && allItems.length === 0) return <PageSkeleton />;
+  if (loading && allItems.length === 0 && !hasSearch) return <PageSkeleton />;
+
+  const cfgFase = ehFase ? FASE_CFG[fase] : null;
 
   return (
-    <>
-    <div className="min-h-screen bg-transparent">
-      {/* Header simplificado — navegação via AppShell sidebar */}
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
+    <div className="flex flex-col h-full bg-transparent">
+      <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border/40">
         <div className="px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between gap-2 sm:gap-3">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2">
-              <Boxes className="h-4 w-4 text-primary" />
-              <h1 className="text-sm font-semibold">Estoque</h1>
-            {globalLowCount > 0 && (
-              <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-600 dark:text-red-400">
-                <AlertTriangle className="h-3 w-3" />{globalLowCount} crítico{globalLowCount !== 1 ? "s" : ""}
-              </span>
-            )}
+          <div className="flex items-center gap-2 min-w-0">
+            <Boxes className="h-4 w-4 text-primary shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-sm font-semibold leading-tight">Estoque</h1>
+              <p className="hidden sm:block text-[10px] text-muted-foreground leading-tight">Intermediário, expedição, retrabalho, recebimento e separação de pedidos</p>
             </div>
+            {abaixoMinCount > 0 && (
+              <button type="button" onClick={() => setBaixoOpen(true)}
+                className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400 hover:bg-amber-500/25">
+                <AlertTriangle className="h-3 w-3" />{abaixoMinCount}<span className="hidden sm:inline"> abaixo do mínimo</span>
+              </button>
+            )}
           </div>
-
           <div className="flex items-center gap-1.5">
-            <>
-              <div className="hidden sm:flex items-center gap-1.5">
-                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setListOpen(true)}>
-                  <List className="h-3.5 w-3.5" /> Lista
-                </Button>
-                {activeView === "intermediaria" && (
-                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-primary border-primary/40 hover:bg-primary/10" onClick={() => setIntermediaryLotesOpen(true)}>
-                    <Tag className="h-3.5 w-3.5" /> Lotes
-                  </Button>
-                )}
+            <Button size="sm" className="h-9 gap-1.5" onClick={() => setAddOpen(true)}>
+              <Plus className="h-4 w-4" /><span className="hidden sm:inline">Adicionar peça</span><span className="sm:hidden">Peça</span>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="outline" className="h-9 w-9" aria-label="Mais opções"><MoreVertical className="h-4 w-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuItem className="h-10 gap-2" onClick={() => setListOpen(true)}><List className="h-4 w-4" />Lista para imprimir</DropdownMenuItem>
+                <DropdownMenuItem className="h-10 gap-2" onClick={() => setIntermediaryLotesOpen(true)}><Tag className="h-4 w-4" />Lotes do intermediário</DropdownMenuItem>
+                <DropdownMenuItem className="h-10 gap-2" onClick={() => setAllMovOpen(true)}><History className="h-4 w-4" />Todas as movimentações</DropdownMenuItem>
                 {isAdmin && (
                   <>
-                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs rounded-lg text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10" onClick={() => setExcelImportOpen(true)}>
-                      <FileSpreadsheet className="h-3.5 w-3.5" /> Importar Excel
-                    </Button>
-                    <button
-                      type="button"
-                      onClick={() => setClearHistConfirm(true)}
-                      title="Apagar todo o histórico"
-                      className="h-8 w-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="h-10 gap-2" onClick={() => setExcelImportOpen(true)}><FileSpreadsheet className="h-4 w-4" />Importar Excel / PDF</DropdownMenuItem>
+                    <DropdownMenuItem className="h-10 gap-2" onClick={() => setCsvOpen(true)}><FileText className="h-4 w-4" />Importar CSV</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="h-10 gap-2 text-red-600 focus:text-red-600" onClick={() => setClearHistConfirm(true)}><Trash2 className="h-4 w-4" />Apagar histórico…</DropdownMenuItem>
                   </>
                 )}
-                <Button size="sm" className="h-8 gap-1.5 text-xs rounded-lg" onClick={() => setAddOpen(true)}>
-                  <Plus className="h-3.5 w-3.5" /> Adicionar
-                </Button>
-              </div>
-              <div className="relative sm:hidden" ref={adminMenuRef}>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 w-8 p-0 rounded-lg"
-                  onClick={() => setAdminMenuOpen((v) => !v)}
-                >
-                  <Menu className="h-4 w-4" />
-                </Button>
-                {adminMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-border bg-card shadow-xl z-50 overflow-hidden">
-                    {[
-                      { label: "Adicionar Peça", icon: Plus, action: () => setAddOpen(true) },
-                      { label: "Lista de Estoque", icon: List, action: () => setListOpen(true) },
-                      ...(activeView === "intermediaria" ? [{ label: "Lotes do Intermediário", icon: Tag, action: () => setIntermediaryLotesOpen(true) }] : []),
-                      ...(isAdmin ? [
-                        { label: "Importar Excel / PDF", icon: FileSpreadsheet, action: () => setExcelImportOpen(true) },
-                        { label: "Apagar Histórico", icon: Trash2, action: () => setClearHistConfirm(true), danger: true },
-                      ] : []),
-                    ].map(({ label, icon: Icon, action, danger }) => (
-                      <button
-                        key={label}
-                        type="button"
-                        className={cn(
-                          "w-full flex items-center gap-2 px-3 py-2.5 text-[13px] hover:bg-accent/50 transition-colors border-b border-border/30 last:border-0",
-                          danger ? "text-destructive" : "text-foreground"
-                        )}
-                        onClick={() => { action(); setAdminMenuOpen(false); }}
-                      >
-                        <Icon className="h-3.5 w-3.5" /> {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
 
-      <main className="px-2 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4">
+      <main className="flex-1 overflow-y-auto">
+        <div className="px-3 sm:px-4 py-4 space-y-4">
+          <StockNav
+            activeView={activeView}
+            onViewChange={(v) => { irPara(v); refetch(); }}
+            loading={loading}
+            pedidosPendentes={pedidosParaSeparar}
+            qtyByFase={qtyByFase}
+          />
 
-        {/* Tabs de navegação: mobile-first com ícones animados */}
-        <StockNav
-          activeView={activeView}
-          onViewChange={(view) => {
-            setActiveView(view);
-            setVisibleCount(ITEMS_PER_PAGE);
-            refetch(); // atualiza dados ao mudar de aba
-          }}
-          intermediariaItems={intermediariaItems}
-          expedicaoItems={expedicaoItems}
-          retrabalhoItems={retrabalhoItems}
-          loading={loading}
-          pedidosPendentes={pedidosPendentes}
-          qtyByFase={qtyByFase}
-        />
-
-        {/* Dashboard View */}
-        {activeView === "dashboard" && (
-          <StockDashboard items={allItems} loading={loading} onEstoqueBaixo={() => setBaixoOpen(true)} />
-        )}
-
-        {/* Recebimento View */}
-        {activeView === "recebimento" && (
-          <RecebimentoPanel isAdmin={isAdmin} />
-        )}
-
-        {/* Pedidos View */}
-        {activeView === "pedidos" && (
-          <Suspense fallback={<LoadingScreen />}>
-            <PedidosEstoquePanel isAdmin={isAdmin} />
-          </Suspense>
-        )}
-
-        {/* Busca + Filtros — apenas nas abas de lista */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <SearchInputWithBarcode
-                className="flex-1"
-                value={search}
-                onChange={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); }}
-                onSearch={v => { setSearch(v); setQuerySearch(v); setVisibleCount(ITEMS_PER_PAGE); setShowAutocomplete(false); }}
-                placeholder="Buscar por modelo, referência, UDI ou lote..."
-                height="h-11"
+          <Suspense fallback={<Carregando />}>
+            {activeView === "dashboard" && (
+              <StockDashboard
+                items={allItems}
+                qtyByFase={qtyByFase}
+                loteMap={loteMap}
+                loading={loading}
+                pedidosParaSeparar={pedidosParaSeparar}
+                onIrPara={irPara}
+                onEstoqueBaixo={() => setBaixoOpen(true)}
+                onAcaoRapida={setEscolher}
+                onAbrirItem={abrir}
               />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-11 w-11 shrink-0"
-                onClick={() => search.trim() && handleSelectSuggestion(search.trim())}
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-              {/* Botão de filtros */}
-              <Button
-                type="button"
-                variant={hasActiveFilters ? "default" : "outline"}
-                size="icon"
-                className="h-11 w-11 shrink-0 relative"
-                onClick={() => setShowFilters(v => !v)}
-                title="Filtros"
-              >
-                <Filter className="h-4 w-4" />
-                {hasActiveFilters && (
-                  <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-destructive" />
-                )}
-              </Button>
-            </div>
-
-            {/* Painel de filtros */}
-            {showFilters && (
-              <div className="rounded-xl border border-border/50 bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filtros</p>
-                  {hasActiveFilters && (
-                    <button
-                      type="button"
-                      onClick={() => { setFilterStatus("all"); setFilterLocation(""); setFilterBrand(""); }}
-                      className="text-[11px] text-destructive hover:underline"
-                    >
-                      Limpar filtros
-                    </button>
-                  )}
-                </div>
-
-                {/* Status */}
-                <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground font-medium">Status</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {([
-                      { value: "all", label: "Todos" },
-                      { value: "ok", label: "✅ OK" },
-                      { value: "baixo", label: "⚠️ Baixo" },
-                      { value: "zerado", label: "🔴 Zerado" },
-                    ] as { value: FilterStatus; label: string }[]).map(opt => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setFilterStatus(opt.value)}
-                        className={cn(
-                          "h-7 px-3 rounded-full text-[11px] font-medium border transition-colors",
-                          filterStatus === opt.value
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-muted/30 text-muted-foreground border-border/50 hover:bg-muted/60"
-                        )}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Localização */}
-                <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground font-medium">Localização</p>
-                  <Input
-                    placeholder="Filtrar por localização..."
-                    value={filterLocation}
-                    onChange={e => setFilterLocation(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                </div>
-
-                {/* Marca */}
-                <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground font-medium">Marca</p>
-                  <Input
-                    placeholder="Filtrar por marca..."
-                    value={filterBrand}
-                    onChange={e => setFilterBrand(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                </div>
-              </div>
             )}
+            {activeView === "recebimento" && <RecebimentoPanel isAdmin={isAdmin} />}
+            {activeView === "pedidos" && <PedidosEstoquePanel isAdmin={isAdmin} />}
+          </Suspense>
 
-            {/^\d{6}/.test(search.trim()) && (
-              <p className="text-[11px] text-primary/70 flex items-center gap-1.5">
-                <Tag className="h-3 w-3" />
-                Pesquisando por lote — formato: <span className="font-mono font-semibold">DDMMAA-TT</span>
-              </p>
-            )}
-
-            {hasSearch && !loading && (intermediariaItems.length > 0 || expedicaoItems.length > 0) && (
-              <div className="flex flex-wrap gap-2 text-[11px]">
-                {intermediariaItems.length > 0 && (
-                  <span className="flex items-center gap-1 bg-primary/8 text-primary px-2 py-0.5 rounded-full font-medium">
-                    <Package className="h-3 w-3" />
-                    {intermediariaItems.length} em Intermediário
-                  </span>
-                )}
-                {expedicaoItems.length > 0 && (
-                  <span className="flex items-center gap-1 bg-success/8 text-success px-2 py-0.5 rounded-full font-medium">
-                    <Truck className="h-3 w-3" />
-                    {expedicaoItems.length} em Expedição
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Descrição da aba */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && (
-          <div className={cn(
-            "rounded-xl border px-4 py-3 text-[12px]",
-            activeView === "intermediaria"
-              ? "bg-primary/5 border-primary/20 text-primary/80"
-              : activeView === "retrabalho"
-                ? "bg-orange-500/5 border-orange-500/20 text-orange-600 dark:text-orange-400"
-                : "bg-success/5 border-success/20 text-success/80"
-          )}>
-            {activeView === "intermediaria"
-              ? "Peças desenbaladas recebidas no estoque. Registre a entrada por lote e mova para Expedição após embalar."
-              : activeView === "retrabalho"
-                ? "Peças enviadas da Expedição para reprocessamento. Após concluir o retrabalho, envie de volta para Expedição."
-                : "Peças embaladas e prontas para retirada ou venda. Registre a saída aqui."}
-          </div>
-        )}
-
-        {/* Resumo */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && !loading && (
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-xs text-muted-foreground">
-              {totalQty.toLocaleString("pt-BR")} unidade{totalQty !== 1 ? "s" : ""} em {activeView === "intermediaria" ? "intermediário" : activeView === "retrabalho" ? "retrabalho" : "expedição"}
-              {" "}({(
-                activeView === "intermediaria" ? (qtyByFase.count_intermediaria || filteredItems.length) :
-                activeView === "expedicao"     ? (qtyByFase.count_expedicao     || filteredItems.length) :
-                activeView === "retrabalho"    ? (qtyByFase.count_retrabalho    || filteredItems.length) :
-                filteredItems.length
-              ).toLocaleString("pt-BR")} tipo{(
-                activeView === "intermediaria" ? (qtyByFase.count_intermediaria || filteredItems.length) :
-                activeView === "expedicao"     ? (qtyByFase.count_expedicao     || filteredItems.length) :
-                activeView === "retrabalho"    ? (qtyByFase.count_retrabalho    || filteredItems.length) :
-                filteredItems.length
-              ) !== 1 ? "s" : ""})
-              {hasActiveFilters && <span className="text-primary/70"> (filtrado)</span>}
-            </p>
-            {activeView === "expedicao" && statsOk > 0 && (
-              <span className="flex items-center gap-1 text-[11px] text-success font-medium">
-                <TrendingUp className="h-3 w-3" /> {statsOk} ok
-              </span>
-            )}
-            {activeView === "expedicao" && statsLow > 0 && (
-              <span className="flex items-center gap-1 text-[11px] text-warning font-medium">
-                <TrendingDown className="h-3 w-3" /> {statsLow} baixo
-              </span>
-            )}
-            {activeView === "expedicao" && statsEmpty > 0 && (
-              <span className="flex items-center gap-1 text-[11px] text-destructive font-medium">
-                <AlertTriangle className="h-3 w-3" /> {statsEmpty} vazio
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Loading / Erro / Vazio */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && loading && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
-            <p className="text-sm text-muted-foreground">Carregando estoque...</p>
-          </div>
-        )}
-
-        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && !loading && error && (
-          <div className="text-center py-20 text-destructive text-sm">{error}</div>
-        )}
-
-        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && !loading && !error && filteredItems.length === 0 && (
-          <div className="text-center py-20 space-y-3">
-            {activeView === "intermediaria"
-              ? <Package className="h-10 w-10 text-muted-foreground/40 mx-auto" />
-              : activeView === "retrabalho"
-                ? <Wrench className="h-10 w-10 text-muted-foreground/40 mx-auto" />
-                : <Truck className="h-10 w-10 text-muted-foreground/40 mx-auto" />}
-            <p className="text-muted-foreground font-medium">
-              {querySearch || hasActiveFilters
-                ? "Nenhuma peça encontrada"
-                : activeView === "intermediaria"
-                  ? "Nenhuma peça no intermediário"
-                  : activeView === "retrabalho"
-                    ? "Nenhuma peça em retrabalho"
-                    : "Nenhuma peça na expedição"}
-            </p>
-            <p className="text-sm text-muted-foreground/60">
-              {querySearch
-                ? "Tente outro termo de busca"
-                : hasActiveFilters
-                  ? "Tente remover alguns filtros"
-                  : activeView === "intermediaria"
-                    ? "Adicione peças ao estoque e registre a entrada por lote"
-                    : activeView === "retrabalho"
-                      ? "Peças enviadas para retrabalho aparecerão aqui"
-                      : "Mova peças da aba Intermediário para cá após embalar"}
-            </p>
-            {!querySearch && !hasActiveFilters && activeView === "intermediaria" && (
-              <Button className="mt-2 gap-1.5 rounded-xl" onClick={() => setAddOpen(true)}>
-                <Plus className="h-4 w-4" /> Adicionar primeira peça
-              </Button>
-            )}
-          </div>
-        )}
-
-        {/* Grid de cards */}
-        {activeView !== "dashboard" && activeView !== "recebimento" && activeView !== "pedidos" && !loading && !error && filteredItems.length > 0 && (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {pagedItems.map((item) =>
-                activeView === "intermediaria" ? (
-                  <IntermediaryCard
-                    key={item.id}
-                    item={item}
-                    onEntrada={handleEntrada}
-                    onTransfer={handleTransfer}
-                    onHistory={handleHistory}
-                    onDelete={handleDelete}
-                    onLotes={handleLotes}
-                    onReset={handleReset}
-                    loteCount={loteMap.get(item.id) ?? 0}
-                    isAdmin={isAdmin}
-                  />
-                ) : activeView === "retrabalho" ? (
-                  <RetrabalhoCard
-                    key={item.id}
-                    item={item}
-                    onConcluir={handleConcluir}
-                    onHistory={handleHistory}
-                    onLotes={handleLotes}
-                    loteCount={loteMap.get(item.id) ?? 0}
-                  />
-                ) : (
-                  <ExpedicaoCard
-                    key={item.id}
-                    item={item}
-                    onSaida={handleSaida}
-                    onHistory={handleHistory}
-                    onDelete={handleDelete}
-                    onLotes={handleLotes}
-                    onRetrabalho={handleRetrabalho}
-                    onReset={handleReset}
-                    loteCount={loteMap.get(item.id) ?? 0}
-                    isAdmin={isAdmin}
-                  />
-                )
-              )}
-            </div>
-
-            {/* Carregar mais */}
-            {hasMore && (
-              <div className="flex justify-center pt-2 pb-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setVisibleCount((c) => c + ITEMS_PER_PAGE)}
-                  className="gap-2"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                  Carregar mais ({(filteredItems.length - visibleCount).toLocaleString("pt-BR")} restantes)
+          {ehFase && cfgFase && (
+            <div className="space-y-3">
+              {/* Busca + filtros */}
+              <div className="flex gap-2">
+                <SearchInputWithBarcode
+                  className="flex-1 min-w-0"
+                  value={querySearch}
+                  onChange={v => { setQuerySearch(v.trim()); setVisibleCount(ITENS_POR_PAGINA); }}
+                  onSearch={v => { setQuerySearch(v.trim()); setVisibleCount(ITENS_POR_PAGINA); }}
+                  placeholder="Bipe ou busque modelo, referência, UDI ou lote"
+                  height="h-11"
+                />
+                <Button type="button" variant={filtrosExtras ? "default" : "outline"} className="h-11 gap-1.5 shrink-0 px-3"
+                  onClick={() => setShowFilters(v => !v)} aria-expanded={showFilters} aria-label="Mais filtros">
+                  <SlidersHorizontal className="h-4 w-4" /><span className="hidden sm:inline">Filtros</span>
                 </Button>
               </div>
-            )}
-          </>
-        )}
+
+              {showFilters && (
+                <div className="rounded-2xl border bg-card p-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto] items-end">
+                  <label className="block space-y-1">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Localização</span>
+                    <Input value={filterLocation} onChange={e => setFilterLocation(e.target.value)} placeholder="Ex.: B3" className="h-11" />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Marca</span>
+                    <Input value={filterBrand} onChange={e => setFilterBrand(e.target.value)} placeholder="Ex.: Zomini" className="h-11" />
+                  </label>
+                  <Button variant="ghost" className="h-11 gap-1" disabled={!filtrosExtras} onClick={() => { setFilterLocation(""); setFilterBrand(""); }}>
+                    <X className="h-4 w-4" />Limpar
+                  </Button>
+                </div>
+              )}
+
+              {/* Situação (chips) */}
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-3 px-3 sm:mx-0 sm:px-0" role="tablist" aria-label="Situação do saldo">
+                {([
+                  ["todos", "Todas"],
+                  ["ok", "OK"],
+                  ["baixo", "Baixo"],
+                  ["zerado", "Zerado"],
+                ] as [FiltroSituacao, string][]).map(([id, l]) => (
+                  <button key={id} type="button" role="tab" aria-selected={filtroSituacao === id}
+                    onClick={() => { setFiltroSituacao(id); setVisibleCount(ITENS_POR_PAGINA); }}
+                    className={cn(
+                      "h-9 shrink-0 rounded-full border px-3 text-sm font-medium inline-flex items-center gap-1.5",
+                      filtroSituacao === id ? "bg-foreground text-background border-foreground" : "bg-card text-muted-foreground hover:text-foreground"
+                    )}>
+                    {l}<span className={cn("text-xs tabular-nums", filtroSituacao === id ? "opacity-80" : "")}>{contagem[id]}</span>
+                  </button>
+                ))}
+                <span className="ml-auto hidden sm:block shrink-0 text-xs text-muted-foreground pl-2">
+                  {fmtNum(totalUnidades)} un. em {fmtNum(filteredItems.length)} peça{filteredItems.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                <span className="sm:hidden font-medium text-foreground">{fmtNum(totalUnidades)} un. em {fmtNum(filteredItems.length)} peça{filteredItems.length !== 1 ? "s" : ""}. </span>
+                {cfgFase.descricao}
+                {/^\d{6}/.test(querySearch) && <> Buscando por lote (formato <span className="font-mono">DDMMAA-TT</span>).</>}
+              </p>
+
+              {loading ? (
+                <Carregando />
+              ) : error ? (
+                <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-6 text-center space-y-3">
+                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                  <Button variant="outline" className="h-10" onClick={refetch}>Tentar de novo</Button>
+                </div>
+              ) : filteredItems.length === 0 ? (
+                <div className="rounded-2xl border border-dashed bg-card py-12 px-4 text-center space-y-2">
+                  <cfgFase.Icon className="h-9 w-9 mx-auto text-muted-foreground/40" />
+                  <p className="font-medium">
+                    {hasSearch || filtrosExtras || filtroSituacao !== "todos" ? "Nenhuma peça encontrada" : `Nenhuma peça em ${cfgFase.label.toLowerCase()}`}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {hasSearch ? "Tente outro termo de busca." :
+                      filtrosExtras || filtroSituacao !== "todos" ? "Remova alguns filtros para ver mais peças." :
+                      fase === "intermediaria" ? "Adicione peças ao estoque e registre a entrada por lote." :
+                      fase === "retrabalho" ? "Peças enviadas para retrabalho aparecem aqui." :
+                      "Mova peças do Intermediário para cá depois de embalar."}
+                  </p>
+                  {!hasSearch && !filtrosExtras && filtroSituacao === "todos" && fase === "intermediaria" && (
+                    <Button className="h-11 gap-1.5 mt-2" onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" />Adicionar peça</Button>
+                  )}
+                  {(filtrosExtras || filtroSituacao !== "todos") && (
+                    <Button variant="outline" className="h-10 mt-2" onClick={() => { setFilterLocation(""); setFilterBrand(""); setFiltroSituacao("todos"); }}>Limpar filtros</Button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <ListaItensEstoque
+                    fase={fase}
+                    items={pagedItems}
+                    loteMap={loteMap}
+                    onAbrir={abrir}
+                    onEntrada={onEntrada}
+                    onSaida={onSaida}
+                    onTransferir={onTransferir}
+                    onRetrabalho={onRetrabalho}
+                    onConcluir={onConcluir}
+                  />
+                  {visibleCount < filteredItems.length && (
+                    <div className="flex justify-center pt-1 pb-2">
+                      <Button variant="outline" className="h-11 gap-2" onClick={() => setVisibleCount(c => c + ITENS_POR_PAGINA)}>
+                        <ChevronDown className="h-4 w-4" />Carregar mais ({fmtNum(filteredItems.length - visibleCount)} restantes)
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </main>
 
-      {/* ─── Modais ──────────────────────────────────────────────────────────── */}
+      {/* ─── Detalhe + diálogos ─────────────────────────────────────────────── */}
+      <ItemEstoqueDialog
+        item={detalhe?.item ?? null}
+        abaInicial={detalhe?.aba}
+        onClose={() => setDetalhe(null)}
+        onChanged={refetch}
+        acoes={acoesItem}
+        isAdmin={isAdmin}
+        podeEditar={podeEditar}
+      />
+      <EscolherItemDialog
+        open={!!escolher}
+        titulo={escolherCfg.titulo}
+        descricao={escolherCfg.descricao}
+        itens={escolherCfg.itens}
+        onClose={() => setEscolher(null)}
+        onEscolher={(i) => { const acao = escolherCfg.acao; setEscolher(null); acao(i); }}
+      />
+      <EstoqueBaixoDialog open={baixoOpen} itens={allItems} onClose={() => setBaixoOpen(false)} onAbrir={(i) => abrir(i, "ajustes")} />
 
       <Suspense fallback={null}>
         <MovementModal
           item={movementState?.item ?? null}
           open={!!movementState}
           initialType={movementState?.type ?? "entrada"}
-          lockedType={movementState?.lockedType}
+          lockedType={movementState?.type}
           onClose={() => setMovementState(null)}
           onSuccess={refetch}
         />
-        <TransferirExpedicaoModal
-          item={transferItem}
-          open={!!transferItem}
-          onClose={() => setTransferItem(null)}
-          onSuccess={refetch}
-        />
-        <RetrabalhoModal
-          item={retrabalhoItem}
-          open={!!retrabalhoItem}
-          onClose={() => setRetrabalhoItem(null)}
-          onSuccess={refetch}
-        />
-        <ConcluirRetrabalhoModal
-          item={concluirRetrabalhoItem}
-          open={!!concluirRetrabalhoItem}
-          onClose={() => setConcluirRetrabalhoItem(null)}
-          onSuccess={refetch}
-        />
-        <StockHistoryPanel
-          item={historyItem}
-          open={!!historyItem}
-          onClose={() => setHistoryItem(null)}
-          onSuccess={refetch}
-        />
-        <AddToStockModal
-          open={addOpen}
-          onClose={() => setAddOpen(false)}
-          onSuccess={refetch}
-        />
+        <TransferirExpedicaoModal item={transferItem} open={!!transferItem} onClose={() => setTransferItem(null)} onSuccess={refetch} />
+        <RetrabalhoModal item={retrabalhoItem} open={!!retrabalhoItem} onClose={() => setRetrabalhoItem(null)} onSuccess={refetch} />
+        <ConcluirRetrabalhoModal item={concluirItem} open={!!concluirItem} onClose={() => setConcluirItem(null)} onSuccess={refetch} />
+        {addOpen && <AddToStockModal open={addOpen} onClose={() => setAddOpen(false)} onSuccess={refetch} />}
+        {listOpen && <StockListModal open={listOpen} onClose={() => setListOpen(false)} items={allItems} />}
+        {allMovOpen && (
+          <AllMovementsModal open={allMovOpen} onClose={() => setAllMovOpen(false)} fase={ehFase ? fase : undefined} />
+        )}
+        {intermediaryLotesOpen && <IntermediaryLotesModal open={intermediaryLotesOpen} onClose={() => setIntermediaryLotesOpen(false)} />}
+        {csvOpen && <StockCsvImport open={csvOpen} onClose={() => setCsvOpen(false)} onSuccess={refetch} />}
+        {excelImportOpen && <ExcelStockImport open={excelImportOpen} onClose={() => setExcelImportOpen(false)} onSuccess={refetch} />}
       </Suspense>
 
-      {/* Modal Estoque Baixo */}
-      {baixoOpen && (() => {
-        const baixoItems = expedicaoItems
-          .filter(i => i.quantity > 0 && i.quantity <= i.min_quantity && i.device)
-          .sort((a, b) => a.quantity - b.quantity);
-        return (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setBaixoOpen(false)}>
-            <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200" onClick={e => e.stopPropagation()}>
-              <div className="px-5 pt-5 pb-3 border-b border-border/20 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold flex items-center gap-2">
-                    <span className="text-warning">⚠</span> Estoque Baixo
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{baixoItems.length} tipo{baixoItems.length !== 1 ? "s" : ""} com menos de 100 un.</p>
-                </div>
-                <button type="button" onClick={() => setBaixoOpen(false)} className="h-7 w-7 rounded-lg hover:bg-muted/40 flex items-center justify-center text-muted-foreground transition-colors">✕</button>
+      {/* Zerar saldo (por ajuste) */}
+      <AlertDialog open={!!resetItem} onOpenChange={v => { if (!v && !resetting) setResetItem(null); }}>
+        <AlertDialogContent className="w-[calc(100vw-1.5rem)] rounded-2xl">
+          <AlertDialogHeader className="text-left">
+            <AlertDialogTitle className="flex items-center gap-2"><PackageCheck className="h-5 w-5 text-amber-500" />Zerar o saldo desta peça?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">{resetItem?.device.model} · {resetItem ? FASE_CFG[resetItem.fase].label : ""}</p>
+                <p>Serão lançadas <strong>saídas de ajuste</strong> para cada lote com saldo, deixando a peça com 0 un. O histórico de movimentações <strong>é mantido</strong> (rastreabilidade) e pode ser estornado depois.</p>
               </div>
-              <div className="max-h-[420px] overflow-y-auto divide-y divide-border/20">
-                {baixoItems.length === 0 ? (
-                  <p className="text-center text-sm text-muted-foreground py-10">Nenhuma peça com estoque baixo</p>
-                ) : baixoItems.map(item => (
-                  <div key={item.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-medium text-foreground line-clamp-1">{item.device.model}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{item.device.reference}</p>
-                    </div>
-                    <span className="text-[13px] font-bold tabular-nums text-warning bg-warning/10 px-2.5 py-1 rounded-lg shrink-0">
-                      {item.quantity} un.
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      <Suspense fallback={null}>
-        <StockListModal
-          open={listOpen}
-          onClose={() => setListOpen(false)}
-          items={allItems}
-        />
-        <AllMovementsModal
-          open={allMovOpen}
-          onClose={() => setAllMovOpen(false)}
-          fase={activeView === "expedicao" || activeView === "intermediaria" || activeView === "retrabalho" ? activeView : undefined}
-        />
-        <LotesPanel
-          item={lotesItem}
-          open={!!lotesItem}
-          onClose={() => setLotesItem(null)}
-        />
-        <IntermediaryLotesModal
-          open={intermediaryLotesOpen}
-          onClose={() => setIntermediaryLotesOpen(false)}
-        />
-        <StockCsvImport
-          open={csvOpen}
-          onClose={() => setCsvOpen(false)}
-          onSuccess={refetch}
-        />
-        <ExcelStockImport
-          open={excelImportOpen}
-          onClose={() => setExcelImportOpen(false)}
-          onSuccess={refetch}
-        />
-      </Suspense>
-
-      {/* Excluir todo o estoque */}
-      <AlertDialog
-        open={deleteAllOpen}
-        onOpenChange={(v) => { if (!v) { setDeleteAllOpen(false); setDeleteAllTyped(""); } }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <Trash2 className="h-4 w-4" /> Excluir todo o estoque?
-            </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <span className="block">
-                Isso irá remover <strong>todas as peças</strong> do estoque (intermediário + expedição) e <strong>todo o histórico</strong>. Ação irreversível.
-              </span>
-              <span className="block text-xs text-muted-foreground">💡 Faça um Backup antes de continuar.</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="px-1 space-y-1.5">
-            <p className="text-sm text-muted-foreground">
-              Digite <strong className="text-destructive font-mono">EXCLUIR</strong> para confirmar:
-            </p>
-            <Input
-              value={deleteAllTyped}
-              onChange={(e) => setDeleteAllTyped(e.target.value)}
-              placeholder="EXCLUIR"
-              className="font-mono"
-              disabled={deletingAll}
-              autoFocus
-            />
-          </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingAll} onClick={() => setDeleteAllTyped("")}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteAll}
-              disabled={deletingAll || deleteAllTyped !== "EXCLUIR"}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deletingAll ? "Excluindo..." : "Excluir tudo"}
+            <AlertDialogCancel disabled={resetting} className="h-11">Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="h-11 bg-amber-600 hover:bg-amber-700 text-white" disabled={resetting}
+              onClick={e => { e.preventDefault(); handleResetItem(); }}>
+              {resetting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}Zerar saldo
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Zerar quantidade e histórico de uma peça */}
-      {resetItem && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl bg-warning/10 flex items-center justify-center shrink-0">
-                <PackageCheck className="h-4 w-4 text-warning" />
+      {/* Remover peça do estoque */}
+      <AlertDialog open={!!deleteItem} onOpenChange={v => { if (!v && !deleting) setDeleteItem(null); }}>
+        <AlertDialogContent className="w-[calc(100vw-1.5rem)] rounded-2xl">
+          <AlertDialogHeader className="text-left">
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400"><Trash2 className="h-5 w-5" />Remover do estoque?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">{deleteItem?.device.model} · {deleteItem ? FASE_CFG[deleteItem.fase].label : ""}</p>
+                <p>A peça sai do estoque desta fase junto com seu histórico. Use só para cadastros feitos por engano — para acertar saldo, prefira “Zerar saldo”.</p>
               </div>
-              <div>
-                <p className="text-sm font-semibold">Zerar estoque e histórico?</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
-                  {resetItem.device.model}
-                </p>
-              </div>
-            </div>
-            <p className="text-[12px] text-muted-foreground">
-              Isso vai zerar a quantidade para <strong>0</strong> e apagar <strong>todo o histórico de movimentos</strong> desta peça. A peça permanece cadastrada no estoque.
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors"
-                onClick={() => setResetItem(null)}
-                disabled={resetting}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="flex-1 h-9 rounded-xl bg-warning text-warning-foreground text-sm font-semibold hover:bg-warning/90 transition-colors disabled:opacity-60"
-                onClick={handleResetItem}
-                disabled={resetting}
-              >
-                {resetting
-                  ? <span className="flex items-center justify-center gap-1.5"><span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" /> Zerando...</span>
-                  : "Zerar tudo"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting} className="h-11">Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={deleting}
+              onClick={e => { e.preventDefault(); handleDeleteItemConfirm(); }}>
+              {deleting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      {/* Confirmação de exclusão de peça */}
-      {deleteItem && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-card border border-border/30 p-5 space-y-4 shadow-xl">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">Remover do estoque?</p>
-                <p className="text-[12px] text-muted-foreground mt-0.5 line-clamp-2">
-                  {deleteItem.device.model}
-                </p>
-                <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-                  Fase: {deleteItem.fase === "intermediaria" ? "Intermediário" : "Expedição"}
-                </p>
-                <p className="text-[11px] text-destructive/80 mt-1">
-                  Todo o histórico de movimentos será apagado.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="flex-1 h-10 rounded-xl border border-border text-sm font-medium hover:bg-muted/30 transition-colors"
-                onClick={() => setDeleteItem(null)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="flex-1 h-10 rounded-xl bg-destructive text-destructive-foreground text-sm font-semibold hover:bg-destructive/90 transition-colors flex items-center justify-center gap-2"
-                disabled={deleting}
-                onClick={handleDeleteItemConfirm}
-              >
-                {deleting
-                  ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  : <Trash2 className="h-4 w-4" />}
-                Remover
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Apagar todo o histórico (admin) */}
+      <AlertDialog open={clearHistConfirm} onOpenChange={v => { if (!v && !clearingHist) setClearHistConfirm(false); }}>
+        <AlertDialogContent className="w-[calc(100vw-1.5rem)] rounded-2xl">
+          <AlertDialogHeader className="text-left">
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400"><AlertTriangle className="h-5 w-5" />Apagar todo o histórico?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apaga <strong>todas as movimentações</strong> e os <strong>pedidos comerciais</strong>, e zera o saldo de todas as peças.
+              As peças cadastradas e a rastreabilidade/validação ANVISA pós-venda <strong>são mantidas</strong>. Não pode ser desfeito — faça um backup antes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearingHist} className="h-11">Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={clearingHist}
+              onClick={e => { e.preventDefault(); clearAllHistory(); }}>
+              {clearingHist && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}Apagar tudo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
-
-    {/* Modal confirmar apagar histórico */}
-    {clearHistConfirm && createPortal(
-      <div className="fixed inset-0 z-[10000] pointer-events-auto flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-        <div className="w-full max-w-sm rounded-2xl bg-card border border-destructive/30 p-5 space-y-4 shadow-2xl pointer-events-auto" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center shrink-0">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-destructive">Apagar todo o histórico?</p>
-              <p className="text-[12px] text-muted-foreground mt-1">
-                Isso vai apagar <strong>todos os movimentos</strong>, pedidos comerciais e zerar o estoque de todas as peças. A validação/rastreabilidade ANVISA das peças <strong>é mantida</strong>. Esta ação <strong>não pode ser desfeita</strong>.
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setClearHistConfirm(false)} disabled={clearingHist}
-              className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">
-              Cancelar
-            </button>
-            <button type="button" onClick={clearAllHistory} disabled={clearingHist}
-              className="flex-1 h-9 rounded-xl bg-destructive text-destructive-foreground text-sm font-bold hover:bg-destructive/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
-              {clearingHist
-                ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                : <Trash2 className="h-3.5 w-3.5" />}
-              Apagar tudo
-            </button>
-          </div>
-        </div>
-      </div>
-    , document.body)}
-    </>
   );
 }

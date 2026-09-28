@@ -10,9 +10,10 @@
  *  • Conciliação: importa o extrato OFX do banco e dá baixa nas contas que batem.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Ban, CheckCircle2, Download, FileUp, Landmark, Loader2, Plus, RefreshCw, RotateCcw, Search } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Ban, CheckCircle2, Download, FileUp, Landmark, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import type { TablesUpdate } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,7 @@ export function FluxoCaixaPanel() {
   const [nova, setNova] = useState<"pagar" | "receber" | null>(null);
   const [cancelar, setCancelar] = useState<Conta | null>(null);
   const [conciliar, setConciliar] = useState(false);
+  const [editar, setEditar] = useState<Conta | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -183,6 +185,7 @@ export function FluxoCaixaPanel() {
                     <div className="flex gap-1.5 sm:w-44 sm:justify-end">
                       {(c.status === "aberto" || c.status === "vencido") && <>
                         <Button size="sm" className="h-9 gap-1" onClick={() => setBaixa(c)}><CheckCircle2 className="h-4 w-4" />{c.tipo === "pagar" ? "Pagar" : "Receber"}</Button>
+                        <Button size="icon" variant="ghost" className="h-9 w-9" title="Editar conta" aria-label="Editar conta" onClick={() => setEditar(c)}><Pencil className="h-4 w-4" /></Button>
                         <Button size="icon" variant="ghost" className="h-9 w-9" title="Cancelar conta" aria-label="Cancelar conta" onClick={() => setCancelar(c)}><Ban className="h-4 w-4" /></Button>
                       </>}
                       {c.status === "pago" && <Button size="sm" variant="ghost" className="h-9 gap-1" onClick={() => estornar(c)}><RotateCcw className="h-4 w-4" />Estornar</Button>}
@@ -196,6 +199,7 @@ export function FluxoCaixaPanel() {
       )}
       {baixa && <BaixaDialog conta={baixa} bancos={bancos} onClose={() => setBaixa(null)} onFeito={() => { setBaixa(null); load(); }} />}
       {nova && <NovaContaDialog tipo={nova} onClose={() => setNova(null)} onFeito={() => { setNova(null); load(); }} />}
+      {editar && <EditarContaDialog conta={editar} onClose={() => setEditar(null)} onFeito={() => { setEditar(null); load(); }} />}
       {conciliar && <ConciliarOfxDialog contas={contas} bancos={bancos} onClose={() => setConciliar(false)} onFeito={() => { setConciliar(false); load(); }} />}
       {cancelar && <CancelarContaDialog conta={cancelar} onClose={() => setCancelar(null)} onFeito={() => { setCancelar(null); load(); }} />}
     </div>
@@ -350,14 +354,16 @@ function ConciliarOfxDialog({ contas, bancos, onClose, onFeito }: { contas: Cont
       const conta = abertas.find(c => c.id === escolha[t.fitid]);
       if (!conta) continue;
       const obs = `${conta.observacoes ? conta.observacoes + " · " : ""}Conciliado pelo extrato (OFX ${t.fitid.replace(/\s/g, "")})`;
-      const { error } = await supabase.from("contas_financeiras").update({
+      const { data: atualizadas, error } = await supabase.from("contas_financeiras").update({
         status: "pago", data_pagamento: t.data, valor_pago: Math.abs(t.valor), banco_id: banco || null, observacoes: obs.slice(0, 2000),
-      }).eq("id", conta.id).in("status", ["aberto", "vencido"]);
+      }).eq("id", conta.id).in("status", ["aberto", "vencido"]).select("id");
       if (error) { toast.error(`${conta.nome}: ${friendlyError(error)}`); continue; }
+      // Nenhuma linha: alguém já baixou/cancelou essa conta enquanto o extrato estava aberto.
+      if (!atualizadas?.length) { toast.warning(`${conta.nome}: já não estava em aberto — não foi baixada.`); continue; }
       ok++;
     }
     setSalvando(false);
-    toast.success(`${ok} conta${ok !== 1 ? "s" : ""} baixada${ok !== 1 ? "s" : ""} pelo extrato.`);
+    if (ok) toast.success(`${ok} conta${ok !== 1 ? "s" : ""} baixada${ok !== 1 ? "s" : ""} pelo extrato.`);
     onFeito();
   }
 
@@ -408,6 +414,76 @@ function ConciliarOfxDialog({ contas, bancos, onClose, onFeito }: { contas: Cont
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={salvando}>Fechar</Button>
           <Button onClick={confirmar} disabled={salvando || !marcadas.length} className="gap-1.5">{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Dar baixa em {marcadas.length}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Edita conta em aberto. Conta ligada a nota fiscal/pedido: só vencimento, forma e observações (o valor vem da nota). */
+function EditarContaDialog({ conta, onClose, onFeito }: { conta: Conta; onClose: () => void; onFeito: () => void }) {
+  const ligada = !!(conta.pedido_id || conta.pedido_compra_id || (conta.tipo === "receber" && conta.nota_fiscal));
+  const cats = conta.tipo === "pagar" ? CATEGORIAS_PAGAR : CATEGORIAS_RECEBER;
+  const [f, setF] = useState({
+    favorecido: conta.favorecido ?? "", descricao: conta.descricao, categoria: conta.categoria,
+    valor: conta.valor.toFixed(2).replace(".", ","), vencimento: conta.data_vencimento,
+    forma: conta.forma_pagamento ?? "", nf: conta.nota_fiscal ?? "", obs: conta.observacoes ?? "",
+  });
+  const [salvando, setSalvando] = useState(false);
+  const set = (k: keyof typeof f, v: string) => setF(p => ({ ...p, [k]: v }));
+  async function salvar() {
+    const valor = parseValor(f.valor);
+    if (!f.vencimento) { toast.error("Informe o vencimento."); return; }
+    if (!ligada && !f.descricao.trim()) { toast.error("Informe a descrição."); return; }
+    if (!ligada && !(valor > 0)) { toast.error("Informe o valor."); return; }
+    const patch: TablesUpdate<"contas_financeiras"> = {
+      data_vencimento: f.vencimento, forma_pagamento: f.forma || null, observacoes: f.obs.trim() || null,
+      status: f.vencimento < hojeISO() ? "vencido" : "aberto",
+    };
+    if (!ligada) Object.assign(patch, {
+      descricao: f.descricao.trim(), favorecido: f.favorecido.trim() || null, categoria: f.categoria, valor, nota_fiscal: f.nf.trim() || null,
+    });
+    setSalvando(true);
+    const { data: atualizadas, error } = await supabase.from("contas_financeiras").update(patch).eq("id", conta.id).in("status", ["aberto", "vencido"]).select("id");
+    setSalvando(false);
+    if (error) { toast.error(friendlyError(error)); return; }
+    if (!atualizadas?.length) { toast.error("Esta conta já foi paga ou cancelada — atualize a lista."); onFeito(); return; }
+    toast.success("Conta atualizada.");
+    onFeito();
+  }
+  const campo = "text-xs font-semibold uppercase tracking-wide text-muted-foreground";
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5 text-primary" />Editar conta {conta.tipo === "pagar" ? "a pagar" : "a receber"}</DialogTitle>
+          <DialogDescription>{conta.nome} · {conta.descricao}</DialogDescription>
+        </DialogHeader>
+        {ligada && <p className="text-xs rounded-xl bg-muted px-3 py-2 text-muted-foreground">Conta gerada por nota fiscal/pedido: o valor e a descrição seguem a nota. Dá para mudar vencimento, forma de pagamento e observações.</p>}
+        {!ligada && <>
+          <label className="block space-y-1.5"><span className={campo}>{conta.tipo === "pagar" ? "Fornecedor / favorecido" : "Cliente / pagador"}</span>
+            <Input value={f.favorecido} onChange={e => set("favorecido", e.target.value.slice(0, 120))} className="h-11" /></label>
+          <label className="block space-y-1.5"><span className={campo}>Descrição *</span>
+            <Input value={f.descricao} onChange={e => set("descricao", e.target.value.slice(0, 160))} className="h-11" /></label>
+          <label className="block space-y-1.5"><span className={campo}>Categoria</span>
+            <select value={f.categoria} onChange={e => set("categoria", e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm">
+              {!cats[f.categoria] && <option value={f.categoria}>{nomeCategoria(f.categoria)}</option>}
+              {Object.entries(cats).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select></label>
+        </>}
+        <div className="grid grid-cols-2 gap-3">
+          {!ligada && <label className="block space-y-1.5"><span className={campo}>Valor (R$) *</span><Input value={f.valor} onChange={e => set("valor", e.target.value)} inputMode="decimal" className="h-11" /></label>}
+          <label className="block space-y-1.5"><span className={campo}>Vencimento</span><Input type="date" value={f.vencimento} onChange={e => set("vencimento", e.target.value)} className="h-11" /></label>
+          <label className="block space-y-1.5"><span className={campo}>Forma</span>
+            <select value={f.forma} onChange={e => set("forma", e.target.value)} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm">
+              <option value="">—</option>{Object.entries(FORMAS_PAGAMENTO).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select></label>
+          {!ligada && <label className="block space-y-1.5"><span className={campo}>Nº da NF</span><Input value={f.nf} onChange={e => set("nf", e.target.value.slice(0, 60))} className="h-11" /></label>}
+        </div>
+        <Textarea value={f.obs} onChange={e => set("obs", e.target.value.slice(0, 2000))} rows={2} placeholder="Observações" />
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={salvar} disabled={salvando} className="gap-1.5">{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Salvar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

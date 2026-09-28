@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { History, X, RefreshCw, ArrowDownCircle, ArrowUpCircle, User } from "lucide-react";
 import { ClearHistoryButton } from "@/components/admin/ClearHistoryButton";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface HistoricoGeralProps {
   open: boolean;
@@ -75,25 +76,17 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
     };
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-lg p-0 gap-0 max-h-[90vh] flex flex-col overflow-hidden [&>button:last-child]:hidden">
         {/* Header */}
-        <div className="relative px-5 pt-5 pb-3 shrink-0">
-          <div className="absolute inset-0 bg-gradient-to-b from-violet-500/5 to-transparent" />
-          <div className="relative flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-violet-500" />
-                <p className="text-sm font-semibold">Histórico Geral — Comercial</p>
-              </div>
-              <p className="text-[12px] text-muted-foreground mt-0.5">
-                Últimas movimentações do comercial (agrupadas por pedido)
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5">
+        <div className="px-5 pt-5 pb-3 shrink-0 border-b">
+          <div className="flex items-start justify-between gap-2">
+            <DialogHeader className="text-left space-y-0.5 min-w-0">
+              <DialogTitle className="flex items-center gap-2 text-base"><History className="h-4 w-4 text-primary" />Movimentações da expedição</DialogTitle>
+              <DialogDescription>Entradas e saídas ligadas aos pedidos (últimas 200)</DialogDescription>
+            </DialogHeader>
+            <div className="flex items-center gap-1 shrink-0">
               {isAdmin && (
                 <ClearHistoryButton
                   rpc="admin_clear_comercial"
@@ -108,15 +101,16 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
                 type="button"
                 onClick={load}
                 disabled={loading}
-                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
-                title="Atualizar"
+                className="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+                title="Atualizar" aria-label="Atualizar"
               >
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground transition-colors"
+                className="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+                aria-label="Fechar"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -124,7 +118,7 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
           </div>
         </div>
 
-        <div className="px-3 pb-4 overflow-y-auto flex-1 space-y-1">
+        <div className="px-3 py-3 overflow-y-auto flex-1 space-y-1">
           {loading && (
             <div className="flex items-center justify-center py-10">
               <div className="animate-spin h-5 w-5 border-2 border-violet-500 border-t-transparent rounded-full" />
@@ -204,7 +198,7 @@ export function HistoricoGeralModal({ open, onClose, isAdmin }: HistoricoGeralPr
             });
           })()}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

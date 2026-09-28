@@ -1057,21 +1057,6 @@ export async function fetchLotesSummary(stockItemId: string, _fase?: string): Pr
     .sort((a, b) => b.last_movement.localeCompare(a.last_movement));
 }
 
-export async function cancelMovement(
-  movementId: string,
-  stockItemId: string
-): Promise<{ ok: boolean; error?: string }> {
-  // Use atomic RPC — avoids read-modify-write race condition in cancel
-  const { data, error } = await supabase.rpc("cancel_movement", {
-    p_movement_id:   movementId,
-    p_stock_item_id: stockItemId,
-  });
-
-  if (error) return { ok: false, error: error.message };
-  const result = data as { ok?: boolean; error?: string } | null;
-  if (result?.error) return { ok: false, error: result.error };
-  return { ok: true };
-}
 
 export async function deleteStockItem(
   stockItemId: string

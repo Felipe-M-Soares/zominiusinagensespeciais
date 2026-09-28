@@ -1,22 +1,34 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+/**
+ * Admin › Usuários — criar conta, editar (nome, perfil, bloqueio), aprovar,
+ * alterar senha e excluir. Lista em cards (funciona igual no celular e no
+ * computador). Contas são criadas/senhas redefinidas pelas Edge Functions
+ * admin-create-user / admin-reset-password; exclusão pela RPC admin_delete_user.
+ */
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { Trash2, KeyRound, CheckCircle, XCircle, UserPlus, ShieldX, ShieldCheck } from "lucide-react";
+import {
+  Trash2, KeyRound, CheckCircle, UserPlus, ShieldX, ShieldCheck, Pencil, MoreVertical, Search, X,
+  Eye, EyeOff, Loader2, RefreshCw, Users, Clock,
+} from "lucide-react";
 import type { AppRole } from "@/types/roles";
 import { APP_ROLES, ROLE_LABELS } from "@/types/roles";
 import { logger } from "@/lib/logger";
+import { cn } from "@/lib/utils";
 import { validatePassword, passwordStrength } from "@/lib/passwordUtils";
 
 interface UserProfile {
@@ -30,7 +42,23 @@ interface UserProfile {
   must_change_password: boolean;
 }
 
-function PasswordStrengthInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+type Filtro = "todos" | "pendentes" | "bloqueados";
+
+/** O que cada perfil vê — ajuda o admin a escolher. */
+const ROLE_HINT: Record<AppRole, string> = {
+  admin: "Tudo, inclusive esta área Admin",
+  gerente: "Todos os módulos, sem a área Admin",
+  estoque: "Componentes e Estoque",
+  qualidade: "Componentes, Estoque e Qualidade",
+  comercial: "Comercial (só os próprios pedidos)",
+  financeiro: "Financeiro",
+  producao: "Componentes, Produção e Processos",
+  processos: "Processos",
+};
+
+const nomeDe = (u: Pick<UserProfile, "display_name" | "login">) => u.display_name ?? u.login ?? "usuário";
+
+function PasswordStrengthInput({ value, onChange, id }: { value: string; onChange: (v: string) => void; id?: string }) {
   const [show, setShow] = useState(false);
   const strength = value ? passwordStrength(value) : null;
   const err = value.length > 0 ? validatePassword(value) : null;
@@ -38,39 +66,39 @@ function PasswordStrengthInput({ value, onChange }: { value: string; onChange: (
     <div className="space-y-1.5">
       <div className="relative">
         <Input
+          id={id}
           type={show ? "text" : "password"}
           placeholder="Crie uma senha segura"
           value={value}
           onChange={e => onChange(e.target.value)}
           maxLength={72}
           autoComplete="new-password"
-          className="pr-10"
+          className="pr-11 h-11"
         />
         <button
           type="button"
           onClick={() => setShow(s => !s)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground"
+          aria-label={show ? "Ocultar senha" : "Mostrar senha"}
+          className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted"
         >
-          {show
-            ? <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-            : <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
+          {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>
       </div>
       {strength && strength.score > 0 && (
         <div className="space-y-1">
           <div className="flex gap-1">
-            {[1,2,3,4,5].map(i => (
-              <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= strength.score ? strength.color : "bg-muted"}`} />
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className={cn("h-1 flex-1 rounded-full transition-colors", i <= strength.score ? strength.color : "bg-muted")} />
             ))}
           </div>
-          <p className={`text-[10px] font-medium ${err ? "text-destructive" : "text-muted-foreground"}`}>
+          <p className={cn("text-[11px] font-medium", err ? "text-destructive" : "text-muted-foreground")}>
             {err ?? strength.label}
           </p>
         </div>
       )}
       {value.length === 0 && (
-        <p className="text-[10px] text-muted-foreground/60">
-          Mín. 8 chars · maiúscula · minúscula · número · especial
+        <p className="text-[11px] text-muted-foreground">
+          Mín. 8 caracteres, com maiúscula, minúscula, número e símbolo (!@#…).
         </p>
       )}
     </div>
@@ -99,12 +127,35 @@ async function extrairErroFuncao(
   return error.message ?? "Erro ao chamar função";
 }
 
-export function AdminUsers() {
+function StatusChip({ u }: { u: UserProfile }) {
+  if (u.blocked) return <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-destructive/10 text-destructive"><ShieldX className="h-3 w-3" />Bloqueado</span>;
+  if (!u.approved) return <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-warning/15 text-warning"><Clock className="h-3 w-3" />Pendente</span>;
+  return <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-success/10 text-success"><CheckCircle className="h-3 w-3" />Ativo</span>;
+}
+
+function RoleSelect({ value, onChange, disabled, id }: { value: AppRole; onChange: (r: AppRole) => void; disabled?: boolean; id?: string }) {
+  return (
+    <Select value={value} onValueChange={v => onChange(v as AppRole)} disabled={disabled}>
+      <SelectTrigger id={id} className="h-11"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {APP_ROLES.map(r => (
+          <SelectItem key={r} value={r}>
+            <span className="font-medium">{ROLE_LABELS[r]}</span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+export function AdminUsers({ onCountsChange }: { onCountsChange?: (pendentes: number) => void } = {}) {
   const [users, setUsers]     = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { user: currentUser } = useAuth();
   const fetchAbortRef = useRef<AbortController | null>(null);
+  const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<Filtro>("todos");
 
   const [passwordDialog, setPasswordDialog] = useState<UserProfile | null>(null);
   const [newPassword, setNewPassword]       = useState("");
@@ -117,7 +168,17 @@ export function AdminUsers() {
   const [newUserRole, setNewUserRole]       = useState<AppRole>("estoque");
   const [creatingUser, setCreatingUser]     = useState(false);
 
-  const [downgradeConfirm, setDowngradeConfirm] = useState<{ userId: string; userName: string } | null>(null);
+  // Edição
+  const [editUser, setEditUser] = useState<UserProfile | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRole, setEditRole] = useState<AppRole>("estoque");
+  const [editBlocked, setEditBlocked] = useState(false);
+  const [editApproved, setEditApproved] = useState(true);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const [downgradeConfirm, setDowngradeConfirm] = useState<{ userId: string; userName: string; newRole: AppRole; after?: () => void } | null>(null);
+  const [blockConfirm, setBlockConfirm] = useState<UserProfile | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<UserProfile | null>(null);
 
   const fetchUsers = useCallback(async () => {
     fetchAbortRef.current?.abort();
@@ -158,23 +219,29 @@ export function AdminUsers() {
     return () => { fetchAbortRef.current?.abort(); };
   }, [fetchUsers]);
 
-  const changeRole = async (userId: string, newRole: AppRole) => {
-    if (userId === currentUser?.id && newRole !== "admin") {
-      toast.error("Você não pode remover sua própria permissão de administrador.");
-      return;
-    }
-    const target = users.find(u => u.user_id === userId);
-    if (target?.role === "admin" && newRole !== "admin") {
-      setDowngradeConfirm({ userId, userName: target.display_name ?? target.login ?? "este admin" });
-      return;
-    }
-    await applyRoleChange(userId, newRole);
-  };
+  const pendentes = users.filter(u => !u.approved && !u.blocked).length;
+  const bloqueados = users.filter(u => u.blocked).length;
+  useEffect(() => { if (!loading) onCountsChange?.(pendentes); }, [pendentes, loading, onCountsChange]);
+
+  const filtrados = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return users
+      .filter(u => filtro === "todos" || (filtro === "pendentes" ? !u.approved && !u.blocked : u.blocked))
+      .filter(u => !q || `${u.display_name ?? ""} ${u.login ?? ""} ${ROLE_LABELS[u.role] ?? u.role}`.toLowerCase().includes(q))
+      .sort((a, b) => {
+        // Pendentes primeiro, depois por nome.
+        const pa = !a.approved && !a.blocked ? 0 : 1;
+        const pb = !b.approved && !b.blocked ? 0 : 1;
+        return pa - pb || nomeDe(a).localeCompare(nomeDe(b), "pt-BR");
+      });
+  }, [users, busca, filtro]);
+
+  // ── Ações ──────────────────────────────────────────────────────────────────
 
   const applyRoleChange = async (userId: string, newRole: AppRole) => {
     const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
-    if (error) toast.error("Erro ao alterar função: " + error.message, { duration: 8000 });
-    else { toast.success("Função atualizada"); fetchUsers(); }
+    if (error) { toast.error("Erro ao alterar perfil: " + error.message, { duration: 8000 }); return false; }
+    return true;
   };
 
   const toggleApproval = async (userId: string, approve: boolean) => {
@@ -221,7 +288,7 @@ export function AdminUsers() {
       });
       let errMsg = await extrairErroFuncao(error, data as { error?: string } | null);
       if (errMsg?.includes("Failed to send a request")) {
-        errMsg = "Não foi possível conectar à função 'admin-reset-password'. Publique/atualize as Edge Functions (supabase functions deploy) e tente de novo.";
+        errMsg = "Não foi possível conectar à função 'admin-reset-password'. Publique/atualize as Edge Functions e tente de novo.";
       }
       if (errMsg) {
         toast.error("Erro ao redefinir senha: " + errMsg, { duration: 8000 });
@@ -229,7 +296,7 @@ export function AdminUsers() {
         await supabase.from("profiles")
           .update({ must_change_password: true })
           .eq("user_id", passwordDialog.user_id);
-        toast.success(`Senha de ${passwordDialog.display_name ?? passwordDialog.login ?? "usuário"} redefinida.`);
+        toast.success(`Senha de ${nomeDe(passwordDialog)} redefinida. Ela vai pedir uma nova senha no próximo acesso.`);
         setPasswordDialog(null);
         setNewPassword("");
         fetchUsers();
@@ -275,12 +342,12 @@ export function AdminUsers() {
       });
       let errMsg = await extrairErroFuncao(error, data as { error?: string } | null);
       if (errMsg?.includes("Failed to send a request")) {
-        errMsg = "Não foi possível conectar à função 'admin-create-user'. Publique/atualize as Edge Functions (supabase functions deploy) e tente de novo.";
+        errMsg = "Não foi possível conectar à função 'admin-create-user'. Publique/atualize as Edge Functions e tente de novo.";
       }
       if (errMsg) {
         toast.error("Erro ao criar conta: " + errMsg, { duration: 8000 });
       } else {
-        toast.success("Conta criada!");
+        toast.success(`Conta de ${newUserName.trim()} criada.`);
         setCreateDialog(false);
         resetCreateForm();
         fetchUsers();
@@ -290,225 +357,383 @@ export function AdminUsers() {
     }
   };
 
-  if (loading) return (
-    <div className="flex justify-center py-10">
-      <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
-    </div>
-  );
+  // ── Edição (nome, perfil, bloqueio, aprovação) ─────────────────────────────
+
+  const abrirEdicao = (u: UserProfile) => {
+    setEditUser(u);
+    setEditName(u.display_name ?? "");
+    setEditRole(u.role);
+    setEditBlocked(u.blocked);
+    setEditApproved(u.approved);
+  };
+
+  const editIsSelf = editUser?.user_id === currentUser?.id;
+
+  const salvarEdicaoConfirmada = async () => {
+    if (!editUser) return;
+    setSavingEdit(true);
+    try {
+      let ok = true;
+      const nome = editName.trim();
+      const patch: { display_name?: string; blocked?: boolean; approved?: boolean } = {};
+      if (nome && nome !== (editUser.display_name ?? "")) patch.display_name = nome;
+      if (editBlocked !== editUser.blocked) {
+        patch.blocked = editBlocked;
+        // Mesma regra de antes: bloquear tira a aprovação; desbloquear aprova.
+        patch.approved = !editBlocked;
+      } else if (!editBlocked && editApproved !== editUser.approved) {
+        patch.approved = editApproved;
+      }
+      if (Object.keys(patch).length) {
+        const { error } = await supabase.from("profiles").update(patch).eq("user_id", editUser.user_id);
+        if (error) { toast.error("Erro ao salvar: " + error.message, { duration: 8000 }); ok = false; }
+      }
+      if (ok && editRole !== editUser.role) ok = await applyRoleChange(editUser.user_id, editRole);
+      if (ok) {
+        toast.success(`Dados de ${nome || nomeDe(editUser)} atualizados.`);
+        setEditUser(null);
+      }
+      fetchUsers();
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const salvarEdicao = () => {
+    if (!editUser) return;
+    if (!editName.trim()) { toast.error("Informe o nome."); return; }
+    if (editIsSelf && editRole !== "admin") {
+      toast.error("Você não pode remover sua própria permissão de administrador.");
+      return;
+    }
+    if (editUser.role === "admin" && editRole !== "admin") {
+      setDowngradeConfirm({ userId: editUser.user_id, userName: nomeDe(editUser), newRole: editRole, after: salvarEdicaoConfirmada });
+      return;
+    }
+    salvarEdicaoConfirmada();
+  };
+
+  const bloqueioDesabilitado = !!editUser && (editIsSelf || (editUser.role === "admin" && !editUser.blocked));
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <>
-      <div className="flex justify-end mb-4">
-        <Button size="sm" className="gap-1.5" onClick={() => setCreateDialog(true)}>
-          <UserPlus className="h-4 w-4" /> Criar Conta
-        </Button>
+    <section className="space-y-3">
+      {/* Barra de ações */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Input className="pl-9 pr-9 h-11 rounded-xl bg-card" placeholder="Buscar nome, login ou perfil…" value={busca}
+            onChange={e => setBusca(e.target.value)} aria-label="Buscar usuário" />
+          {busca && (
+            <button type="button" onClick={() => setBusca("")} aria-label="Limpar busca"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" className="h-11 w-11 rounded-xl shrink-0" onClick={fetchUsers} aria-label="Atualizar lista" title="Atualizar">
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+          <Button className="h-11 rounded-xl gap-2 flex-1 sm:flex-none" onClick={() => setCreateDialog(true)}>
+            <UserPlus className="h-4 w-4" /> Criar conta
+          </Button>
+        </div>
       </div>
 
-      <Dialog open={createDialog} onOpenChange={setCreateDialog}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Criar Conta de Usuário</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Conta criada já aprovada.</p>
-            <div className="space-y-2">
-              <Label>Nome completo *</Label>
-              <Input placeholder="Nome" value={newUserName} onChange={e => setNewUserName(e.target.value)} maxLength={100} />
-            </div>
-            <div className="space-y-2">
-              <Label>Login *</Label>
-              <Input type="text" placeholder="ex: joao.silva" value={newUserLogin}
-                onChange={e => setNewUserLogin(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ""))}
-                autoComplete="off" />
-            </div>
-            <div className="space-y-2">
-              <Label>Senha inicial *</Label>
-              <PasswordStrengthInput value={newUserPassword} onChange={setNewUserPassword} />
-            </div>
-            <div className="space-y-2">
-              <Label>Perfil</Label>
-              <Select value={newUserRole} onValueChange={v => setNewUserRole(v as AppRole)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {APP_ROLES.map(r => (
-                    <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setCreateDialog(false); resetCreateForm(); }}>Cancelar</Button>
-              <Button onClick={createUser}
-                disabled={creatingUser || !newUserLogin.trim() || !newUserName.trim() || !!validatePassword(newUserPassword)}>
-                {creatingUser ? "Criando..." : "Criar Conta"}
-              </Button>
-            </div>
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-none" role="group" aria-label="Filtrar usuários">
+        {([
+          ["todos", "Todos", users.length],
+          ["pendentes", "Pendentes", pendentes],
+          ["bloqueados", "Bloqueados", bloqueados],
+        ] as const).map(([id, label, n]) => (
+          <button key={id} type="button" onClick={() => setFiltro(id)} aria-pressed={filtro === id}
+            className={cn(
+              "h-9 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors inline-flex items-center gap-1.5",
+              filtro === id ? "border-primary/40 bg-primary/10 text-primary" : "bg-card text-muted-foreground hover:text-foreground hover:bg-muted/60",
+              id === "pendentes" && n > 0 && filtro !== id && "border-warning/40 text-warning"
+            )}>
+            {label}
+            <span className={cn("rounded-full px-1.5 text-[10px] tabular-nums", filtro === id ? "bg-primary/15" : "bg-muted")}>{n}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border bg-card overflow-hidden">
+        {loading && users.length === 0 ? (
+          <div className="flex items-center justify-center py-16 text-sm text-muted-foreground gap-2"><Loader2 className="h-4 w-4 animate-spin" />Carregando usuários…</div>
+        ) : filtrados.length === 0 ? (
+          <div className="flex flex-col items-center text-center gap-2 px-6 py-12">
+            <div className="h-12 w-12 rounded-2xl bg-muted flex items-center justify-center"><Users className="h-6 w-6 text-muted-foreground" /></div>
+            <p className="text-sm font-semibold">{users.length ? "Ninguém encontrado" : "Nenhum usuário"}</p>
+            <p className="text-xs text-muted-foreground">{users.length ? "Mude a busca ou o filtro." : "Crie a primeira conta no botão acima."}</p>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      <div className="rounded-lg border overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nome</TableHead>
-              <TableHead>Login</TableHead>
-              <TableHead>Cadastro</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map(u => {
+        ) : (
+          <ul className="divide-y">
+            {filtrados.map(u => {
               const isSelf = u.user_id === currentUser?.id;
+              const pendente = !u.approved && !u.blocked;
               return (
-                <TableRow key={u.user_id}>
-                  <TableCell className="font-medium">{u.display_name ?? "—"}</TableCell>
-                  <TableCell className="text-sm">{u.login ?? "—"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(u.created_at).toLocaleDateString("pt-BR")}
-                  </TableCell>
-                  <TableCell>
-                    {u.blocked
-                      ? <Badge variant="destructive" className="gap-1"><ShieldX className="h-3 w-3" /> Bloqueado</Badge>
-                      : u.approved
-                        ? <Badge variant="default" className="gap-1 bg-green-600"><CheckCircle className="h-3 w-3" /> Aprovado</Badge>
-                        : <Badge variant="secondary" className="gap-1 text-orange-600"><XCircle className="h-3 w-3" /> Pendente</Badge>
-                    }
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Select value={u.role} onValueChange={v => changeRole(u.user_id, v as AppRole)} disabled={isSelf}>
-                        <SelectTrigger className="w-[120px] h-8"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {APP_ROLES.map(r => (
-                            <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      {u.blocked && !isSelf && (
-                        <Button variant="outline" size="sm" className="h-8 text-green-600 border-green-300 hover:bg-green-50"
-                          onClick={() => unblockAccess(u.user_id)}>
-                          <ShieldCheck className="h-4 w-4 mr-1" /> Desbloquear
-                        </Button>
+                <li key={u.user_id} className={cn("p-3 sm:px-4 flex items-center gap-3", pendente && "bg-warning/[0.05]")}>
+                  <button type="button" onClick={() => abrirEdicao(u)} className="flex items-center gap-3 min-w-0 flex-1 text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title="Editar">
+                  <div className={cn(
+                    "h-10 w-10 rounded-full flex items-center justify-center shrink-0 text-sm font-bold",
+                    u.blocked ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+                  )}>
+                    {nomeDe(u).charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate">
+                      {u.display_name ?? "—"}{isSelf && <span className="ml-1.5 text-xs font-normal text-muted-foreground">(você)</span>}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      <span className="font-mono">{u.login ?? "—"}</span> · desde {new Date(u.created_at).toLocaleDateString("pt-BR")}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-foreground">{ROLE_LABELS[u.role]?.split(" (")[0] ?? u.role}</span>
+                      <StatusChip u={u} />
+                      {u.must_change_password && !u.blocked && (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground bg-muted/60"><KeyRound className="h-3 w-3" />Trocar senha no acesso</span>
                       )}
-
-                      {!u.approved && !u.blocked && !isSelf && (
-                        <Button variant="outline" size="sm" className="h-8 text-green-600 border-green-300 hover:bg-green-50"
-                          onClick={() => toggleApproval(u.user_id, true)}>
-                          <CheckCircle className="h-4 w-4 mr-1" /> Aprovar
-                        </Button>
-                      )}
-
-                      {u.approved && !u.blocked && !isSelf && u.role !== "admin" && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-8 text-red-600 border-red-300 hover:bg-red-50">
-                              <ShieldX className="h-4 w-4 mr-1" /> Revogar
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Bloquear acesso de {u.display_name ?? u.login ?? "usuário"}?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                O login <strong>{u.login ?? "usuário"}</strong> será bloqueado imediatamente.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => revokeAccess(u.user_id, u.login)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                Bloquear Acesso
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-
-                      <Button variant="outline" size="icon" className="h-8 w-8" title="Alterar senha"
-                        onClick={() => { setPasswordDialog(u); setNewPassword(""); }}>
-                        <KeyRound className="h-4 w-4" />
-                      </Button>
-
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="icon" className="h-8 w-8"
-                            disabled={isSelf || deletingId === u.user_id}
-                            title={isSelf ? "Não pode excluir sua própria conta" : "Excluir conta"}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Excluir conta de {u.display_name ?? u.login ?? "usuário"}?</AlertDialogTitle>
-                            <AlertDialogDescription>Esta ação é irreversível.</AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteUser(u.user_id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                              {deletingId === u.user_id ? "Excluindo..." : "Excluir"}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
                     </div>
-                  </TableCell>
-                </TableRow>
+                  </div>
+                  </button>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {pendente && !isSelf && (
+                      <Button size="sm" className="h-9 rounded-xl gap-1.5 bg-success text-success-foreground hover:bg-success/90" onClick={() => toggleApproval(u.user_id, true)}>
+                        <CheckCircle className="h-4 w-4" /><span className="hidden sm:inline">Aprovar</span>
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" className="h-9 rounded-xl gap-1.5 hidden sm:inline-flex" onClick={() => abrirEdicao(u)} aria-label={`Editar ${nomeDe(u)}`}>
+                      <Pencil className="h-4 w-4" />Editar
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={`Ações para ${nomeDe(u)}`}>
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-52">
+                        <DropdownMenuItem className="gap-2 py-2.5" onClick={() => abrirEdicao(u)}>
+                          <Pencil className="h-4 w-4" />Editar nome / perfil
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="gap-2 py-2.5" onClick={() => { setPasswordDialog(u); setNewPassword(""); }}>
+                          <KeyRound className="h-4 w-4" />Alterar senha
+                        </DropdownMenuItem>
+                        {u.blocked && !isSelf && (
+                          <DropdownMenuItem className="gap-2 py-2.5 text-success focus:text-success" onClick={() => unblockAccess(u.user_id)}>
+                            <ShieldCheck className="h-4 w-4" />Desbloquear
+                          </DropdownMenuItem>
+                        )}
+                        {u.approved && !u.blocked && !isSelf && u.role !== "admin" && (
+                          <DropdownMenuItem className="gap-2 py-2.5 text-destructive focus:text-destructive" onClick={() => setBlockConfirm(u)}>
+                            <ShieldX className="h-4 w-4" />Bloquear acesso
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="gap-2 py-2.5 text-destructive focus:text-destructive"
+                          disabled={isSelf || deletingId === u.user_id}
+                          onClick={() => setDeleteConfirm(u)}
+                        >
+                          <Trash2 className="h-4 w-4" />{isSelf ? "Não pode excluir a si mesmo" : "Excluir conta"}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </li>
               );
             })}
-          </TableBody>
-        </Table>
+          </ul>
+        )}
       </div>
 
-      <Dialog open={!!passwordDialog} onOpenChange={() => setPasswordDialog(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Alterar senha</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Nova senha para <strong>{passwordDialog?.display_name ?? passwordDialog?.login ?? "usuário"}</strong>
-            </p>
-            <div className="space-y-2">
-              <Label>Nova senha</Label>
-              <PasswordStrengthInput value={newPassword} onChange={setNewPassword} />
+      {/* ── Criar conta ─────────────────────────────────── */}
+      <Dialog open={createDialog} onOpenChange={v => { if (!creatingUser) { setCreateDialog(v); if (!v) resetCreateForm(); } }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-primary" />Criar conta</DialogTitle>
+            <DialogDescription>A conta já nasce aprovada. Passe o login e a senha para a pessoa; no primeiro acesso ela pode trocar a senha.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="nu-nome">Nome completo *</Label>
+              <Input id="nu-nome" className="h-11" placeholder="Nome" value={newUserName} onChange={e => setNewUserName(e.target.value)} maxLength={100} />
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setPasswordDialog(null)}>Cancelar</Button>
-              <Button onClick={resetPassword} disabled={resettingPassword || !!validatePassword(newPassword)}>
-                {resettingPassword ? "Salvando..." : "Alterar senha"}
-              </Button>
+            <div className="space-y-1.5">
+              <Label htmlFor="nu-login">Login *</Label>
+              <Input id="nu-login" className="h-11" type="text" placeholder="ex: joao.silva" value={newUserLogin}
+                onChange={e => setNewUserLogin(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ""))}
+                autoComplete="off" autoCapitalize="none" />
+              <p className="text-[11px] text-muted-foreground">Só letras minúsculas, números, ponto, hífen e sublinhado.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nu-senha">Senha inicial *</Label>
+              <PasswordStrengthInput id="nu-senha" value={newUserPassword} onChange={setNewUserPassword} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nu-perfil">Perfil</Label>
+              <RoleSelect id="nu-perfil" value={newUserRole} onChange={setNewUserRole} />
+              <p className="text-[11px] text-muted-foreground">Acesso: {ROLE_HINT[newUserRole]}.</p>
             </div>
           </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="h-11" onClick={() => { setCreateDialog(false); resetCreateForm(); }} disabled={creatingUser}>Cancelar</Button>
+            <Button className="h-11 gap-2" onClick={createUser}
+              disabled={creatingUser || !newUserLogin.trim() || !newUserName.trim() || !!validatePassword(newUserPassword)}>
+              {creatingUser ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+              {creatingUser ? "Criando…" : "Criar conta"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Editar usuário ──────────────────────────────── */}
+      <Dialog open={!!editUser} onOpenChange={v => { if (!v && !savingEdit) setEditUser(null); }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Pencil className="h-4 w-4 text-primary" />Editar usuário</DialogTitle>
+            <DialogDescription>
+              Login: <span className="font-mono text-foreground">{editUser?.login ?? "—"}</span> (o login não muda).
+            </DialogDescription>
+          </DialogHeader>
+          {editUser && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="ed-nome">Nome</Label>
+                <Input id="ed-nome" className="h-11" value={editName} onChange={e => setEditName(e.target.value)} maxLength={100} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ed-perfil">Perfil</Label>
+                <RoleSelect id="ed-perfil" value={editRole} onChange={setEditRole} disabled={editIsSelf} />
+                <p className="text-[11px] text-muted-foreground">
+                  {editIsSelf ? "Você não pode mudar o seu próprio perfil." : `Acesso: ${ROLE_HINT[editRole]}.`}
+                </p>
+              </div>
+              {!editBlocked && !editIsSelf && (
+                <label className="flex items-center justify-between gap-3 rounded-xl border p-3 cursor-pointer">
+                  <span className="text-sm">
+                    <span className="font-medium block">Acesso aprovado</span>
+                    <span className="text-xs text-muted-foreground">Desligado, a pessoa vê a tela “Acesso suspenso”.</span>
+                  </span>
+                  <Switch checked={editApproved} onCheckedChange={setEditApproved} />
+                </label>
+              )}
+              <label className={cn("flex items-center justify-between gap-3 rounded-xl border p-3", bloqueioDesabilitado ? "opacity-60" : "cursor-pointer", editBlocked && "border-destructive/40 bg-destructive/5")}>
+                <span className="text-sm">
+                  <span className={cn("font-medium block", editBlocked && "text-destructive")}>Bloqueado</span>
+                  <span className="text-xs text-muted-foreground">
+                    {editIsSelf ? "Você não pode bloquear a si mesmo."
+                      : editUser.role === "admin" && !editUser.blocked ? "Para bloquear um admin, mude o perfil dele antes."
+                      : "Bloqueado, o login para de funcionar na hora."}
+                  </span>
+                </span>
+                <Switch checked={editBlocked} onCheckedChange={setEditBlocked} disabled={bloqueioDesabilitado} />
+              </label>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="h-11" onClick={() => setEditUser(null)} disabled={savingEdit}>Cancelar</Button>
+            <Button className={cn("h-11 gap-2", editBlocked && !editUser?.blocked && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
+              onClick={salvarEdicao} disabled={savingEdit}>
+              {savingEdit && <Loader2 className="h-4 w-4 animate-spin" />}
+              {editBlocked && !editUser?.blocked ? "Salvar e bloquear" : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Alterar senha ───────────────────────────────── */}
+      <Dialog open={!!passwordDialog} onOpenChange={v => { if (!v && !resettingPassword) setPasswordDialog(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-primary" />Alterar senha</DialogTitle>
+            <DialogDescription>
+              Nova senha para <strong className="text-foreground">{passwordDialog ? nomeDe(passwordDialog) : ""}</strong>. No próximo acesso ela vai precisar criar uma senha pessoal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="rp-senha">Nova senha</Label>
+            <PasswordStrengthInput id="rp-senha" value={newPassword} onChange={setNewPassword} />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="h-11" onClick={() => setPasswordDialog(null)} disabled={resettingPassword}>Cancelar</Button>
+            <Button className="h-11 gap-2" onClick={resetPassword} disabled={resettingPassword || !!validatePassword(newPassword)}>
+              {resettingPassword && <Loader2 className="h-4 w-4 animate-spin" />}
+              {resettingPassword ? "Salvando…" : "Alterar senha"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Confirmações ────────────────────────────────── */}
+      <AlertDialog open={!!blockConfirm} onOpenChange={v => { if (!v) setBlockConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bloquear acesso de {blockConfirm ? nomeDe(blockConfirm) : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O login <strong className="font-mono">{blockConfirm?.login ?? "usuário"}</strong> para de funcionar imediatamente. Os dados da pessoa continuam no sistema e dá para desbloquear depois.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { if (blockConfirm) revokeAccess(blockConfirm.user_id, blockConfirm.login); setBlockConfirm(null); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Bloquear acesso
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteConfirm} onOpenChange={v => { if (!v) setDeleteConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir a conta de {deleteConfirm ? nomeDe(deleteConfirm) : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A conta é apagada de vez e não pode ser recuperada. Se a pessoa só saiu da empresa, prefira <strong>Bloquear acesso</strong>, que mantém o histórico.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { if (deleteConfirm) deleteUser(deleteConfirm.user_id); setDeleteConfirm(null); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir conta
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!downgradeConfirm} onOpenChange={v => { if (!v) setDowngradeConfirm(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <ShieldX className="h-4 w-4" /> Rebaixar administrador?
+              <ShieldX className="h-4 w-4" /> Tirar o acesso de administrador?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Você está prestes a remover o acesso de administrador de{" "}
-              <strong>{downgradeConfirm?.userName}</strong>. O usuário passará a ter perfil de
-              Usuário e perderá acesso ao painel Admin imediatamente.
+              <strong>{downgradeConfirm?.userName}</strong> deixa de ser administrador e passa a ter o perfil{" "}
+              <strong>{downgradeConfirm ? ROLE_LABELS[downgradeConfirm.newRole] : ""}</strong>, perdendo o acesso a esta área Admin imediatamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDowngradeConfirm(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
-                if (downgradeConfirm) {
-                  await applyRoleChange(downgradeConfirm.userId, "estoque");
-                  setDowngradeConfirm(null);
-                }
+                const c = downgradeConfirm;
+                setDowngradeConfirm(null);
+                if (!c) return;
+                if (c.after) { c.after(); return; }
+                if (await applyRoleChange(c.userId, c.newRole)) { toast.success("Perfil atualizado"); fetchUsers(); }
               }}>
-              Sim, rebaixar para Funcionário
+              Sim, mudar perfil
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </section>
   );
 }

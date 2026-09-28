@@ -81,7 +81,7 @@ function OfflineBanner({ pending, syncing, onSync }: { pending:number; syncing:b
         : `${pending} operaç${pending===1?"ão pendente":"ões pendentes"} de sincronização`}
       {!offline && pending > 0 && (
         <button onClick={onSync} disabled={syncing}
-          className="ml-auto flex items-center gap-1 hover:opacity-70 transition-opacity">
+          className="ml-auto flex items-center gap-1 h-8 px-2 rounded-lg hover:bg-blue-500/10 transition-colors">
           <RefreshCw className={cn("h-3 w-3", syncing && "animate-spin")} />
           {syncing ? "Sincronizando..." : "Sincronizar agora"}
         </button>

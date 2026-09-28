@@ -97,99 +97,96 @@ export function AuditLogPanel() {
   const uniqueActions = [...new Set(entries.map((e) => e.action))].sort();
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[180px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+    <div className="space-y-3">
+      {/* Filtros */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por usuário, ação..."
-            className="w-full pl-8 pr-3 h-8 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+            placeholder="Buscar por usuário, ação…"
+            aria-label="Buscar no log"
+            className="w-full pl-9 pr-3 h-11 text-sm rounded-xl border border-input bg-card focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
-        <select
-          value={filterAction}
-          onChange={(e) => setFilter(e.target.value)}
-          className="h-8 px-2 text-xs rounded-lg border border-border bg-background focus:outline-none"
-        >
-          <option value="">Todas as ações</option>
-          {uniqueActions.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <button
-          type="button"
-          onClick={fetchLogs}
-          disabled={loading}
-          className="h-8 px-3 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted/40 transition-colors"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-          Atualizar
-        </button>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="h-8 px-3 rounded-lg border border-border text-xs flex items-center gap-1.5 hover:bg-muted/40 transition-colors"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Exportar CSV
-        </button>
+        <div className="flex gap-2">
+          <select
+            value={filterAction}
+            onChange={(e) => setFilter(e.target.value)}
+            aria-label="Filtrar por ação"
+            className="h-11 min-w-0 flex-1 sm:flex-none sm:max-w-[220px] px-3 text-sm rounded-xl border border-input bg-card focus:outline-none"
+          >
+            <option value="">Todas as ações</option>
+            {uniqueActions.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={fetchLogs}
+            disabled={loading}
+            aria-label="Atualizar"
+            title="Atualizar"
+            className="h-11 w-11 shrink-0 rounded-xl border border-input bg-card flex items-center justify-center hover:bg-muted/40 transition-colors"
+          >
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={filtered.length === 0}
+            className="h-11 px-3 shrink-0 rounded-xl border border-input bg-card text-sm flex items-center gap-1.5 hover:bg-muted/40 transition-colors disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Exportar</span> CSV
+          </button>
+        </div>
       </div>
 
-      {/* Contador */}
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {filtered.length} {filtered.length === 1 ? "registro" : "registros"}
-        {filtered.length < entries.length && ` (de ${entries.length})`}
+        {filtered.length < entries.length && ` (de ${entries.length})`} · mostra os 200 mais recentes. Toque num registro para ver os detalhes.
       </p>
 
-      {/* Lista */}
-      {loading && (
-        <div className="flex justify-center py-8">
-          <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-
-      {!loading && filtered.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
-          <Shield className="h-8 w-8 opacity-20" />
-          <p className="text-sm">Nenhum registro encontrado</p>
-        </div>
-      )}
-
-      <div className="space-y-1">
-        {filtered.map((e) => (
-          <div
-            key={e.id}
-            className="rounded-xl border border-border/40 bg-card overflow-hidden"
-          >
-            <button
-              type="button"
-              onClick={() => setExpanded(expanded === e.id ? null : e.id)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/20 transition-colors"
-            >
-              <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-semibold shrink-0", getActionStyle(e.action))}>
-                {e.action}
-              </span>
-              <span className="text-[12px] font-medium text-foreground truncate flex-1">
-                {e.user_name ?? e.user_id?.slice(0, 8) ?? "sistema"}
-              </span>
-              {e.entity_type && (
-                <span className="text-[11px] text-muted-foreground shrink-0">{e.entity_type}</span>
-              )}
-              <span className="text-[10px] text-muted-foreground/60 shrink-0 ml-auto">
-                {fmtDate(e.created_at)}
-              </span>
-            </button>
-
-            {expanded === e.id && e.details && (
-              <div className="px-3 pb-3 pt-0 border-t border-border/30">
-                <pre className="text-[10px] text-muted-foreground bg-muted/30 rounded-lg p-2 overflow-x-auto max-h-40">
-                  {JSON.stringify(e.details, null, 2)}
-                </pre>
-              </div>
-            )}
+      <div className="rounded-2xl border bg-card overflow-hidden">
+        {loading && entries.length === 0 ? (
+          <div className="flex justify-center py-12">
+            <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
-        ))}
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+            <Shield className="h-8 w-8 opacity-30" />
+            <p className="text-sm">Nenhum registro encontrado</p>
+          </div>
+        ) : (
+          <ul className="divide-y">
+            {filtered.map((e) => (
+              <li key={e.id}>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(expanded === e.id ? null : e.id)}
+                  aria-expanded={expanded === e.id}
+                  className="w-full grid grid-cols-[1fr_auto] sm:grid-cols-[minmax(0,14rem)_1fr_auto] items-center gap-x-3 gap-y-1 px-3 sm:px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+                >
+                  <span className={cn("justify-self-start max-w-full truncate px-2 py-0.5 rounded-full text-xs font-semibold", getActionStyle(e.action))}>
+                    {e.action}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground tabular-nums sm:order-last">{fmtDate(e.created_at)}</span>
+                  <span className="col-span-2 sm:col-span-1 text-sm text-foreground truncate">
+                    {e.user_name ?? e.user_id?.slice(0, 8) ?? "sistema"}
+                    {e.entity_type && <span className="text-muted-foreground"> · {e.entity_type}</span>}
+                  </span>
+                </button>
+                {expanded === e.id && (
+                  <div className="px-3 sm:px-4 pb-3">
+                    {e.details
+                      ? <pre className="text-[11px] text-muted-foreground bg-muted/40 rounded-xl p-3 overflow-x-auto max-h-60">{JSON.stringify(e.details, null, 2)}</pre>
+                      : <p className="text-xs text-muted-foreground">Sem detalhes adicionais.</p>}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

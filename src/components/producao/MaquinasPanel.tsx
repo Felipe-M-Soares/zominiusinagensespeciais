@@ -1,21 +1,24 @@
 /**
- * MaquinasPanel — Cadastro e Gestão de Máquinas
- * ✓ Dados reais via Supabase (tabela maquinas_producao)
- * ✓ Fallback offline com IndexedDB
+ * MaquinasPanel — Cadastro e situação das máquinas.
+ * ✓ Supabase (maquinas_producao) com fallback offline (IndexedDB)
+ * ✓ Troca rápida de situação (operando / parada / manutenção / setup)
+ * ✓ Aviso de manutenção vencida ou próxima
+ * Escrita: admin/produção/gerente (RLS maq_insert/maq_update); exclusão só admin.
  */
 
-import { useState, useEffect, useCallback } from "react";
-import { Plus, X, Settings2, Wrench, CheckCircle2, XCircle, RefreshCw, Edit2, Trash2 } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Plus, Settings2, Wrench, CheckCircle2, XCircle, Pencil, Trash2, Loader2, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+import { KpiCard, Carregando, Vazio, BotaoAtualizar, Confirmar, Campo, selCls, hojeISO } from "@/components/producao/ProducaoUI";
 
-type StatusMaquina = "operando"|"parada"|"manutencao"|"setup";
-type SetorMaquina = "usinagem"|"montagem"|"acabamento"|"estamparia"|"soldagem";
+type StatusMaquina = "operando" | "parada" | "manutencao" | "setup";
+type SetorMaquina = "usinagem" | "montagem" | "acabamento" | "estamparia" | "soldagem";
 
 interface Maquina {
   id: string; codigo: string; nome: string;
@@ -26,89 +29,109 @@ interface Maquina {
   created_at?: string; updated_at?: string;
 }
 
-const STATUS_CFG: Record<StatusMaquina,{label:string;color:string;bg:string;Icon:React.ElementType}> = {
-  operando:   {label:"Operando",   color:"text-green-500", bg:"bg-green-500/10",  Icon:CheckCircle2},
-  parada:     {label:"Parada",     color:"text-red-500",   bg:"bg-red-500/10",    Icon:XCircle},
-  manutencao: {label:"Manutenção", color:"text-amber-500", bg:"bg-amber-500/10",  Icon:Wrench},
-  setup:      {label:"Setup",      color:"text-blue-500",  bg:"bg-blue-500/10",   Icon:Settings2},
+const STATUS_CFG: Record<StatusMaquina, { label: string; chip: string; dot: string; Icon: React.ElementType }> = {
+  operando:   { label: "Operando",   chip: "bg-green-500/10 text-green-700 dark:text-green-400", dot: "bg-green-500", Icon: CheckCircle2 },
+  parada:     { label: "Parada",     chip: "bg-red-500/10 text-red-700 dark:text-red-400",       dot: "bg-red-500",   Icon: XCircle },
+  manutencao: { label: "Manutenção", chip: "bg-amber-500/10 text-amber-700 dark:text-amber-400", dot: "bg-amber-500", Icon: Wrench },
+  setup:      { label: "Setup",      chip: "bg-blue-500/10 text-blue-700 dark:text-blue-400",    dot: "bg-blue-500",  Icon: Settings2 },
 };
-const SETORES: SetorMaquina[] = ["usinagem","montagem","acabamento","estamparia","soldagem"];
-const SETOR_LABEL: Record<SetorMaquina,string> = {usinagem:"Usinagem",montagem:"Montagem",acabamento:"Acabamento",estamparia:"Estamparia",soldagem:"Soldagem"};
+const STATUS_LISTA = Object.keys(STATUS_CFG) as StatusMaquina[];
+const SETORES: SetorMaquina[] = ["usinagem", "montagem", "acabamento", "estamparia", "soldagem"];
+const SETOR_LABEL: Record<SetorMaquina, string> = { usinagem: "Usinagem", montagem: "Montagem", acabamento: "Acabamento", estamparia: "Estamparia", soldagem: "Soldagem" };
 
-function MaquinaModal({ open, maquina, onClose, onSaved }: {
-  open:boolean; maquina?:Maquina; onClose:()=>void; onSaved:(m:Maquina)=>void;
+const fmtData = (iso?: string) => iso ? new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR") : "—";
+function situacaoManut(m: Maquina): "vencida" | "proxima" | null {
+  if (!m.proxima_manutencao) return null;
+  const hoje = hojeISO();
+  if (m.proxima_manutencao.slice(0, 10) < hoje) return "vencida";
+  const em7 = new Date(); em7.setDate(em7.getDate() + 7);
+  return new Date(`${m.proxima_manutencao.slice(0, 10)}T12:00:00`) <= em7 ? "proxima" : null;
+}
+
+const StatusChip = ({ s }: { s: StatusMaquina }) => {
+  const c = STATUS_CFG[s] ?? STATUS_CFG.operando;
+  return <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap", c.chip)}><c.Icon className="h-3 w-3" />{c.label}</span>;
+};
+const ManutChip = ({ m }: { m: Maquina }) => {
+  const s = situacaoManut(m);
+  if (!s) return null;
+  return <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+    s === "vencida" ? "bg-red-500/10 text-red-700 dark:text-red-400" : "bg-amber-500/10 text-amber-700 dark:text-amber-400")}>
+    <CalendarClock className="h-3 w-3" />{s === "vencida" ? "Manutenção vencida" : "Manutenção em breve"}</span>;
+};
+
+function MaquinaDialog({ open, maquina, onClose, onSaved }: {
+  open: boolean; maquina?: Maquina; onClose: () => void; onSaved: (m: Maquina) => void;
 }) {
-  const [form, setForm] = useState({ codigo:"", nome:"", setor:"usinagem" as SetorMaquina, fabricante:"", modelo:"", horimetro:"", ultima_manutencao:"", proxima_manutencao:"" });
+  const [form, setForm] = useState({ codigo: "", nome: "", setor: "usinagem" as SetorMaquina, fabricante: "", modelo: "", horimetro: "", ultima_manutencao: "", proxima_manutencao: "" });
   const [saving, setSaving] = useState(false);
   const { saveWithFallback } = useOfflineSync();
   const isEdit = !!maquina;
 
   useEffect(() => {
     if (open) setForm({
-      codigo: maquina?.codigo||"", nome: maquina?.nome||"",
-      setor: maquina?.setor||"usinagem", fabricante: maquina?.fabricante||"",
-      modelo: maquina?.modelo||"", horimetro: String(maquina?.horimetro||""),
-      ultima_manutencao: maquina?.ultima_manutencao||"", proxima_manutencao: maquina?.proxima_manutencao||"",
+      codigo: maquina?.codigo || "", nome: maquina?.nome || "",
+      setor: maquina?.setor || "usinagem", fabricante: maquina?.fabricante || "",
+      modelo: maquina?.modelo || "", horimetro: maquina?.horimetro != null ? String(maquina.horimetro) : "",
+      ultima_manutencao: maquina?.ultima_manutencao?.slice(0, 10) || "", proxima_manutencao: maquina?.proxima_manutencao?.slice(0, 10) || "",
     });
   }, [open, maquina]);
 
-  if (!open) return null;
-
   async function save() {
-    if (!form.codigo || !form.nome) { toast.error("Código e nome são obrigatórios"); return; }
+    if (!form.codigo.trim() || !form.nome.trim()) { toast.error("Código e nome são obrigatórios."); return; }
     setSaving(true);
-    const id = maquina?.id || crypto.randomUUID();
     const data: Maquina = {
-      id, codigo: form.codigo.toUpperCase(), nome: form.nome,
-      setor: form.setor, status: maquina?.status||"operando",
-      disponibilidade: maquina?.disponibilidade||100,
-      fabricante: form.fabricante||undefined, modelo: form.modelo||undefined,
+      id: maquina?.id || crypto.randomUUID(), codigo: form.codigo.trim().toUpperCase(), nome: form.nome.trim(),
+      setor: form.setor, status: maquina?.status || "operando",
+      disponibilidade: maquina?.disponibilidade || 100,
+      fabricante: form.fabricante.trim() || undefined, modelo: form.modelo.trim() || undefined,
       horimetro: form.horimetro ? Number(form.horimetro) : undefined,
-      ultima_manutencao: form.ultima_manutencao||undefined,
-      proxima_manutencao: form.proxima_manutencao||undefined,
+      ultima_manutencao: form.ultima_manutencao || undefined,
+      proxima_manutencao: form.proxima_manutencao || undefined,
     };
-    const { data:saved, error, savedOffline } = await saveWithFallback(
-      "maquinas_producao", "maquinas", isEdit ? "UPDATE" : "INSERT", data
-    );
+    const { data: saved, error, savedOffline } = await saveWithFallback("maquinas_producao", "maquinas", isEdit ? "UPDATE" : "INSERT", data);
     setSaving(false);
-    if (error) { toast.error("Erro ao salvar"); return; }
-    toast.success(savedOffline ? "Salvo offline" : isEdit ? "Máquina atualizada!" : "Máquina cadastrada!");
-    onSaved(saved||data); onClose();
+    if (error) { toast.error("Não foi possível salvar a máquina."); return; }
+    toast.success(savedOffline ? "Sem internet — salvo no aparelho." : isEdit ? "Máquina atualizada." : "Máquina cadastrada.");
+    onSaved(saved || data); onClose();
   }
 
+  const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl border shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">{isEdit?"Editar Máquina":"Nova Máquina"}</h3>
-          <button onClick={onClose} aria-label="Fechar"><X className="h-4 w-4"/></button>
-        </div>
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? `Editar ${maquina?.codigo}` : "Nova máquina"}</DialogTitle>
+          <DialogDescription>O código aparece nos lançamentos, no planejamento e nos gráficos.</DialogDescription>
+        </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Código *</label><Input value={form.codigo} onChange={e=>setForm(p=>({...p,codigo:e.target.value}))} placeholder="CNC-01"/></div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Setor</label>
-              <select value={form.setor} onChange={e=>setForm(p=>({...p,setor:e.target.value as SetorMaquina}))} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
-                {SETORES.map(s=><option key={s} value={s}>{SETOR_LABEL[s]}</option>)}
+            <Campo label="Código *"><Input value={form.codigo} onChange={e => set("codigo", e.target.value)} placeholder="MQ001" className="h-11 uppercase" /></Campo>
+            <Campo label="Setor">
+              <select value={form.setor} onChange={e => set("setor", e.target.value)} className={selCls}>
+                {SETORES.map(s => <option key={s} value={s}>{SETOR_LABEL[s]}</option>)}
               </select>
-            </div>
+            </Campo>
           </div>
-          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Nome *</label><Input value={form.nome} onChange={e=>setForm(p=>({...p,nome:e.target.value}))} placeholder="Nome da máquina"/></div>
+          <Campo label="Nome *"><Input value={form.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Torno CNC 16CSBIII" className="h-11" /></Campo>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Fabricante</label><Input value={form.fabricante} onChange={e=>setForm(p=>({...p,fabricante:e.target.value}))} placeholder="Ex: Romi"/></div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Modelo</label><Input value={form.modelo} onChange={e=>setForm(p=>({...p,modelo:e.target.value}))} placeholder="Ex: D800"/></div>
+            <Campo label="Fabricante"><Input value={form.fabricante} onChange={e => set("fabricante", e.target.value)} placeholder="Ex.: Romi" className="h-11" /></Campo>
+            <Campo label="Modelo"><Input value={form.modelo} onChange={e => set("modelo", e.target.value)} placeholder="Ex.: D800" className="h-11" /></Campo>
           </div>
-          <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Horímetro (h)</label><Input type="number" value={form.horimetro} onChange={e=>setForm(p=>({...p,horimetro:e.target.value}))} placeholder="0"/></div>
+          <Campo label="Horímetro (h)"><Input inputMode="numeric" value={form.horimetro} onChange={e => set("horimetro", e.target.value.replace(/[^\d]/g, ""))} placeholder="0" className="h-11 tabular-nums" /></Campo>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Última manutenção</label><Input type="date" value={form.ultima_manutencao} onChange={e=>setForm(p=>({...p,ultima_manutencao:e.target.value}))}/></div>
-            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Próxima manutenção</label><Input type="date" value={form.proxima_manutencao} onChange={e=>setForm(p=>({...p,proxima_manutencao:e.target.value}))}/></div>
+            <Campo label="Última manutenção"><Input type="date" value={form.ultima_manutencao} onChange={e => set("ultima_manutencao", e.target.value)} className="h-11" /></Campo>
+            <Campo label="Próxima manutenção"><Input type="date" value={form.proxima_manutencao} onChange={e => set("proxima_manutencao", e.target.value)} className="h-11" /></Campo>
           </div>
         </div>
-        <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button className="flex-1" onClick={save} disabled={saving}>{saving?"Salvando...":"Salvar"}</Button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" className="h-11" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button className="h-11 gap-1.5" onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -117,119 +140,156 @@ export function MaquinasPanel({ isAdmin, canWrite }: { isAdmin: boolean; canWrit
   const [maquinas, setMaquinas] = useState<Maquina[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState<"todos"|StatusMaquina>("todos");
+  const [filtroStatus, setFiltroStatus] = useState<"todos" | StatusMaquina>("todos");
   const [modalOpen, setModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<Maquina|undefined>();
+  const [editTarget, setEditTarget] = useState<Maquina | undefined>();
+  const [excluir, setExcluir] = useState<Maquina | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
   const { saveWithFallback, loadWithFallback } = useOfflineSync();
 
   const load = useCallback(async () => {
     setLoading(true);
     const data = await loadWithFallback<Maquina>("maquinas_producao", "maquinas");
-    setMaquinas(data.sort((a,b)=>a.codigo.localeCompare(b.codigo)));
+    setMaquinas([...data].sort((a, b) => a.codigo.localeCompare(b.codigo)));
     setLoading(false);
   }, [loadWithFallback]);
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleStatusChange(id:string, status:StatusMaquina) {
-    const maq = maquinas.find(m=>m.id===id);
-    if (!maq) return;
-    const updated = {...maq, status};
-    const { error, savedOffline } = await saveWithFallback("maquinas_producao","maquinas","UPDATE",updated);
-    if (error) { toast.error("Erro ao atualizar status"); return; }
-    toast.success(savedOffline?"Salvo offline":"Status atualizado!");
-    setMaquinas(prev=>prev.map(m=>m.id===id?updated:m));
+  async function handleStatusChange(m: Maquina, status: StatusMaquina) {
+    if (m.status === status) return;
+    const updated = { ...m, status };
+    setMaquinas(prev => prev.map(x => x.id === m.id ? updated : x));
+    const { error, savedOffline } = await saveWithFallback("maquinas_producao", "maquinas", "UPDATE", updated);
+    if (error) { toast.error("Não foi possível mudar a situação."); setMaquinas(prev => prev.map(x => x.id === m.id ? m : x)); return; }
+    toast.success(savedOffline ? "Sem internet — salvo no aparelho." : `${m.codigo}: ${STATUS_CFG[status].label}.`);
   }
 
-  async function handleDelete(id:string) {
-    if (!confirm("Remover esta máquina?")) return;
-    const { error } = await saveWithFallback("maquinas_producao","maquinas","DELETE",{id} as Maquina);
-    if (error) { toast.error("Erro ao remover"); return; }
-    setMaquinas(prev=>prev.filter(m=>m.id!==id));
-    toast.success("Máquina removida");
+  async function confirmarExclusao() {
+    if (!excluir) return;
+    setExcluindo(true);
+    const { error } = await saveWithFallback("maquinas_producao", "maquinas", "DELETE", { id: excluir.id } as Maquina);
+    setExcluindo(false);
+    if (error) { toast.error("Não foi possível remover a máquina."); return; }
+    setMaquinas(prev => prev.filter(m => m.id !== excluir.id));
+    toast.success("Máquina removida.");
+    setExcluir(null);
   }
 
-  const filtered = maquinas.filter(m => {
-    const matchSearch = !search || [m.codigo,m.nome,m.fabricante||""].some(v=>v.toLowerCase().includes(search.toLowerCase()));
-    const matchStatus = filtroStatus==="todos" || m.status===filtroStatus;
-    return matchSearch && matchStatus;
-  });
+  const q = search.trim().toLowerCase();
+  const filtered = maquinas.filter(m =>
+    (!q || [m.codigo, m.nome, m.fabricante || "", m.modelo || ""].some(v => v.toLowerCase().includes(q))) &&
+    (filtroStatus === "todos" || m.status === filtroStatus));
+  const counts = useMemo(() => {
+    const c: Record<StatusMaquina, number> = { operando: 0, parada: 0, manutencao: 0, setup: 0 };
+    maquinas.forEach(m => { if (c[m.status] !== undefined) c[m.status]++; });
+    return c;
+  }, [maquinas]);
+  const manutVencidas = maquinas.filter(m => situacaoManut(m) === "vencida").length;
 
-  const counts = { operando:0, parada:0, manutencao:0, setup:0 };
-  maquinas.forEach(m => counts[m.status]++);
+  const seletorStatus = (m: Maquina, grande = false) => (
+    <div className={cn("grid grid-cols-4 gap-1 rounded-xl border bg-muted/40 p-1", grande ? "w-full" : "w-[21rem]")} role="radiogroup" aria-label={`Situação de ${m.codigo}`}>
+      {STATUS_LISTA.map(s => (
+        <button key={s} type="button" role="radio" aria-checked={m.status === s} onClick={() => handleStatusChange(m, s)}
+          className={cn("rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-colors", grande ? "h-10" : "h-8",
+            m.status === s ? cn("bg-card shadow-sm", STATUS_CFG[s].chip) : "text-muted-foreground hover:text-foreground")}>
+          <span className={cn("h-2 w-2 rounded-full shrink-0", STATUS_CFG[s].dot)} />{STATUS_CFG[s].label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      <div className="grid grid-cols-4 gap-2">
-        {(Object.entries(STATUS_CFG) as [StatusMaquina,typeof STATUS_CFG[StatusMaquina]][]).map(([k,cfg])=>(
-          <div key={k} className={cn("rounded-xl border p-3 text-center", cfg.bg)}>
-            <p className={cn("text-lg font-bold", cfg.color)}>{counts[k]}</p>
-            <p className="text-[10px] text-muted-foreground">{cfg.label}</p>
-          </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {STATUS_LISTA.map(s => (
+          <KpiCard key={s} label={STATUS_CFG[s].label} Icon={STATUS_CFG[s].Icon} value={counts[s]}
+            tom={s === "operando" ? "ok" : s === "parada" && counts[s] ? "ruim" : s === "manutencao" && counts[s] ? "atencao" : "neutro"}
+            ativo={filtroStatus === s} onClick={() => setFiltroStatus(f => f === s ? "todos" : s)}
+            sub={filtroStatus === s ? "toque para ver todas" : s === "manutencao" && manutVencidas ? `${manutVencidas} com manutenção vencida` : undefined}
+            subTom={s === "manutencao" && manutVencidas && filtroStatus !== s ? "ruim" : undefined} />
         ))}
       </div>
 
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <SearchInputWithBarcode value={search} onChange={setSearch} onSearch={setSearch} placeholder="Bipe o código ou busque..." height="h-9"/>
-        </div>
-        <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value as typeof filtroStatus)}
-          className="h-9 rounded-lg border border-input bg-background px-3 text-sm">
-          <option value="todos">Todos</option>
-          {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
-        </select>
-        {canEdit && <Button size="sm" className="gap-1 h-9" onClick={()=>{setEditTarget(undefined);setModalOpen(true);}}><Plus className="h-4 w-4"/>Nova</Button>}
-        <Button size="sm" variant="outline" className="h-9 px-2" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4",loading&&"animate-spin")}/></Button>
+      <div className="flex flex-wrap gap-2">
+        <SearchInputWithBarcode className="flex-1 min-w-[12rem]" value={search} onChange={setSearch} onSearch={setSearch} placeholder="Bipe ou busque código, nome, fabricante..." height="h-11" />
+        <BotaoAtualizar onClick={load} loading={loading} />
+        {canEdit && <Button className="h-11 gap-1.5" onClick={() => { setEditTarget(undefined); setModalOpen(true); }}><Plus className="h-4 w-4" />Nova máquina</Button>}
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin"/>Carregando...</div>
-      ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-          <Settings2 className="h-8 w-8 opacity-30"/><p>{maquinas.length===0?"Nenhuma máquina cadastrada":"Nenhum resultado encontrado"}</p>
-        </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {filtered.map(m => {
-            const cfg = STATUS_CFG[m.status];
-            return (
-              <div key={m.id} className={cn("rounded-2xl border p-4 space-y-3 transition-all", cfg.bg, "border-border/40")}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm">{m.codigo}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{m.nome}</p>
-                    {m.fabricante && <p className="text-[10px] text-muted-foreground">{m.fabricante}{m.modelo?` · ${m.modelo}`:""}</p>}
+      <section className="rounded-2xl border bg-card overflow-hidden">
+        {loading ? <Carregando /> : filtered.length === 0 ? (
+          <Vazio Icon={Settings2} titulo={maquinas.length === 0 ? "Nenhuma máquina cadastrada" : "Nenhuma máquina encontrada"}
+            dica={maquinas.length === 0 ? "Cadastre as máquinas para usá-las nos lançamentos e no planejamento." : "Limpe a busca ou o filtro de situação."}
+            acao={canEdit && maquinas.length === 0 ? <Button className="h-11 gap-1.5" onClick={() => { setEditTarget(undefined); setModalOpen(true); }}><Plus className="h-4 w-4" />Cadastrar máquina</Button> : undefined} />
+        ) : (
+          <>
+            <ul className="md:hidden divide-y">
+              {filtered.map(m => (
+                <li key={m.id} className="p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <span className={cn("mt-1.5 h-2.5 w-2.5 rounded-full shrink-0", (STATUS_CFG[m.status] ?? STATUS_CFG.operando).dot)} />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold">{m.codigo} <span className="font-normal text-muted-foreground">· {SETOR_LABEL[m.setor] ?? m.setor}</span></p>
+                      <p className="text-sm text-muted-foreground truncate">{m.nome}</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">{!canEdit && <StatusChip s={m.status} />}<ManutChip m={m} /></div>
+                    </div>
+                    <div className="flex -mr-2 shrink-0">
+                      {canEdit && <Button size="icon" variant="ghost" className="h-10 w-10" aria-label={`Editar ${m.codigo}`} onClick={() => { setEditTarget(m); setModalOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+                      {isAdmin && <Button size="icon" variant="ghost" className="h-10 w-10 text-destructive" aria-label={`Excluir ${m.codigo}`} onClick={() => setExcluir(m)}><Trash2 className="h-4 w-4" /></Button>}
+                    </div>
                   </div>
-                  <Badge variant="outline" className={cn("text-[10px] shrink-0 gap-1", cfg.color)}>
-                    <cfg.Icon className="h-2.5 w-2.5"/>{cfg.label}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>Disponib.: <b className="text-foreground">{m.disponibilidade}%</b></span>
-                  {m.horimetro !== undefined && <span>Horímetro: <b className="text-foreground">{m.horimetro}h</b></span>}
-                  <span>{SETOR_LABEL[m.setor]}</span>
-                </div>
-                {canEdit && (
-                  <div className="flex items-center gap-2 pt-1 border-t border-border/30">
-                    <select value={m.status} onChange={e=>handleStatusChange(m.id,e.target.value as StatusMaquina)}
-                      className="flex-1 h-7 rounded-lg border border-input bg-background px-2 text-[11px]">
-                      {(Object.keys(STATUS_CFG) as StatusMaquina[]).map(s=><option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
-                    </select>
-                    <button onClick={()=>{setEditTarget(m);setModalOpen(true);}} aria-label="Editar máquina" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/50"><Edit2 className="h-3.5 w-3.5"/></button>
-                    {/* Excluir continua restrito a admin — política RLS maq_delete só permite admin */}
-                    {isAdmin && (
-                      <button onClick={()=>handleDelete(m.id)} aria-label="Excluir máquina" className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5"/></button>
-                    )}
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div><p className="text-muted-foreground">Fabricante</p><p className="font-medium truncate">{m.fabricante ? `${m.fabricante}${m.modelo ? ` ${m.modelo}` : ""}` : "—"}</p></div>
+                    <div><p className="text-muted-foreground">Horímetro</p><p className="font-medium tabular-nums">{m.horimetro != null ? `${m.horimetro.toLocaleString("pt-BR")} h` : "—"}</p></div>
+                    <div><p className="text-muted-foreground">Próx. manut.</p><p className="font-medium tabular-nums">{fmtData(m.proxima_manutencao)}</p></div>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  {canEdit && seletorStatus(m, true)}
+                </li>
+              ))}
+            </ul>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50"><tr className="text-left text-xs text-muted-foreground">
+                  <th className="px-3 py-2.5 font-semibold">Máquina</th><th className="px-3 py-2.5 font-semibold">Setor</th>
+                  <th className="px-3 py-2.5 font-semibold">Fabricante / modelo</th><th className="px-3 py-2.5 font-semibold text-right">Horímetro</th>
+                  <th className="px-3 py-2.5 font-semibold">Manutenção</th><th className="px-3 py-2.5 font-semibold">Situação</th>
+                  <th className="px-3 py-2.5 font-semibold text-right">Ações</th>
+                </tr></thead>
+                <tbody>
+                  {filtered.map(m => (
+                    <tr key={m.id} className="border-t align-middle">
+                      <td className="px-3 py-2.5"><p className="font-semibold">{m.codigo}</p><p className="text-xs text-muted-foreground truncate max-w-[14rem]">{m.nome}</p></td>
+                      <td className="px-3 py-2.5">{SETOR_LABEL[m.setor] ?? m.setor}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{m.fabricante ? `${m.fabricante}${m.modelo ? ` · ${m.modelo}` : ""}` : "—"}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{m.horimetro != null ? `${m.horimetro.toLocaleString("pt-BR")} h` : "—"}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <p className="text-xs text-muted-foreground">última {fmtData(m.ultima_manutencao)}</p>
+                        <p className="text-xs">próxima <strong className="tabular-nums">{fmtData(m.proxima_manutencao)}</strong></p>
+                        <ManutChip m={m} />
+                      </td>
+                      <td className="px-3 py-2.5">{canEdit ? seletorStatus(m) : <StatusChip s={m.status} />}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex justify-end gap-1">
+                          {canEdit && <Button size="icon" variant="ghost" className="h-9 w-9" aria-label={`Editar ${m.codigo}`} onClick={() => { setEditTarget(m); setModalOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+                          {/* Excluir: RLS maq_delete permite só admin */}
+                          {isAdmin && <Button size="icon" variant="ghost" className="h-9 w-9 text-destructive" aria-label={`Excluir ${m.codigo}`} onClick={() => setExcluir(m)}><Trash2 className="h-4 w-4" /></Button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
 
-      <MaquinaModal open={modalOpen} maquina={editTarget} onClose={()=>setModalOpen(false)}
-        onSaved={m=>{setMaquinas(prev=>editTarget?prev.map(x=>x.id===m.id?m:x):[m,...prev]);}}/>
+      <MaquinaDialog open={modalOpen} maquina={editTarget} onClose={() => setModalOpen(false)}
+        onSaved={m => setMaquinas(prev => (editTarget ? prev.map(x => x.id === m.id ? m : x) : [...prev, m]).sort((a, b) => a.codigo.localeCompare(b.codigo)))} />
+      <Confirmar aberto={!!excluir} titulo={`Remover ${excluir?.codigo ?? "máquina"}?`} carregando={excluindo}
+        descricao="Os lançamentos antigos continuam com o código da máquina, mas ela sai das listas de escolha."
+        onConfirmar={confirmarExclusao} onCancelar={() => setExcluir(null)} />
     </div>
   );
 }

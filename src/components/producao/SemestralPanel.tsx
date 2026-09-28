@@ -79,9 +79,9 @@ export function SemestralPanel() {
         <Button variant="outline" size="icon" className="h-11 w-11" onClick={load} disabled={loading} aria-label="Atualizar">
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </Button>
-        <Button className="h-11 gap-2 sm:ml-auto" onClick={baixar} disabled={!dados || loading || gerando}>
+        <Button className="h-11 gap-2 w-full sm:w-auto sm:ml-auto" onClick={baixar} disabled={!dados || loading || gerando}>
           {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Presentation className="h-4 w-4" />}
-          Baixar apresentação (PowerPoint)
+          Baixar apresentação<span className="hidden sm:inline"> (PowerPoint)</span>
           <Download className="h-4 w-4 opacity-70" />
         </Button>
       </div>
@@ -121,10 +121,10 @@ export function SemestralPanel() {
                 <div className="rounded-2xl border bg-card p-4">
                   <h3 className="text-sm font-semibold mb-3">OEE mês a mês (%)</h3>
                   <ResponsiveContainer width="100%" height={260}>
-                    <LineChart data={serie} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
+                    <LineChart data={serie} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                       <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="label" tick={eixo} axisLine={false} tickLine={false} />
-                      <YAxis tick={eixo} axisLine={false} tickLine={false} />
+                      <YAxis tick={eixo} axisLine={false} tickLine={false} width={36} domain={[0, 100]} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [fmtPct(v), n]} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
                       <Line type="monotone" dataKey="oee" name="OEE" stroke="hsl(var(--chart-1))" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} />
@@ -136,10 +136,10 @@ export function SemestralPanel() {
                 <div className="rounded-2xl border bg-card p-4">
                   <h3 className="text-sm font-semibold mb-3">Peças produzidas × planejadas</h3>
                   <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={serie} margin={{ top: 8, right: 12, left: -10, bottom: 0 }} barGap={2}>
+                    <BarChart data={serie} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} barGap={2}>
                       <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="label" tick={eixo} axisLine={false} tickLine={false} />
-                      <YAxis tick={eixo} axisLine={false} tickLine={false} />
+                      <YAxis tick={eixo} axisLine={false} tickLine={false} width={48} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil` : String(v)} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [`${fmtNum(v)} pç`, n]} cursor={{ fill: "hsl(var(--muted))" }} />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
                       <Bar dataKey="qtde_produzida" name="Produzido" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
@@ -193,8 +193,28 @@ export function SemestralPanel() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border bg-card p-4 overflow-x-auto">
+              <div className="rounded-2xl border bg-card p-4">
                 <h3 className="text-sm font-semibold mb-3">Detalhamento mensal</h3>
+                <ul className="md:hidden divide-y -mx-4 border-t">
+                  {dados.meses.map(m => (
+                    <li key={m.mes} className="px-4 py-2.5">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-semibold">{m.label}</span>
+                        {m.temDados ? <span className={cn("font-bold tabular-nums", corOee(m.oee))}>OEE {fmtPct(m.oee)}</span> : <span className="text-xs text-muted-foreground">sem lançamentos</span>}
+                      </div>
+                      {m.temDados && (
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          {fmtNum(m.qtde_produzida)} pç · disp {fmtPct(m.disponibilidade)} · perf {fmtPct(m.performance)} · qual {fmtPct(m.qualidade)} · {fmtHoras(m.hr_paradas)} paradas · {fmtNum(m.total_refugo)} refugo
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                  <li className="px-4 py-2.5 bg-muted/40">
+                    <div className="flex items-baseline justify-between gap-2"><span className="font-semibold">Semestre</span><span className={cn("font-bold tabular-nums", corOee(g.oee))}>OEE {fmtPct(g.oee)}</span></div>
+                    <p className="text-xs text-muted-foreground tabular-nums">{fmtNum(g.qtde_produzida)} pç · {fmtHoras(g.hr_planejadas)} trabalhadas · {fmtHoras(g.hr_paradas)} paradas · {fmtNum(g.total_refugo)} refugo</p>
+                  </li>
+                </ul>
+                <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-sm min-w-[640px]">
                   <thead><tr className="text-left text-xs text-muted-foreground border-b">
                     {["Mês", "Horas", "Paradas", "Disp.", "Perf.", "Qual.", "OEE", "Produzido", "Refugo"].map((h, i) => (
@@ -231,12 +251,26 @@ export function SemestralPanel() {
                     </tr>
                   </tbody>
                 </table>
+                </div>
               </div>
               {dados.tempos.length > 0 && (
-                <div className="rounded-2xl border bg-card p-4 overflow-x-auto">
+                <div className="rounded-2xl border bg-card p-4 md:overflow-x-auto">
                   <h3 className="text-sm font-semibold">Tempo por peça no semestre</h3>
                   <p className="text-xs text-muted-foreground mb-3">Calculado automaticamente a cada lançamento (tempo produtivo ÷ peças). Compara o primeiro e o último mês em que a peça rodou.</p>
-                  <table className="w-full text-sm min-w-[560px]">
+                  <ul className="md:hidden divide-y -mx-4 border-t">
+                    {dados.tempos.slice(0, 15).map(t => (
+                      <li key={t.produto} className="px-4 py-2.5 flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold truncate">{t.produto} <span className="font-normal text-muted-foreground">{t.descricao}</span></p>
+                          <p className="text-xs text-muted-foreground tabular-nums">{fmtCiclo(t.cicloIni)} ({t.mesIni}) → {fmtCiclo(t.cicloFim)} ({t.mesFim}) · {fmtNum(t.pecas)} pç</p>
+                        </div>
+                        <span className={cn("text-sm font-bold tabular-nums shrink-0", t.variacaoPct < -2 ? "text-green-600" : t.variacaoPct > 2 ? "text-red-600" : "text-muted-foreground")}>
+                          {t.mesIni === t.mesFim ? "—" : `${t.variacaoPct > 0 ? "+" : ""}${t.variacaoPct.toFixed(1).replace(".", ",")}%`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <table className="hidden md:table w-full text-sm min-w-[560px]">
                     <thead><tr className="text-left text-xs text-muted-foreground border-b">
                       <th className="py-2 font-medium">Peça</th><th className="py-2 font-medium text-right">Início</th>
                       <th className="py-2 font-medium text-right">Agora</th><th className="py-2 font-medium text-right">Variação</th>
@@ -307,14 +341,14 @@ function MetaSemestre({ dados, onSalva }: { dados: DadosSemestre; onSalva: () =>
         <h3 className="text-sm font-semibold">Meta de OEE do {dados.semestre}º semestre</h3>
         {!dados.metaDefinida && <span className="text-xs text-muted-foreground">(padrão)</span>}
         {editando ? (
-          <form className="flex items-center gap-2 ml-auto" onSubmit={e => { e.preventDefault(); salvar(); }}>
-            <Input type="number" min="1" max="100" step="0.5" value={valor} onChange={e => setValor(e.target.value)} className="h-9 w-24" aria-label="Meta de OEE (%)" autoFocus />
+          <form className="flex items-center gap-2 w-full sm:w-auto sm:ml-auto" onSubmit={e => { e.preventDefault(); salvar(); }}>
+            <Input inputMode="decimal" value={valor} onChange={e => setValor(e.target.value)} className="h-11 w-24 text-base" aria-label="Meta de OEE (%)" autoFocus />
             <span className="text-sm">%</span>
-            <Button type="submit" size="sm" className="h-9" disabled={salvando}>{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}</Button>
-            <Button type="button" size="sm" variant="ghost" className="h-9" onClick={() => setEditando(false)}>Cancelar</Button>
+            <Button type="submit" size="sm" className="h-11" disabled={salvando}>{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}</Button>
+            <Button type="button" size="sm" variant="ghost" className="h-11" onClick={() => setEditando(false)}>Cancelar</Button>
           </form>
         ) : (
-          <Button size="sm" variant="outline" className="h-9 ml-auto" onClick={() => setEditando(true)}>Alterar meta</Button>
+          <Button size="sm" variant="outline" className="h-10 ml-auto" onClick={() => setEditando(true)}>Alterar meta</Button>
         )}
       </div>
 

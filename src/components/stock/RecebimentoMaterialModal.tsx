@@ -63,9 +63,11 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** Quando informado, edita um recebimento ainda ATIVO em vez de criar um novo. */
+  editar?: { id: string; lote: string; quantity: number; descricao: string; fornecedor: string | null } | null;
 }
 
-export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
+export function RecebimentoMaterialModal({ open, onClose, onSuccess, editar }: Props) {
   const { user } = useAuth();
   const displayName: string | null =
     (user?.user_metadata?.display_name as string) ?? user?.email ?? null;
@@ -84,14 +86,14 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
 
   useEffect(() => {
     if (open) {
-      setLote("");
-      setQty(1);
-      setTipo(null);
-      setDescricao("");
-      setFornecedor("");
-      setTimeout(() => qtyRef.current?.focus(), 80);
+      setLote(editar?.lote ?? "");
+      setQty(editar?.quantity ?? 1);
+      setTipo(editar ? parseTipoMaterial(editar.descricao) : null);
+      setDescricao(editar ? stripTipoPrefix(editar.descricao) : "");
+      setFornecedor(editar?.fornecedor ?? "");
+      if (!editar) setTimeout(() => qtyRef.current?.focus(), 80);
     }
-  }, [open]);
+  }, [open, editar]);
 
   async function handleSubmit() {
     const safeQty = Math.trunc(resolvedQty);
@@ -104,6 +106,20 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
     const descricaoFinal = `[${TIPO_MATERIAL_LABEL[tipo]}] ${descricao.trim()}`;
 
     setLoading(true);
+    if (editar) {
+      const { error: eUp } = await supabase.from("recebimento_materiais").update({
+        lote: lote.trim().toUpperCase(),
+        quantity: safeQty,
+        descricao: descricaoFinal,
+        fornecedor: fornecedor.trim() || null,
+      }).eq("id", editar.id).eq("status", "ativo");
+      setLoading(false);
+      if (eUp) { toast.error("Erro ao salvar alterações. Tente novamente."); return; }
+      toast.success("Recebimento atualizado.");
+      onSuccess();
+      onClose();
+      return;
+    }
     const { error } = await supabase.from("recebimento_materiais").insert({
       lote: lote.trim().toUpperCase(),
       quantity: safeQty,
@@ -128,7 +144,7 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-sm p-0 rounded-2xl overflow-hidden border-border/30">
+      <DialogContent className="max-w-sm p-0 w-[calc(100vw-1.5rem)] max-h-[90vh] overflow-y-auto rounded-2xl border-border/30">
         {/* Header */}
         <div className="relative px-5 pt-5 pb-4">
           <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 to-transparent" />
@@ -136,7 +152,7 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
             <DialogHeader>
               <DialogTitle className="text-sm font-semibold flex items-center gap-2">
                 <PackagePlus className="h-4 w-4 text-cyan-500" />
-                Registrar Recebimento
+                {editar ? "Editar recebimento" : "Registrar Recebimento"}
               </DialogTitle>
             </DialogHeader>
             <p className="mt-1 text-[11px] text-muted-foreground">
@@ -274,18 +290,18 @@ export function RecebimentoMaterialModal({ open, onClose, onSuccess }: Props) {
 
           {/* Ações */}
           <div className="flex gap-2 pt-1">
-            <Button variant="outline" className="flex-1 h-10 rounded-xl" onClick={onClose}>
+            <Button variant="outline" className="flex-1 h-11 rounded-xl" onClick={onClose}>
               Cancelar
             </Button>
             <Button
-              className="flex-1 h-10 rounded-xl gap-2 font-semibold bg-cyan-600 hover:bg-cyan-700 text-white"
+              className="flex-1 h-11 rounded-xl gap-2 font-semibold bg-cyan-600 hover:bg-cyan-700 text-white"
               onClick={handleSubmit}
               disabled={loading || resolvedQty < 1 || !lote || loteOk === "invalid" || !tipo || !descricao.trim()}
             >
               {loading
                 ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 : <PackagePlus className="h-4 w-4" />}
-              Registrar
+              {editar ? "Salvar" : "Registrar"}
             </Button>
           </div>
         </div>
