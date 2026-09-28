@@ -1,14 +1,11 @@
 /**
- * DevolucaoTrocaPanel — NF-e de Devolução de Mercadoria e de Troca
+ * DevolucaoTrocaPanel — devoluções e trocas de mercadoria.
  *
- * Permite registrar e emitir (via SEFAZ, edge function sefaz-emitir-devolucao)
- * notas fiscais de devolução e de troca, vinculadas a um pedido já faturado
- * (puxa automaticamente cliente + NF original + itens) ou avulsas (dados
- * preenchidos manualmente).
- *
- * Segue o mesmo padrão visual/arquitetural do restante do módulo Financeiro
- * (SefazModal, NotaManualModal): passos numerados, modoTeste simulando a
- * autorização sem bater no SEFAZ de verdade.
+ * Fluxo: o Financeiro registra a devolução (vinculada à venda ou avulsa) →
+ * a Qualidade analisa → com a aprovação, a NF-e de devolução (entrada,
+ * finalidade 4, referenciando a chave da venda) é emitida pelo emissor
+ * integrado — ou, com o emissor desligado, emitida em outro sistema e
+ * registrada aqui. Na troca, a peça de reposição sai numa nova venda.
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,7 +16,9 @@ import { friendlyError } from "@/lib/errorMessages";
 import { cn } from "@/lib/utils";
 
 import { formatBRL } from "@/lib/format";
-import { gerarDanfeHtml } from "@/lib/danfe";
+import { chamarEmissor } from "./fiscal";
+import { RegistrarNotaDialog } from "./FaturamentoPanel";
+import { abrirArquivoFiscal } from "@/lib/financeiro";
 import {
   RefreshCw, PlusCircle, X, Search, Undo2, Repeat2, FileCheck2,
   Loader2, Trash2, Printer, ChevronRight, AlertTriangle, CheckCircle2,
@@ -117,7 +116,7 @@ function qLaudoTexto(msg: string | null): string {
 function novoItem(): ItemDevTroca {
   return {
     id: Math.random().toString(36).slice(2),
-    descricao: "", ncm: "90213990", cfop: "1202",
+    descricao: "", ncm: "", cfop: "1201",
     quantidade: 1, valorUnitario: "0.00", aliqICMS: "12.00", cst: "00",
   };
 }
@@ -132,19 +131,9 @@ const STATUS_COLOR: Record<StatusNota, string> = {
   cancelada: "bg-muted/40 text-muted-foreground border-border/40",
 };
 
-function TestBadgeLocal({ modoTeste }: { modoTeste: boolean }) {
-  return (
-    <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
-      modoTeste ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
-                : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30")}>
-      {modoTeste ? "HOMOLOGAÇÃO" : "PRODUÇÃO"}
-    </span>
-  );
-}
-
 // ─── Painel principal ────────────────────────────────────────────────────────
 
-export function DevolucaoTrocaPanel({ modoTeste }: { modoTeste: boolean }) {
+export function DevolucaoTrocaPanel({ emissorAtivo }: { emissorAtivo: boolean }) {
   const [registros, setRegistros] = useState<NotaDevTroca[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroTipo, setFiltroTipo] = useState<"todos" | TipoOperacao>("todos");
@@ -284,11 +273,10 @@ export function DevolucaoTrocaPanel({ modoTeste }: { modoTeste: boolean }) {
         <NovaDevolucaoTrocaModal
           onClose={() => setModalOpen(false)}
           onSuccess={() => { setModalOpen(false); load(); }}
-          modoTeste={modoTeste}
         />
       )}
       {viewRegistro && (
-        <ViewerModal registro={viewRegistro} onClose={() => setViewRegistro(null)} onChanged={load} modoTeste={modoTeste} />
+        <ViewerModal registro={viewRegistro} onClose={() => setViewRegistro(null)} onChanged={load} emissorAtivo={emissorAtivo} />
       )}
     </div>
   );
@@ -296,13 +284,21 @@ export function DevolucaoTrocaPanel({ modoTeste }: { modoTeste: boolean }) {
 
 // ─── Modal: visualizar / cancelar / imprimir ────────────────────────────────
 
-function ViewerModal({ registro, onClose, onChanged, modoTeste }: { registro: NotaDevTroca; onClose: () => void; onChanged: () => void; modoTeste: boolean }) {
+function ViewerModal({ registro, onClose, onChanged, emissorAtivo }: { registro: NotaDevTroca; onClose: () => void; onChanged: () => void; emissorAtivo: boolean }) {
+  const [registrar, setRegistrar] = useState(false);
+  const [arquivos, setArquivos] = useState<{ danfe_url: string | null; danfe_path: string | null; xml_path: string | null } | null>(null);
+  useEffect(() => {
+    if (registro.status !== "autorizada") return;
+    supabase.from("notas_fiscais").select("danfe_url,danfe_path,xml_path").eq("devolucao_id", registro.id)
+      .in("status", ["autorizada", "cancelada"]).limit(1).maybeSingle().then(({ data }) => setArquivos(data ?? null));
+  }, [registro.id, registro.status]);
   const [canceling, setCanceling] = useState(false);
   const [emitindo, setEmitindo] = useState(false);
   const qsub = qSubStatus(registro);
   const travadoQualidade = qsub === "em_analise";
-  const prontoParaEmitir = (qsub === "aprovado_devolucao" || qsub === "aprovado_troca") && registro.status === "rascunho";
-  const podeImprimir = registro.status === "autorizada"; // regra SEFAZ: só sai pro cliente quando pronta
+  // Registro vindo da Qualidade: só após aprovação. Registro manual do Financeiro (sem análise): liberado.
+  const prontoParaEmitir = (qsub === "aprovado_devolucao" || qsub === "aprovado_troca" || qsub === null) && (registro.status === "rascunho" || registro.status === "rejeitada");
+  const podeImprimir = registro.status === "autorizada";
 
   async function handleCancelar() {
     if (!confirm("Cancelar este registro? Esta ação apenas marca o registro como cancelado neste sistema — não transmite evento de cancelamento ao SEFAZ.")) return;
@@ -319,110 +315,35 @@ function ViewerModal({ registro, onClose, onChanged, modoTeste }: { registro: No
     } finally { setCanceling(false); }
   }
 
-  // Emite a NF a partir de um rascunho que a Qualidade já concluiu — reaproveita
-  // os mesmos dados decididos por ela (tipo, itens, motivo/laudo), sem reabrir
-  // o assistente de criação: a nota "já criada" é só alterada até virar
-  // autorizada, exatamente como pedido.
+  // Com a aprovação da Qualidade: emite pelo emissor integrado ou abre o
+  // registro da nota emitida em outro sistema.
   async function handleEmitirAprovado() {
+    if (!emissorAtivo) { setRegistrar(true); return; }
     setEmitindo(true);
     try {
-      const { data: numReservado, error: numErr } = await supabase.rpc("get_next_nf_number", { p_serie: "2", p_tipo: registro.tipo });
-      if (numErr) throw numErr;
-      const numeroFinal = String(numReservado ?? "").padStart(9, "0");
-      const naturezaOperacao = registro.tipo === "devolucao" ? "DEVOLUÇÃO DE VENDA DE MERCADORIA" : "TROCA DE MERCADORIA";
-
-      await supabase.from("notas_devolucao_troca").update({ numero: numeroFinal, natureza_operacao: naturezaOperacao }).eq("id", registro.id);
-
-      if (modoTeste) {
-        await new Promise(r => setTimeout(r, 1200));
-        const fake = {
-          chaveAcesso: ("35" + Date.now() + "0".repeat(40)).slice(0, 44),
-          protocolo: "141" + Date.now(),
-          dhAutorizacao: new Date().toISOString(),
-          xMotivo: "Autorizado o uso da NF-e",
-        };
-        await supabase.rpc("registrar_devolucao_troca", {
-          p_id: registro.id, p_status: "autorizada", p_status_msg: fake.xMotivo,
-          p_chave_acesso: fake.chaveAcesso, p_protocolo: fake.protocolo, p_dh_autorizacao: fake.dhAutorizacao,
-        });
-        toast.success(`[TESTE] ${registro.tipo === "devolucao" ? "Devolução" : "Troca"} emitida! Protocolo ${fake.protocolo}`, { duration: 5000 });
-        onChanged(); onClose(); return;
+      const r = await chamarEmissor({ acao: "emitir_devolucao", devolucaoId: registro.id });
+      if (!r.ok) {
+        toast.error([r.erro, ...(r.problemas ?? [])].filter(Boolean).join(" · ") || "Nota não autorizada.", { duration: 9000 });
+      } else if (r.status === "autorizada") {
+        toast.success(`NF-e de ${registro.tipo === "devolucao" ? "devolução" : "troca"} nº ${r.numero ?? ""} autorizada.`);
+        onChanged(); onClose();
+      } else {
+        toast.info("A SEFAZ está processando — acompanhe em Notas emitidas.");
+        onChanged(); onClose();
       }
-
-      const { data: fnData, error: fnErr } = await supabase.functions.invoke("sefaz-emitir-devolucao", {
-        body: {
-          registroId: registro.id,
-          dadosFiscais: {
-            tipoNota: registro.tipo_nota, tipoOperacao: registro.tipo, tpNF: registro.tp_nf,
-            numero: numeroFinal, serie: "2", naturezaOperacao,
-            refNFe: (registro.nf_original_chave ?? "").replace(/\D/g, ""),
-            destDocumento: registro.cliente_documento, destNome: registro.cliente_nome, destEmail: registro.cliente_email,
-            destEndereco: registro.cliente_endereco,
-            itens: registro.itens.map(i => ({
-              itemId: i.id, descricao: i.descricao, ncm: i.ncm, cfop: i.cfop,
-              unidade: "UN", quantidade: i.quantidade, valorUnitario: i.valorUnitario,
-              aliqICMS: i.aliqICMS, cst: i.cst,
-            })),
-            valorFrete: String(registro.valor_frete ?? 0), modFrete: "9",
-            informacoesAdicionais: qLaudoTexto(registro.status_msg),
-          },
-        },
-      });
-      if (fnErr) throw new Error(fnErr.message);
-      const result = fnData as { sucesso: boolean; xMotivo?: string; erro?: string; cStat?: string; protocolo?: string; chaveAcesso?: string; dhAutorizacao?: string; xmlAssinado?: string };
-
-      if (!result.sucesso) {
-        await supabase.rpc("registrar_devolucao_troca", {
-          p_id: registro.id, p_status: "rejeitada",
-          p_status_msg: result.xMotivo ? `SEFAZ cStat ${result.cStat}: ${result.xMotivo}` : (result.erro ?? "Nota rejeitada"),
-          p_chave_acesso: null, p_protocolo: null, p_dh_autorizacao: null,
-        });
-        toast.error(result.xMotivo ? `SEFAZ cStat ${result.cStat}: ${result.xMotivo}` : (result.erro ?? "Nota rejeitada pelo SEFAZ"), { duration: 8000 });
-        onChanged(); return;
-      }
-
-      await supabase.rpc("registrar_devolucao_troca", {
-        p_id: registro.id, p_status: "autorizada", p_status_msg: result.xMotivo ?? "Autorizado",
-        p_chave_acesso: result.chaveAcesso ?? null, p_protocolo: result.protocolo ?? null,
-        p_dh_autorizacao: result.dhAutorizacao ?? new Date().toISOString(),
-        p_xml_nfe: result.xmlAssinado ?? null,
-      });
-      toast.success(`✅ ${registro.tipo === "devolucao" ? "Devolução" : "Troca"} autorizada! Protocolo ${result.protocolo}`, { duration: 6000 });
-      onChanged(); onClose();
     } catch (err) {
       toast.error(`Erro ao emitir: ${friendlyError(err)}`);
       logger.error("handleEmitirAprovado:", err);
     } finally { setEmitindo(false); }
   }
 
-  function handleImprimir() {
-    const html = gerarDanfeHtml({
-      tipoOperacao: "entrada",
-      naturezaOperacao: registro.tipo === "devolucao" ? "DEVOLUÇÃO DE VENDA DE MERCADORIA" : "TROCA DE MERCADORIA",
-      numero: registro.numero ?? "0",
-      serie: "2",
-      chaveAcesso: registro.chave_acesso ?? null,
-      protocolo: registro.protocolo_sefaz ?? null,
-      dataEmissao: new Date().toISOString(),
-      destinatario: {
-        nome: registro.cliente_nome,
-        documento: registro.cliente_documento ?? null,
-        endereco: registro.cliente_endereco ?? null,
-      },
-      itens: registro.itens.map(it => ({
-        descricao: it.descricao,
-        ncm: it.ncm,
-        cfop: it.cfop,
-        cst: it.cst,
-        quantidade: it.quantidade,
-        valorUnitario: parseFloat(it.valorUnitario) || 0,
-        aliqIcms: parseFloat(it.aliqICMS) || undefined,
-      })),
-      observacoes: `Status: ${STATUS_LABEL[registro.status]}${registro.nf_original_numero ? ` · NF original: ${registro.nf_original_numero}` : ""} · Motivo: ${registro.motivo}`,
-      faixaSuperior: registro.status !== "autorizada" ? "DOCUMENTO SEM VALOR FISCAL — AGUARDANDO AUTORIZAÇÃO DA SEFAZ" : null,
-    });
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); }
+  async function handleImprimir() {
+    try {
+      if (arquivos?.danfe_url) window.open(arquivos.danfe_url, "_blank", "noopener");
+      else if (arquivos?.danfe_path) await abrirArquivoFiscal(arquivos.danfe_path);
+      else if (arquivos?.xml_path) await abrirArquivoFiscal(arquivos.xml_path);
+      else toast.info("DANFE não anexado — anexe em Faturamento → Notas emitidas.");
+    } catch { toast.error("Arquivo indisponível."); }
   }
 
   return (
@@ -484,15 +405,15 @@ function ViewerModal({ registro, onClose, onChanged, modoTeste }: { registro: No
           <button type="button" onClick={handleImprimir} disabled={!podeImprimir}
             title={podeImprimir ? undefined : "Só disponível após a nota ser autorizada pela SEFAZ — regra de só entregar ao cliente quando estiver pronta"}
             className="flex-1 h-9 rounded-xl border border-border/50 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:bg-muted/30 disabled:opacity-40 disabled:cursor-not-allowed">
-            <Printer size={13}/> Imprimir
+            <Printer size={13}/> DANFE
           </button>
           {prontoParaEmitir && (
             <button type="button" onClick={handleEmitirAprovado} disabled={emitindo}
               className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-[12px] font-semibold flex items-center justify-center gap-1.5 disabled:opacity-60">
-              {emitindo ? <><Loader2 size={13} className="animate-spin"/> Emitindo...</> : <><FileCheck2 size={13}/> Emitir NF-e</>}
+              {emitindo ? <><Loader2 size={13} className="animate-spin"/> Emitindo...</> : <><FileCheck2 size={13}/> {emissorAtivo ? "Emitir NF-e" : "Registrar NF-e emitida"}</>}
             </button>
           )}
-          {!travadoQualidade && registro.status !== "cancelada" && (
+          {!travadoQualidade && registro.status !== "cancelada" && registro.status !== "autorizada" && (
             <button type="button" onClick={handleCancelar} disabled={canceling}
               className="flex-1 h-9 rounded-xl border border-red-500/30 text-red-600 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:bg-red-500/10 disabled:opacity-50">
               {canceling ? <Loader2 size={13} className="animate-spin"/> : <Ban size={13}/>} Cancelar
@@ -500,6 +421,11 @@ function ViewerModal({ registro, onClose, onChanged, modoTeste }: { registro: No
           )}
         </div>
       </div>
+      {registrar && (
+        <RegistrarNotaDialog tipo={registro.tipo} devolucaoId={registro.id} valorSugerido={Number(registro.valor_total) || 0}
+          titulo={`${registro.tipo === "devolucao" ? "Devolução" : "Troca"} · ${registro.cliente_nome}`} docEsperado={registro.cliente_documento}
+          onClose={() => setRegistrar(false)} onFeito={() => { setRegistrar(false); onChanged(); onClose(); }} />
+      )}
     </div>
   );
 }
@@ -507,8 +433,8 @@ function ViewerModal({ registro, onClose, onChanged, modoTeste }: { registro: No
 // ─── Modal: nova devolução/troca ────────────────────────────────────────────
 
 function NovaDevolucaoTrocaModal({
-  onClose, onSuccess, modoTeste,
-}: { onClose: () => void; onSuccess: () => void; modoTeste: boolean }) {
+  onClose, onSuccess,
+}: { onClose: () => void; onSuccess: () => void }) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -538,26 +464,13 @@ function NovaDevolucaoTrocaModal({
   const [motivo, setMotivo] = useState("");
   const [frete, setFrete] = useState("0.00");
 
-  const [tipoNota, setTipoNota] = useState<"nfe" | "nfce">("nfe");
-  const [tpNF, setTpNF] = useState<"0" | "1">("0");
-  const [numero, setNumero] = useState("");
   const [naturezaOperacao, setNaturezaOperacao] = useState("DEVOLUÇÃO DE VENDA DE MERCADORIA");
   const [infoAdicional, setInfoAdicional] = useState("");
-  const [loadingNum, setLoadingNum] = useState(false);
 
   const [lastResult, setLastResult] = useState<{ sucesso: boolean; xMotivo?: string; erro?: string; protocolo?: string; chaveAcesso?: string } | null>(null);
 
   useEffect(() => {
     setNaturezaOperacao(tipo === "devolucao" ? "DEVOLUÇÃO DE VENDA DE MERCADORIA" : "TROCA DE MERCADORIA");
-  }, [tipo]);
-
-  useEffect(() => {
-    setLoadingNum(true);
-    supabase.rpc("peek_next_nf_number", { p_serie: "2", p_tipo: tipo })
-      .then(({ data, error }) => {
-        setNumero(error ? "" : String(data ?? "").padStart(9, "0"));
-        setLoadingNum(false);
-      });
   }, [tipo]);
 
   // Carrega pedidos faturados/enviados uma única vez (não a cada tecla) e
@@ -660,7 +573,7 @@ function NovaDevolucaoTrocaModal({
 
   function confirmarItensPedido() {
     if (!pedidoSel) return;
-    const cfopPadrao = tpNF === "0" ? "1202" : "5102";
+    const cfopPadrao = "1201"; // devolução de venda de produção do estabelecimento (2201 fora do estado — ajustado na emissão)
     const selecionados: ItemDevTroca[] = pedidoSel.itens
       .filter(i => (itensSelecionados[i.stock_item_id] ?? 0) > 0)
       .map(i => ({
@@ -694,101 +607,38 @@ function NovaDevolucaoTrocaModal({
       && motivo.trim().length > 0;
   }
   function canAdvanceStep3(): boolean {
-    return numero.trim().length > 0 && naturezaOperacao.trim().length > 0;
+    return naturezaOperacao.trim().length > 0 && (vinculo === "avulsa" || nfOriginalChave.replace(/\D/g, "").length === 44);
   }
 
+  // Registra a devolução/troca (rascunho). A nota fiscal é emitida depois
+  // da análise da Qualidade, pelo botão "Emitir NF-e"/"Registrar NF-e".
   async function handleEmitir() {
     if (!user) return;
     if (submitting.current) return;
     submitting.current = true; setSaving(true); setLastResult(null);
-
     try {
-      // 1. Reserva o próximo número da série (série 2, dedicada a devolução/troca)
-      const { data: numReservado, error: numErr } = await supabase.rpc("get_next_nf_number", { p_serie: "2", p_tipo: tipo });
-      if (numErr) throw numErr;
-      const numeroFinal = String(numReservado ?? "").padStart(9, "0");
-
       const itensPayload = itens.map(i => ({
-        id: i.id, descricao: i.descricao, ncm: i.ncm, cfop: i.cfop,
-        quantidade: i.quantidade, valorUnitario: i.valorUnitario, aliqICMS: i.aliqICMS, cst: i.cst,
+        id: i.id, descricao: i.descricao, ncm: i.ncm.replace(/\D/g, ""), cfop: i.cfop,
+        quantidade: i.quantidade, valorUnitario: i.valorUnitario.replace(",", "."), aliqICMS: i.aliqICMS, cst: i.cst,
       }));
-
-      // 2. Insere o rascunho
-      const { data: inserted, error: insErr } = await supabase.from("notas_devolucao_troca").insert({
+      const { error: insErr } = await supabase.from("notas_devolucao_troca").insert({
         tipo, pedido_id: pedidoSel?.id ?? null, avulsa: vinculo === "avulsa",
         cliente_nome: clienteNome, cliente_documento: clienteDocumento || null,
         cliente_ie: clienteIe || null, cliente_endereco: clienteEndereco || null,
         cliente_telefone: clienteTelefone || null, cliente_email: clienteEmail || null,
         nf_original_numero: nfOriginalNumero || null,
         nf_original_chave: nfOriginalChave.replace(/\D/g,"") || null,
-        motivo, itens: itensPayload, valor_frete: parseFloat(frete)||0, valor_total: valorTotal,
-        tipo_nota: tipoNota, tp_nf: tpNF, numero: numeroFinal, serie: "2",
-        natureza_operacao: naturezaOperacao, status: "rascunho", modo_teste: modoTeste,
+        motivo: infoAdicional.trim() ? `${motivo} — ${infoAdicional.trim()}` : motivo,
+        itens: itensPayload, valor_frete: parseFloat(frete.replace(",", "."))||0, valor_total: Math.round(valorTotal * 100) / 100,
+        tipo_nota: "nfe", tp_nf: "0", numero: null, serie: "1",
+        natureza_operacao: naturezaOperacao, status: "rascunho", modo_teste: false,
         created_by: user.id,
-      }).select("id").single();
+      });
       if (insErr) throw insErr;
-      const registroId = (inserted as unknown as { id: string }).id;
-
-      // 3. Emite (simulado em modo teste, real via edge function em produção)
-      if (modoTeste) {
-        await new Promise(r => setTimeout(r, 1500));
-        const fake = {
-          sucesso: true,
-          chaveAcesso: ("35" + Date.now() + "0".repeat(40)).slice(0, 44),
-          protocolo: "141" + Date.now(),
-          dhAutorizacao: new Date().toISOString(),
-          xMotivo: "Autorizado o uso da NF-e",
-        };
-        setLastResult(fake);
-        await supabase.rpc("registrar_devolucao_troca", {
-          p_id: registroId, p_status: "autorizada", p_status_msg: fake.xMotivo,
-          p_chave_acesso: fake.chaveAcesso, p_protocolo: fake.protocolo, p_dh_autorizacao: fake.dhAutorizacao,
-        });
-        toast.success(`[TESTE] ${tipo === "devolucao" ? "Devolução" : "Troca"} simulada! Protocolo ${fake.protocolo}`, { duration: 5000 });
-        onSuccess(); return;
-      }
-
-      const { data: fnData, error: fnErr } = await supabase.functions.invoke("sefaz-emitir-devolucao", {
-        body: {
-          registroId,
-          dadosFiscais: {
-            tipoNota, tipoOperacao: tipo, tpNF, numero: numeroFinal, serie: "2",
-            naturezaOperacao, refNFe: nfOriginalChave.replace(/\D/g,""),
-            destDocumento: clienteDocumento, destNome: clienteNome, destEmail: clienteEmail,
-            destEndereco: clienteEndereco, itens: itensPayload.map(i => ({
-              itemId: i.id, descricao: i.descricao, ncm: i.ncm, cfop: i.cfop,
-              unidade: "UN", quantidade: i.quantidade, valorUnitario: i.valorUnitario,
-              aliqICMS: i.aliqICMS, cst: i.cst,
-            })),
-            valorFrete: frete, modFrete: "9", informacoesAdicionais: infoAdicional,
-          },
-        },
-      });
-      if (fnErr) throw new Error(fnErr.message);
-      const result = fnData as { sucesso: boolean; xMotivo?: string; erro?: string; cStat?: string; protocolo?: string; chaveAcesso?: string; dhAutorizacao?: string; xmlAssinado?: string };
-      setLastResult(result);
-
-      if (!result.sucesso) {
-        await supabase.rpc("registrar_devolucao_troca", {
-          p_id: registroId, p_status: "rejeitada",
-          p_status_msg: result.xMotivo ? `SEFAZ cStat ${result.cStat}: ${result.xMotivo}` : (result.erro ?? "Nota rejeitada"),
-          p_chave_acesso: null, p_protocolo: null, p_dh_autorizacao: null,
-        });
-        toast.error(result.xMotivo ? `SEFAZ cStat ${result.cStat}: ${result.xMotivo}` : (result.erro ?? "Nota rejeitada pelo SEFAZ"), { duration: 8000 });
-        return;
-      }
-
-      await supabase.rpc("registrar_devolucao_troca", {
-        p_id: registroId, p_status: "autorizada", p_status_msg: result.xMotivo ?? "Autorizado",
-        p_chave_acesso: result.chaveAcesso ?? null, p_protocolo: result.protocolo ?? null,
-        p_dh_autorizacao: result.dhAutorizacao ?? new Date().toISOString(),
-        p_xml_nfe: result.xmlAssinado ?? null,
-      });
-
-      toast.success(`✅ ${tipo === "devolucao" ? "Devolução" : "Troca"} autorizada! Protocolo ${result.protocolo}`, { duration: 6000 });
+      toast.success(`${tipo === "devolucao" ? "Devolução" : "Troca"} registrada. Abra o registro para emitir (ou registrar) a NF-e de devolução.`, { duration: 6000 });
       onSuccess();
     } catch (err) {
-      toast.error(`Erro ao emitir: ${friendlyError(err)}`);
+      toast.error(`Erro ao salvar: ${friendlyError(err)}`);
       logger.error("NovaDevolucaoTrocaModal:", err);
     } finally { submitting.current = false; setSaving(false); }
   }
@@ -805,8 +655,7 @@ function NovaDevolucaoTrocaModal({
               <div className="h-7 w-7 rounded-lg bg-violet-500/15 flex items-center justify-center">
                 <FileCheck2 className="h-4 w-4 text-violet-500" />
               </div>
-              <span className="text-sm font-semibold">Nova Devolução / Troca — SEFAZ</span>
-              <TestBadgeLocal modoTeste={modoTeste} />
+              <span className="text-sm font-semibold">Nova devolução / troca</span>
             </div>
             <button type="button" onClick={onClose} disabled={saving}
               className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-muted/40 text-muted-foreground disabled:opacity-40">
@@ -989,45 +838,13 @@ function NovaDevolucaoTrocaModal({
 
           {step === 3 && (
             <>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Modelo</label>
-                  <div className="flex gap-1.5 mt-1">
-                    {(["nfe","nfce"] as const).map(t => (
-                      <button key={t} type="button" onClick={()=>setTipoNota(t)}
-                        className={cn("flex-1 h-8 rounded-lg text-[11px] font-semibold border",
-                          tipoNota===t ? "bg-violet-600 text-white border-violet-600" : "border-border/50")}>
-                        {t.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Direção</label>
-                  <div className="flex gap-1.5 mt-1">
-                    <button type="button" onClick={()=>setTpNF("0")}
-                      className={cn("flex-1 h-8 rounded-lg text-[10.5px] font-semibold border",
-                        tpNF==="0" ? "bg-violet-600 text-white border-violet-600" : "border-border/50")}>
-                      Entrada
-                    </button>
-                    <button type="button" onClick={()=>setTpNF("1")}
-                      className={cn("flex-1 h-8 rounded-lg text-[10.5px] font-semibold border",
-                        tpNF==="1" ? "bg-violet-600 text-white border-violet-600" : "border-border/50")}>
-                      Saída
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <p className="text-[10px] text-muted-foreground -mt-1">
-                {tpNF === "0"
-                  ? "Entrada: mercadoria voltando ao estoque (devolução recebida do cliente)."
-                  : "Saída: mercadoria de reposição sendo enviada ao cliente (leg de troca)."}
-                {" "}Se a troca envolver os dois sentidos, registre duas notas (uma de entrada e outra de saída).
+              <p className="text-[11px] text-muted-foreground">
+                Nota de <strong>entrada</strong> (a peça volta para a empresa), com referência à NF-e de venda. Na troca, a peça nova sai numa venda normal.
               </p>
               <div>
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Número (série 2)</label>
-                <input value={numero} disabled={loadingNum} onChange={e=>setNumero(e.target.value.replace(/\D/g,""))}
-                  className="w-full h-9 mt-1 px-3 rounded-xl border border-border bg-muted/20 text-[12px] outline-none focus:border-violet-400" />
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Chave da NF-e de venda (44 números) *</label>
+                <input value={nfOriginalChave} onChange={e=>setNfOriginalChave(e.target.value.replace(/\D/g,"").slice(0,44))} inputMode="numeric"
+                  className="w-full h-10 mt-1 px-3 rounded-xl border border-border bg-muted/20 text-[12px] font-mono outline-none focus:border-violet-400" />
               </div>
               <div>
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Natureza da operação</label>
@@ -1047,8 +864,6 @@ function NovaDevolucaoTrocaModal({
               <div className="rounded-xl border border-border/40 p-3 space-y-1.5 text-[12px]">
                 <div className="flex justify-between"><span className="text-muted-foreground">Tipo</span><strong>{tipo === "devolucao" ? "Devolução" : "Troca"}</strong></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Cliente</span><strong>{clienteNome}</strong></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Nº da nota</span><strong>{tipoNota.toUpperCase()}-{numero.padStart(9,"0")}</strong></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Direção</span><strong>{tpNF==="0"?"Entrada":"Saída"}</strong></div>
                 {nfOriginalChave && <div className="flex justify-between gap-2"><span className="text-muted-foreground shrink-0">NF original</span><strong className="font-mono text-[10px] truncate">{nfOriginalChave}</strong></div>}
                 <div className="flex justify-between"><span className="text-muted-foreground">Itens</span><strong>{itens.reduce((s,i)=>s+i.quantidade,0)} peça(s)</strong></div>
                 <div className="flex justify-between font-bold pt-1.5 border-t border-border/20"><span>Total</span><span>{BRL(valorTotal)}</span></div>
@@ -1057,7 +872,7 @@ function NovaDevolucaoTrocaModal({
                 <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2.5 flex gap-2">
                   <AlertTriangle size={13} className="text-amber-600 shrink-0 mt-0.5"/>
                   <p className="text-[10.5px] text-amber-800 dark:text-amber-300">
-                    Sem a chave de acesso da NF original, a nota será emitida sem o vínculo formal (NFref) à venda anterior.
+                    Sem a chave da NF-e de venda a SEFAZ não aceita a nota de devolução — informe-a antes de emitir.
                   </p>
                 </div>
               )}
@@ -1094,7 +909,7 @@ function NovaDevolucaoTrocaModal({
           ) : (
             <button type="button" onClick={handleEmitir} disabled={saving}
               className="flex-1 h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-[12px] font-semibold flex items-center justify-center gap-2 disabled:opacity-60">
-              {saving ? <><Loader2 size={14} className="animate-spin"/> Emitindo...</> : <><FileCheck2 size={14}/> Emitir NF-e</>}
+              {saving ? <><Loader2 size={14} className="animate-spin"/> Salvando...</> : <><FileCheck2 size={14}/> Registrar devolução</>}
             </button>
           )}
         </div>

@@ -28,6 +28,9 @@ export interface Cliente {
   bairro?: string | null;
   municipio?: string | null;
   uf?: string | null;
+  ie?: string | null;
+  /** Código IBGE do município (7 dígitos). */
+  c_mun?: string | null;
 }
 
 export interface PedidoItem {
@@ -55,6 +58,12 @@ export interface PedidoCompleto {
   prazo_entrega: string | null;
   created_at: string;
   faturado_em: string | null;
+  nota_fiscal?: string | null;
+  forma_pagamento?: string | null;
+  parcelas?: number | null;
+  rastreio_envio?: string | null;
+  /** Crédito do cliente abatido neste pedido (R$). */
+  credito_aplicado?: number;
   itens: Array<{
     id: string;
     stock_item_id: string;

@@ -9,6 +9,9 @@
  *  financeiro → Financeiro
  *  producao   → Componentes, Produção
  *  processos  → Processos
+ *  gerente    → Todos os módulos (estoque, qualidade, comercial, financeiro,
+ *               produção, processos) com as funções de cada perfil — SEM a
+ *               área Admin (usuários, limpezas de histórico, configurações).
  *  admin      → Tudo
  */
 export type AppRole =
@@ -18,7 +21,8 @@ export type AppRole =
   | "comercial"
   | "financeiro"
   | "producao"
-  | "processos";
+  | "processos"
+  | "gerente";
 
 export const APP_ROLES: AppRole[] = [
   "admin",
@@ -28,6 +32,7 @@ export const APP_ROLES: AppRole[] = [
   "financeiro",
   "producao",
   "processos",
+  "gerente",
 ];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
@@ -38,6 +43,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   financeiro: "Financeiro",
   producao:   "Produção",
   processos:  "Processos",
+  gerente:    "Gerente (tudo menos Admin)",
 };
 
 /** Rotas acessíveis por role (além do admin que acessa tudo) */
@@ -49,6 +55,7 @@ export const ROLE_ROUTES: Record<AppRole, string[]> = {
   financeiro: ["/financeiro"],
   producao:   ["/", "/producao", "/processos"],
   processos:  ["/processos"],
+  gerente:    ["/", "/estoque", "/qualidade", "/comercial", "/financeiro", "/producao", "/processos"],
 };
 
 /**
@@ -66,4 +73,17 @@ export function canAccessRoute(role: AppRole | null | undefined, path: string): 
   if (!role) return false;
   if (role === "admin") return true;
   return (ROLE_ROUTES[role] ?? []).includes(path);
+}
+
+/**
+ * O perfil tem as permissões de algum dos perfis listados?
+ * - admin: sempre.
+ * - gerente: tem as permissões de todos os perfis operacionais, nunca as
+ *   exclusivas de admin (lista só com "admin" → false).
+ */
+export function temPapel(role: AppRole | string | null | undefined, ...perfis: AppRole[]): boolean {
+  if (!role) return false;
+  if (role === "admin") return true;
+  if (role === "gerente") return perfis.some(p => p !== "admin");
+  return perfis.includes(role as AppRole);
 }

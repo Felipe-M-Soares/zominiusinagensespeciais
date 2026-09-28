@@ -8,7 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense, useEffect } from "react";
 import type { AppRole } from "@/types/roles";
-import { canAccessRoute, getHomeRoute } from "@/types/roles";
+import { canAccessRoute, getHomeRoute, temPapel } from "@/types/roles";
 
 /**
  * PointerEventsWatchdog — correção do "app congelado, nenhum botão responde".
@@ -109,7 +109,7 @@ function RoleGuard({ children, roles, adminOnly }: {
   // que nem todos os perfis podem ver).
   const home = getHomeRoute(role);
   if (adminOnly && !isAdmin) return <Navigate to={home} replace />;
-  if (roles && !isAdmin && !roles.includes(role as AppRole)) return <Navigate to={home} replace />;
+  if (roles && !temPapel(role, ...roles)) return <Navigate to={home} replace />;
   return <>{children}</>;
 }
 

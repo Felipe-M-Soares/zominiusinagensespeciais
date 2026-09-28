@@ -16,6 +16,8 @@ export interface EnderecoCep {
   bairro: string;
   municipio: string;
   uf: string;
+  /** Código IBGE do município (7 dígitos) — obrigatório na NF-e (cMun). */
+  ibge?: string;
 }
 
 export interface DadosCnpj extends Partial<EnderecoCep> {
@@ -77,19 +79,8 @@ export async function buscarCep(cep: string): Promise<EnderecoCep | null> {
   const c = somenteDigitos(cep);
   if (c.length !== 8) return null;
 
-  type BrasilApiCep = { cep: string; street?: string; neighborhood?: string; city?: string; state?: string };
-  const b = await fetchJson<BrasilApiCep>(`https://brasilapi.com.br/api/cep/v2/${c}`);
-  if (b?.city) {
-    return {
-      cep: c,
-      logradouro: b.street ?? "",
-      bairro: b.neighborhood ?? "",
-      municipio: b.city ?? "",
-      uf: b.state ?? "",
-    };
-  }
-
-  type ViaCep = { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string };
+  // ViaCEP primeiro: é a única que devolve o código IBGE junto.
+  type ViaCep = { erro?: boolean | string; logradouro?: string; bairro?: string; localidade?: string; uf?: string; ibge?: string };
   const v = await fetchJson<ViaCep>(`https://viacep.com.br/ws/${c}/json/`);
   if (v && !v.erro && v.localidade) {
     return {
@@ -98,9 +89,38 @@ export async function buscarCep(cep: string): Promise<EnderecoCep | null> {
       bairro: v.bairro ?? "",
       municipio: v.localidade ?? "",
       uf: v.uf ?? "",
+      ibge: /^\d{7}$/.test(v.ibge ?? "") ? v.ibge : undefined,
+    };
+  }
+
+  type BrasilApiCep = { cep: string; street?: string; neighborhood?: string; city?: string; state?: string };
+  const b = await fetchJson<BrasilApiCep>(`https://brasilapi.com.br/api/cep/v2/${c}`);
+  if (b?.city) {
+    const uf = b.state ?? "";
+    return {
+      cep: c,
+      logradouro: b.street ?? "",
+      bairro: b.neighborhood ?? "",
+      municipio: b.city ?? "",
+      uf,
+      ibge: (await buscarCodigoIbge(b.city, uf)) ?? undefined,
     };
   }
   return null;
+}
+
+const semAcento = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+
+/** Código IBGE (7 dígitos) a partir do nome da cidade + UF, pela lista oficial de municípios. */
+export async function buscarCodigoIbge(municipio: string, uf: string): Promise<string | null> {
+  const u = (uf ?? "").trim().toUpperCase();
+  if (!municipio?.trim() || !/^[A-Z]{2}$/.test(u)) return null;
+  type Mun = { nome: string; codigo_ibge: string };
+  const lista = await fetchJson<Mun[]>(`https://brasilapi.com.br/api/ibge/municipios/v1/${u}?providers=dados-abertos-br,gov,wikipedia`);
+  const alvo = semAcento(municipio);
+  const m = lista?.find(x => semAcento(x.nome) === alvo);
+  const cod = m ? String(m.codigo_ibge) : "";
+  return /^\d{7}$/.test(cod) ? cod : null;
 }
 
 export async function buscarCnpj(cnpj: string): Promise<DadosCnpj | null> {
@@ -121,6 +141,7 @@ export async function buscarCnpj(cnpj: string): Promise<DadosCnpj | null> {
     ddd_telefone_1?: string;
     email?: string | null;
     descricao_situacao_cadastral?: string;
+    codigo_municipio_ibge?: number | string;
   };
   const r = await fetchJson<BrasilApiCnpj>(`https://brasilapi.com.br/api/cnpj/v1/${c}`);
   if (!r?.razao_social) return null;
@@ -147,5 +168,6 @@ export async function buscarCnpj(cnpj: string): Promise<DadosCnpj | null> {
     telefone: r.ddd_telefone_1 ? formatarTelefone(r.ddd_telefone_1) : undefined,
     email: r.email ? r.email.toLowerCase() : undefined,
     situacao: r.descricao_situacao_cadastral,
+    ibge: /^\d{7}$/.test(String(r.codigo_municipio_ibge ?? "")) ? String(r.codigo_municipio_ibge) : undefined,
   };
 }

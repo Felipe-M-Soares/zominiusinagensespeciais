@@ -1,7 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
-import { useDebounce } from "@/hooks/useDebounce";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useConfirmEnter } from "@/hooks/useConfirmEnter";
 import { useAuth } from "@/hooks/useAuth";
@@ -64,7 +62,6 @@ const RetrabalhoModal         = lazy(() => import("@/components/stock/Retrabalho
 const ConcluirRetrabalhoModal = lazy(() => import("@/components/stock/ConcluirRetrabalhoModal").then(m => ({ default: m.ConcluirRetrabalhoModal })));
 const StockDashboard          = lazy(() => import("@/components/stock/StockDashboard").then(m => ({ default: m.StockDashboard })));
 const RecebimentoPanel        = lazy(() => import("@/components/stock/RecebimentoPanel").then(m => ({ default: m.RecebimentoPanel })));
-const ComercialPanelLazy      = lazy(() => import("@/components/stock/ComercialPanel").then(m => ({ default: m.ComercialPanel })));
 const PedidosEstoquePanel     = lazy(() => import("@/components/stock/PedidosEstoquePanel").then(m => ({ default: m.PedidosEstoquePanel })));
 import { supabase } from "@/integrations/supabase/client";
 import { deleteStockItem } from "@/hooks/useStock";
@@ -523,49 +520,9 @@ const ExpedicaoCard = memo(function ExpedicaoCard({
 type FilterStatus = "all" | "ok" | "baixo" | "zerado";
 type ActiveView = "dashboard" | "intermediaria" | "expedicao" | "retrabalho" | "recebimento" | "pedidos";
 
-// ── SearchBar isolado — não propaga re-renders ao pai a cada tecla ─────────────
-interface SearchBarProps {
-  onSearch: (value: string) => void;
-  onClear: () => void;
-  hasValue: boolean;
-  suggestions: string[];
-  showSuggestions: boolean;
-  onSelectSuggestion: (s: string) => void;
-  onCloseSuggestions: () => void;
-}
-
-const SearchBar = memo(function SearchBar({
-  onSearch, onClear, suggestions, showSuggestions, onSelectSuggestion, onCloseSuggestions
-}: SearchBarProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  useClickOutside(containerRef, onCloseSuggestions);
-
-  return (
-    <div className="relative flex-1" ref={containerRef}>
-      <SearchInputWithBarcode
-        onChange={v => { if (!v.trim()) { onClear(); return; } onSearch(v.trim()); }}
-        onSearch={v => { onSearch(v.trim()); onCloseSuggestions(); }}
-        placeholder="Bipe o código ou busque por modelo, referência, UDI ou lote..."
-        height="h-11"
-      />
-      {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-          {suggestions.map(s => (
-            <button key={s} type="button"
-              onMouseDown={e => { e.preventDefault(); onSelectSuggestion(s); }}
-              className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors border-b border-border/30 last:border-0"
-            >{s}</button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-});
-
 const HIDE_EMPTY_INTERMEDIARIA = false;
 
 export default function Estoque() {
-  const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
   // ── Estado principal ──────────────────────────────────────────────────────
@@ -604,8 +561,8 @@ export default function Estoque() {
   const [showFilters, setShowFilters] = useState(false);
 
   // Autocomplete
-  const [autocompleteItems, setAutocompleteItems] = useState<string[]>([]);
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [, setAutocompleteItems] = useState<string[]>([]);
+  const [, setShowAutocomplete] = useState(false);
 
   // Alertas — apenas no dashboard
 
@@ -689,7 +646,7 @@ export default function Estoque() {
   const adminMenuRef = useRef<HTMLDivElement>(null);
 
   // ── Dados do servidor ─────────────────────────────────────────────────────
-  const { items: allItems, totalCount, loteMap, qtyByFase, loading, error, refetch } = useStock(querySearch);
+  const { items: allItems, loteMap, qtyByFase, loading, error, refetch } = useStock(querySearch);
 
   // Derivados dos dados — memoizados para evitar re-filtro a cada render
   const intermediariaItems = useMemo(() => {
@@ -776,30 +733,6 @@ export default function Estoque() {
   const hasSearch = !!querySearch.trim();
   const hasActiveFilters = filterStatus !== "all" || !!filterLocation || !!filterBrand;
 
-  const debouncedSearchUpdate = useDebounce((v: string) => {
-    setSearch(v);
-    setQuerySearch(v);
-    setVisibleCount(ITEMS_PER_PAGE);
-  }, 350);
-
-  const handleSearchChange = useCallback((v: string) => {
-    if (!v.trim()) {
-      setSearch("");
-      setQuerySearch("");
-      setVisibleCount(ITEMS_PER_PAGE);
-      return;
-    }
-    debouncedSearchUpdate(v.trim());
-  // debouncedSearchUpdate agora é estável (useDebounce corrigido)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleSearchSubmit(v: string) {
-    setQuerySearch(v);
-    setVisibleCount(ITEMS_PER_PAGE);
-    setShowAutocomplete(false);
-  }
-
   function handleSelectSuggestion(suggestion: string) {
     if (inputRef.current) inputRef.current.value = suggestion;
     setSearch(suggestion);
@@ -837,9 +770,6 @@ export default function Estoque() {
 
   // Alerta global de estoque baixo (badge no header)
   const globalLowCount = allItems.filter(i => i.quantity > 0 && i.quantity <= i.min_quantity).length;
-  // Zerados no intermediário — na expedição é normal ter zero após saídas
-  const globalEmptyCount = allItems.filter(i => i.quantity === 0 && i.fase === "intermediaria").length;
-  const totalAlertCount = globalLowCount + globalEmptyCount;
 
   const hasMore = visibleCount < filteredItems.length;
   const pagedItems = useMemo(

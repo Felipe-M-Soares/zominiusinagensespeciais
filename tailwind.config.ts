@@ -3,7 +3,8 @@ import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  // Testes ficam de fora: strings de exemplo (ex.: datas OFX "[-3:BRT]") viravam classes CSS inválidas.
+  content: ["./src/**/*.{ts,tsx}", "!./src/**/*.test.{ts,tsx}", "!./src/test/**", "!./src/__tests__/**"],
   prefix: "",
   theme: {
   	container: {

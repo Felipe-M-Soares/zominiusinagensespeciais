@@ -13,7 +13,6 @@ import {
   Package,
   Truck,
   Wrench,
-  Tag,
   AlertCircle,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -236,24 +235,6 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
 }
 
 // ── Sub-componentes ────────────────────────────────────────────────────────────
-
-// Linha de lote inline dentro de cada fase
-function LoteRow({ lote }: { lote: LoteInfo }) {
-  return (
-    <div className="flex items-center justify-between py-1 px-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-      <div className="flex items-center gap-1.5">
-        <Tag className="h-2.5 w-2.5 text-muted-foreground/50 shrink-0" />
-        <span className="text-[11px] font-mono font-medium">{lote.lote}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-muted-foreground/50">
-          {new Date(lote.last_movement).toLocaleDateString("pt-BR")}
-        </span>
-        <span className="text-[11px] font-bold tabular-nums">{lote.saldo} un.</span>
-      </div>
-    </div>
-  );
-}
 
 // Linha compacta de fase — lotes ficam inline abaixo se tiver
 function FaseRow({ fase }: { fase: FaseInfo }) {

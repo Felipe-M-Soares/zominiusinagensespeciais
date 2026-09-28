@@ -60,7 +60,10 @@ async function captureError(err: unknown) {
 }
 
 export const logger = {
+  // Implementação intencional do logger: console.debug/info só em dev
+  // eslint-disable-next-line no-console
   debug: (...args: unknown[]) => { if (isDev) console.debug(...args); },
+  // eslint-disable-next-line no-console
   info:  (...args: unknown[]) => { if (isDev) console.info(...args); },
   warn:  (...args: unknown[]) => { if (isDev) console.warn(...args); },
   error: (...args: unknown[]) => {

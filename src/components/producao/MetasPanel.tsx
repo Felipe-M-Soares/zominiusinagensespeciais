@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { untypedRpc } from "@/lib/untypedRpc";
 
 // Anos do filtro: de 2024 até o ano seguinte ao atual (antes era fixo até 2027).
 const ANOS_DISPONIVEIS = Array.from({ length: new Date().getFullYear() - 2024 + 2 }, (_, i) => 2024 + i);
@@ -54,10 +55,10 @@ export function MetasPanel() {
     const per = periodoSemestre(semestre, ano);
     const[{data:m},{data:oee},{data:maq},{data:ms},{data:oeeSem}] = await Promise.all([
       supabase.from("metas_producao").select("*").eq("mes",mes).eq("ano",ano).order("maquina_codigo"),
-      (supabase.rpc as any)("calcular_oee",{p_data_ini:ini,p_data_fim:fim,p_maquina:null}),
+      untypedRpc("calcular_oee",{p_data_ini:ini,p_data_fim:fim,p_maquina:null}),
       supabase.from("maquinas_producao").select("codigo").order("codigo"),
       supabase.from("metas_producao").select("*").eq("ano",ano).eq("mes",semestre===1?1:7).eq("maquina_codigo",META_SEMESTRE_CODIGO).maybeSingle(),
-      (supabase.rpc as any)("calcular_oee",{p_data_ini:per.ini,p_data_fim:per.fim,p_maquina:null}),
+      untypedRpc("calcular_oee",{p_data_ini:per.ini,p_data_fim:per.fim,p_maquina:null}),
     ]);
     // A linha 'SEMESTRE' é uma convenção interna — não aparece na lista mensal
     if(m) setMetas((m as Meta[]).filter(x=>x.maquina_codigo!==META_SEMESTRE_CODIGO));

@@ -32,7 +32,6 @@ import {
   Truck,
   Wrench,
   MapPin,
-  Clock,
   AlertCircle,
   CheckCircle2,
   RefreshCw,
@@ -154,9 +153,6 @@ const FASE_LABELS: Record<FaseNum, string> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-}
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
@@ -976,21 +972,6 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
     .filter(p => totalQty(p) > 0)
     .sort((a, b) => totalQty(b) - totalQty(a));
   return { suggestions, results };
-}
-
-function LoteRow({ lote }: { lote: LoteInfo }) {
-  return (
-    <div className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-      <div className="flex items-center gap-2">
-        <Tag className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-        <span className="text-[12px] font-mono font-medium">{lote.lote}</span>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60"><Clock className="h-2.5 w-2.5" />{fmtDate(lote.last_movement)}</span>
-        <span className="text-[12px] font-bold tabular-nums">{lote.saldo} un.</span>
-      </div>
-    </div>
-  );
 }
 
 function FaseCard({ fase }: { fase: FaseInfo }) {

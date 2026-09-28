@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS, getHomeRoute } from "@/types/roles";
+import { ROLE_LABELS, getHomeRoute, temPapel } from "@/types/roles";
 import type { AppRole } from "@/types/roles";
 import logoZomini from "@/assets/logo_zomini.webp";
 import { NotificacoesPanel } from "@/components/NotificacoesPanel";
@@ -228,7 +228,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         // Só para quem tem acesso ao Estoque (senão o RoleGuard devolvia a
         // pessoa para outra tela, parecendo um bug).
-        if (!(isAdmin || role === "estoque" || role === "qualidade")) return;
+        if (!temPapel(role, "estoque", "qualidade")) return;
         e.preventDefault();
         navigate("/estoque");
       }
@@ -270,7 +270,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (isAdmin) return true;
     if (!item.roles) return true;
-    return item.roles.includes(role ?? "");
+    return temPapel(role, ...(item.roles as AppRole[]));
   });
 
   // Mostra o nome da pessoa (ou o login), não o e-mail interno

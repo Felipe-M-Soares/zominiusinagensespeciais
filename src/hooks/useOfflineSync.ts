@@ -207,7 +207,7 @@ export function useOfflineSync() {
       }
 
       return { data: result.data as T, error: null, savedOffline: false };
-    } catch (err) {
+    } catch {
       // Fallback: salva offline
       await dbPut(offlineTable, itemToStore);
       await queueOperation(supabaseTable, operation, data as Record<string, unknown>);

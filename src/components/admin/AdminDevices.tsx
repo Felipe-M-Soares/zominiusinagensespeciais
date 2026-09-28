@@ -382,7 +382,7 @@ export function AdminDevices() {
       if (ctrl.signal.aborted) return;
       setDevices(data);
       setTotalCount(count);
-    } catch (err) {
+    } catch {
       if (ctrl.signal.aborted) return;
       toast.error("Erro ao carregar dispositivos");
     } finally {

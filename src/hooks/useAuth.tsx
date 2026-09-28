@@ -7,6 +7,7 @@ import {
   useContext,
   type ReactNode,
 } from "react";
+import { temPapel } from "@/types/roles";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 import type { AppRole } from "@/types/roles";
@@ -20,6 +21,8 @@ interface AuthContext {
   loading: boolean;
   role: AppRole | null;
   isAdmin: boolean;
+  /** Gerente: todos os módulos, sem a área Admin. */
+  isGerente: boolean;
   isComercial: boolean;
   isFinanceiro: boolean;
   isProducao: boolean;
@@ -304,11 +307,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       user, session, loading, role,
       isAdmin:      role === "admin",
-      isComercial:  role === "comercial",
-      isFinanceiro: role === "financeiro",
-      isProducao:   role === "producao",
-      isQualidade:  role === "qualidade",
-      isEstoque:    role === "estoque",
+      isGerente:    role === "gerente",
+      isComercial:  temPapel(role, "comercial"),
+      isFinanceiro: temPapel(role, "financeiro"),
+      isProducao:   temPapel(role, "producao"),
+      isQualidade:  temPapel(role, "qualidade"),
+      isEstoque:    temPapel(role, "estoque"),
       approved, blocked, mustChangePassword,
       clearMustChangePassword: () => {
         passwordJustChangedRef.current = true;

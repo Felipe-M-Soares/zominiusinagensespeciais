@@ -196,7 +196,7 @@ export async function findQueuedOperationByLocalId(localId: string): Promise<Syn
 export async function getQueuedRpcArgsByLocalId(localId: string): Promise<Record<string, unknown> | null> {
   const item = await findQueuedOperationByLocalId(localId);
   if (!item) return null;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const { __localId, ...rpcArgs } = item.data;
   return rpcArgs;
 }

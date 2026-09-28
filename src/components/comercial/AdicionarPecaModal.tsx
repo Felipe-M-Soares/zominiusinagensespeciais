@@ -18,7 +18,7 @@ interface AdicionarPecaModalProps {
 export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess }: AdicionarPecaModalProps) {
   const [search, setSearch] = useState("");
   const [autocomplete, setAutocomplete] = useState<ReturnType<typeof useStock>["items"]>([]);
-  const [showAutocomp, setShowAutocomp] = useState(false);
+  const [, setShowAutocomp] = useState(false);
   const [selectedPeca, setSelectedPeca] = useState<ReturnType<typeof useStock>["items"][0] | null>(null);
   const [qtd, setQtd] = useState(1);
   const [descontoItem, setDescontoItem] = useState(0);
@@ -94,26 +94,17 @@ export function AdicionarPecaModal({ pedido, expedicaoItems, onClose, onSuccess 
     setSaving(true);
     const precoBase = precoMap[selectedPeca.device_id] ?? 0;
     const valorLiquido = Math.max(0, precoBase * (1 - descontoItem / 100));
-    const { error } = await supabase.from("pedido_itens").insert({
-      pedido_id: pedido.id,
-      stock_item_id: selectedPeca.id,
-      lote: null,
-      quantidade: qtd,
-      quantidade_reservada: qtd,
-      valor_unitario: valorLiquido,
+    // Inserção + reserva numa única transação no banco (sem item órfão se faltar estoque).
+    const { data, error } = await supabase.rpc("adicionar_item_pedido", {
+      p_pedido_id: pedido.id,
+      p_stock_item_id: selectedPeca.id,
+      p_quantidade: qtd,
+      p_valor_unitario: valorLiquido,
     });
-    if (error) { setSaving(false); toast.error("Erro ao adicionar peça."); return; }
-
-    // FIX: chama reserve_stock para incrementar quantity_reserved no banco.
-    // Antes: inseria com quantidade_reservada: 0 e nunca chamava reserve_stock.
-    const { data: reserved, error: reserveErr } = await supabase.rpc("reserve_stock", {
-      p_item_id: selectedPeca.id,
-      p_qty: qtd,
-    });
-    const result = reserved as { ok?: boolean; error?: string } | null;
-    if (reserveErr || result?.ok === false) {
-      toast.error(result?.error ?? "Estoque insuficiente.");
+    const result = data as { ok?: boolean; error?: string } | null;
+    if (error || result?.ok === false) {
       setSaving(false);
+      toast.error(result?.error ?? error?.message ?? "Erro ao adicionar peça.");
       return;
     }
 

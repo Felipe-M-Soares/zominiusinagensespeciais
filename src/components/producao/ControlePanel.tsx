@@ -29,7 +29,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
@@ -110,7 +109,6 @@ function NovoApontamentoModal({
    * pendente (não sincronizado), identificado pelo id local (__pendingSync). */
   editandoLocalId?: string | null;
 }) {
-  const { user } = useAuth();
   const [step, setStep] = useState<1|2|3>(1);
   const [saving, setSaving] = useState(false);
 
@@ -847,9 +845,9 @@ export function ControlePanel({ onImport }: { onImport?: () => void } = {}) {
     // de carregar a tela). tipos de parada/refugo/matéria-prima continuam
     // direto: mudam raramente e o impacto de não tê-los offline é menor
     // (o formulário ainda funciona, só com menos opções de detalhamento).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const [maqData, prodData, tpR, trR, mpR] = await Promise.all([
-      loadWithFallback<Maquina>("maquinas_producao", "maquinas", (q: any) => q.select("id,codigo,nome").order("codigo")),
+      loadWithFallback<Maquina>("maquinas_producao", "maquinas", (q) => q.select("id,codigo,nome").order("codigo") as never),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       loadWithFallback<Produto>("produtos_producao", "produtos_producao", (q: any) => q.select("id,codigo,descricao,pecas_por_hora").eq("ativo", true).order("codigo")),
       supabase.from("tipo_parada_producao").select("id,nome,categoria").eq("ativo", true).order("id"),

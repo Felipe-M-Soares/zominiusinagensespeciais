@@ -1,513 +1,285 @@
 /**
- * TabelaPrecos — Componente compartilhado entre Financeiro e Comercial
- * 
- * Props:
- *   canEdit: boolean — true para financeiro, false para comercial (somente leitura)
- *   modoTeste: boolean — passa false normalmente
+ * TabelaPrecos — tabela de preços compartilhada.
+ *
+ *  modo="comercial"  → só leitura, SEM custo e SEM margem (nem são buscados
+ *                      do banco). É o que as vendedoras veem.
+ *  modo="financeiro" → edição de custo, venda, desconto máx., margem mínima,
+ *                      NCM, CFOP e IPI (dados fiscais usados na NF-e).
  */
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Pencil, Printer, RefreshCw, Search, Tag } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { friendlyError } from "@/lib/errorMessages";
-import { escHtml } from "@/lib/escHtml";
 import { formatBRL } from "@/lib/format";
-import { SearchInputWithBarcode } from "@/components/SearchInputWithBarcode";
-import { Edit3, Tag, TrendingDown, Percent, AlertTriangle, X, RefreshCw, FileSpreadsheet, Printer, ChevronDown, ChevronUp, Package, Trash2, Loader2, CheckCircle2 } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
+import { escHtml } from "@/lib/escHtml";
+import { friendlyError } from "@/lib/errorMessages";
+import { baixarCsv, hojeISO, parseValor } from "@/lib/financeiro";
 
-// ─── PainelTabelaPrecos ───────────────────────────────────────────────────────
-
-interface DevicePreco {
-  id: string;
-  model: string;
-  reference: string;
-  internal_code: string;
-  ncm: string;
-  cfop_padrao: string;
-  ipi_pct: number;
-  unidade: string;
-  preco_custo: number;
-  preco_venda: number;
-  desconto_max_pct: number;
-  margem_minima_pct: number;
-  ativo: boolean;
-  observacoes_preco: string | null;
+interface Peca {
+  id: string; model: string; reference: string; internal_code: string | null;
+  ncm: string | null; cfop_padrao: string | null; ipi_pct: number | null; unidade: string | null;
+  preco_venda: number; desconto_max_pct: number; ativo: boolean; observacoes_preco: string | null;
+  preco_custo?: number; margem_minima_pct?: number;
 }
 
-function fmtCurrency(v: number) {
-  return formatBRL(v);
-}
+const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const margemDe = (p: Peca) => p.preco_venda > 0 && p.preco_custo != null ? ((p.preco_venda - p.preco_custo) / p.preco_venda) * 100 : null;
 
-export function TabelaPrecos({ modoTeste, canEdit = true }: { modoTeste: boolean; canEdit?: boolean }) {
-  const { isAdmin } = useAuth();
-  const [devices,    setDevices]    = useState<DevicePreco[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [saving,     setSaving]     = useState<string | null>(null);
-  const [search,     setSearch]     = useState("");
-  const [editRow,    setEditRow]    = useState<string | null>(null);
-  const [editData,   setEditData]   = useState<Partial<DevicePreco>>({});
-  const [showInativ, setShowInativ] = useState(false);
-  const [sortKey,    setSortKey]    = useState<keyof DevicePreco>("model");
-  const [sortAsc,    setSortAsc]    = useState(true);
+export function TabelaPrecos({ modo = "comercial" }: { modo?: "comercial" | "financeiro" }) {
+  const financeiro = modo === "financeiro";
+  const [pecas, setPecas] = useState<Peca[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<"ativas" | "sem_preco" | "margem_baixa" | "todas">("ativas");
+  const [editando, setEditando] = useState<Peca | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    // Busca todas as peças com paginação (sem limite padrão do Supabase de 1000)
-    const PAGE = 1000;
-    let all: DevicePreco[] = [];
-    let from = 0;
-    let keepGoing = true;
-    while (keepGoing) {
-      const { data, error } = await supabase
-        .from("devices")
-        .select("id, model, reference, internal_code, ncm, cfop_padrao, ipi_pct, unidade, preco_custo, preco_venda, desconto_max_pct, margem_minima_pct, ativo, observacoes_preco")
-        .order("model")
-        .range(from, from + PAGE - 1);
+    const campos = "id,model,reference,internal_code,ncm,cfop_padrao,ipi_pct,unidade,preco_venda,desconto_max_pct,ativo,observacoes_preco"
+      + (financeiro ? ",preco_custo,margem_minima_pct" : "");
+    const todas: Peca[] = [];
+    for (let de = 0; de < 50000; de += 1000) {
+      const { data, error } = await supabase.from("devices").select(campos).order("model").range(de, de + 999);
       if (error) { toast.error(friendlyError(error)); break; }
-      all = all.concat((data ?? []) as DevicePreco[]);
-      keepGoing = (data?.length ?? 0) === PAGE;
-      from += PAGE;
+      todas.push(...((data ?? []) as unknown as Peca[]));
+      if ((data?.length ?? 0) < 1000) break;
     }
-    setDevices(all);
+    setPecas(todas);
     setLoading(false);
-  }, []);
-
+  }, [financeiro]);
   useEffect(() => { load(); }, [load]);
 
-  async function limparPrecos() {
-    if (!window.confirm("Zerar TODOS os preços de custo e venda? Esta ação não pode ser desfeita.")) return;
-    const { error } = await supabase.from("devices").update({ preco_custo: 0, preco_venda: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
-    if (error) { toast.error("Erro ao limpar preços."); return; }
-    toast.success("Todos os preços foram zerados.");
-    load();
-  }
-
-  async function preencherPrecosTeste() {
-    if (!window.confirm("Preencher preços fictícios para teste em TODAS as peças (sobrescreve preços existentes)?")) return;
-    // Um único UPDATE com valor fixo para todas as peças — sem loop, sem timeout
-    const custo = 45.00;
-    const venda = 120.00;
-    const { error } = await supabase
-      .from("devices")
-      .update({ preco_custo: custo, preco_venda: venda })
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-    if (error) { toast.error("Erro ao preencher preços: " + error.message); return; }
-    toast.success("Todas as peças receberam custo R$45,00 e venda R$120,00 para teste.");
-    load();
-  }
-
-  function exportExcel() {
-    // Gera CSV detalhado e dispara download (funciona sem lib externa)
-    const headers = [
-      "Modelo", "Referência", "Cód. Interno", "NCM", "CFOP",
-      "Unidade", "Preço Custo (R$)", "Preço Venda (R$)",
-      "Margem Real (%)", "Desconto Máx (%)", "Margem Mín (%)",
-      "Ativo", "Observações"
-    ];
-    const BOM = "\uFEFF"; // UTF-8 BOM para Excel reconhecer acentos
-    const rows = filtered.map(d => {
-      const margem = d.preco_venda > 0
-        ? ((d.preco_venda - d.preco_custo) / d.preco_venda * 100).toFixed(2)
-        : "0.00";
-      return [
-        d.model, d.reference, d.internal_code, d.ncm, d.cfop_padrao, String(d.ipi_pct ?? 0),
-        d.unidade,
-        d.preco_custo.toFixed(2).replace(".", ","),
-        d.preco_venda.toFixed(2).replace(".", ","),
-        margem.replace(".", ","),
-        String(d.desconto_max_pct),
-        String(d.margem_minima_pct),
-        d.ativo ? "Sim" : "Não",
-        d.observacoes_preco ?? "",
-      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(";");
+  const lista = useMemo(() => {
+    const termos = norm(busca.trim()).split(/\s+/).filter(Boolean);
+    return pecas.filter(p => {
+      if (filtro !== "todas" && !p.ativo) return false;
+      if (filtro === "sem_preco" && p.preco_venda > 0) return false;
+      if (filtro === "margem_baixa") { const m = margemDe(p); if (m == null || m >= (p.margem_minima_pct ?? 0)) return false; }
+      if (!termos.length) return true;
+      const alvo = norm(`${p.model} ${p.reference} ${p.internal_code ?? ""} ${p.ncm ?? ""}`);
+      return termos.every(t => alvo.includes(t));
     });
-    const csv = BOM + [headers.map(h => `"${h}"`).join(";"), ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `tabela-precos-zomini-${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(`Planilha exportada! ${filtered.length} peças.`);
+  }, [pecas, busca, filtro]);
+
+  const ativas = pecas.filter(p => p.ativo);
+  const semPreco = ativas.filter(p => p.preco_venda <= 0).length;
+  const comMargem = ativas.map(margemDe).filter((m): m is number => m != null);
+  const margemMedia = comMargem.length ? comMargem.reduce((a, b) => a + b, 0) / comMargem.length : null;
+  const margemBaixa = ativas.filter(p => { const m = margemDe(p); return m != null && m < (p.margem_minima_pct ?? 0); }).length;
+
+  function exportar() {
+    const cab = ["Peça", "Referência", "Código", "Unidade", "Preço de venda", "Desconto máx. %", "NCM"];
+    if (financeiro) cab.push("Custo", "Margem %", "Margem mín. %", "CFOP", "IPI %");
+    baixarCsv(`tabela-precos-${hojeISO()}.csv`, cab, lista.map(p => {
+      const l: (string | number | null)[] = [p.model, p.reference, p.internal_code, p.unidade ?? "UN", p.preco_venda, p.desconto_max_pct, p.ncm];
+      if (financeiro) l.push(p.preco_custo ?? 0, margemDe(p) ?? 0, p.margem_minima_pct ?? 0, p.cfop_padrao, p.ipi_pct ?? 0);
+      return l;
+    }));
   }
 
-  function printTabelaPrecos() {
-    const esc = escHtml;
-    const rows = filtered.map(d => {
-      const margem = d.preco_venda > 0
-        ? ((d.preco_venda - d.preco_custo) / d.preco_venda * 100).toFixed(1) + "%"
-        : "—";
-      return `<tr>
-        <td>${esc(d.model)}</td>
-        <td>${esc(d.reference)}</td>
-        <td>${esc(d.ncm)}</td>
-        <td style="text-align:right">R$ ${d.preco_custo.toFixed(2).replace(".",",")}</td>
-        <td style="text-align:right">R$ ${d.preco_venda.toFixed(2).replace(".",",")}</td>
-        <td style="text-align:center">${margem}</td>
-        <td style="text-align:center">${d.desconto_max_pct}%</td>
-        <td style="text-align:center">${d.ativo ? "Ativo" : "Inativo"}</td>
-      </tr>`;
-    }).join("");
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-    <title>Tabela de Preços — Zomini</title>
-    <style>
-      body{font-family:Arial,sans-serif;font-size:11px;padding:16px;color:#111}
-      h1{font-size:16px;font-weight:700;margin-bottom:4px}
-      p.sub{font-size:10px;color:#666;margin-bottom:12px}
-      table{width:100%;border-collapse:collapse}
-      th{background:#f3f0ff;color:#5b21b6;font-size:9px;text-transform:uppercase;padding:6px 8px;border-bottom:2px solid #ddd6fe;text-align:left}
-      td{padding:5px 8px;border-bottom:1px solid #f0eeff;font-size:10px;vertical-align:top}
-      tr:nth-child(even) td{background:#faf9ff}
-      @media print{body{padding:8px}button{display:none}}
-    </style></head>
-    <body>
-    <h1>Tabela de Preços — Zomini Usinagens Especiais</h1>
-    <p class="sub">Gerado em ${new Date().toLocaleString("pt-BR")} · ${filtered.length} peças</p>
-    <table><thead><tr>
-      <th>Modelo</th><th>Referência</th><th>NCM</th>
-      <th style="text-align:right">Custo</th><th style="text-align:right">Venda</th>
-      <th style="text-align:center">Margem</th><th style="text-align:center">Desc. Máx</th><th style="text-align:center">Status</th>
-    </tr></thead><tbody>${rows}</tbody></table>
-    <script>window.print();</script>
-    </body></html>`;
+  function imprimir() {
+    const linhas = lista.map(p => `<tr><td>${escHtml(p.model)}</td><td>${escHtml(p.reference)}</td>
+      <td style="text-align:right">${escHtml(formatBRL(p.preco_venda))}</td><td style="text-align:center">${p.desconto_max_pct}%</td>
+      ${financeiro ? `<td style="text-align:right">${escHtml(formatBRL(p.preco_custo ?? 0))}</td><td style="text-align:center">${margemDe(p)?.toFixed(1) ?? "—"}%</td>` : ""}</tr>`).join("");
     const w = window.open("", "_blank");
-    if (!w) { toast.error("Popup bloqueado. Permita popups para imprimir."); return; }
-    w.document.open(); w.document.write(html); w.document.close();
+    if (!w) { toast.error("Permita pop-ups para imprimir."); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Tabela de preços</title>
+      <style>body{font:11px Arial;padding:16px}table{width:100%;border-collapse:collapse}th,td{padding:5px 8px;border-bottom:1px solid #eee;text-align:left}th{font-size:9px;text-transform:uppercase;color:#555}</style>
+      </head><body><h2 style="margin:0 0 4px">Tabela de preços</h2><p style="color:#666;margin:0 0 12px">${new Date().toLocaleString("pt-BR")} · ${lista.length} peças</p>
+      <table><thead><tr><th>Peça</th><th>Referência</th><th style="text-align:right">Venda</th><th style="text-align:center">Desc. máx.</th>
+      ${financeiro ? '<th style="text-align:right">Custo</th><th style="text-align:center">Margem</th>' : ""}</tr></thead><tbody>${linhas}</tbody></table>
+      <script>window.print()</script></body></html>`);
+    w.document.close();
   }
 
-  function startEdit(d: DevicePreco) {
-    setEditRow(d.id);
-    setEditData({
-      preco_custo: d.preco_custo, preco_venda: d.preco_venda,
-      desconto_max_pct: d.desconto_max_pct, margem_minima_pct: d.margem_minima_pct,
-      ncm: d.ncm, cfop_padrao: d.cfop_padrao, unidade: d.unidade,
-      ativo: d.ativo, observacoes_preco: d.observacoes_preco ?? "",
-    });
-  }
-
-  async function saveEdit(id: string) {
-    if (!editData) return;
-    setSaving(id);
-    const payload = {
-      preco_custo:       editData.preco_custo       ?? 0,
-      preco_venda:       editData.preco_venda        ?? 0,
-      desconto_max_pct:  editData.desconto_max_pct   ?? 0,
-      margem_minima_pct: editData.margem_minima_pct  ?? 0,
-      ncm:               editData.ncm               ?? "90213990",
-      cfop_padrao:       editData.cfop_padrao        ?? "5102",
-      unidade:           editData.unidade            ?? "UN",
-      ativo:             editData.ativo              ?? true,
-      observacoes_preco: editData.observacoes_preco  || null,
-    };
-    const { error } = await supabase.from("devices").update(payload).eq("id", id);
-    setSaving(null);
-    if (error) { toast.error(friendlyError(error)); return; }
-    toast.success("Preço atualizado!");
-    setEditRow(null);
-    setDevices(prev => prev.map(d => d.id === id ? { ...d, ...payload } : d));
-  }
-
-  function cancelEdit() { setEditRow(null); setEditData({}); }
-
-  function toggleSort(k: keyof DevicePreco) {
-    if (sortKey === k) setSortAsc(v => !v);
-    else { setSortKey(k); setSortAsc(true); }
-  }
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return devices
-      .filter(d => (showInativ || d.ativo) && (
-        !q ||
-        d.model.toLowerCase().includes(q) ||
-        d.reference.toLowerCase().includes(q) ||
-        d.internal_code.toLowerCase().includes(q) ||
-        d.ncm.includes(q)
-      ))
-      .sort((a, b) => {
-        const va = a[sortKey]; const vb = b[sortKey];
-        const cmp = typeof va === "string"
-          ? (va as string).localeCompare(vb as string)
-          : (va as number) - (vb as number);
-        return sortAsc ? cmp : -cmp;
-      });
-  }, [devices, search, showInativ, sortKey, sortAsc]);
-
-  const totalCusto  = filtered.reduce((s, d) => s + d.preco_custo, 0);
-  const totalVenda  = filtered.reduce((s, d) => s + d.preco_venda, 0);
-  const semPreco    = filtered.filter(d => d.preco_venda <= 0).length;
-  const margemMedia = filtered.length > 0
-    ? filtered.reduce((s, d) => {
-        if (d.preco_venda <= 0) return s;
-        return s + ((d.preco_venda - d.preco_custo) / d.preco_venda) * 100;
-      }, 0) / filtered.filter(d => d.preco_venda > 0).length
-    : 0;
-
-  function SortBtn({ col, label }: { col: keyof DevicePreco; label: string }) {
-    const active = sortKey === col;
-    return (
-      <button type="button" onClick={() => toggleSort(col)}
-        className={cn("flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide transition-colors whitespace-nowrap",
-          active ? "text-violet-600" : "text-muted-foreground hover:text-foreground")}>
-        {label}
-        {active ? (sortAsc ? <ChevronUp size={10} /> : <ChevronDown size={10} />) : null}
-      </button>
-    );
-  }
+  const kpis = financeiro
+    ? [
+        { l: "Peças ativas", v: String(ativas.length) },
+        { l: "Sem preço", v: String(semPreco), alerta: semPreco > 0 },
+        { l: "Margem média", v: margemMedia == null ? "—" : `${margemMedia.toFixed(1).replace(".", ",")}%` },
+        { l: "Abaixo da margem mín.", v: String(margemBaixa), alerta: margemBaixa > 0 },
+      ]
+    : [
+        { l: "Peças ativas", v: String(ativas.length) },
+        { l: "Sem preço", v: String(semPreco), alerta: semPreco > 0 },
+      ];
 
   return (
     <div className="space-y-4">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: "Preço Médio Venda", value: filtered.length > 0 ? fmtCurrency(totalVenda / filtered.length) : "—", icon: Tag,          color: "#7c3aed" },
-          { label: "Custo Médio",       value: filtered.length > 0 ? fmtCurrency(totalCusto / filtered.length) : "—", icon: TrendingDown,  color: "#ef4444" },
-          { label: "Margem Média",      value: `${margemMedia.toFixed(1)}%`,                                             icon: Percent,       color: margemMedia >= 20 ? "#10b981" : "#f97316" },
-          { label: "Sem Preço",         value: String(semPreco),                                                          icon: AlertTriangle, color: semPreco > 0 ? "#d97706" : "#10b981" },
-        ].map(k => {
-          const Icon = k.icon;
-          return (
-            <div key={k.label} className="rounded-2xl p-4 flex items-center gap-3 bg-card border border-border/50">
-              <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: `${k.color}15`, color: k.color }}>
-                <Icon size={18} />
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{k.label}</p>
-                <p className="text-[17px] font-black tabular-nums" style={{ color: k.color }}>{k.value}</p>
-              </div>
-            </div>
-          );
-        })}
+      <div className={cn("grid gap-3", financeiro ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2")}>
+        {kpis.map(k => (
+          <div key={k.l} className="rounded-2xl border bg-card p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{k.l}</p>
+            <p className={cn("mt-1 text-2xl font-bold tabular-nums", k.alerta && "text-amber-600")}>{k.v}</p>
+          </div>
+        ))}
       </div>
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <SearchInputWithBarcode
-          className="flex-1 min-w-[180px]"
-          value={search}
-          onChange={v => setSearch(v)}
-          onSearch={v => setSearch(v)}
-          placeholder="Buscar por modelo, referência, NCM ou bipe o código..."
-          height="h-9"
-          showSearchIcon
-        />
-        <button type="button" onClick={() => setShowInativ(v => !v)}
-          className={cn("h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-semibold border transition-all",
-            showInativ ? "bg-violet-500/15 border-violet-500/40 text-violet-600" : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50")}>
-          <Package size={13} />Inativos
-        </button>
-        <button type="button" onClick={load} disabled={loading}
-          className="h-9 w-9 flex items-center justify-center rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors">
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-        </button>
-        <span className="text-[11px] text-muted-foreground/70">{filtered.length} peças</span>
-        <button type="button" onClick={exportExcel} disabled={filtered.length === 0}
-          className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 bg-emerald-500/8 hover:bg-emerald-500/15 transition-colors disabled:opacity-40">
-          <FileSpreadsheet size={14} />Exportar Excel
-        </button>
-        <button type="button" onClick={printTabelaPrecos} disabled={filtered.length === 0}
-          className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-violet-500/40 text-violet-700 dark:text-violet-400 bg-violet-500/8 hover:bg-violet-500/15 transition-colors disabled:opacity-40">
-          <Printer size={14} />Imprimir PDF
-        </button>
-        {isAdmin && canEdit && (
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[12rem]">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, referência, código ou NCM..." className="h-11 pl-9" />
+        </div>
+        <div className="flex flex-wrap gap-1 rounded-xl border bg-muted/40 p-1" role="radiogroup" aria-label="Filtro">
+          {([["ativas", "Ativas"], ["sem_preco", "Sem preço"], ...(financeiro ? [["margem_baixa", "Margem baixa"]] : []), ["todas", "Todas"]] as [typeof filtro, string][]).map(([id, l]) => (
+            <button key={id} type="button" role="radio" aria-checked={filtro === id} onClick={() => setFiltro(id)}
+              className={cn("h-9 px-3 rounded-lg text-sm font-medium", filtro === id ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground")}>{l}</button>
+          ))}
+        </div>
+        <Button variant="outline" size="icon" className="h-11 w-11" onClick={load} disabled={loading} aria-label="Atualizar"><RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /></Button>
+        <Button variant="outline" className="h-11 gap-1.5" onClick={exportar} disabled={!lista.length}><FileSpreadsheet className="h-4 w-4" />Excel</Button>
+        <Button variant="outline" className="h-11 gap-1.5" onClick={imprimir} disabled={!lista.length}><Printer className="h-4 w-4" />Imprimir</Button>
+      </div>
+
+      <div className="rounded-2xl border bg-card overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando...</div>
+        ) : lista.length === 0 ? (
+          <div className="py-16 text-center text-sm text-muted-foreground"><Tag className="h-8 w-8 mx-auto mb-2 opacity-40" />Nenhuma peça encontrada.</div>
+        ) : (
           <>
-            <button type="button" onClick={preencherPrecosTeste}
-              className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/8 hover:bg-amber-500/15 transition-colors">
-              <Tag size={14} />Preços Teste
-            </button>
-            <button type="button" onClick={limparPrecos}
-              className="h-9 px-3 flex items-center gap-1.5 rounded-xl text-[11px] font-bold border border-destructive/40 text-destructive bg-destructive/5 hover:bg-destructive/10 transition-colors">
-              <Trash2 size={14} />Zerar Tudo
-            </button>
+            {/* Celular */}
+            <ul className="md:hidden divide-y">
+              {lista.slice(0, 300).map(p => {
+                const m = margemDe(p);
+                return (
+                  <li key={p.id} className={cn("p-4 flex items-start justify-between gap-3", !p.ativo && "opacity-60")}>
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{p.model}</p>
+                      <p className="text-xs text-muted-foreground truncate">{p.reference}{p.internal_code && p.internal_code !== p.reference ? ` · ${p.internal_code}` : ""}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Desc. máx. {p.desconto_max_pct}%{financeiro && m != null ? ` · margem ${m.toFixed(1)}%` : ""}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={cn("font-bold tabular-nums", p.preco_venda > 0 ? "" : "text-amber-600")}>{p.preco_venda > 0 ? formatBRL(p.preco_venda) : "Sem preço"}</p>
+                      {financeiro && <p className="text-xs text-muted-foreground tabular-nums">custo {formatBRL(p.preco_custo ?? 0)}</p>}
+                      {financeiro && <Button size="sm" variant="ghost" className="h-8 mt-1 gap-1" onClick={() => setEditando(p)}><Pencil className="h-3.5 w-3.5" />Editar</Button>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {/* Computador */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50"><tr className="text-left text-xs text-muted-foreground">
+                  <th className="px-3 py-2.5 font-semibold">Peça</th>
+                  <th className="px-3 py-2.5 font-semibold text-right">Preço de venda</th>
+                  <th className="px-3 py-2.5 font-semibold text-right">Desc. máx.</th>
+                  {financeiro && <>
+                    <th className="px-3 py-2.5 font-semibold text-right">Custo</th>
+                    <th className="px-3 py-2.5 font-semibold text-right">Margem</th>
+                    <th className="px-3 py-2.5 font-semibold">NCM / CFOP / IPI</th>
+                    <th className="px-3 py-2.5" />
+                  </>}
+                  {!financeiro && <th className="px-3 py-2.5 font-semibold">Unid.</th>}
+                </tr></thead>
+                <tbody>
+                  {lista.map(p => {
+                    const m = margemDe(p);
+                    const baixa = m != null && m < (p.margem_minima_pct ?? 0);
+                    return (
+                      <tr key={p.id} className={cn("border-t", !p.ativo && "opacity-60")}>
+                        <td className="px-3 py-2.5"><p className="font-medium">{p.model}</p><p className="text-xs text-muted-foreground">{p.reference}{p.internal_code && p.internal_code !== p.reference ? ` · ${p.internal_code}` : ""}{!p.ativo ? " · inativa" : ""}</p></td>
+                        <td className={cn("px-3 py-2.5 text-right font-semibold tabular-nums", p.preco_venda <= 0 && "text-amber-600")}>{p.preco_venda > 0 ? formatBRL(p.preco_venda) : "Sem preço"}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{p.desconto_max_pct}%</td>
+                        {financeiro && <>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{formatBRL(p.preco_custo ?? 0)}</td>
+                          <td className={cn("px-3 py-2.5 text-right tabular-nums font-medium", baixa ? "text-red-600" : "text-green-700 dark:text-green-400")}>
+                            {m == null ? "—" : `${m.toFixed(1).replace(".", ",")}%`}{baixa && <AlertTriangle className="inline h-3.5 w-3.5 ml-1 -mt-0.5" />}
+                          </td>
+                          <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">{p.ncm || "—"} · {p.cfop_padrao || "—"} · {p.ipi_pct ?? 0}%</td>
+                          <td className="px-3 py-2.5 text-right"><Button size="sm" variant="ghost" className="h-8 gap-1" onClick={() => setEditando(p)}><Pencil className="h-3.5 w-3.5" />Editar</Button></td>
+                        </>}
+                        {!financeiro && <td className="px-3 py-2.5 text-muted-foreground">{p.unidade ?? "UN"}</td>}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
       </div>
-
-      {/* Tabela */}
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="animate-spin h-6 w-6 border-2 border-violet-500 border-t-transparent rounded-full" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-14 space-y-2">
-          <Tag size={32} className="text-muted-foreground/20 mx-auto" />
-          <p className="text-sm text-muted-foreground">Nenhuma peça encontrada</p>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
-          {/* Cabeçalho */}
-          <div className="grid gap-2 px-4 py-2.5 bg-muted/30 border-b border-border/40"
-            style={{ gridTemplateColumns: "1fr 100px 100px 70px 70px 50px 100px" }}>
-            <SortBtn col="model"       label="Modelo / Referência" />
-            <SortBtn col="preco_custo" label="Custo (R$)" />
-            <SortBtn col="preco_venda" label="Venda (R$)" />
-            <SortBtn col="ncm"         label="NCM" />
-            <SortBtn col="cfop_padrao" label="CFOP" />
-            <SortBtn col="ativo"       label="Ativo" />
-            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Ações</span>
-          </div>
-
-          {/* Linhas */}
-          <div className="divide-y divide-border/30">
-            {filtered.map(d => {
-              const isEdit = editRow === d.id;
-              const isSav  = saving  === d.id;
-              const margem = d.preco_venda > 0
-                ? ((d.preco_venda - d.preco_custo) / d.preco_venda * 100)
-                : 0;
-              const margemOk = d.preco_venda > 0 && margem >= d.margem_minima_pct;
-
-              return (
-                <div key={d.id}
-                  className={cn("grid gap-2 px-4 py-2 items-center transition-colors",
-                    isEdit ? "bg-violet-500/5 border-l-2 border-violet-500" : "hover:bg-muted/20",
-                    !d.ativo && "opacity-50")}
-                  style={{ gridTemplateColumns: "1fr 100px 100px 70px 70px 50px 100px" }}>
-
-                  {/* Modelo */}
-                  <div className="min-w-0">
-                    <p className="text-[12px] font-semibold truncate">{d.model}</p>
-                    <p className="text-[10px] text-muted-foreground/70 truncate">{d.reference} · {d.internal_code}</p>
-                    {isEdit && editData.observacoes_preco !== undefined && (
-                      <input type="text"
-                        value={editData.observacoes_preco ?? ""}
-                        onChange={e => setEditData(prev => ({ ...prev, observacoes_preco: e.target.value.slice(0,120) }))}
-                        placeholder="Observação (opcional)"
-                        className="mt-1 w-full h-6 rounded-lg border border-border/50 bg-background text-foreground px-2 text-[10px] focus:outline-none focus:ring-1 focus:ring-violet-500/40"
-                      />
-                    )}
-                  </div>
-
-                  {/* Preço Custo */}
-                  {isEdit ? (
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
-                      <input type="number" inputMode="decimal" min="0" step="0.01"
-                        value={editData.preco_custo === 0 || editData.preco_custo == null ? "" : editData.preco_custo}
-                        onChange={e => {
-                          const raw = e.target.value;
-                          if (raw === "") { setEditData(prev => ({ ...prev, preco_custo: undefined })); return; }
-                          const v = parseFloat(raw);
-                          if (!isNaN(v)) setEditData(prev => ({ ...prev, preco_custo: v }));
-                        }}
-                        onBlur={() => setEditData(prev => ({ ...prev, preco_custo: prev.preco_custo ?? 0 }))}
-                        className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
-                      />
-                    </div>
-                  ) : (
-                    <p className="text-[12px] font-mono tabular-nums text-muted-foreground">{fmtCurrency(d.preco_custo)}</p>
-                  )}
-
-                  {/* Preço Venda */}
-                  {isEdit ? (
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
-                      <input type="number" inputMode="decimal" min="0" step="0.01"
-                        value={editData.preco_venda === 0 || editData.preco_venda == null ? "" : editData.preco_venda}
-                        onChange={e => {
-                          const raw = e.target.value;
-                          if (raw === "") { setEditData(prev => ({ ...prev, preco_venda: undefined })); return; }
-                          const v = parseFloat(raw);
-                          if (!isNaN(v)) setEditData(prev => ({ ...prev, preco_venda: v }));
-                        }}
-                        onBlur={() => setEditData(prev => ({ ...prev, preco_venda: prev.preco_venda ?? 0 }))}
-                        className={cn("w-full h-8 rounded-lg border bg-background text-foreground pl-5 pr-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40",
-                          (editData.preco_venda ?? 0) > 0 ? "border-border/50" : "border-amber-500/60")}
-                      />
-                    </div>
-                  ) : (
-                    <p className={cn("text-[12px] font-bold font-mono tabular-nums",
-                      d.preco_venda > 0 ? "text-violet-600" : "text-amber-500")}>
-                      {d.preco_venda > 0 ? fmtCurrency(d.preco_venda) : "—"}
-                    </p>
-                  )}
-
-                  {/* NCM */}
-                  {isEdit ? (
-                    <input type="text" inputMode="numeric"
-                      value={editData.ncm ?? ""}
-                      onChange={e => setEditData(prev => ({ ...prev, ncm: e.target.value.replace(/\D/g,"").slice(0,8) }))}
-                      className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
-                    />
-                  ) : (
-                    <p className="text-[10px] font-mono text-muted-foreground">{d.ncm || "—"}</p>
-                  )}
-
-                  {/* CFOP */}
-                  {isEdit ? (
-                    <input type="text" inputMode="numeric"
-                      value={editData.cfop_padrao ?? ""}
-                      onChange={e => setEditData(prev => ({ ...prev, cfop_padrao: e.target.value.replace(/\D/g,"").slice(0,4) }))}
-                      className="w-full h-8 rounded-lg border border-border/50 bg-background text-foreground px-2 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-violet-500/40"
-                    />
-                  ) : (
-                    <p className="text-[10px] font-mono text-muted-foreground">{d.cfop_padrao || "—"}</p>
-                  )}
-
-                  {/* Ativo */}
-                  {isEdit ? (
-                    <button type="button" onClick={() => setEditData(prev => ({ ...prev, ativo: !prev.ativo }))}
-                      className={cn("h-5 w-9 rounded-full transition-colors relative shrink-0",
-                        editData.ativo ? "bg-violet-500" : "bg-muted/50")}>
-                      <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-background text-foreground shadow transition-all",
-                        editData.ativo ? "left-[calc(100%-18px)]" : "left-0.5")} />
-                    </button>
-                  ) : (
-                    <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
-                      d.ativo
-                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                        : "bg-muted/30 text-muted-foreground border-border/30")}>
-                      {d.ativo ? "Sim" : "Não"}
-                    </span>
-                  )}
-
-                  {/* Ações */}
-                  {isEdit ? (
-                    <div className="flex gap-1">
-                      <button type="button" onClick={() => saveEdit(d.id)} disabled={isSav}
-                        className="flex-1 h-7 flex items-center justify-center rounded-lg bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50">
-                        {isSav ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
-                      </button>
-                      <button type="button" onClick={cancelEdit}
-                        className="h-7 w-7 flex items-center justify-center rounded-lg bg-muted/40 hover:bg-muted/70 text-muted-foreground transition-colors">
-                        <X size={11} />
-                      </button>
-                    </div>
-                  ) : canEdit ? (
-                    <button type="button" onClick={() => startEdit(d)}
-                      className="h-7 px-2.5 flex items-center gap-1 rounded-lg bg-muted/30 hover:bg-violet-500/10 hover:text-violet-600 text-muted-foreground text-[10px] font-semibold transition-colors">
-                      <Edit3 size={11} />Editar
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Rodapé totais */}
-          <div className="grid gap-2 px-4 py-2.5 bg-muted/20 border-t border-border/40 font-bold"
-            style={{ gridTemplateColumns: "1fr 100px 100px 70px 70px 50px 100px" }}>
-            <p className="text-[11px] text-muted-foreground">{filtered.length} peças</p>
-            <p className="text-[11px] font-mono text-muted-foreground">{fmtCurrency(totalCusto / (filtered.length || 1))}</p>
-            <p className="text-[11px] font-mono text-violet-600">{fmtCurrency(totalVenda / (filtered.length || 1))}</p>
-            <p className="text-[11px] text-muted-foreground col-span-4">← médias por peça</p>
-          </div>
-        </div>
+      {financeiro && (
+        <p className="text-xs text-muted-foreground">NCM, CFOP e IPI daqui são usados na emissão da NF-e. O custo e a margem aparecem só no Financeiro — a tabela do Comercial mostra apenas o preço de venda.</p>
       )}
-
-      {!loading && filtered.length > 0 && (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 flex items-start gap-2">
-          <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
-          <p className="text-[11px] text-muted-foreground">
-            Os preços e descontos definidos aqui são usados como referência na emissão de notas fiscais.
-            O desconto máx. por peça é aplicado <strong className="text-foreground">individualmente em cada item</strong>, não no total do pedido.
-            {modoTeste && <span className="text-orange-500 font-semibold"> · Modo Homologação ativo.</span>}
-          </p>
-        </div>
-      )}
+      {editando && <EditarPrecoDialog peca={editando} onClose={() => setEditando(null)} onSalvo={p => { setPecas(prev => prev.map(x => x.id === p.id ? p : x)); setEditando(null); }} />}
     </div>
+  );
+}
+
+function EditarPrecoDialog({ peca, onClose, onSalvo }: { peca: Peca; onClose: () => void; onSalvo: (p: Peca) => void }) {
+  const [f, setF] = useState({
+    venda: peca.preco_venda ? String(peca.preco_venda).replace(".", ",") : "",
+    custo: peca.preco_custo ? String(peca.preco_custo).replace(".", ",") : "",
+    desc: String(peca.desconto_max_pct ?? 0), margem: String(peca.margem_minima_pct ?? 0),
+    ncm: peca.ncm ?? "", cfop: peca.cfop_padrao ?? "5101", ipi: String(peca.ipi_pct ?? 0), unidade: peca.unidade ?? "UN",
+    ativo: peca.ativo, obs: peca.observacoes_preco ?? "",
+  });
+  const [salvando, setSalvando] = useState(false);
+  const venda = parseValor(f.venda), custo = parseValor(f.custo);
+  const margem = venda > 0 ? ((venda - custo) / venda) * 100 : null;
+
+  async function salvar() {
+    if (f.ncm && !/^\d{8}$/.test(f.ncm)) { toast.error("NCM deve ter 8 números."); return; }
+    if (!/^\d{4}$/.test(f.cfop)) { toast.error("CFOP deve ter 4 números."); return; }
+    const payload = {
+      preco_venda: venda, preco_custo: custo,
+      desconto_max_pct: Math.min(100, Math.max(0, parseValor(f.desc))), margem_minima_pct: Math.min(100, Math.max(0, parseValor(f.margem))),
+      ncm: f.ncm, cfop_padrao: f.cfop, ipi_pct: Math.max(0, parseValor(f.ipi)), unidade: f.unidade.trim().toUpperCase() || "UN",
+      ativo: f.ativo, observacoes_preco: f.obs.trim() || null,
+    };
+    setSalvando(true);
+    const { error } = await supabase.from("devices").update(payload).eq("id", peca.id);
+    setSalvando(false);
+    if (error) { toast.error(friendlyError(error)); return; }
+    toast.success("Preço salvo.");
+    onSalvo({ ...peca, ...payload });
+  }
+
+  const campo = (label: string, k: keyof typeof f, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
+    <label className="space-y-1.5 block">
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <Input value={f[k] as string} onChange={e => setF(v => ({ ...v, [k]: e.target.value }))} className="h-11" {...props} />
+    </label>
+  );
+
+  return (
+    <Dialog open onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{peca.model}</DialogTitle>
+          <DialogDescription>{peca.reference}{peca.internal_code ? ` · ${peca.internal_code}` : ""}</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          {campo("Preço de venda (R$)", "venda", { inputMode: "decimal", placeholder: "0,00" })}
+          {campo("Custo (R$)", "custo", { inputMode: "decimal", placeholder: "0,00" })}
+          {campo("Desconto máx. (%)", "desc", { inputMode: "decimal" })}
+          {campo("Margem mínima (%)", "margem", { inputMode: "decimal" })}
+        </div>
+        <p className={cn("text-sm rounded-xl px-3 py-2 bg-muted/40", margem != null && margem < parseValor(f.margem) && "bg-red-500/10 text-red-700 dark:text-red-400")}>
+          Margem com esses valores: <strong>{margem == null ? "—" : `${margem.toFixed(1).replace(".", ",")}%`}</strong>
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {campo("NCM", "ncm", { inputMode: "numeric", maxLength: 8 })}
+          {campo("CFOP", "cfop", { inputMode: "numeric", maxLength: 4 })}
+          {campo("IPI (%)", "ipi", { inputMode: "decimal" })}
+          {campo("Unidade", "unidade", { maxLength: 6 })}
+        </div>
+        {campo("Observação", "obs", { maxLength: 120 })}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={f.ativo} onChange={e => setF(v => ({ ...v, ativo: e.target.checked }))} className="h-4 w-4" />
+          Peça ativa (aparece para venda)
+        </label>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={salvar} disabled={salvando} className="gap-1.5">{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Salvar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

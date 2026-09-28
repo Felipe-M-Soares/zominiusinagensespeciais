@@ -128,7 +128,6 @@ export function StockCsvImport({ open, onClose, onSuccess }: Props) {
     if (!file || importing) return;
 
     // Validate both extension and MIME type
-    const MAX_CSV_ROWS = 10_000; // memory exhaustion protection
 const ALLOWED_MIME = ["text/csv", "text/plain", "application/csv", "application/vnd.ms-excel", ""];
     if (!file.name.toLowerCase().endsWith(".csv") ||
         (file.type && !ALLOWED_MIME.includes(file.type))) {

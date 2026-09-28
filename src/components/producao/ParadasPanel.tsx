@@ -46,7 +46,7 @@ function useCronometro(inicio?: string) {
 
 function fmt(s:number){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return h>0?`${h}h ${m.toString().padStart(2,"0")}m`:`${m.toString().padStart(2,"0")}:${sec.toString().padStart(2,"0")}`;}
 
-function ParadaCard({parada,maquinas,onConcluir}:{parada:Parada;maquinas:string[];onConcluir:(id:string)=>void}) {
+function ParadaCard({parada,onConcluir}:{parada:Parada;onConcluir:(id:string)=>void}) {
   const isAtiva = !parada.fim;
   const elapsed = useCronometro(isAtiva ? parada.inicio : undefined);
   return (
@@ -222,7 +222,7 @@ export function ParadasPanel() {
           <OctagonPause className="h-8 w-8 opacity-30"/><p>{paradas.length===0?"Nenhuma parada registrada":"Nenhum resultado"}</p>
         </div>
       ) : (
-        <div className="space-y-3">{filtered.map(p=><ParadaCard key={p.id} parada={p} maquinas={maquinas} onConcluir={handleConcluir}/>)}</div>
+        <div className="space-y-3">{filtered.map(p=><ParadaCard key={p.id} parada={p} onConcluir={handleConcluir}/>)}</div>
       )}
 
       <NovaParadaModal open={modalOpen} onClose={()=>setModalOpen(false)} onSaved={p=>setParadas(prev=>[p,...prev])} maquinas={maquinas}/>

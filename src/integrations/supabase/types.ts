@@ -473,8 +473,11 @@ export type Database = {
           data_pagamento: string | null
           data_vencimento: string
           descricao: string
+          favorecido: string | null
+          forma_pagamento: string | null
           fornecedor_id: string | null
           id: string
+          lancamento_origem_id: string | null
           nota_fiscal: string | null
           observacoes: string | null
           pedido_compra_id: string | null
@@ -483,6 +486,7 @@ export type Database = {
           tipo: string
           updated_at: string
           valor: number
+          valor_pago: number | null
         }
         Insert: {
           banco_id?: string | null
@@ -493,8 +497,11 @@ export type Database = {
           data_pagamento?: string | null
           data_vencimento: string
           descricao: string
+          favorecido?: string | null
+          forma_pagamento?: string | null
           fornecedor_id?: string | null
           id?: string
+          lancamento_origem_id?: string | null
           nota_fiscal?: string | null
           observacoes?: string | null
           pedido_compra_id?: string | null
@@ -503,6 +510,7 @@ export type Database = {
           tipo: string
           updated_at?: string
           valor: number
+          valor_pago?: number | null
         }
         Update: {
           banco_id?: string | null
@@ -513,8 +521,11 @@ export type Database = {
           data_pagamento?: string | null
           data_vencimento?: string
           descricao?: string
+          favorecido?: string | null
+          forma_pagamento?: string | null
           fornecedor_id?: string | null
           id?: string
+          lancamento_origem_id?: string | null
           nota_fiscal?: string | null
           observacoes?: string | null
           pedido_compra_id?: string | null
@@ -523,6 +534,7 @@ export type Database = {
           tipo?: string
           updated_at?: string
           valor?: number
+          valor_pago?: number | null
         }
         Relationships: [
           {
@@ -1375,6 +1387,201 @@ export type Database = {
           },
         ]
       }
+      fiscal_config: {
+        Row: {
+          aliquota_icms_interna: number
+          ambiente: number
+          bairro: string | null
+          c_mun: string | null
+          cep: string | null
+          cfop_dentro_uf: string
+          cfop_fora_uf: string
+          cnpj: string | null
+          cofins_aliquota: number
+          complemento: string | null
+          crt: number | null
+          email: string | null
+          id: number
+          ie: string | null
+          im: string | null
+          info_complementar: string | null
+          logradouro: string | null
+          municipio: string | null
+          natureza_padrao: string
+          nome_fantasia: string | null
+          numero: string | null
+          pis_aliquota: number
+          prazo_padrao_dias: number
+          provedor: string
+          razao_social: string | null
+          serie_nfe: string
+          telefone: string | null
+          token_secret_id: string | null
+          uf: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          aliquota_icms_interna?: number
+          ambiente?: number
+          bairro?: string | null
+          c_mun?: string | null
+          cep?: string | null
+          cfop_dentro_uf?: string
+          cfop_fora_uf?: string
+          cnpj?: string | null
+          cofins_aliquota?: number
+          complemento?: string | null
+          crt?: number | null
+          email?: string | null
+          id?: number
+          ie?: string | null
+          im?: string | null
+          info_complementar?: string | null
+          logradouro?: string | null
+          municipio?: string | null
+          natureza_padrao?: string
+          nome_fantasia?: string | null
+          numero?: string | null
+          pis_aliquota?: number
+          prazo_padrao_dias?: number
+          provedor?: string
+          razao_social?: string | null
+          serie_nfe?: string
+          telefone?: string | null
+          token_secret_id?: string | null
+          uf?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          aliquota_icms_interna?: number
+          ambiente?: number
+          bairro?: string | null
+          c_mun?: string | null
+          cep?: string | null
+          cfop_dentro_uf?: string
+          cfop_fora_uf?: string
+          cnpj?: string | null
+          cofins_aliquota?: number
+          complemento?: string | null
+          crt?: number | null
+          email?: string | null
+          id?: number
+          ie?: string | null
+          im?: string | null
+          info_complementar?: string | null
+          logradouro?: string | null
+          municipio?: string | null
+          natureza_padrao?: string
+          nome_fantasia?: string | null
+          numero?: string | null
+          pis_aliquota?: number
+          prazo_padrao_dias?: number
+          provedor?: string
+          razao_social?: string | null
+          serie_nfe?: string
+          telefone?: string | null
+          token_secret_id?: string | null
+          uf?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      notas_fiscais: {
+        Row: {
+          ambiente: number
+          cancelada_em: string | null
+          chave: string | null
+          created_at: string
+          created_by: string | null
+          danfe_path: string | null
+          danfe_url: string | null
+          destinatario_doc: string | null
+          destinatario_nome: string | null
+          devolucao_id: string | null
+          emitida_em: string | null
+          eventos: Json
+          id: string
+          mensagem: string | null
+          modelo: string
+          motivo_cancelamento: string | null
+          natureza: string | null
+          numero: number | null
+          origem: string
+          pedido_id: string | null
+          protocolo: string | null
+          ref: string | null
+          serie: string | null
+          status: string
+          tipo: string
+          updated_at: string
+          valor_total: number | null
+          xml_path: string | null
+        }
+        Insert: {
+          ambiente?: number
+          cancelada_em?: string | null
+          chave?: string | null
+          created_at?: string
+          created_by?: string | null
+          danfe_path?: string | null
+          danfe_url?: string | null
+          destinatario_doc?: string | null
+          destinatario_nome?: string | null
+          devolucao_id?: string | null
+          emitida_em?: string | null
+          eventos?: Json
+          id?: string
+          mensagem?: string | null
+          modelo?: string
+          motivo_cancelamento?: string | null
+          natureza?: string | null
+          numero?: number | null
+          origem: string
+          pedido_id?: string | null
+          protocolo?: string | null
+          ref?: string | null
+          serie?: string | null
+          status: string
+          tipo: string
+          updated_at?: string
+          valor_total?: number | null
+          xml_path?: string | null
+        }
+        Update: {
+          ambiente?: number
+          cancelada_em?: string | null
+          chave?: string | null
+          created_at?: string
+          created_by?: string | null
+          danfe_path?: string | null
+          danfe_url?: string | null
+          destinatario_doc?: string | null
+          destinatario_nome?: string | null
+          devolucao_id?: string | null
+          emitida_em?: string | null
+          eventos?: Json
+          id?: string
+          mensagem?: string | null
+          modelo?: string
+          motivo_cancelamento?: string | null
+          natureza?: string | null
+          numero?: number | null
+          origem?: string
+          pedido_id?: string | null
+          protocolo?: string | null
+          ref?: string | null
+          serie?: string | null
+          status?: string
+          tipo?: string
+          updated_at?: string
+          valor_total?: number | null
+          xml_path?: string | null
+        }
+        Relationships: []
+      }
       ordens_planejamento: {
         Row: {
           descricao_produto: string | null
@@ -1670,6 +1877,7 @@ export type Database = {
           chave_acesso_nfe: string | null
           cliente_id: string
           created_at: string
+          credito_aplicado: number
           desconto_pct: number
           dh_autorizacao_nfe: string | null
           endereco_entrega: string | null
@@ -1703,6 +1911,7 @@ export type Database = {
           chave_acesso_nfe?: string | null
           cliente_id: string
           created_at?: string
+          credito_aplicado?: number
           desconto_pct?: number
           dh_autorizacao_nfe?: string | null
           endereco_entrega?: string | null
@@ -1736,6 +1945,7 @@ export type Database = {
           chave_acesso_nfe?: string | null
           cliente_id?: string
           created_at?: string
+          credito_aplicado?: number
           desconto_pct?: number
           dh_autorizacao_nfe?: string | null
           endereco_entrega?: string | null
@@ -2586,6 +2796,22 @@ export type Database = {
         Returns: Json
       }
       keep_alive: { Args: { p_source?: string }; Returns: Json }
+      registrar_nf_externa: {
+        Args: { p_tipo: string; p_pedido_id: string | null; p_devolucao_id: string | null; p_chave: string; p_emitida_em: string; p_valor: number; p_xml_path?: string | null; p_danfe_path?: string | null; p_protocolo?: string | null }
+        Returns: Json
+      }
+      anexar_arquivo_nf: { Args: { p_nf_id: string; p_xml_path: string; p_danfe_path: string }; Returns: Json }
+      registrar_cancelamento_externo: { Args: { p_nf_id: string; p_protocolo: string | null; p_motivo: string }; Returns: Json }
+      set_fiscal_token: { Args: { p_token: string | null }; Returns: Json }
+      atualizar_contas_vencidas: { Args: Record<PropertyKey, never>; Returns: number }
+      chave_nfe_valida: { Args: { p_chave: string }; Returns: boolean }
+      eh_gerente: { Args: Record<PropertyKey, never>; Returns: boolean }
+      nf_pode_cancelar: { Args: { p_nf_id: string }; Returns: Json }
+      editar_pedido_retorno: { Args: { p_pedido_id: string; p_itens: Json; p_dados: Json }; Returns: Json }
+      criar_pedido_venda: { Args: { p_cliente_id: string; p_itens: Json; p_dados: Json }; Returns: Json }
+      adicionar_item_pedido: { Args: { p_pedido_id: string; p_stock_item_id: string; p_quantidade: number; p_valor_unitario: number }; Returns: Json }
+      mesclar_clientes: { Args: { p_manter: string; p_remover: string }; Returns: Json }
+      valor_pedido: { Args: { p_pedido_id: string }; Returns: number }
       editar_apontamento_producao: {
         Args: {
           p_id: string
@@ -2782,6 +3008,7 @@ export type Database = {
         | "financeiro"
         | "producao"
         | "processos"
+        | "gerente"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2920,6 +3147,7 @@ export const Constants = {
         "financeiro",
         "producao",
         "processos",
+        "gerente",
       ],
     },
   },

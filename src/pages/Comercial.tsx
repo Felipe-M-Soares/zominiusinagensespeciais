@@ -12,9 +12,9 @@
  *  5. Admin/Estoque fatura o pedido → peças saem da expedição
  */
 
+import { temPapel } from "@/types/roles";
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
 import { useConfirmEnter } from "@/hooks/useConfirmEnter";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -61,6 +61,7 @@ import {
   Pencil,
   FileDown,
   Loader2,
+  Users,
 } from "lucide-react";
 import { PageNav } from "@/components/PageNav";
 
@@ -71,6 +72,8 @@ import { escHtml } from "@/lib/escHtml";
 import type { Cliente, PedidoCompleto } from "@/types/comercial";
 import { logAudit } from "@/types/comercial";
 import { excluirClienteSeguro } from "@/lib/pedidoUtils";
+import { DuplicadosClientesDialog } from "@/components/comercial/DuplicadosClientesDialog";
+import { agruparDuplicados } from "@/lib/clientesDuplicados";
 
 // ─── Modais extraídos — lazy-loaded para reduzir o bundle inicial da página ────
 // (ver src/components/comercial/). Cada um só baixa quando de fato abre.
@@ -178,42 +181,49 @@ function DevolucaoBadgePedido({ pedidoId, vendedoraId, isAdmin }: { pedidoId: st
   );
 }
 
+const ETAPAS = [
+  { id: "pendente", label: "Pedido" },
+  { id: "separando", label: "Separação" },
+  { id: "pronto", label: "Pronto" },
+  { id: "faturado", label: "Faturado" },
+  { id: "enviado", label: "Enviado" },
+] as const;
+const ORDEM_ETAPA: Record<string, number> = { pendente: 0, retorno: 0, separando: 1, pronto: 2, faturado: 3, enviado: 4, cancelado: -1 };
+const STATUS_PEDIDO: Record<string, { label: string; cls: string; Icon: typeof Clock; dica: string }> = {
+  pendente:  { label: "Aguardando confirmação", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30", Icon: Clock, dica: "Confirme para o estoque separar" },
+  separando: { label: "Em separação", cls: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30", Icon: PackageCheck, dica: "O estoque está separando os lotes" },
+  pronto:    { label: "Pronto — aguardando NF", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30", Icon: CheckCircle2, dica: "O financeiro vai emitir a nota" },
+  faturado:  { label: "Faturado", cls: "bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30", Icon: FileText, dica: "Nota fiscal emitida" },
+  enviado:   { label: "Enviado", cls: "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/30", Icon: Truck, dica: "Faturado e enviado ao cliente" },
+  cancelado: { label: "Cancelado", cls: "bg-muted text-muted-foreground border-border", Icon: Ban, dica: "Pedido cancelado" },
+  retorno:   { label: "Voltou do estoque", cls: "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30", Icon: RotateCcw, dica: "O estoque devolveu — revise e reenvie" },
+};
+const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
 function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancelar, onAdicionarPeca, onDuplicar, onComentar, onReenviar, onRemoverItemComercial, onEditarPedido }: PedidoCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
-  const totalItens = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
-  const temDesconto = pedido.desconto_pct > 0;
+  const totalPecas = pedido.itens.reduce((s, i) => s + i.quantidade, 0);
+  // valor_unitario já é líquido (com o desconto de cada peça)
+  const totalItens = pedido.itens.reduce((s, i) => s + (i.valor_unitario ?? 0) * i.quantidade, 0);
+  const total = totalItens + (pedido.frete ?? 0);
+  const st = STATUS_PEDIDO[pedido.status] ?? STATUS_PEDIDO.cancelado;
+  const etapa = ORDEM_ETAPA[pedido.status] ?? 0;
+  const numero = pedido.id.slice(0, 8).toUpperCase();
+  const criado = new Date(pedido.created_at);
+  const prazoAtrasado = !!pedido.prazo_entrega && !["cancelado", "enviado", "faturado"].includes(pedido.status)
+    && new Date(`${pedido.prazo_entrega}T23:59:59`) < new Date();
 
-  const dtCriacao = new Date(pedido.created_at).toLocaleDateString("pt-BR", {
-    day: "2-digit", month: "2-digit", year: "2-digit",
-  });
-  const hrCriacao = new Date(pedido.created_at).toLocaleTimeString("pt-BR", {
-    hour: "2-digit", minute: "2-digit",
-  });
-  const prazoFmt = pedido.prazo_entrega
-    ? new Date(pedido.prazo_entrega + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })
-    : null;
-  const prazoAtrasado = pedido.prazo_entrega && !(["cancelado","enviado","faturado"] as string[]).includes(pedido.status)
-    && new Date(pedido.prazo_entrega) < new Date();
-
-  // FIX: forma_pagamento/parcelas não fazem parte do tipo PedidoCompleto
-  // (usado só na listagem) — busca sob demanda, só quando o usuário pede o PDF.
   async function handleGerarPdf() {
     if (gerandoPdf) return;
     setGerandoPdf(true);
     try {
-      const { data } = await supabase
-        .from("pedidos_comerciais")
-        .select("forma_pagamento, parcelas")
-        .eq("id", pedido.id)
-        .maybeSingle();
-      const d = data as { forma_pagamento?: string | null; parcelas?: number | null } | null;
       const cliente = clientes.find(c => c.id === pedido.cliente_id) ?? null;
       const { baixarPdfPedido } = await import("@/lib/pedidoPdf");
       await baixarPdfPedido(pedido, cliente, {
         titulo: pedido.status === "pendente" ? "Orçamento" : "Pedido",
-        formaPagamento: d?.forma_pagamento ?? null,
-        parcelas: d?.parcelas ?? null,
+        formaPagamento: pedido.forma_pagamento ?? null,
+        parcelas: pedido.parcelas ?? null,
       });
     } catch {
       toast.error("Erro ao gerar PDF.");
@@ -222,380 +232,108 @@ function PedidoCard({ pedido, isAdmin, canConfirm, clientes, onFaturar, onCancel
     }
   }
 
-  // ── Paleta de status ──────────────────────────────────────────────────────
-  const STATUS: Record<string, {
-    accent: string;        // cor da barra lateral e badge
-    badgeBg: string;       // fundo do badge
-    badgeText: string;     // texto do badge
-    badgeBorder: string;   // borda do badge
-    label: string;
-    icon: React.ReactNode;
-    statusBtnBg: string;   // fundo do botão de estado
-    statusBtnText: string;
-    statusBtnBorder: string;
-  }> = {
-    pendente:  {
-      accent: "#f59e0b",
-      badgeBg: "bg-amber-50 dark:bg-amber-950/50",
-      badgeText: "text-amber-700 dark:text-amber-300",
-      badgeBorder: "border-amber-300 dark:border-amber-700",
-      label: "Pendente",
-      icon: <Clock className="h-3 w-3" />,
-      statusBtnBg: "bg-amber-50 dark:bg-amber-950/30",
-      statusBtnText: "text-amber-700 dark:text-amber-300",
-      statusBtnBorder: "border-amber-200 dark:border-amber-800",
-    },
-    separando: {
-      accent: "#3b82f6",
-      badgeBg: "bg-blue-50 dark:bg-blue-950/50",
-      badgeText: "text-blue-700 dark:text-blue-300",
-      badgeBorder: "border-blue-300 dark:border-blue-700",
-      label: "Separando",
-      icon: <PackageCheck className="h-3 w-3" />,
-      statusBtnBg: "bg-blue-50 dark:bg-blue-950/30",
-      statusBtnText: "text-blue-700 dark:text-blue-300",
-      statusBtnBorder: "border-blue-200 dark:border-blue-800",
-    },
-    pronto: {
-      accent: "#10b981",
-      badgeBg: "bg-emerald-50 dark:bg-emerald-950/50",
-      badgeText: "text-emerald-700 dark:text-emerald-300",
-      badgeBorder: "border-emerald-300 dark:border-emerald-700",
-      label: "Pronto",
-      icon: <CheckCircle2 className="h-3 w-3" />,
-      statusBtnBg: "bg-emerald-50 dark:bg-emerald-950/30",
-      statusBtnText: "text-emerald-700 dark:text-emerald-300",
-      statusBtnBorder: "border-emerald-200 dark:border-emerald-800",
-    },
-    faturado: {
-      accent: "#7c3aed",
-      badgeBg: "bg-violet-50 dark:bg-violet-950/50",
-      badgeText: "text-violet-700 dark:text-violet-300",
-      badgeBorder: "border-violet-300 dark:border-violet-700",
-      label: "Faturado",
-      icon: <CheckCircle2 className="h-3 w-3" />,
-      statusBtnBg: "bg-violet-50 dark:bg-violet-950/30",
-      statusBtnText: "text-violet-700 dark:text-violet-300",
-      statusBtnBorder: "border-violet-200 dark:border-violet-800",
-    },
-    enviado: {
-      accent: "#14b8a6",
-      badgeBg: "bg-teal-50 dark:bg-teal-950/50",
-      badgeText: "text-teal-700 dark:text-teal-300",
-      badgeBorder: "border-teal-300 dark:border-teal-700",
-      label: "Enviado",
-      icon: <Truck className="h-3 w-3" />,
-      statusBtnBg: "bg-teal-50 dark:bg-teal-950/30",
-      statusBtnText: "text-teal-700 dark:text-teal-300",
-      statusBtnBorder: "border-teal-200 dark:border-teal-800",
-    },
-    cancelado: {
-      accent: "#94a3b8",
-      badgeBg: "bg-muted/40",
-      badgeText: "text-muted-foreground",
-      badgeBorder: "border-border",
-      label: "Cancelado",
-      icon: <Ban className="h-3 w-3" />,
-      statusBtnBg: "bg-muted/30",
-      statusBtnText: "text-muted-foreground",
-      statusBtnBorder: "border-border",
-    },
-    retorno: {
-      accent: "#f97316",
-      badgeBg: "bg-orange-50 dark:bg-orange-950/50",
-      badgeText: "text-orange-700 dark:text-orange-300",
-      badgeBorder: "border-orange-300 dark:border-orange-700",
-      label: "Retorno",
-      icon: <RotateCcw className="h-3 w-3" />,
-      statusBtnBg: "bg-orange-50 dark:bg-orange-950/30",
-      statusBtnText: "text-orange-700 dark:text-orange-300",
-      statusBtnBorder: "border-orange-200 dark:border-orange-800",
-    },
-  };
-
-  const s = STATUS[pedido.status] ?? STATUS["cancelado"];
-
   return (
-    <div
-      className="rounded-2xl bg-card overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
-      style={{
-        border: "1px solid hsl(var(--border) / 0.5)",
-        boxShadow: "0 1px 3px hsl(var(--border) / 0.2), 0 6px 16px -4px hsl(var(--border) / 0.12)",
-      }}
-    >
-      {/* Barra lateral colorida por status */}
-      <div className="flex">
-        <div className="w-1 shrink-0 rounded-l-2xl" style={{ background: s.accent }} />
-
-        <div className="flex-1 min-w-0 p-4 space-y-3">
-
-          {/* ── Linha 1: Avatar cliente + nome + badge status ── */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              {/* Avatar com inicial */}
-              <div
-                className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0 text-white text-[13px] font-black"
-                style={{ background: `linear-gradient(135deg, ${s.accent}cc, ${s.accent})` }}
-              >
-                {pedido.cliente_nome.charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-[14px] font-bold text-foreground leading-tight truncate">
-                  {pedido.cliente_nome}
-                </h3>
-                {pedido.vendedora_nome && (
-                  <p className="text-[10px] text-muted-foreground/70 leading-tight truncate">
-                    por {pedido.vendedora_nome}
-                  </p>
-                )}
-              </div>
+    <div className={cn("rounded-2xl border bg-card overflow-hidden flex flex-col", pedido.status === "retorno" && "border-orange-500/40", pedido.status === "cancelado" && "opacity-70")}>
+      <div className="p-4 space-y-3 flex-1">
+        {/* Cabeçalho */}
+        <div>
+          <h3 className="font-semibold leading-tight truncate" title={pedido.cliente_nome}>{pedido.cliente_nome}</h3>
+          <div className="flex items-end justify-between gap-3 mt-1">
+            <p className="text-xs text-muted-foreground">
+              #{numero} · {criado.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} {criado.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+              {pedido.vendedora_nome ? ` · ${pedido.vendedora_nome}` : ""}
+            </p>
+            <div className="text-right shrink-0">
+              <p className="text-lg font-bold tabular-nums leading-tight">{brl(total)}</p>
+              <p className="text-xs text-muted-foreground">{totalPecas} peça{totalPecas !== 1 ? "s" : ""}</p>
             </div>
-
-            {/* Badge status */}
-            <span className={cn(
-              "shrink-0 flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border",
-              s.badgeBg, s.badgeText, s.badgeBorder
-            )}>
-              {s.icon}
-              {s.label}
-            </span>
           </div>
+        </div>
 
-          <DevolucaoBadgePedido pedidoId={pedido.id} vendedoraId={pedido.vendedora_id} isAdmin={isAdmin} />
-
-          {/* ── Linha 2: Métricas (peças + desconto + data) ── */}
-          <div className="flex items-center gap-2">
-            {/* Qtd de peças */}
-            <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2 bg-muted/25 border border-border/50">
-              <ShoppingBag className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-muted-foreground leading-none mb-0.5">
-                  {pedido.itens.length} tipo{pedido.itens.length !== 1 ? "s" : ""}
-                </p>
-                <p className="text-[16px] font-black text-foreground leading-none tabular-nums">
-                  {totalItens}
-                  <span className="text-[10px] font-semibold text-muted-foreground ml-1">un.</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Desconto — destaque se tiver */}
-            {temDesconto ? (
-              <div className="flex flex-col items-center justify-center rounded-xl px-3 py-2 border min-w-[54px]"
-                style={{
-                  background: "linear-gradient(135deg, #d1fae5, #a7f3d0)",
-                  borderColor: "#6ee7b7",
-                }}>
-                <span className="text-[17px] font-black text-emerald-800 leading-none tabular-nums">
-                  {pedido.desconto_pct}%
-                </span>
-                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest leading-none mt-0.5">
-                  desc.
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center rounded-xl px-3 py-2 bg-muted/20 border border-border/40 min-w-[54px]">
-                <span className="text-[10px] font-medium text-muted-foreground/50">Sem desc.</span>
-              </div>
-            )}
-            {/* Frete */}
-            {(pedido.frete ?? 0) > 0 && (
-              <div className="flex flex-col items-center justify-center rounded-xl px-2 py-2 border border-violet-500/25 min-w-[50px]"
-                style={{ background: "linear-gradient(135deg,#ede9fe,#ddd6fe)", borderColor: "#c4b5fd" }}>
-                <Truck className="h-3 w-3 text-violet-600 mb-0.5" />
-                <span className="text-[10px] font-bold text-violet-700 leading-none">
-                  R$ {(pedido.frete).toFixed(0)}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* ── Linha 3: Data/hora ── */}
-          <div className="flex items-center gap-1.5">
-            <Clock className="h-2.5 w-2.5 text-muted-foreground/50 shrink-0" />
-            <span className="text-[10px] text-muted-foreground/60">
-              {dtCriacao} às {hrCriacao}
-            </span>
-            {prazoFmt && (
-              <span className={cn(
-                "text-[10px] font-semibold px-1.5 py-0.5 rounded-md border",
-                prazoAtrasado
-                  ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
-                  : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
-              )}>
-                prazo: {prazoFmt}
-              </span>
-            )}
-          </div>
-
-          {/* ── Itens expandidos ── */}
-          {expanded && (
-            <div className="space-y-1.5 pt-1 border-t border-border/40">
-              {pedido.itens.map((it, idx) => (
-                <div key={it.id}
-                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-muted/20 border border-border/40 group"
-                >
-                  <div
-                    className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-black text-white"
-                    style={{ background: s.accent + "cc" }}
-                  >
-                    {idx + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-semibold text-foreground truncate leading-tight">
-                      {it.device_model}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {displayLote(it.lote) && (
-                        <span className="text-[10px] font-mono text-muted-foreground/60 bg-muted/40 rounded px-1">
-                          {displayLote(it.lote)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right flex items-center gap-2">
-                    <div>
-                      <span className="text-[13px] font-black tabular-nums" style={{ color: s.accent }}>
-                        {it.quantidade}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground ml-0.5">un.</span>
-                    </div>
-                    {pedido.status === "pendente" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (pedido.itens.length <= 1) { toast.error("O pedido precisa ter ao menos 1 peça."); return; }
-                          onRemoverItemComercial(pedido, it);
-                        }}
-                        className="h-6 w-6 flex items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/25 text-destructive/60 hover:text-destructive transition-colors shrink-0"
-                        title="Remover peça"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
+        {/* Situação + progresso */}
+        <div className="space-y-2">
+          <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium", st.cls)} title={st.dica}>
+            <st.Icon className="h-3.5 w-3.5" />{st.label}
+          </span>
+          {pedido.status !== "cancelado" && (
+            <div className="flex items-center gap-1" aria-label={`Etapa: ${st.label}`}>
+              {ETAPAS.map((e, i) => (
+                <div key={e.id} className="flex-1 space-y-1">
+                  <div className={cn("h-1.5 rounded-full", i <= etapa ? (pedido.status === "retorno" ? "bg-orange-500" : "bg-primary") : "bg-muted")} />
+                  <p className={cn("text-[10px] text-center", i === etapa ? "font-semibold text-foreground" : "text-muted-foreground")}>{e.label}</p>
                 </div>
               ))}
-              {pedido.observacoes && (
-                <div className="flex items-start gap-2 px-2 pt-1 pb-0.5">
-                  <FileText className="h-3 w-3 mt-0.5 text-muted-foreground/50 shrink-0" />
-                  <span className="text-[11px] text-muted-foreground/80 italic leading-relaxed">
-                    {pedido.observacoes}
-                  </span>
+            </div>
+          )}
+        </div>
+
+        <DevolucaoBadgePedido pedidoId={pedido.id} vendedoraId={pedido.vendedora_id} isAdmin={isAdmin} />
+
+        {/* Informações rápidas */}
+        <div className="flex flex-wrap gap-1.5 text-xs">
+          {pedido.nota_fiscal && <span className="rounded-full bg-violet-500/10 text-violet-700 dark:text-violet-400 px-2 py-0.5 font-medium">NF {pedido.nota_fiscal}</span>}
+          {pedido.forma_pagamento && <span className="rounded-full bg-muted px-2 py-0.5">{FORMA_PGTO[pedido.forma_pagamento] ?? pedido.forma_pagamento}{(pedido.parcelas ?? 1) > 1 ? ` ${pedido.parcelas}x` : ""}</span>}
+          {pedido.desconto_pct > 0 && <span className="rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-2 py-0.5">desconto {String(pedido.desconto_pct).replace(".", ",")}%</span>}
+          {(pedido.frete ?? 0) > 0 && <span className="rounded-full bg-muted px-2 py-0.5">frete {brl(pedido.frete)}</span>}
+          {(pedido.credito_aplicado ?? 0) > 0 && <span className="rounded-full bg-sky-500/10 text-sky-700 dark:text-sky-400 px-2 py-0.5" title="Crédito do cliente abatido — valor a cobrar já descontado">crédito −{brl(pedido.credito_aplicado ?? 0)}</span>}
+          {pedido.prazo_entrega && <span className={cn("rounded-full px-2 py-0.5", prazoAtrasado ? "bg-red-500/10 text-red-700 dark:text-red-400 font-medium" : "bg-muted")}>
+            entrega {new Date(`${pedido.prazo_entrega}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}{prazoAtrasado ? " · atrasado" : ""}</span>}
+          {pedido.rastreio_envio && <span className="rounded-full bg-teal-500/10 text-teal-700 dark:text-teal-400 px-2 py-0.5">rastreio {pedido.rastreio_envio}</span>}
+        </div>
+
+        {/* Itens */}
+        <button type="button" onClick={() => setExpanded(v => !v)} className="w-full flex items-center justify-between text-sm font-medium text-muted-foreground hover:text-foreground">
+          <span>{pedido.itens.length} {pedido.itens.length !== 1 ? "itens" : "item"} no pedido</span>
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {expanded && (
+          <ul className="rounded-xl border divide-y text-sm">
+            {pedido.itens.map(it => (
+              <li key={it.id} className="px-3 py-2 flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium truncate">{it.device_model}</p>
+                  <p className="text-xs text-muted-foreground">{it.quantidade} × {brl(it.valor_unitario ?? 0)}{displayLote(it.lote) ? ` · lote ${displayLote(it.lote)}` : ""}</p>
                 </div>
-              )}
-            </div>
-          )}
+                <p className="tabular-nums font-medium">{brl((it.valor_unitario ?? 0) * it.quantidade)}</p>
+                {pedido.status === "pendente" && pedido.itens.length > 1 && (
+                  <button type="button" onClick={() => onRemoverItemComercial(pedido, it)} className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive" title="Remover peça" aria-label="Remover peça"><X className="h-3.5 w-3.5" /></button>
+                )}
+              </li>
+            ))}
+            {pedido.observacoes && <li className="px-3 py-2 text-xs text-muted-foreground italic">{pedido.observacoes}</li>}
+          </ul>
+        )}
+      </div>
 
-          {/* ── Botão expandir ── */}
-          <button
-            type="button"
-            onClick={() => setExpanded(v => !v)}
-            className="w-full flex items-center justify-center gap-1.5 h-7 rounded-xl text-[11px] font-semibold text-muted-foreground hover:bg-muted/40 transition-colors border border-border/40"
-          >
-            {expanded
-              ? <><ChevronUp className="h-3 w-3" />Ocultar peças</>
-              : <><ChevronDown className="h-3 w-3" />Ver {pedido.itens.length} peça{pedido.itens.length !== 1 ? "s" : ""}</>}
-          </button>
-
-          {/* ── Ações rápidas: comentar, gerar PDF e duplicar ── */}
+      {/* Ações */}
+      <div className="border-t bg-muted/20 p-3 space-y-2">
+        {pedido.status === "pendente" && (isAdmin || canConfirm) && (
           <div className="flex gap-2">
-            {pedido.status === "pendente" && (
-              <button type="button" onClick={() => onComentar(pedido)}
-                className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors">
-                <MessageSquare className="h-3 w-3" /> Comentários
-              </button>
-            )}
-            <button type="button" onClick={handleGerarPdf} disabled={gerandoPdf}
-              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors disabled:opacity-50">
-              {gerandoPdf ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileDown className="h-3 w-3" />}
-              {pedido.status === "pendente" ? "Orçamento" : "PDF"}
-            </button>
-            <button type="button" onClick={() => onDuplicar(pedido)}
-              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-medium text-muted-foreground hover:bg-muted/40 border border-border/40 transition-colors">
-              <Copy className="h-3 w-3" /> Duplicar
-            </button>
+            <Button className="flex-1 h-10 gap-1.5" onClick={() => onFaturar(pedido)}><CheckCircle2 className="h-4 w-4" />Confirmar pedido</Button>
+            <Button variant="outline" className="h-10 gap-1.5" onClick={() => onAdicionarPeca(pedido)}><Plus className="h-4 w-4" />Peça</Button>
+            <Button variant="outline" size="icon" className="h-10 w-10 text-muted-foreground hover:text-destructive" onClick={() => onCancelar(pedido)} title="Cancelar pedido" aria-label="Cancelar pedido"><Ban className="h-4 w-4" /></Button>
           </div>
-
-          {/* ── Botão adicionar peça (só pendente) ── */}
-          {pedido.status === "pendente" && (
-            <button
-              type="button"
-              onClick={() => onAdicionarPeca(pedido)}
-              className="w-full flex items-center justify-center gap-1.5 h-8 rounded-xl text-[11px] font-semibold transition-colors"
-              style={{
-                background: "#ede9fe",
-                color: "#6d28d9",
-                border: "1px solid #c4b5fd",
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" /> Adicionar peça
-            </button>
-          )}
-
-          {/* ── Ações Admin (confirmar / cancelar) ── */}
-          {pedido.status === "pendente" && (isAdmin || canConfirm) && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => onFaturar(pedido)}
-                className="flex-1 h-9 rounded-xl text-white text-[12px] font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95"
-                style={{
-                  background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
-                  boxShadow: "0 2px 8px rgba(124,58,237,0.35)",
-                }}
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar Pedido
-              </button>
-              <button
-                type="button"
-                onClick={() => onCancelar(pedido)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-500 transition-colors border border-border"
-                title="Cancelar pedido"
-              >
-                <Ban className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* ── Indicadores de estado (sem ação) ── */}
-          {(["separando","pronto","faturado","enviado","cancelado","retorno"] as const).includes(
-            pedido.status as "separando"|"pronto"|"faturado"|"enviado"|"cancelado"|"retorno"
-          ) && (
-            <div className={cn(
-              "flex items-center justify-center gap-1.5 h-9 rounded-xl text-[11px] font-bold border",
-              s.statusBtnBg, s.statusBtnText, s.statusBtnBorder
-            )}>
-              {pedido.status === "separando" && <><PackageCheck className="h-3.5 w-3.5" />Estoque sendo separado...</>}
-              {pedido.status === "pronto"    && <><CheckCircle2 className="h-3.5 w-3.5" />Pronto — aguardando NF</>}
-              {pedido.status === "faturado"  && <><CheckCircle2 className="h-3.5 w-3.5" />Nota fiscal emitida</>}
-              {pedido.status === "enviado"   && <><Truck className="h-3.5 w-3.5" />Enviado ao cliente! 🎉</>}
-              {pedido.status === "cancelado" && <><Ban className="h-3.5 w-3.5" />Pedido cancelado</>}
-              {pedido.status === "retorno"   && <><RotateCcw className="h-3.5 w-3.5" />Retornado pelo estoque — revise</>}
-            </div>
-          )}
-
-          {/* Editar pedido em retorno */}
-          {pedido.status === "retorno" && (
-            <button
-              type="button"
-              onClick={() => onEditarPedido(pedido)}
-              className="w-full flex items-center justify-center gap-1.5 h-9 rounded-xl text-[12px] font-semibold transition-colors border border-orange-500/40 text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
-            >
-              <Pencil className="h-3.5 w-3.5 shrink-0" /> Editar Pedido
-            </button>
-          )}
-
-          {/* Botão reenviar pedido retornado */}
-          {pedido.status === "retorno" && (
+        )}
+        {pedido.status === "retorno" && (
+          <div className="space-y-2">
+            <Button variant="outline" className="w-full h-10 gap-1.5 border-orange-500/40 text-orange-700 dark:text-orange-400" onClick={() => onEditarPedido(pedido)}><Pencil className="h-4 w-4" />Editar pedido</Button>
             <ReenviarPedidoRetornadoBtn pedidoId={pedido.id} onComentar={() => onComentar(pedido)} onReenviar={() => onReenviar(pedido)} />
+          </div>
+        )}
+        <div className="grid grid-flow-col auto-cols-fr gap-1">
+          <Button variant="ghost" size="sm" className="h-9 gap-1 px-2" onClick={handleGerarPdf} disabled={gerandoPdf}>
+            {gerandoPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}{pedido.status === "pendente" ? "Orçamento" : "PDF"}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-9 gap-1 px-2" onClick={() => onDuplicar(pedido)}><Copy className="h-4 w-4" />Repetir</Button>
+          {(pedido.status === "pendente" || pedido.status === "retorno") && (
+            <Button variant="ghost" size="sm" className="h-9 gap-1 px-2" onClick={() => onComentar(pedido)}><MessageSquare className="h-4 w-4" />Recados</Button>
           )}
-
         </div>
       </div>
     </div>
   );
 }
+const FORMA_PGTO: Record<string, string> = { pix: "PIX", boleto: "Boleto", dinheiro: "Dinheiro", cartao_credito: "Cartão crédito", cartao_debito: "Cartão débito" };
 
 // ─── Card de Cliente ──────────────────────────────────────────────────────────
 
@@ -982,11 +720,12 @@ function DashboardComercial({ pedidos, loading, currentUserName, isAdmin }: Dash
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function Comercial() {
-  const navigate = useNavigate();
-  const { signOut, isAdmin, role, user } = useAuth();
+  const { isAdmin, role, user } = useAuth();
 
   const isVendedora = role === "comercial";
-  const canAccess = isAdmin || isVendedora;
+  const canAccess = temPapel(role, "comercial");
+  // Gerente enxerga todos os pedidos/vendedoras como o admin (sem as ações de admin).
+  const verTudo = isAdmin || role === "gerente";
 
   // Nome da usuária logada
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
@@ -1003,17 +742,17 @@ export default function Comercial() {
   type SubTab = "dashboard" | "pedidos" | "clientes" | "historico" | "precos";
   const [subTab, setSubTab] = useState<SubTab>("pedidos");
   const [historicoOpen, setHistoricoOpen] = useState(false);
+  const [duplicadosOpen, setDuplicadosOpen] = useState(false);
 
   // Peças da expedição (para criar pedidos)
-  const { items: allItems, loading: loadingStock, refetch: refetchStock } = useStock("");
+  const { items: allItems, refetch: refetchStock } = useStock("");
   const expedicaoItems = allItems.filter(i => i.fase === "expedicao");
-  // allStockItems: todas as peças com estoque disponível (qualquer fase) para busca no modal
-  const allStockItems = allItems.filter(i => i.quantity_available > 0);
 
   // Pedidos
   const [pedidos, setPedidos] = useState<PedidoCompleto[]>([]);
   const [loadingPedidos, setLoadingPedidos] = useState(true);
-  const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "pronto" | "enviado" | "retorno" | "cancelado">("todos");
+  const [filtroStatus, setFiltroStatus] = useState<"todos" | "pendente" | "separando" | "pronto" | "enviado" | "retorno" | "cancelado">("todos");
+  const [buscaPedido, setBuscaPedido] = useState("");
   const [novoPedidoOpen, setNovoPedidoOpen] = useState(false);
   const [faturarPedido, setFaturarPedido] = useState<PedidoCompleto | null>(null);
   const [cancelarPedido, setCancelarPedido] = useState<PedidoCompleto | null>(null);
@@ -1094,7 +833,7 @@ export default function Comercial() {
 
       setPedidos(pedidosData.map((p: Record<string, unknown>) => {
         const c = p.clientes as Record<string, unknown> | null;
-        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, vendedora_id: (p.vendedora_id as string | null) ?? null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, frete: (p.frete as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, itens: itensPorPedido.get(p.id as string) ?? [] };
+        return { id: p.id as string, cliente_id: p.cliente_id as string, cliente_nome: c?.nome as string ?? "—", vendedora_nome: p.vendedora_nome as string | null, vendedora_id: (p.vendedora_id as string | null) ?? null, status: p.status as PedidoCompleto["status"], observacoes: p.observacoes as string | null, desconto_pct: (p.desconto_pct as number) ?? 0, frete: (p.frete as number) ?? 0, prazo_entrega: (p.prazo_entrega as string | null) ?? null, created_at: p.created_at as string, faturado_em: p.faturado_em as string | null, nota_fiscal: (p.nota_fiscal as string | null) ?? null, forma_pagamento: (p.forma_pagamento as string | null) ?? null, parcelas: (p.parcelas as number | null) ?? null, rastreio_envio: (p.rastreio_envio as string | null) ?? null, credito_aplicado: Number(p.credito_aplicado ?? 0), itens: itensPorPedido.get(p.id as string) ?? [] };
       }));
     } catch (_e) {
       toast.error("Erro ao carregar pedidos.", {
@@ -1144,8 +883,9 @@ export default function Comercial() {
     setCancelando(true);
     try {
       // Use atomic RPC — cancels pedido + releases all reservations in one transaction
-      const { error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
-      if (error) { toast.error("Erro ao cancelar."); return; }
+      const { data, error } = await supabase.rpc("cancel_pedido", { p_pedido_id: cancelarPedido.id });
+      const res = data as { ok?: boolean; error?: string } | null;
+      if (error || res?.ok === false) { toast.error(res?.error ?? "Erro ao cancelar."); return; }
       await logAudit(user?.id, currentUserName, "cancel_pedido", "pedido_comercial", cancelarPedido.id, { cliente: cancelarPedido.cliente_nome });
       toast.success("Pedido cancelado.");
       setCancelarPedido(null);
@@ -1194,16 +934,15 @@ export default function Comercial() {
   }
 
   const pedidosFiltrados = useMemo(() => pedidos.filter(p => {
-    if (filtroStatus !== "todos" && p.status !== filtroStatus) return false;
+    if (filtroStatus === "enviado" ? !["faturado", "enviado"].includes(p.status) : filtroStatus !== "todos" && p.status !== filtroStatus) return false;
+    const q = buscaPedido.trim().toLowerCase();
+    if (q && !`${p.cliente_nome} ${p.id.slice(0, 8)} ${p.nota_fiscal ?? ""} ${p.vendedora_nome ?? ""}`.toLowerCase().includes(q)) return false;
     if (filtroDataInicio && p.created_at < filtroDataInicio) return false;
     if (filtroDataFim && p.created_at > filtroDataFim + "T23:59:59") return false;
     return true;
-  }), [pedidos, filtroStatus, filtroDataInicio, filtroDataFim]);
+  }), [pedidos, filtroStatus, filtroDataInicio, filtroDataFim, buscaPedido]);
   const pedidosPendentes  = useMemo(() => pedidos.filter(p => p.status === "pendente").length, [pedidos]);
-  const pedidosAtrasados  = useMemo(() => pedidos.filter(p =>
-    p.prazo_entrega && !["cancelado","enviado","faturado"].includes(p.status) &&
-    new Date(p.prazo_entrega) < new Date()
-  ).length, [pedidos]);
+  const qtdDuplicados = useMemo(() => agruparDuplicados(clientes).reduce((n, g) => n + g.length - 1, 0), [clientes]);
   const clientesFiltrados = useMemo(() => clientes.filter(c =>
     c.nome.toLowerCase().includes(clienteSearchFilter.toLowerCase()) ||
     (c.documento ?? "").includes(clienteSearchFilter) ||
@@ -1321,7 +1060,7 @@ export default function Comercial() {
                 pedidos={pedidos}
                 loading={loadingPedidos}
                 currentUserName={currentUserName}
-                isAdmin={isAdmin}
+                isAdmin={verTudo}
               />
             )}
 
@@ -1329,32 +1068,45 @@ export default function Comercial() {
             {subTab === "pedidos" && (
               <div className="space-y-3">
                 <div className="flex flex-col gap-2">
-                  {/* Linha 1: filtros de status */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {(["todos","pendente","pronto","enviado","retorno","cancelado"] as const).map(s => (
-                      <button key={s} type="button" onClick={() => setFiltroStatus(s)}
-                        className={cn("h-7 px-3 rounded-full text-[11px] font-semibold border transition-colors",
-                          filtroStatus === s ? "bg-violet-600 text-white border-violet-600" : "bg-background text-muted-foreground border-border/50 hover:border-violet-400")}>
-                        {s === "todos" ? "Todos" : s.charAt(0).toUpperCase() + s.slice(1)}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 min-w-[12rem]">
+                      <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input value={buscaPedido} onChange={e => setBuscaPedido(e.target.value)} placeholder="Cliente, nº do pedido, NF ou vendedora..."
+                        className="w-full h-11 pl-9 pr-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                    </div>
+                    <Button className="h-11 gap-1.5" onClick={() => { setPedidoComCliente(null); setNovoPedidoOpen(true); }}>
+                      <Plus className="h-4 w-4" /> Novo pedido
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+                    {([
+                      ["todos", "Todos", pedidos.length],
+                      ["pendente", "Aguardando", pedidos.filter(p => p.status === "pendente").length],
+                      ["separando", "Em separação", pedidos.filter(p => p.status === "separando").length],
+                      ["pronto", "Prontos", pedidos.filter(p => p.status === "pronto").length],
+                      ["enviado", "Faturados", pedidos.filter(p => p.status === "faturado" || p.status === "enviado").length],
+                      ["retorno", "Voltaram", pedidos.filter(p => p.status === "retorno").length],
+                      ["cancelado", "Cancelados", pedidos.filter(p => p.status === "cancelado").length],
+                    ] as const).map(([id, label, n]) => (
+                      <button key={id} type="button" onClick={() => setFiltroStatus(id)}
+                        className={cn("h-9 px-3 rounded-full text-sm font-medium border whitespace-nowrap flex items-center gap-1.5",
+                          filtroStatus === id ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:border-primary/40",
+                          id === "retorno" && n > 0 && filtroStatus !== id && "border-orange-500/50 text-orange-700 dark:text-orange-400")}>
+                        {label}<span className={cn("text-xs tabular-nums", filtroStatus === id ? "opacity-90" : "opacity-70")}>{n}</span>
                       </button>
                     ))}
                   </div>
-                  {/* Linha 2: filtros de data + botão novo pedido */}
-                  <div className="flex items-center gap-1.5">
-                    <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}
-                      className="h-7 flex-1 min-w-0 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
-                    <span className="text-[10px] text-muted-foreground shrink-0">até</span>
-                    <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}
-                      className="h-7 flex-1 min-w-0 rounded-lg border border-border/50 bg-background text-[11px] px-2 focus:outline-none focus:ring-1 focus:ring-violet-500/40" />
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <span className="text-muted-foreground shrink-0">Período</span>
+                    <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)} aria-label="De"
+                      className="h-9 min-w-0 rounded-lg border border-input bg-background px-2 text-sm" />
+                    <span className="text-muted-foreground shrink-0">até</span>
+                    <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)} aria-label="Até"
+                      className="h-9 min-w-0 rounded-lg border border-input bg-background px-2 text-sm" />
                     {(filtroDataInicio || filtroDataFim) && (
-                      <button type="button" onClick={() => { setFiltroDataInicio(""); setFiltroDataFim(""); }}
-                        className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg hover:bg-muted/50 text-muted-foreground">
-                        <X className="h-3 w-3" />
-                      </button>
+                      <button type="button" onClick={() => { setFiltroDataInicio(""); setFiltroDataFim(""); }} aria-label="Limpar período"
+                        className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground"><X className="h-4 w-4" /></button>
                     )}
-                    <Button size="sm" className="h-7 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0 ml-auto" onClick={() => { setPedidoComCliente(null); setNovoPedidoOpen(true); }}>
-                      <Plus className="h-3.5 w-3.5" /> Novo
-                    </Button>
                   </div>
                 </div>
 
@@ -1369,9 +1121,9 @@ export default function Comercial() {
                     </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                     {pedidosFiltrados.map(p => (
-                      <PedidoCard key={p.id} pedido={p} isAdmin={isAdmin} canConfirm={isAdmin || isVendedora} clientes={clientes} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)}
+                      <PedidoCard key={p.id} pedido={p} isAdmin={verTudo} canConfirm={verTudo || isVendedora} clientes={clientes} onFaturar={setFaturarPedido} onCancelar={setCancelarPedido} onAdicionarPeca={setAdicionarPecaPedido} onDuplicar={handleDuplicar} onComentar={p => setComentarioPedidoId(p.id)}
                         onReenviar={p => setPedidos(prev => prev.map(x => x.id === p.id ? { ...x, status: "pendente" as const } : x))}
                         onRemoverItemComercial={(pedido, item) => setRemoverItemPendente({ pedido, item })}
                         onEditarPedido={p => setEditarPedidoRetorno(p)} />
@@ -1405,6 +1157,11 @@ export default function Comercial() {
                       </button>
                     )}
                   </div>
+                  {verTudo && qtdDuplicados > 0 && (
+                    <Button size="sm" variant="outline" className="h-9 gap-1.5 text-xs rounded-lg shrink-0 border-amber-500/40 text-amber-700 dark:text-amber-400" onClick={() => setDuplicadosOpen(true)} title="Cadastros com o mesmo CPF/CNPJ ou nome">
+                      <Users className="h-3.5 w-3.5" /> {qtdDuplicados} repetido{qtdDuplicados > 1 ? "s" : ""}
+                    </Button>
+                  )}
                   <Button size="sm" className="h-9 gap-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-500 shrink-0" onClick={() => { setEditCliente(null); setClienteModal(true); }}>
                     <UserPlus className="h-3.5 w-3.5" /> Novo
                   </Button>
@@ -1442,7 +1199,7 @@ export default function Comercial() {
 
             {/* ── Aba Tabela de Preços ── */}
             {subTab === "precos" && (
-              <TabelaPrecos modoTeste={false} canEdit={false} />
+              <TabelaPrecos modo="comercial" />
             )}
           </>
         )}
@@ -1560,7 +1317,8 @@ export default function Comercial() {
 
       {/* Histórico Geral */}
       <Suspense fallback={null}>
-        <HistoricoGeralModal open={historicoOpen} onClose={() => setHistoricoOpen(false)} isAdmin={isAdmin} />
+        <DuplicadosClientesDialog open={duplicadosOpen} onClose={() => setDuplicadosOpen(false)} clientes={clientes} onMesclado={() => { loadClientes(); loadPedidos(); }} />
+        <HistoricoGeralModal open={historicoOpen} onClose={() => setHistoricoOpen(false)} isAdmin={verTudo} />
       </Suspense>
       <Suspense fallback={null}>
         <HistoricoClienteModal

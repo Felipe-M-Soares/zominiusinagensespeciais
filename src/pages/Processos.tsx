@@ -13,9 +13,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { PageNav, type PageNavTab } from "@/components/PageNav";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { FornecedoresPanel } from "@/components/compras/FornecedoresPanel";
 import { PedidosCompraPanel } from "@/components/compras/PedidosCompraPanel";
+import { ImportarProgramasDialog } from "@/components/processos/ImportarProgramasDialog";
 import {
   AlertTriangle,
   Bell,
@@ -99,7 +99,6 @@ const tabItems: PageNavTab<Tab>[] = [
 
 export default function Processos() {
   const [tab, setTab] = useState<Tab>("ferramentas");
-  const isMobile = useIsMobile();
 
   const [ferramentas, setFerramentas] = useState<Ferramenta[]>([]);
   const [loadingFerramentas, setLoadingFerramentas] = useState(true);
@@ -429,6 +428,7 @@ function CodigosPanel() {
   const novo = useCallback((): Programa => ({ id: "novo", nome: "Novo programa", maquina_codigo: null, linguagem: "G-Code", conteudo: "(INICIO)\nG21 G90\nM30\n(FIM)", updated_at: new Date().toISOString() }), []);
   const [draft, setDraft] = useState<Programa>(novo());
   const { maquinas } = useDropdownOptions();
+  const [importarAberto, setImportarAberto] = useState(false);
 
   const fetchProgramas = useCallback(async () => {
     setLoading(true);
@@ -441,8 +441,11 @@ function CodigosPanel() {
         const next = list.find((p) => p.id === selectedId);
         if (next) setDraft(next);
       }
+      setLoading(false);
+      return list;
     }
     setLoading(false);
+    return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -499,7 +502,15 @@ function CodigosPanel() {
     toast.success("Código copiado.");
   };
 
+  const aposImportar = async (ultimoId: string | null) => {
+    const list = await fetchProgramas();
+    const alvo = ultimoId && list?.find((p) => p.id === ultimoId);
+    if (alvo) { setSelectedId(alvo.id); setDraft(alvo); }
+  };
+
   return <div className="grid gap-3 sm:gap-4 lg:grid-cols-[320px_1fr]">
+    <ImportarProgramasDialog open={importarAberto} onOpenChange={setImportarAberto} maquinas={maquinas}
+      existentes={programas} userId={user?.id ?? null} onImportado={aposImportar} />
     <Card className="shadow-sm border-border/70 bg-card overflow-hidden">
       <CardHeader className="border-b border-border/40 bg-muted/20">
         <div className="flex items-center justify-between gap-2">
@@ -508,7 +519,10 @@ function CodigosPanel() {
         </div>
       </CardHeader>
       <CardContent className="p-3 sm:p-4 space-y-3">
-        <Button className="w-full h-10" onClick={criarNovo}><Plus className="h-4 w-4 mr-2" />Novo código</Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button className="h-10" onClick={criarNovo}><Plus className="h-4 w-4 mr-2" />Novo código</Button>
+          <Button variant="outline" className="h-10" onClick={() => setImportarAberto(true)}><Upload className="h-4 w-4 mr-2" />Importar</Button>
+        </div>
         {loading && !programas.length ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground text-sm gap-2"><RefreshCw className="h-4 w-4 animate-spin" />Carregando...</div>
         ) : (
@@ -528,7 +542,7 @@ function CodigosPanel() {
             ))}
           </div>
         )}
-        {!loading && !programas.length && <Empty text="Nenhum programa salvo." />}
+        {!loading && !programas.length && <Empty text="Nenhum programa salvo. Use “Importar” para trazer os arquivos do SolidCAM." />}
       </CardContent>
     </Card>
 

@@ -17,6 +17,7 @@ import {
 import { Activity, TrendingUp, AlertTriangle, Clock, Zap, Award, RefreshCw, Target, BarChart2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { untypedRpc } from "@/lib/untypedRpc";
 import { META_SEMESTRE_CODIGO, periodoSemestre } from "@/components/producao/MetasPanel";
 
 // Anos do filtro: de 2024 até o ano seguinte ao atual (antes era fixo até 2027).
@@ -99,10 +100,10 @@ export function DashboardPanel() {
     const sem: 1|2 = mes <= 6 ? 1 : 2;
     const per = periodoSemestre(sem, ano);
     const [{ data: res, error }, { data: meta }, { data: oeeSem }] = await Promise.all([
-      (supabase.rpc as any)("resumo_mensal_producao", { p_mes: mes, p_ano: ano }),
+      untypedRpc("resumo_mensal_producao", { p_mes: mes, p_ano: ano }),
       supabase.from("metas_producao").select("meta_oee_pct")
         .eq("ano", ano).eq("mes", sem === 1 ? 1 : 7).eq("maquina_codigo", META_SEMESTRE_CODIGO).maybeSingle(),
-      (supabase.rpc as any)("calcular_oee", { p_data_ini: per.ini, p_data_fim: per.fim, p_maquina: null }),
+      untypedRpc("calcular_oee", { p_data_ini: per.ini, p_data_fim: per.fim, p_maquina: null }),
     ]);
     // Só aceita a resposta se vier no formato esperado (evita tela de erro
     // "toLocaleString of undefined" se a RPC mudar/retornar vazio).

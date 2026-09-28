@@ -12,6 +12,7 @@
  *    o indicador "cumprimento do prazo";
  *  • aviso de conflito quando duas ordens ocupam a mesma máquina no mesmo horário.
  */
+import { temPapel } from "@/types/roles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, RefreshCw, CalendarClock, Play, CheckCircle2, Pencil, Trash2, AlertTriangle,
@@ -24,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { PecaCombobox, type PecaOption } from "@/components/producao/PecaCombobox";
+import { PecaCombobox, carregarPecasProducao, type PecaOption } from "@/components/producao/PecaCombobox";
 
 type OPStatus = "planejada" | "em_producao" | "concluida" | "cancelada";
 type Prioridade = "baixa" | "normal" | "alta" | "urgente";
@@ -199,7 +200,7 @@ function OrdemDialog({ open, ordem, onClose, onSaved, maquinas, pecas, ritmos, o
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Peça</label>
-            <PecaCombobox pecas={pecas} value={peca} onChange={setPeca} placeholder="Buscar peça pelo código ou nome..." />
+            <PecaCombobox pecas={pecas} value={peca} onChange={setPeca} placeholder="Buscar peça por nome, código ou referência..." />
           </div>
 
           <div className="space-y-1.5">
@@ -301,7 +302,7 @@ function OrdemDialog({ open, ordem, onClose, onSaved, maquinas, pecas, ritmos, o
 
 export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
   const { role } = useAuth();
-  const podeEditar = isAdmin || role === "producao";
+  const podeEditar = temPapel(role, "producao");
   const [ordens, setOrdens] = useState<Ordem[]>([]);
   const [progresso, setProgresso] = useState<Map<string, number>>(new Map());
   const [maquinas, setMaquinas] = useState<Maquina[]>([]);
@@ -327,14 +328,14 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
         .order("inicio_previsto", { ascending: true }),
       supabase.from("ordens_planejamento_progresso").select("id,quantidade_produzida"),
       supabase.from("maquinas_producao").select("codigo,nome").order("codigo"),
-      supabase.from("produtos_producao").select("codigo,descricao,pecas_por_hora").eq("ativo", true).order("codigo"),
+      carregarPecasProducao(),
       supabase.from("tempo_peca_padrao").select("produto,maquina,pecas_hora,amostras"),
     ]);
     if (ordRes.error) toast.error("Não foi possível carregar o planejamento.");
     setOrdens((ordRes.data ?? []) as Ordem[]);
     setProgresso(new Map((progRes.data ?? []).map(p => [p.id as string, Number(p.quantidade_produzida) || 0])));
     setMaquinas((maqRes.data ?? []) as Maquina[]);
-    setPecas((prodRes.data ?? []).map(p => ({ codigo: p.codigo, descricao: p.descricao, pecas_por_hora: p.pecas_por_hora ?? 0, origem: "producao" as const })));
+    setPecas(prodRes);
     const r = new Map<string, { ph: number; amostras: number }>();
     for (const t of tempoRes.data ?? []) if (t.pecas_hora && t.pecas_hora > 0) r.set(`${t.produto}|${t.maquina}`, { ph: Number(t.pecas_hora), amostras: t.amostras });
     setRitmos(r);

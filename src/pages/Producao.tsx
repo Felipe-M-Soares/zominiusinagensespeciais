@@ -19,6 +19,7 @@
  *    dimensionais que não cabe no apontamento resumido de Controle).
  */
 
+import { temPapel } from "@/types/roles";
 import { useState, lazy, Suspense } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
@@ -94,13 +95,13 @@ export default function Producao() {
   const { isOnline, pendingCount, syncing, syncQueue } = useOfflineSync();
   const isMobile = useIsMobile();
   const isAdmin = role === "admin";
-  const canWriteCadastros = role === "admin" || role === "producao";
+  const canWriteCadastros = temPapel(role, "producao");
   const [view, setView] = useState<ProdView>("diario");
   const [importOpen, setImportOpen] = useState(false);
 
   // Mesmo padrão de filtro por role que já existia, agora também libera
   // "Cadastros" para quem tem role producao (o banco já permite via RLS).
-  const visibleModules = MODULES.filter(m => !m.restrictedTo || m.restrictedTo.includes(role as "admin" | "producao"));
+  const visibleModules = MODULES.filter(m => !m.restrictedTo || temPapel(role, ...m.restrictedTo));
   const PAGE_NAV_TABS: PageNavTab<ProdView>[] = visibleModules.map(m => ({
     id: m.id, label: m.label, Icon: m.Icon,
     activeColor: m.activeColor, activeBg: m.activeBg, activeBorder: m.activeBorder,

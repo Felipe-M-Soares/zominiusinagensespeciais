@@ -28,3 +28,17 @@ describe("APP_ROLES", () => {
     expect(ROLE_LABELS.processos).toBe("Processos");
   });
 });
+
+describe("perfil gerente", () => {
+  it("acessa todos os módulos menos Admin", async () => {
+    const { temPapel, canAccessRoute } = await import("@/types/roles");
+    for (const p of ["estoque", "qualidade", "comercial", "financeiro", "producao", "processos"] as const) {
+      expect(temPapel("gerente", p)).toBe(true);
+    }
+    expect(temPapel("gerente", "admin")).toBe(false);
+    expect(canAccessRoute("gerente", "/admin")).toBe(false);
+    expect(canAccessRoute("gerente", "/financeiro")).toBe(true);
+    expect(temPapel("comercial", "financeiro")).toBe(false);
+    expect(temPapel("admin", "financeiro")).toBe(true);
+  });
+});

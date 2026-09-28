@@ -92,7 +92,7 @@ export function useNotifications(enabled = true): NotificacoesState {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, enabled]); // fetchNotificacoes intencionalmente fora das deps para não recriar canal
+  }, [user?.id, enabled, fetchNotificacoes]); // fetchNotificacoes só muda junto com user?.id/enabled — não recria o canal à toa
 
   const marcarComoLida = useCallback(async (id: string) => {
     setNotificacoes((prev) => prev.map((n) => (n.id === id ? { ...n, lida: true } : n)));

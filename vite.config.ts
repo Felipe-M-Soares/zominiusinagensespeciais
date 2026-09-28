@@ -22,7 +22,8 @@ export default defineConfig(() => ({
     sourcemap: false,
     // Inline assets < 4KB como base64 (evita request extra para ícones pequenos)
     assetsInlineLimit: 4096,
-    chunkSizeWarningLimit: 800,
+    // Único chunk acima de 800 kB é o ExcelJS (~930 kB), carregado sob demanda só em importação/backup.
+    chunkSizeWarningLimit: 1000,
     // (Removido "esbuildOptions": não é uma opção válida de build no Vite e
     //  era ignorada silenciosamente. O código do app já não usa console.log —
     //  a regra no-console do ESLint garante isso.)

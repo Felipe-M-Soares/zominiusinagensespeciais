@@ -27,6 +27,7 @@ import {
   AlertTriangle, CheckCircle2, Ban, User, FileText, Lock, ClipboardCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { untypedRpc } from "@/lib/untypedRpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { logger } from "@/lib/logger";
@@ -297,7 +298,7 @@ function RegistrarRetornoModal({ onClose, onSuccess }: { onClose: () => void; on
     }
     setSaving(true);
     try {
-      const { data, error } = await (supabase.rpc as any)("iniciar_analise_qualidade_devolucao", {
+      const { data, error } = await untypedRpc("iniciar_analise_qualidade_devolucao", {
         p_pedido_id: pedido.id, p_itens: itens, p_observacao: observacao || null,
       });
       if (error) throw error;
@@ -404,7 +405,7 @@ function AnalisarModal({ registro, onClose, onDone }: { registro: Registro; onCl
     if (!laudo.trim()) { toast.error("Descreva o laudo da análise"); return; }
     setSaving(true);
     try {
-      const { data, error } = await (supabase.rpc as any)("finalizar_analise_qualidade_devolucao", {
+      const { data, error } = await untypedRpc("finalizar_analise_qualidade_devolucao", {
         p_id: registro.id, p_decisao: decisao, p_laudo: laudo.trim(),
       });
       if (error) throw error;

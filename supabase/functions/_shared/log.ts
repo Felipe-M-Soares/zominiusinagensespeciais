@@ -17,6 +17,8 @@ function joinSafe(values: unknown[]): string {
 
 export const log = {
   info: (scope: string, ...values: unknown[]) => {
+    // Implementação intencional do logger das edge functions (só com debug ligado)
+    // eslint-disable-next-line no-console
     if (debug) console.info(`[${scope}] ${joinSafe(values)}`);
   },
   warn: (scope: string, ...values: unknown[]) => {

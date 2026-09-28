@@ -116,7 +116,7 @@ function EstoqueBaixoModal({ open, onClose, lotes }: EstoqueBaixoModalProps) {
   );
 }
 
-export function StockDashboard({ items, loading, onEstoqueBaixo }: Props) {
+export function StockDashboard({ loading, onEstoqueBaixo }: Props) {
   const [movements, setMovements] = useState<AllMovement[]>([]);
   const [movLoading, setMovLoading] = useState(true);
   const [pedidosSeparando, setPedidosSeparando] = useState(0);

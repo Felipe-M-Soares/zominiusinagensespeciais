@@ -31,7 +31,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PecaCombobox, type PecaOption } from "@/components/producao/PecaCombobox";
+import { PecaCombobox, carregarPecasProducao, type PecaOption } from "@/components/producao/PecaCombobox";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -254,10 +254,9 @@ export function LancamentoDiarioPanel() {
     setLoading(true);
     const dia = dataRef;
     const diaSeguinte = (() => { const d = new Date(`${dia}T12:00:00`); d.setDate(d.getDate() + 1); return isoLocal(d); })();
-    const [maqRes, prodRes, devRes, tpRes, trRes, mpRes, apRes, parRes, tempoRes] = await Promise.all([
+    const [maqRes, pecasRes, tpRes, trRes, mpRes, apRes, parRes, tempoRes] = await Promise.all([
       loadWithFallback<Maquina>("maquinas_producao", "maquinas"),
-      supabase.from("produtos_producao").select("codigo,descricao,pecas_por_hora").eq("ativo", true).order("codigo"),
-      supabase.from("devices").select("internal_code,model,reference").eq("ativo", true).order("internal_code"),
+      carregarPecasProducao(),
       supabase.from("tipo_parada_producao").select("id,nome,categoria").eq("ativo", true).order("id"),
       supabase.from("tipo_refugo_producao").select("id,nome").order("id"),
       loadWithFallback<MateriaPrima>("materias_primas_producao", "materias_primas"),
@@ -278,14 +277,7 @@ export function LancamentoDiarioPanel() {
     const maqOrdenadas = [...maqRes].sort((a, b) => a.codigo.localeCompare(b.codigo));
     setMaquinas(maqOrdenadas);
 
-    const doProducao: PecaOption[] = (prodRes.data ?? []).map(p => ({
-      codigo: p.codigo, descricao: p.descricao, pecas_por_hora: p.pecas_por_hora ?? 0, origem: "producao",
-    }));
-    const codigosProd = new Set(doProducao.map(p => p.codigo));
-    const componentes: PecaOption[] = (devRes.data ?? [])
-      .filter((d): d is typeof d & { internal_code: string } => !!d.internal_code && !codigosProd.has(d.internal_code))
-      .map(d => ({ codigo: d.internal_code, descricao: `${d.model ?? ""} ${d.reference ?? ""}`.trim(), pecas_por_hora: 0, origem: "componente" }));
-    setPecas([...doProducao, ...componentes]);
+    setPecas(pecasRes);
 
     if (tpRes.data) setTiposParada(tpRes.data as TipoParada[]);
     if (trRes.data) setTiposRefugo(trRes.data as TipoRefugo[]);

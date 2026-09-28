@@ -253,7 +253,7 @@ export function useStock(search: string) {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [search, loadItems]);
+  }, [search, loadItems, instanceId]);
 
   return { items, totalCount, loteMap, qtyByFase, loading, error, refetch: () => loadItems(search) };
 }

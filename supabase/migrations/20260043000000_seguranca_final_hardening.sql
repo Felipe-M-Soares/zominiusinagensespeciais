@@ -21,6 +21,10 @@ BEGIN
   END IF;
 END $$;
 
+-- Perfil "gerente" (todos os módulos, sem a área Admin) — as permissões são
+-- aplicadas no fim de 20260046000000_desenhos_tecnicos.sql (R14).
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'gerente';
+
 -- Função auxiliar para reduzir duplicação nas policies.
 CREATE OR REPLACE FUNCTION public.has_any_role(_roles public.app_role[])
 RETURNS boolean

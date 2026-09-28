@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
-import { User, X, CheckCircle2, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { User, X, CheckCircle2, Search, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import type { Cliente } from "@/types/comercial";
-import { buscarCep as consultarCep, buscarCnpj, formatarDocumento, formatarTelefone, somenteDigitos } from "@/lib/brasilApi";
+import { buscarCep as consultarCep, buscarCnpj, buscarCodigoIbge, formatarDocumento, formatarTelefone, somenteDigitos } from "@/lib/brasilApi";
 import { validarDocumento } from "@/lib/validators";
 
 interface ClienteModalProps {
@@ -27,7 +28,11 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
   const [bairro, setBairro] = useState("");
   const [municipio, setMunicipio] = useState("");
   const [uf, setUf] = useState("");
+  const [cMun, setCMun] = useState(""); // código IBGE da cidade (NF-e)
   const [obs, setObs] = useState("");
+  const [ie, setIe] = useState("");
+  // Base de clientes para evitar cadastro duplicado (mesmo CPF/CNPJ ou nome igual/parecido)
+  const [existentes, setExistentes] = useState<Cliente[]>([]);
   const [saving, setSaving] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [buscandoCnpj, setBuscandoCnpj] = useState(false);
@@ -46,9 +51,25 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
       setBairro(inicial?.bairro ?? "");
       setMunicipio(inicial?.municipio ?? "");
       setUf(inicial?.uf ?? "");
+      setCMun(inicial?.c_mun ?? "");
       setObs(inicial?.observacoes ?? "");
+      setIe((inicial as (Cliente & { ie?: string | null }) | null | undefined)?.ie ?? "");
+      supabase.from("clientes").select("id,nome,documento,municipio,uf,telefone,email,endereco,observacoes,created_at")
+        .then(({ data }) => setExistentes((data as Cliente[]) ?? []));
     }
   }, [open, inicial]);
+
+  const normNome = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\b(ltda|me|epp|eireli|s a|sa|cia|clinica|consultorio|dr|dra)\b/g, " ").replace(/\s+/g, " ").trim();
+  const duplicados = useMemo(() => {
+    const doc = somenteDigitos(documento);
+    const outros = existentes.filter(c => c.id !== inicial?.id);
+    const docMudou = doc !== somenteDigitos(inicial?.documento ?? "");
+    const mesmoDoc = docMudou && (doc.length === 11 || doc.length === 14) ? outros.filter(c => somenteDigitos(c.documento ?? "") === doc) : [];
+    const n = normNome(nome);
+    const parecidos = n.length >= 4 && (!inicial || normNome(inicial.nome) !== n) ? outros.filter(c => !mesmoDoc.includes(c) && (normNome(c.nome) === n || (n.length >= 8 && normNome(c.nome).includes(n)))).slice(0, 3) : [];
+    return { mesmoDoc, parecidos };
+  }, [documento, nome, existentes, inicial]);
 
   async function buscarCep(cepVal: string) {
     const cepLimpo = cepVal.replace(/\D/g, "");
@@ -61,6 +82,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
       setBairro(end.bairro);
       setMunicipio(end.municipio);
       setUf(end.uf);
+      setCMun(end.ibge ?? "");
     } finally { setBuscandoCep(false); }
   }
 
@@ -81,7 +103,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
       if (!logradouro.trim() && r.logradouro) setLogradouro(r.logradouro);
       if (!numero.trim() && r.numero) setNumero(r.numero);
       if (!bairro.trim() && r.bairro) setBairro(r.bairro);
-      if (!municipio.trim() && r.municipio) setMunicipio(r.municipio);
+      if (!municipio.trim() && r.municipio) { setMunicipio(r.municipio); setCMun(r.ibge ?? ""); }
       if (!uf.trim() && r.uf) setUf(r.uf);
       if (r.situacao && r.situacao.toUpperCase() !== "ATIVA") {
         toast.warning(`Atenção: situação cadastral do CNPJ é "${r.situacao}".`, { duration: 8000 });
@@ -95,6 +117,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
 
   async function handleSave() {
     if (!nome.trim()) { toast.error("Nome obrigatório"); return; }
+    if (duplicados.mesmoDoc.length) { toast.error(`Este CPF/CNPJ já está cadastrado: ${duplicados.mesmoDoc[0].nome}`); return; }
     if (documento.trim() && !validarDocumento(documento)) {
       toast.error("CPF/CNPJ inválido — confira os dígitos."); return;
     }
@@ -107,6 +130,9 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
       // FIX: slice garante que nenhum campo ultrapasse o limite antes de chegar ao banco
       const enderecoMontado = [logradouro.trim(), numero.trim(), bairro.trim(), municipio.trim(), uf.trim()]
         .filter(Boolean).join(", ");
+      // Código IBGE da cidade: vem do CEP; se a cidade foi digitada à mão, tenta achar pelo nome.
+      let codMun = /^\d{7}$/.test(cMun) ? cMun : "";
+      if (!codMun && municipio.trim() && uf.trim().length === 2) codMun = (await buscarCodigoIbge(municipio, uf).catch(() => null)) ?? "";
       const payload = {
         nome:        nome.trim().slice(0, 200),
         documento:   documento.trim().slice(0, 20)  || null,
@@ -120,6 +146,8 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
         uf:          uf.trim().slice(0, 2).toUpperCase() || null,
         endereco:    enderecoMontado.slice(0, 300)   || null,
         observacoes: obs.trim().slice(0, 1000)       || null,
+        ie:          ie.trim().toUpperCase().slice(0, 20) || null,
+        c_mun:       codMun || null,
       };
       let data: Cliente | null = null;
       if (inicial) {
@@ -135,15 +163,16 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
       }
       toast.success(inicial ? "Cliente atualizado!" : "Cliente cadastrado!");
       onSuccess(data!);
-    } catch (_e) {
-      toast.error("Erro ao salvar cliente.");
+    } catch (e) {
+      const msg = (e as { code?: string; message?: string })?.code === "23505" ? (e as { message?: string }).message : null;
+      toast.error(msg ?? "Erro ao salvar cliente.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-border/30 shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
           <div className="flex items-center gap-2">
@@ -196,6 +225,24 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
               <Input value={telefone} onChange={e => setTelefone(formatarTelefone(e.target.value))} placeholder="(00) 00000-0000" inputMode="tel" className="h-9 text-sm" maxLength={20} />
             </div>
           </div>
+          {(duplicados.mesmoDoc.length > 0 || duplicados.parecidos.length > 0) && (
+            <div className={cn("rounded-xl border px-3 py-2.5 space-y-2 text-sm", duplicados.mesmoDoc.length ? "border-red-500/40 bg-red-500/5" : "border-amber-500/40 bg-amber-500/5")}>
+              <p className="font-medium flex items-center gap-1.5">
+                <AlertTriangle className={cn("h-4 w-4", duplicados.mesmoDoc.length ? "text-red-600" : "text-amber-600")} />
+                {duplicados.mesmoDoc.length ? "Este CPF/CNPJ já está cadastrado" : "Já existe cliente com nome parecido"}
+              </p>
+              {[...duplicados.mesmoDoc, ...duplicados.parecidos].map(c => (
+                <div key={c.id} className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1"><p className="truncate">{c.nome}</p><p className="text-xs text-muted-foreground">{[c.documento, c.municipio].filter(Boolean).join(" · ")}</p></div>
+                  {!inicial && <button type="button" onClick={() => onSuccess(c)} className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-semibold shrink-0">Usar este</button>}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Inscrição estadual</label>
+            <Input value={ie} onChange={e => setIe(e.target.value)} placeholder="Número, ISENTO ou vazio (consumidor)" className="h-9 text-sm" maxLength={20} />
+          </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">E-mail</label>
             <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="cliente@email.com" type="email" className="h-9 text-sm" maxLength={200} />
@@ -239,8 +286,8 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Cidade / UF</label>
               <div className="flex gap-1.5">
-                <Input value={municipio} onChange={e => setMunicipio(e.target.value)} placeholder="Cidade" className="h-9 text-sm flex-1" maxLength={100} />
-                <Input value={uf} onChange={e => setUf(e.target.value.toUpperCase().slice(0,2))} placeholder="UF" className="h-9 text-sm w-12 text-center" maxLength={2} />
+                <Input value={municipio} onChange={e => { setMunicipio(e.target.value); setCMun(""); }} placeholder="Cidade" className="h-9 text-sm flex-1" maxLength={100} />
+                <Input value={uf} onChange={e => { setUf(e.target.value.toUpperCase().slice(0,2)); setCMun(""); }} placeholder="UF" className="h-9 text-sm w-12 text-center" maxLength={2} />
               </div>
             </div>
           </div>
@@ -251,7 +298,7 @@ export function ClienteModal({ open, onClose, onSuccess, inicial }: ClienteModal
         </div>
         <div className="flex gap-2 p-5 pt-0">
           <button type="button" onClick={onClose} disabled={saving} className="flex-1 h-9 rounded-xl border border-border text-sm hover:bg-muted/30 transition-colors">Cancelar</button>
-          <button type="button" onClick={handleSave} disabled={saving || !nome.trim()} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+          <button type="button" onClick={handleSave} disabled={saving || !nome.trim() || duplicados.mesmoDoc.length > 0} className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
             {saving ? <div className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
             {inicial ? "Salvar" : "Cadastrar"}
           </button>

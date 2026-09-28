@@ -22,14 +22,14 @@
  */
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
-function splitOrigins(value: string | null): string[] {
+function splitOrigins(value: string | null | undefined): string[] {
   return (value ?? "")
     .split(",")
     .map((origin) => origin.trim().replace(/\/$/, "").toLowerCase())
     .filter(Boolean);
 }
 
-function matchesAllowedRegex(origin: string, regexValue: string | null): boolean {
+function matchesAllowedRegex(origin: string, regexValue: string | null | undefined): boolean {
   if (!regexValue) return false;
   try {
     return new RegExp(regexValue).test(origin);

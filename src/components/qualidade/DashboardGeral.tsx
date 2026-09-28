@@ -23,6 +23,7 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { untypedRpc } from "@/lib/untypedRpc";
 import { formatBRL } from "@/lib/format";
 
 interface SaudeSistema {
@@ -217,7 +218,7 @@ export function DashboardGeral() {
 
     try {
       const oeeResultados = await Promise.all(periodo.map(p =>
-        (supabase.rpc as any)("calcular_oee", { p_data_ini: toISODate(p.ini), p_data_fim: toISODate(p.fim), p_maquina: null })
+        untypedRpc("calcular_oee", { p_data_ini: toISODate(p.ini), p_data_fim: toISODate(p.fim), p_maquina: null })
       ));
       setOeeSerie(periodo.map((p, i) => ({ mes: p.label, valor: (oeeResultados[i]?.data as { oee?: number } | null)?.oee ?? 0 })));
     } catch {
@@ -230,9 +231,9 @@ export function DashboardGeral() {
   const load=useCallback(async()=>{
     setLoading(true);
     setError(null);
-    try { await (supabase.rpc as any)("atualizar_status_vencido"); } catch { /* silencioso */ }
+    try { await untypedRpc("atualizar_status_vencido"); } catch { /* silencioso */ }
     try {
-      const { data, error: rpcErr } = await (supabase.rpc as any)("dashboard_gerencial");
+      const { data, error: rpcErr } = await untypedRpc("dashboard_gerencial");
       if (rpcErr) {
         setError(rpcErr.message ?? JSON.stringify(rpcErr));
       } else if (data) {
@@ -246,13 +247,13 @@ export function DashboardGeral() {
           devices_vencendo_anvisa: 0, devices_anvisa_vencidos: 0,
           certificados_vencendo: 0, certificados_vencidos: 0,
           ferramentas_alerta: 0, recall_ativos: 0,
-          ...data,
+          ...(data as Partial<KPIs>),
         };
         setKpis(safe);
         setUpdated(new Date());
       }
-    } catch (e: any) {
-      setError(e?.message ?? "Erro desconhecido ao carregar KPIs");
+    } catch (e: unknown) {
+      setError((e as { message?: string } | null)?.message ?? "Erro desconhecido ao carregar KPIs");
     }
     setLoading(false);
   },[]);
