@@ -354,6 +354,8 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = v_uid AND role = 'admin') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Acesso negado: apenas administradores.');
   END IF;
+  -- Limpar histórico não "devolve" barra ao estoque (ver trg_ap_barra_movimenta).
+  PERFORM set_config('app.sem_estorno_mp', 'on', true);
   SELECT COUNT(*) INTO v_count FROM public.apontamentos_producao;
   DELETE FROM public.apontamentos_producao WHERE true; -- CASCADE apaga paradas e refugos
   SELECT display_name INTO v_name FROM public.profiles WHERE user_id = v_uid;

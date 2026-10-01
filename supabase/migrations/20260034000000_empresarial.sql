@@ -671,3 +671,100 @@ BEGIN
 END;
 $f_cf$;
 GRANT EXECUTE ON FUNCTION public.admin_clear_financeiro() TO authenticated;
+
+-- ── 5. Recebimento de barras em kg ──────────────────────────────────────────
+-- metros = nº de barras contadas × 3 m   (quando contadas — exato)
+--        = kg ÷ peso da barra × 3 m      (senão, pelo peso cadastrado)
+-- Com kg E nº de barras, pode gravar o peso medido (kg ÷ barras) no cadastro.
+CREATE OR REPLACE FUNCTION public.receber_barras_pedido(
+  p_item_id        uuid,
+  p_kg             numeric,
+  p_barras         numeric DEFAULT NULL,
+  p_lote           text    DEFAULT NULL,
+  p_operador       text    DEFAULT NULL,
+  p_atualizar_peso boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f_receber$
+DECLARE
+  v_uid     uuid := auth.uid();
+  v_item    public.pedido_compra_itens%ROWTYPE;
+  v_mp      public.materias_primas_producao%ROWTYPE;
+  v_metros  numeric;
+  v_rec     numeric;
+  v_status  text;
+  v_nome    text;
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
+  IF COALESCE(public.get_my_role(), '') NOT IN ('admin','producao','estoque','gerente','processos') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão para receber material');
+  END IF;
+  IF COALESCE(p_kg, 0) <= 0 AND COALESCE(p_barras, 0) <= 0 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Informe o peso recebido (kg) ou o nº de barras');
+  END IF;
+
+  SELECT * INTO v_item FROM public.pedido_compra_itens WHERE id = p_item_id FOR UPDATE;
+  IF NOT FOUND OR v_item.materia_prima_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Item de pedido de barra não encontrado');
+  END IF;
+  SELECT * INTO v_mp FROM public.materias_primas_producao WHERE id = v_item.materia_prima_id FOR UPDATE;
+
+  IF COALESCE(p_barras, 0) > 0 THEN
+    v_metros := round(p_barras * v_mp.comprimento_barra_m, 3);
+  ELSIF COALESCE(v_mp.peso_barra_kg, 0) > 0 THEN
+    v_metros := round(p_kg / v_mp.peso_barra_kg * v_mp.comprimento_barra_m, 3);
+  ELSE
+    RETURN jsonb_build_object('ok', false, 'error',
+      'Peso da barra de ' || v_mp.codigo || ' ainda não cadastrado — conte as barras recebidas ou cadastre o peso');
+  END IF;
+
+  IF p_atualizar_peso AND COALESCE(p_kg, 0) > 0 AND COALESCE(p_barras, 0) > 0 THEN
+    v_mp.peso_barra_kg := round(p_kg / p_barras, 4);
+  END IF;
+
+  UPDATE public.materias_primas_producao SET
+    estoque_atual  = estoque_atual + v_metros,
+    ultima_entrada = CURRENT_DATE,
+    lote_atual     = COALESCE(NULLIF(trim(p_lote), ''), lote_atual),
+    peso_barra_kg  = v_mp.peso_barra_kg
+  WHERE id = v_mp.id;
+
+  SELECT display_name INTO v_nome FROM public.profiles WHERE user_id = v_uid;
+  INSERT INTO public.movimentos_mp_producao (materia_prima_id, materia_prima_desc, tipo, quantidade, lote, operador, observacoes, user_id)
+  VALUES (v_mp.id, v_mp.descricao, 'entrada', v_metros, NULLIF(trim(p_lote), ''),
+          COALESCE(NULLIF(trim(p_operador), ''), v_nome, 'Recebimento'),
+          'Recebimento de pedido: '
+            || CASE WHEN COALESCE(p_kg, 0) > 0
+                    THEN replace(rtrim(to_char(round(p_kg, 3), 'FM9999990.999'), '.'), '.', ',') || ' kg' ELSE '' END
+            || CASE WHEN COALESCE(p_barras, 0) > 0 THEN CASE WHEN COALESCE(p_kg, 0) > 0 THEN ' / ' ELSE '' END
+                    || replace(rtrim(to_char(p_barras, 'FM9999990.9'), '.'), '.', ',') || ' barras' ELSE '' END,
+          v_uid);
+
+  -- Item: conta na unidade em que foi pedido.
+  v_rec := CASE lower(v_item.unidade)
+             WHEN 'kg' THEN COALESCE(NULLIF(p_kg, 0), v_metros / v_mp.comprimento_barra_m * COALESCE(v_mp.peso_barra_kg, 0))
+             WHEN 'm'  THEN v_metros
+             ELSE COALESCE(NULLIF(p_barras, 0), v_metros / v_mp.comprimento_barra_m)
+           END;
+  UPDATE public.pedido_compra_itens SET quantidade_recebida = quantidade_recebida + round(v_rec, 3)
+  WHERE id = p_item_id;
+
+  SELECT CASE WHEN bool_and(quantidade_recebida >= quantidade) THEN 'recebido' ELSE 'parcial' END
+    INTO v_status FROM public.pedido_compra_itens WHERE pedido_id = v_item.pedido_id;
+  UPDATE public.pedidos_compra SET status = v_status,
+         data_recebimento = CASE WHEN v_status = 'recebido' THEN CURRENT_DATE ELSE data_recebimento END
+  WHERE id = v_item.pedido_id AND status <> 'cancelado';
+
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, entity_id, details)
+  VALUES (v_uid, COALESCE(v_nome, 'Desconhecido'), 'receber_barras', 'materia_prima', v_mp.id,
+    jsonb_build_object('item', p_item_id, 'kg', p_kg, 'barras', p_barras, 'metros', v_metros));
+
+  RETURN jsonb_build_object('ok', true, 'metros', v_metros, 'peso_barra_kg', v_mp.peso_barra_kg, 'status_pedido', v_status);
+END;
+$f_receber$;
+
+REVOKE EXECUTE ON FUNCTION public.receber_barras_pedido(uuid,numeric,numeric,text,text,boolean) FROM anon, PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.receber_barras_pedido(uuid,numeric,numeric,text,text,boolean) TO authenticated;

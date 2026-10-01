@@ -210,7 +210,13 @@ $turno_dia$;
 -- ── R8. Correção de lançamentos (editar / excluir) ──────────────────────────
 -- Permite corrigir um apontamento já salvo: peça, quantidade, horas,
 -- operador, paradas e refugos — tudo numa transação, recalculando o
--- planejado e o tempo de ciclo. Quem pode: admin, produção ou quem lançou.
+-- planejado e o tempo de ciclo. Também corrige turno, barra (matéria-prima)
+-- e mm de barra por peça, recalculando o consumo (boas + refugo) — o estoque
+-- da barra é ajustado pelos triggers de 20260030. Quem pode: admin, produção,
+-- gerente ou quem lançou. O DROP remove a versão antiga de 10 parâmetros, para
+-- não haver duas ("could not choose the best candidate function").
+DROP FUNCTION IF EXISTS public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb);
+
 CREATE OR REPLACE FUNCTION public.editar_apontamento_producao(
   p_id                 uuid,
   p_maquina            text,
@@ -221,7 +227,10 @@ CREATE OR REPLACE FUNCTION public.editar_apontamento_producao(
   p_qtde_produzida     integer,
   p_operador           text,
   p_paradas            jsonb DEFAULT '[]',
-  p_refugos            jsonb DEFAULT '[]'
+  p_refugos            jsonb DEFAULT '[]',
+  p_materia_prima_id   uuid    DEFAULT NULL,
+  p_comprimento_mm     numeric DEFAULT NULL,
+  p_turno              text    DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -230,16 +239,20 @@ SET search_path = public
 AS $f_edit_ap$
 DECLARE
   v_uid      uuid := auth.uid();
-  v_dono     uuid;
+  v_ap       public.apontamentos_producao%ROWTYPE;
   v_hr_par   numeric;
   v_hr_prod  numeric;
   v_plan     numeric;
+  v_ref      integer;
+  v_mp_id    uuid;
+  v_mp_desc  text;
+  v_comp     numeric;
   v_nome     text;
 BEGIN
   IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
-  SELECT user_id INTO v_dono FROM public.apontamentos_producao WHERE id = p_id;
+  SELECT * INTO v_ap FROM public.apontamentos_producao WHERE id = p_id;
   IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Lançamento não encontrado'); END IF;
-  IF NOT (public.get_my_role() IN ('admin','producao') OR v_dono = v_uid) THEN
+  IF NOT (public.get_my_role() IN ('admin','producao','gerente') OR v_ap.user_id = v_uid) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão para editar este lançamento');
   END IF;
   IF p_horas_planejadas IS NULL OR p_horas_planejadas <= 0 OR p_horas_planejadas > 24 THEN
@@ -248,26 +261,51 @@ BEGIN
   IF p_qtde_produzida IS NULL OR p_qtde_produzida < 0 THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Quantidade inválida');
   END IF;
+  IF p_turno IS NOT NULL AND p_turno NOT IN ('1º Turno','2º Turno','3º Turno','Dia inteiro') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Turno inválido');
+  END IF;
+  IF p_comprimento_mm IS NOT NULL AND (p_comprimento_mm < 0 OR p_comprimento_mm > 100000) THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Comprimento por peça inválido');
+  END IF;
 
   SELECT COALESCE(SUM((p->>'duracao_horas')::numeric), 0) INTO v_hr_par
   FROM jsonb_array_elements(COALESCE(p_paradas, '[]'::jsonb)) p;
   IF v_hr_par > p_horas_planejadas THEN
     RETURN jsonb_build_object('ok', false, 'error', 'As paradas passam das horas do lançamento');
   END IF;
+  SELECT COALESCE(SUM(GREATEST((r->>'quantidade')::integer, 0)), 0) INTO v_ref
+  FROM jsonb_array_elements(COALESCE(p_refugos, '[]'::jsonb)) r;
 
   v_hr_prod := GREATEST(0, p_horas_planejadas - v_hr_par);
   v_plan := CASE WHEN COALESCE(p_qtde_por_hora, 0) > 0 AND v_hr_prod > 0
                  THEN round(p_qtde_por_hora * v_hr_prod, 2) ELSE p_qtde_produzida END;
 
+  -- Barra: a informada; senão mantém a do lançamento.
+  v_mp_id := COALESCE(p_materia_prima_id, v_ap.materia_prima_id);
+  v_mp_desc := v_ap.descricao_mp;
+  IF p_materia_prima_id IS NOT NULL THEN
+    SELECT descricao INTO v_mp_desc FROM public.materias_primas_producao WHERE id = p_materia_prima_id;
+    IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Matéria-prima não encontrada'); END IF;
+  END IF;
+  v_comp := COALESCE(p_comprimento_mm, v_ap.comprimento_mm);
+
   UPDATE public.apontamentos_producao SET
     maquina = p_maquina, maquina_codigo = p_maquina, equipamento = p_maquina,
+    turno = COALESCE(p_turno, turno),
     produto = p_produto, descricao_produto = p_descricao_produto,
     qtde_por_hora = COALESCE(p_qtde_por_hora, 0),
     horas_planejadas = p_horas_planejadas, lead_time_horas = p_horas_planejadas,
     qtde_plan_disp = v_plan, quantidade = p_qtde_produzida,
     cycle_time_min = CASE WHEN p_qtde_produzida > 0 AND v_hr_prod > 0
                           THEN round(v_hr_prod * 60 / p_qtde_produzida, 4) ELSE NULL END,
-    operador = left(trim(p_operador), 120)
+    operador = left(trim(p_operador), 120),
+    materia_prima_id = v_mp_id,
+    descricao_mp = v_mp_desc,
+    comprimento_mm = NULLIF(v_comp, 0),
+    -- Peça refugada também gastou barra.
+    consumo_mp_metros = CASE WHEN COALESCE(v_comp, 0) > 0
+                             THEN round((p_qtde_produzida + v_ref) * v_comp / 1000.0, 3)
+                             ELSE consumo_mp_metros END
   WHERE id = p_id;
 
   DELETE FROM public.apontamento_paradas WHERE apontamento_id = p_id;
@@ -285,7 +323,8 @@ BEGIN
   SELECT display_name INTO v_nome FROM public.profiles WHERE user_id = v_uid;
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, entity_id, details)
   VALUES (v_uid, COALESCE(v_nome, 'Desconhecido'), 'editar_apontamento', 'apontamento_producao', p_id,
-    jsonb_build_object('produto', p_produto, 'quantidade', p_qtde_produzida, 'horas', p_horas_planejadas));
+    jsonb_build_object('produto', p_produto, 'quantidade', p_qtde_produzida, 'horas', p_horas_planejadas,
+                       'materia_prima_id', v_mp_id, 'comprimento_mm', v_comp));
 
   RETURN jsonb_build_object('ok', true);
 END;
@@ -329,9 +368,9 @@ BEGIN
 END;
 $f_del_ap$;
 
-REVOKE EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb) FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb,uuid,numeric,text) FROM anon, PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.excluir_lancamento_producao(text, uuid) FROM anon, PUBLIC;
-GRANT EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb,uuid,numeric,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.excluir_lancamento_producao(text, uuid) TO authenticated;
 
 -- ── R9. Tempo de peça aprendido automaticamente ─────────────────────────────

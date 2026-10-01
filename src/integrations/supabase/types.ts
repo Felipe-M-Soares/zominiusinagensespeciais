@@ -135,6 +135,8 @@ export type Database = {
       }
       apontamentos_producao: {
         Row: {
+          baixa_mp_metros: number
+          materia_prima_id: string | null
           comprimento_mm: number | null
           consumo_mp_metros: number | null
           created_at: string
@@ -169,6 +171,8 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          baixa_mp_metros?: number
+          materia_prima_id?: string | null
           comprimento_mm?: number | null
           consumo_mp_metros?: number | null
           created_at?: string
@@ -203,6 +207,8 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          baixa_mp_metros?: number
+          materia_prima_id?: string | null
           comprimento_mm?: number | null
           consumo_mp_metros?: number | null
           created_at?: string
@@ -1082,6 +1088,11 @@ export type Database = {
       }
       materias_primas_producao: {
         Row: {
+          comprimento_barra_m: number
+          diametro_mm: number | null
+          estoque_conferido_em: string | null
+          peso_barra_kg: number | null
+          sobra_barra_mm: number
           codigo: string
           created_at: string
           descricao: string
@@ -1098,6 +1109,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          comprimento_barra_m?: number
+          diametro_mm?: number | null
+          estoque_conferido_em?: string | null
+          peso_barra_kg?: number | null
+          sobra_barra_mm?: number
           codigo: string
           created_at?: string
           descricao: string
@@ -1114,6 +1130,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          comprimento_barra_m?: number
+          diametro_mm?: number | null
+          estoque_conferido_em?: string | null
+          peso_barra_kg?: number | null
+          sobra_barra_mm?: number
           codigo?: string
           created_at?: string
           descricao?: string
@@ -1648,6 +1669,33 @@ export type Database = {
           turno?: string
           updated_at?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      peca_materia_prima: {
+        Row: {
+          comprimento_peca_mm: number | null
+          corte_mm: number
+          materia_prima_id: string
+          produto: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          comprimento_peca_mm?: number | null
+          corte_mm?: number
+          materia_prima_id: string
+          produto: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          comprimento_peca_mm?: number | null
+          corte_mm?: number
+          materia_prima_id?: string
+          produto?: string
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }
@@ -2825,6 +2873,20 @@ export type Database = {
           p_operador: string
           p_paradas?: Json
           p_refugos?: Json
+          p_materia_prima_id?: string | null
+          p_comprimento_mm?: number | null
+          p_turno?: string | null
+        }
+        Returns: Json
+      }
+      receber_barras_pedido: {
+        Args: {
+          p_item_id: string
+          p_kg: number
+          p_barras?: number | null
+          p_lote?: string | null
+          p_operador?: string | null
+          p_atualizar_peso?: boolean
         }
         Returns: Json
       }

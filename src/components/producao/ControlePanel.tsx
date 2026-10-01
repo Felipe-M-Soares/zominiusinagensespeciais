@@ -466,8 +466,8 @@ function NovoApontamentoModal({
                       </select>
                     </Campo>
                     <Campo label="Lote MP"><Input value={form.lote_mp} onChange={e => setF("lote_mp", e.target.value)} placeholder="Ex: 160426-01" className="h-11" /></Campo>
-                    <Campo label="Comprimento da peça (mm)"><Input inputMode="decimal" value={form.comprimento_mm} onChange={e => setF("comprimento_mm", decimal(e.target.value))} placeholder="Ex: 11,0" className="h-11 tabular-nums" /></Campo>
-                    <Campo label="Consumo MP (metros)"><Input inputMode="decimal" value={form.consumo_mp_metros} onChange={e => setF("consumo_mp_metros", decimal(e.target.value))} placeholder="Ex: 20,68" className="h-11 tabular-nums" /></Campo>
+                    <Campo label="Barra por peça (mm, com corte)"><Input inputMode="decimal" value={form.comprimento_mm} onChange={e => setF("comprimento_mm", decimal(e.target.value))} placeholder="Ex: 12,5" className="h-11 tabular-nums" /></Campo>
+                    <Campo label="Consumo MP (metros)"><Input inputMode="decimal" value={form.consumo_mp_metros} onChange={e => setF("consumo_mp_metros", decimal(e.target.value))} placeholder="Automático (peças × mm)" className="h-11 tabular-nums" /></Campo>
                   </div>
                   <Campo label="Lote da produção" dica="Deixe vazio para o sistema gerar."><Input value={form.lote} onChange={e => setF("lote", e.target.value)} className="h-11" /></Campo>
                 </div>

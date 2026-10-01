@@ -733,3 +733,228 @@ CREATE POLICY "mp_select"   ON materias_primas_producao  FOR SELECT TO authentic
 CREATE POLICY "mp_update"   ON materias_primas_producao  FOR UPDATE TO authenticated USING ((select auth.uid()) IS NOT NULL);
 CREATE POLICY "mov_select"  ON movimentos_mp_producao FOR SELECT TO authenticated USING ((select auth.uid()) IS NOT NULL);
 CREATE POLICY "mov_insert"  ON movimentos_mp_producao FOR INSERT TO authenticated WITH CHECK ((select auth.uid()) IS NOT NULL);
+
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- CONSUMO DE BARRA (matéria-prima)
+-- A barra é COMPRADA por peso (kg) e CONSUMIDA por metro. Toda barra tem 3 m,
+-- qualquer que seja o diâmetro; o peso de cada diâmetro é medido e cadastrado.
+--   kg recebidos → metros (kg ÷ peso da barra × 3 m)
+--   peças feitas → metros ((boas + refugo) × mm por peça)
+-- O saldo fica sempre em metros. Triggers dão baixa ao lançar e estornam ao
+-- corrigir/excluir (Diário, Controle e Importador).
+-- Correção: editar_apontamento_producao (20260046). Recebimento em kg:
+-- receber_barras_pedido (20260034). Limpeza sem estorno: admin_clear_producao (20260027).
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- ── 1. Dados da barra ───────────────────────────────────────────────────────
+ALTER TABLE public.materias_primas_producao
+  ADD COLUMN IF NOT EXISTS diametro_mm          numeric(8,3),
+  ADD COLUMN IF NOT EXISTS comprimento_barra_m  numeric(6,3) NOT NULL DEFAULT 3,
+  ADD COLUMN IF NOT EXISTS peso_barra_kg        numeric(10,4),
+  ADD COLUMN IF NOT EXISTS sobra_barra_mm       numeric(8,2) NOT NULL DEFAULT 0,
+  -- Lançamentos com data ANTERIOR à última contagem não mexem no saldo (o
+  -- material já não estava lá quando contaram). Evita que importar o histórico
+  -- do Excel derrube o estoque atual. Linhas existentes: hoje.
+  ADD COLUMN IF NOT EXISTS estoque_conferido_em date DEFAULT CURRENT_DATE;
+
+ALTER TABLE public.materias_primas_producao DROP CONSTRAINT IF EXISTS mp_barra_dados_check;
+ALTER TABLE public.materias_primas_producao ADD CONSTRAINT mp_barra_dados_check CHECK (
+  comprimento_barra_m > 0
+  AND (peso_barra_kg IS NULL OR peso_barra_kg > 0)
+  AND (diametro_mm IS NULL OR diametro_mm > 0)
+  AND sobra_barra_mm >= 0
+  AND sobra_barra_mm < comprimento_barra_m * 1000
+);
+
+-- Diâmetro das barras já cadastradas (peso fica em branco até ser pesado).
+UPDATE public.materias_primas_producao m SET diametro_mm = v.d
+FROM (VALUES
+  ('TI-25', 2.5), ('TI-318', 3.18), ('TI-40', 4.0), ('TI-50', 5.0), ('TI-55', 5.5),
+  ('TI-635', 6.35), ('TI-80', 8.0), ('TI-953', 9.53),
+  ('CC-40', 4.0), ('CC-50', 5.0), ('CC-55', 5.5),
+  ('AI-25', 2.5), ('AI-40', 4.0), ('AI-50', 5.0), ('AI-55', 5.5),
+  ('POM-60', 6.0)
+) AS v(codigo, d)
+WHERE m.codigo = v.codigo AND m.diametro_mm IS NULL;
+
+-- ── 2. Peça → barra ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.peca_materia_prima (
+  produto              text PRIMARY KEY,
+  materia_prima_id     uuid NOT NULL REFERENCES public.materias_primas_producao(id) ON DELETE CASCADE,
+  comprimento_peca_mm  numeric(8,3) CHECK (comprimento_peca_mm IS NULL OR comprimento_peca_mm > 0),
+  corte_mm             numeric(6,3) NOT NULL DEFAULT 0 CHECK (corte_mm >= 0),
+  updated_by           uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_at           timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_peca_mp_materia ON public.peca_materia_prima(materia_prima_id);
+
+ALTER TABLE public.peca_materia_prima ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "pmp_select" ON public.peca_materia_prima;
+CREATE POLICY "pmp_select" ON public.peca_materia_prima FOR SELECT TO authenticated
+  USING ((select auth.uid()) IS NOT NULL);
+DROP POLICY IF EXISTS "pmp_insert" ON public.peca_materia_prima;
+CREATE POLICY "pmp_insert" ON public.peca_materia_prima FOR INSERT TO authenticated
+  WITH CHECK (public.get_my_role() IN ('admin','producao','gerente'));
+DROP POLICY IF EXISTS "pmp_update" ON public.peca_materia_prima;
+CREATE POLICY "pmp_update" ON public.peca_materia_prima FOR UPDATE TO authenticated
+  USING (public.get_my_role() IN ('admin','producao','gerente'));
+DROP POLICY IF EXISTS "pmp_delete" ON public.peca_materia_prima;
+CREATE POLICY "pmp_delete" ON public.peca_materia_prima FOR DELETE TO authenticated
+  USING (public.get_my_role() IN ('admin','producao','gerente'));
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.peca_materia_prima TO authenticated;
+
+DROP TRIGGER IF EXISTS pmp_updated_at ON public.peca_materia_prima;
+CREATE TRIGGER pmp_updated_at BEFORE UPDATE ON public.peca_materia_prima
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_producao();
+
+-- ── 3. Baixa automática no apontamento ──────────────────────────────────────
+ALTER TABLE public.apontamentos_producao
+  ADD COLUMN IF NOT EXISTS materia_prima_id uuid REFERENCES public.materias_primas_producao(id) ON DELETE SET NULL,
+  -- Metros efetivamente tirados do estoque (consumo + ponta de barra). Fica
+  -- gravado para o estorno devolver exatamente o mesmo valor.
+  ADD COLUMN IF NOT EXISTS baixa_mp_metros  numeric(12,3) NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_apont_materia ON public.apontamentos_producao(materia_prima_id);
+
+-- BEFORE: descobre a barra, completa mm/peça e consumo, calcula a baixa.
+CREATE OR REPLACE FUNCTION public.trg_ap_barra_prepara()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f_barra_prep$
+DECLARE
+  v_mp   public.materias_primas_producao%ROWTYPE;
+  v_map  public.peca_materia_prima%ROWTYPE;
+  v_desc text := NULLIF(trim(COALESCE(NEW.descricao_mp, '')), '');
+BEGIN
+  -- Barra: escolhida no lançamento (descrição) → senão a vinculada à peça.
+  IF TG_OP = 'INSERT' OR NEW.materia_prima_id IS NULL
+     OR NEW.descricao_mp IS DISTINCT FROM OLD.descricao_mp THEN
+    IF v_desc IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.descricao_mp IS DISTINCT FROM OLD.descricao_mp
+                               OR NEW.materia_prima_id IS NULL) THEN
+      SELECT * INTO v_mp FROM public.materias_primas_producao
+      WHERE upper(descricao) = upper(v_desc) OR upper(codigo) = upper(v_desc)
+         OR upper(codigo || ' — ' || descricao) = upper(v_desc)
+      ORDER BY (upper(descricao) = upper(v_desc)) DESC
+      LIMIT 1;
+      IF FOUND THEN NEW.materia_prima_id := v_mp.id; END IF;
+    END IF;
+  END IF;
+
+  SELECT * INTO v_map FROM public.peca_materia_prima WHERE produto = NEW.produto;
+  IF NEW.materia_prima_id IS NULL AND v_desc IS NULL AND v_map.produto IS NOT NULL THEN
+    NEW.materia_prima_id := v_map.materia_prima_id;
+  END IF;
+
+  IF NEW.materia_prima_id IS NOT NULL THEN
+    SELECT * INTO v_mp FROM public.materias_primas_producao WHERE id = NEW.materia_prima_id;
+    IF v_desc IS NULL AND FOUND THEN NEW.descricao_mp := v_mp.descricao; END IF;
+  END IF;
+
+  -- mm de barra por peça vindo do vínculo, quando o lançamento não trouxe.
+  IF COALESCE(NEW.comprimento_mm, 0) <= 0 AND v_map.produto IS NOT NULL
+     AND v_map.materia_prima_id = NEW.materia_prima_id
+     AND COALESCE(v_map.comprimento_peca_mm, 0) > 0 THEN
+    NEW.comprimento_mm := v_map.comprimento_peca_mm + v_map.corte_mm;
+  END IF;
+
+  -- Consumo (m) = peças × mm/peça, quando não informado.
+  IF TG_OP = 'INSERT' AND COALESCE(NEW.consumo_mp_metros, 0) <= 0 AND COALESCE(NEW.comprimento_mm, 0) > 0 THEN
+    NEW.consumo_mp_metros := round(NEW.quantidade * NEW.comprimento_mm / 1000.0, 3);
+  END IF;
+
+  -- Baixa: sem alteração relevante, mantém a anterior (não gera movimento).
+  IF TG_OP = 'UPDATE'
+     AND NEW.materia_prima_id IS NOT DISTINCT FROM OLD.materia_prima_id
+     AND NEW.consumo_mp_metros IS NOT DISTINCT FROM OLD.consumo_mp_metros
+     AND NEW.data_apontamento IS NOT DISTINCT FROM OLD.data_apontamento THEN
+    NEW.baixa_mp_metros := OLD.baixa_mp_metros;
+    RETURN NEW;
+  END IF;
+
+  NEW.baixa_mp_metros := 0;
+  IF NEW.materia_prima_id IS NOT NULL AND COALESCE(NEW.consumo_mp_metros, 0) > 0 THEN
+    SELECT * INTO v_mp FROM public.materias_primas_producao WHERE id = NEW.materia_prima_id;
+    IF FOUND AND (v_mp.estoque_conferido_em IS NULL OR NEW.data_apontamento >= v_mp.estoque_conferido_em) THEN
+      -- A ponta que sobra de cada barra também é material gasto.
+      NEW.baixa_mp_metros := round(
+        NEW.consumo_mp_metros * (v_mp.comprimento_barra_m * 1000)
+        / (v_mp.comprimento_barra_m * 1000 - v_mp.sobra_barra_mm), 3);
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$f_barra_prep$;
+
+-- AFTER: aplica a diferença no saldo e registra o movimento.
+CREATE OR REPLACE FUNCTION public.trg_ap_barra_movimenta()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f_barra_mov$
+DECLARE
+  v_old_mp  uuid    := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN OLD.materia_prima_id END;
+  v_old_qt  numeric := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN COALESCE(OLD.baixa_mp_metros, 0) ELSE 0 END;
+  v_new_mp  uuid    := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN NEW.materia_prima_id END;
+  v_new_qt  numeric := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN COALESCE(NEW.baixa_mp_metros, 0) ELSE 0 END;
+  v_ref     public.apontamentos_producao%ROWTYPE;
+  v_desc    text;
+  v_delta   numeric;
+  v_obs     text;
+BEGIN
+  -- Limpeza de histórico (admin) não devolve material ao estoque.
+  IF current_setting('app.sem_estorno_mp', true) = 'on' THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+  v_ref := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+  v_obs := 'lançamento nº ' || COALESCE(v_ref.seq_producao::text, '?') || ' — ' || v_ref.produto
+           || ' (' || to_char(v_ref.data_apontamento, 'DD/MM/YYYY') || ')';
+
+  IF v_old_mp IS NOT DISTINCT FROM v_new_mp THEN
+    v_delta := v_new_qt - v_old_qt;          -- >0 baixa a mais, <0 devolve
+    IF v_new_mp IS NULL OR v_delta = 0 THEN RETURN COALESCE(NEW, OLD); END IF;
+    UPDATE public.materias_primas_producao
+       SET estoque_atual = estoque_atual - v_delta,
+           ultima_saida  = CASE WHEN v_delta > 0 THEN GREATEST(COALESCE(ultima_saida, v_ref.data_apontamento), v_ref.data_apontamento) ELSE ultima_saida END
+     WHERE id = v_new_mp RETURNING descricao INTO v_desc;
+    INSERT INTO public.movimentos_mp_producao (materia_prima_id, materia_prima_desc, tipo, quantidade, lote, operador, ordem_producao, observacoes, user_id)
+    VALUES (v_new_mp, COALESCE(v_desc, ''), CASE WHEN v_delta > 0 THEN 'saida' ELSE 'entrada' END, abs(v_delta),
+            NULLIF(v_ref.lote_mp, ''), v_ref.operador, v_ref.lote,
+            CASE WHEN TG_OP = 'INSERT' THEN 'Consumo automático — ' ELSE 'Correção automática — ' END || v_obs,
+            auth.uid());
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+
+  -- Barra trocada (ou lançamento excluído): devolve na antiga, baixa na nova.
+  IF v_old_mp IS NOT NULL AND v_old_qt > 0 THEN
+    UPDATE public.materias_primas_producao SET estoque_atual = estoque_atual + v_old_qt
+     WHERE id = v_old_mp RETURNING descricao INTO v_desc;
+    INSERT INTO public.movimentos_mp_producao (materia_prima_id, materia_prima_desc, tipo, quantidade, lote, operador, ordem_producao, observacoes, user_id)
+    VALUES (v_old_mp, COALESCE(v_desc, ''), 'entrada', v_old_qt, NULLIF(OLD.lote_mp, ''), OLD.operador, OLD.lote,
+            'Estorno automático — ' || v_obs || CASE WHEN TG_OP = 'DELETE' THEN ' excluído' ELSE ' corrigido' END,
+            auth.uid());
+  END IF;
+  IF v_new_mp IS NOT NULL AND v_new_qt > 0 THEN
+    UPDATE public.materias_primas_producao
+       SET estoque_atual = estoque_atual - v_new_qt,
+           ultima_saida  = GREATEST(COALESCE(ultima_saida, NEW.data_apontamento), NEW.data_apontamento)
+     WHERE id = v_new_mp RETURNING descricao INTO v_desc;
+    INSERT INTO public.movimentos_mp_producao (materia_prima_id, materia_prima_desc, tipo, quantidade, lote, operador, ordem_producao, observacoes, user_id)
+    VALUES (v_new_mp, COALESCE(v_desc, ''), 'saida', v_new_qt, NULLIF(NEW.lote_mp, ''), NEW.operador, NEW.lote,
+            'Consumo automático — ' || v_obs, auth.uid());
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$f_barra_mov$;
+
+REVOKE EXECUTE ON FUNCTION public.trg_ap_barra_prepara()   FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.trg_ap_barra_movimenta() FROM anon, PUBLIC;
+
+DROP TRIGGER IF EXISTS ap_barra_prepara ON public.apontamentos_producao;
+CREATE TRIGGER ap_barra_prepara BEFORE INSERT OR UPDATE ON public.apontamentos_producao
+  FOR EACH ROW EXECUTE FUNCTION public.trg_ap_barra_prepara();
+DROP TRIGGER IF EXISTS ap_barra_movimenta ON public.apontamentos_producao;
+CREATE TRIGGER ap_barra_movimenta AFTER INSERT OR UPDATE OR DELETE ON public.apontamentos_producao
+  FOR EACH ROW EXECUTE FUNCTION public.trg_ap_barra_movimenta();
