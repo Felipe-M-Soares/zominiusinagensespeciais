@@ -1092,7 +1092,6 @@ export type Database = {
           diametro_mm: number | null
           estoque_conferido_em: string | null
           peso_barra_kg: number | null
-          sobra_barra_mm: number
           codigo: string
           created_at: string
           descricao: string
@@ -1113,7 +1112,6 @@ export type Database = {
           diametro_mm?: number | null
           estoque_conferido_em?: string | null
           peso_barra_kg?: number | null
-          sobra_barra_mm?: number
           codigo: string
           created_at?: string
           descricao: string
@@ -1134,7 +1132,6 @@ export type Database = {
           diametro_mm?: number | null
           estoque_conferido_em?: string | null
           peso_barra_kg?: number | null
-          sobra_barra_mm?: number
           codigo?: string
           created_at?: string
           descricao?: string
@@ -1674,24 +1671,18 @@ export type Database = {
       }
       peca_materia_prima: {
         Row: {
-          comprimento_peca_mm: number | null
-          corte_mm: number
           materia_prima_id: string
           produto: string
           updated_at: string
           updated_by: string | null
         }
         Insert: {
-          comprimento_peca_mm?: number | null
-          corte_mm?: number
           materia_prima_id: string
           produto: string
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
-          comprimento_peca_mm?: number | null
-          corte_mm?: number
           materia_prima_id?: string
           produto?: string
           updated_at?: string
@@ -2874,7 +2865,7 @@ export type Database = {
           p_paradas?: Json
           p_refugos?: Json
           p_materia_prima_id?: string | null
-          p_comprimento_mm?: number | null
+          p_barras?: number | null
           p_turno?: string | null
         }
         Returns: Json

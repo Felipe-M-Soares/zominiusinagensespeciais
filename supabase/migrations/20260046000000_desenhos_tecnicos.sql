@@ -211,8 +211,8 @@ $turno_dia$;
 -- Permite corrigir um apontamento já salvo: peça, quantidade, horas,
 -- operador, paradas e refugos — tudo numa transação, recalculando o
 -- planejado e o tempo de ciclo. Também corrige turno, barra (matéria-prima)
--- e mm de barra por peça, recalculando o consumo (boas + refugo) — o estoque
--- da barra é ajustado pelos triggers de 20260030. Quem pode: admin, produção,
+-- e nº de barras gastas (× 3 m) — o estoque da barra é ajustado pelos
+-- triggers de 20260030. Quem pode: admin, produção,
 -- gerente ou quem lançou. O DROP remove a versão antiga de 10 parâmetros, para
 -- não haver duas ("could not choose the best candidate function").
 DROP FUNCTION IF EXISTS public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb);
@@ -229,7 +229,7 @@ CREATE OR REPLACE FUNCTION public.editar_apontamento_producao(
   p_paradas            jsonb DEFAULT '[]',
   p_refugos            jsonb DEFAULT '[]',
   p_materia_prima_id   uuid    DEFAULT NULL,
-  p_comprimento_mm     numeric DEFAULT NULL,
+  p_barras             numeric DEFAULT NULL,
   p_turno              text    DEFAULT NULL
 )
 RETURNS jsonb
@@ -243,10 +243,9 @@ DECLARE
   v_hr_par   numeric;
   v_hr_prod  numeric;
   v_plan     numeric;
-  v_ref      integer;
   v_mp_id    uuid;
   v_mp_desc  text;
-  v_comp     numeric;
+  v_comp_m   numeric;
   v_nome     text;
 BEGIN
   IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
@@ -264,8 +263,8 @@ BEGIN
   IF p_turno IS NOT NULL AND p_turno NOT IN ('1º Turno','2º Turno','3º Turno','Dia inteiro') THEN
     RETURN jsonb_build_object('ok', false, 'error', 'Turno inválido');
   END IF;
-  IF p_comprimento_mm IS NOT NULL AND (p_comprimento_mm < 0 OR p_comprimento_mm > 100000) THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'Comprimento por peça inválido');
+  IF p_barras IS NOT NULL AND (p_barras < 0 OR p_barras > 10000) THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Quantidade de barras inválida');
   END IF;
 
   SELECT COALESCE(SUM((p->>'duracao_horas')::numeric), 0) INTO v_hr_par
@@ -273,9 +272,6 @@ BEGIN
   IF v_hr_par > p_horas_planejadas THEN
     RETURN jsonb_build_object('ok', false, 'error', 'As paradas passam das horas do lançamento');
   END IF;
-  SELECT COALESCE(SUM(GREATEST((r->>'quantidade')::integer, 0)), 0) INTO v_ref
-  FROM jsonb_array_elements(COALESCE(p_refugos, '[]'::jsonb)) r;
-
   v_hr_prod := GREATEST(0, p_horas_planejadas - v_hr_par);
   v_plan := CASE WHEN COALESCE(p_qtde_por_hora, 0) > 0 AND v_hr_prod > 0
                  THEN round(p_qtde_por_hora * v_hr_prod, 2) ELSE p_qtde_produzida END;
@@ -287,7 +283,7 @@ BEGIN
     SELECT descricao INTO v_mp_desc FROM public.materias_primas_producao WHERE id = p_materia_prima_id;
     IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'Matéria-prima não encontrada'); END IF;
   END IF;
-  v_comp := COALESCE(p_comprimento_mm, v_ap.comprimento_mm);
+  SELECT comprimento_barra_m INTO v_comp_m FROM public.materias_primas_producao WHERE id = v_mp_id;
 
   UPDATE public.apontamentos_producao SET
     maquina = p_maquina, maquina_codigo = p_maquina, equipamento = p_maquina,
@@ -301,10 +297,9 @@ BEGIN
     operador = left(trim(p_operador), 120),
     materia_prima_id = v_mp_id,
     descricao_mp = v_mp_desc,
-    comprimento_mm = NULLIF(v_comp, 0),
-    -- Peça refugada também gastou barra.
-    consumo_mp_metros = CASE WHEN COALESCE(v_comp, 0) > 0
-                             THEN round((p_qtde_produzida + v_ref) * v_comp / 1000.0, 3)
+    -- Barras gastas × comprimento da barra (3 m). Sem p_barras, mantém o consumo.
+    consumo_mp_metros = CASE WHEN p_barras IS NOT NULL
+                             THEN round(p_barras * COALESCE(v_comp_m, 3), 3)
                              ELSE consumo_mp_metros END
   WHERE id = p_id;
 
@@ -324,7 +319,7 @@ BEGIN
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, entity_id, details)
   VALUES (v_uid, COALESCE(v_nome, 'Desconhecido'), 'editar_apontamento', 'apontamento_producao', p_id,
     jsonb_build_object('produto', p_produto, 'quantidade', p_qtde_produzida, 'horas', p_horas_planejadas,
-                       'materia_prima_id', v_mp_id, 'comprimento_mm', v_comp));
+                       'materia_prima_id', v_mp_id, 'barras', p_barras));
 
   RETURN jsonb_build_object('ok', true);
 END;

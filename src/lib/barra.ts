@@ -1,13 +1,14 @@
 /**
  * barra — conversões de matéria-prima em barra.
  *
- * A barra é comprada por PESO (kg) e consumida por METRO. Toda barra tem
- * 3 m (configurável por material); o peso de cada diâmetro é medido na
- * balança e cadastrado em `peso_barra_kg`. O saldo do estoque é sempre em
- * metros — barras e kg são apenas conversões para exibição/entrada.
+ * A barra é comprada por PESO (kg, como vem na nota) e gasta em BARRAS de 3 m
+ * (o operador informa quantas barras gastou no lançamento). O peso de cada
+ * diâmetro é medido na balança e cadastrado em `peso_barra_kg`; com ele a
+ * nota em kg vira nº de barras. O saldo do estoque é guardado em metros
+ * (barras × 3 m) e mostrado em barras e kg.
  *
  * Enquanto o peso não foi medido, `pesoTeoricoBarraKg` dá uma estimativa pela
- * densidade do material (serve de referência, não substitui a balança).
+ * densidade do material (só referência — não substitui a balança).
  */
 
 export interface BarraInfo {
@@ -15,7 +16,6 @@ export interface BarraInfo {
   diametro_mm?: number | null;
   comprimento_barra_m?: number | null;
   peso_barra_kg?: number | null;
-  sobra_barra_mm?: number | null;
 }
 
 export const COMPRIMENTO_BARRA_PADRAO_M = 3;
@@ -54,8 +54,7 @@ export function pesoTeoricoBarraKg(mp: BarraInfo): number | null {
   if (!d || !rho) return null;
   const areaMm2 = (Math.PI / 4) * d * d;
   // mm² × 1000 mm/m × g/cm³ ÷ 1000 (mm³→cm³) = g/m → ÷ 1000 = kg/m
-  const kgPorMetro = (areaMm2 * rho) / 1000;
-  return kgPorMetro * comprimentoBarraM(mp);
+  return ((areaMm2 * rho) / 1000) * comprimentoBarraM(mp);
 }
 
 /** Peso medido (cadastrado) da barra, ou null se ainda não foi pesada. */
@@ -64,57 +63,32 @@ export function pesoBarraKg(mp: BarraInfo): number | null {
   return p > 0 ? p : null;
 }
 
-/** kg por metro — usa o peso medido; com `aceitarTeorico`, cai na estimativa. */
-export function kgPorMetro(mp: BarraInfo, aceitarTeorico = false): number | null {
-  const peso = pesoBarraKg(mp) ?? (aceitarTeorico ? pesoTeoricoBarraKg(mp) : null);
-  return peso ? peso / comprimentoBarraM(mp) : null;
+/** Nota em kg → nº de barras (null = peso da barra ainda não cadastrado). */
+export function kgParaBarras(kg: number, mp: BarraInfo): number | null {
+  const p = pesoBarraKg(mp);
+  return p ? kg / p : null;
 }
-
-export function kgParaMetros(kg: number, mp: BarraInfo): number | null {
-  const kpm = kgPorMetro(mp);
-  return kpm ? kg / kpm : null;
+export function barrasParaKg(barras: number, mp: BarraInfo, aceitarTeorico = false): number | null {
+  const p = pesoBarraKg(mp) ?? (aceitarTeorico ? pesoTeoricoBarraKg(mp) : null);
+  return p ? barras * p : null;
 }
-export function metrosParaKg(m: number, mp: BarraInfo, aceitarTeorico = false): number | null {
-  const kpm = kgPorMetro(mp, aceitarTeorico);
-  return kpm ? m * kpm : null;
+export function barrasParaMetros(barras: number, mp: BarraInfo): number {
+  return barras * comprimentoBarraM(mp);
 }
 export function metrosParaBarras(m: number, mp: BarraInfo): number {
   return m / comprimentoBarraM(mp);
 }
-
-/** Fator da ponta que sobra em cada barra (ex.: 3 m com 150 mm de sobra → 1,0526). */
-export function fatorSobra(mp: BarraInfo): number {
-  const c = comprimentoBarraM(mp) * 1000;
-  const s = Math.max(0, Number(mp.sobra_barra_mm) || 0);
-  return s > 0 && s < c ? c / (c - s) : 1;
+export function kgParaMetros(kg: number, mp: BarraInfo): number | null {
+  const b = kgParaBarras(kg, mp);
+  return b == null ? null : barrasParaMetros(b, mp);
+}
+export function metrosParaKg(m: number, mp: BarraInfo, aceitarTeorico = false): number | null {
+  return barrasParaKg(metrosParaBarras(m, mp), mp, aceitarTeorico);
 }
 
-/**
- * Consumo de um lançamento.
- * Peças boas + refugadas gastam barra: metros = peças × (comprimento + corte).
- * `baixa` inclui a ponta de barra — é o que sai do estoque (igual ao banco).
- */
-export function calcularConsumo(params: {
-  pecasBoas: number; pecasRefugo: number; mmPorPeca: number; mp?: BarraInfo | null;
-}) {
-  const pecas = Math.max(0, params.pecasBoas) + Math.max(0, params.pecasRefugo);
-  const mm = Math.max(0, params.mmPorPeca);
-  const metros = Math.round(((pecas * mm) / 1000) * 1000) / 1000;
-  const baixa = params.mp ? Math.round(metros * fatorSobra(params.mp) * 1000) / 1000 : metros;
-  return {
-    pecas,
-    metros,
-    baixa,
-    barras: params.mp ? metrosParaBarras(baixa, params.mp) : baixa / COMPRIMENTO_BARRA_PADRAO_M,
-    kg: params.mp ? metrosParaKg(baixa, params.mp, true) : null,
-    kgEstimado: !!params.mp && !pesoBarraKg(params.mp),
-  };
-}
-
-/** Peças que ainda dá para fazer com o saldo (desconta a ponta). */
-export function pecasPossiveis(saldoMetros: number, mmPorPeca: number, mp: BarraInfo): number {
-  if (mmPorPeca <= 0 || saldoMetros <= 0) return 0;
-  return Math.floor((saldoMetros / fatorSobra(mp)) * 1000 / mmPorPeca);
+/** Rendimento do lançamento: peças boas por barra gasta. */
+export function pecasPorBarra(pecas: number, barras: number): number | null {
+  return barras > 0 && pecas > 0 ? pecas / barras : null;
 }
 
 const nf = (v: number, max = 2) => v.toLocaleString("pt-BR", { maximumFractionDigits: max });

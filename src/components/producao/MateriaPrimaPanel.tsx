@@ -77,7 +77,7 @@ const fmtD = (iso?: string | null) => iso ? new Date(iso.length === 10 ? `${iso}
 const normMP = (m: MateriaPrima): MateriaPrima => ({
   ...m, estoque_atual: Number(m.estoque_atual) || 0, estoque_minimo: Number(m.estoque_minimo) || 0, estoque_maximo: Number(m.estoque_maximo) || 0,
   peso_barra_kg: m.peso_barra_kg != null ? Number(m.peso_barra_kg) : null, diametro_mm: m.diametro_mm != null ? Number(m.diametro_mm) : null,
-  comprimento_barra_m: Number(m.comprimento_barra_m) || 3, sobra_barra_mm: Number(m.sobra_barra_mm) || 0,
+  comprimento_barra_m: Number(m.comprimento_barra_m) || 3,
 });
 /** Quantidade em kg / barras / metros → metros (null = falta o peso da barra). */
 function paraMetros(qtd: number, unidade: UnidadePedido, mp: MateriaPrima): number | null {
@@ -422,18 +422,21 @@ function ReceberDialog({ item, materias, onClose, onSaved }: {
 // ── Cadastro de matéria-prima ────────────────────────────────────────────────
 function MateriaDialog({ open, materia, onClose, onSaved }: { open: boolean; materia: MateriaPrima | null; onClose: () => void; onSaved: (m: MateriaPrima) => void }) {
   const vazio = { codigo: "", descricao: "", unidade: "m", estoque_atual: "", estoque_minimo: "", estoque_maximo: "", fornecedor: "", localizacao: "", lote_atual: "",
-    diametro_mm: "", comprimento_barra_m: "3", peso_barra_kg: "", sobra_barra_mm: "" };
+    diametro_mm: "", comprimento_barra_m: "3", peso_barra_kg: "" };
   const [form, setForm] = useState(vazio);
   const [saving, setSaving] = useState(false);
   const { saveWithFallback } = useOfflineSync();
   useEffect(() => {
     if (!open) return;
     setForm(materia ? {
-      codigo: materia.codigo, descricao: materia.descricao, unidade: materia.unidade || "m", estoque_atual: String(materia.estoque_atual),
-      estoque_minimo: String(materia.estoque_minimo), estoque_maximo: String(materia.estoque_maximo), fornecedor: materia.fornecedor ?? "",
+      codigo: materia.codigo, descricao: materia.descricao, unidade: materia.unidade || "m",
+      // Saldo/mínimo/máximo aparecem em BARRAS (o banco guarda em metros).
+      estoque_atual: String(+metrosParaBarras(materia.estoque_atual, materia).toFixed(2)),
+      estoque_minimo: String(+metrosParaBarras(materia.estoque_minimo, materia).toFixed(2)),
+      estoque_maximo: String(+metrosParaBarras(materia.estoque_maximo, materia).toFixed(2)), fornecedor: materia.fornecedor ?? "",
       localizacao: materia.localizacao ?? "", lote_atual: materia.lote_atual ?? "",
       diametro_mm: materia.diametro_mm ? String(materia.diametro_mm) : "", comprimento_barra_m: String(comprimentoBarraM(materia)),
-      peso_barra_kg: materia.peso_barra_kg ? String(materia.peso_barra_kg) : "", sobra_barra_mm: materia.sobra_barra_mm ? String(materia.sobra_barra_mm) : "",
+      peso_barra_kg: materia.peso_barra_kg ? String(materia.peso_barra_kg) : "",
     } : vazio);
   }, [open, materia]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
@@ -443,17 +446,17 @@ function MateriaDialog({ open, materia, onClose, onSaved }: { open: boolean; mat
   async function save() {
     if (!form.codigo.trim() || !form.descricao.trim()) { toast.error("Código e descrição são obrigatórios."); return; }
     setSaving(true);
+    const compM = Number(form.comprimento_barra_m) > 0 ? Number(form.comprimento_barra_m) : 3;
     const data: MateriaPrima = {
       ...(materia ?? {}), id: materia?.id ?? crypto.randomUUID(), codigo: form.codigo.trim().toUpperCase(), descricao: form.descricao.trim(), unidade: form.unidade.trim() || "m",
-      estoque_atual: materia ? materia.estoque_atual : Number(form.estoque_atual) || 0,
-      estoque_minimo: Number(form.estoque_minimo) || 0, estoque_maximo: Number(form.estoque_maximo) || 999,
+      estoque_atual: materia ? materia.estoque_atual : (Number(form.estoque_atual) || 0) * compM,
+      estoque_minimo: (Number(form.estoque_minimo) || 0) * compM,
+      estoque_maximo: Number(form.estoque_maximo) > 0 ? Number(form.estoque_maximo) * compM : 999,
       fornecedor: form.fornecedor.trim() || null, localizacao: form.localizacao.trim() || null, lote_atual: form.lote_atual.trim() || null,
       diametro_mm: Number(form.diametro_mm) > 0 ? Number(form.diametro_mm) : null,
-      comprimento_barra_m: Number(form.comprimento_barra_m) > 0 ? Number(form.comprimento_barra_m) : 3,
+      comprimento_barra_m: compM,
       peso_barra_kg: Number(form.peso_barra_kg) > 0 ? Number(form.peso_barra_kg) : null,
-      sobra_barra_mm: Math.max(0, Number(form.sobra_barra_mm) || 0),
     };
-    if (data.sobra_barra_mm! >= data.comprimento_barra_m! * 1000) { setSaving(false); toast.error("A sobra por barra precisa ser menor que o comprimento da barra."); return; }
     const { data: saved, error, savedOffline } = await saveWithFallback("materias_primas_producao", "materias_primas", materia ? "UPDATE" : "INSERT", data);
     setSaving(false);
     if (error) { toast.error("Não foi possível salvar."); return; }
@@ -475,9 +478,9 @@ function MateriaDialog({ open, materia, onClose, onSaved }: { open: boolean; mat
           </div>
           <Campo label="Descrição *"><Input value={form.descricao} onChange={e => set("descricao", e.target.value)} className="h-11" placeholder="Barra titânio Gr.4 Ø6" /></Campo>
           <div className="grid grid-cols-3 gap-3">
-            <Campo label="Saldo inicial"><Input inputMode="decimal" value={form.estoque_atual} onChange={e => set("estoque_atual", dec(e.target.value))} disabled={!!materia} className="h-11 tabular-nums" /></Campo>
-            <Campo label="Mínimo"><Input inputMode="decimal" value={form.estoque_minimo} onChange={e => set("estoque_minimo", dec(e.target.value))} className="h-11 tabular-nums" /></Campo>
-            <Campo label="Máximo"><Input inputMode="decimal" value={form.estoque_maximo} onChange={e => set("estoque_maximo", dec(e.target.value))} className="h-11 tabular-nums" /></Campo>
+            <Campo label="Saldo inicial (barras)"><Input inputMode="decimal" value={form.estoque_atual} onChange={e => set("estoque_atual", dec(e.target.value))} disabled={!!materia} className="h-11 tabular-nums" /></Campo>
+            <Campo label="Mínimo (barras)"><Input inputMode="decimal" value={form.estoque_minimo} onChange={e => set("estoque_minimo", dec(e.target.value))} className="h-11 tabular-nums" /></Campo>
+            <Campo label="Máximo (barras)"><Input inputMode="decimal" value={form.estoque_maximo} onChange={e => set("estoque_maximo", dec(e.target.value))} className="h-11 tabular-nums" /></Campo>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Campo label="Fornecedor"><Input value={form.fornecedor} onChange={e => set("fornecedor", e.target.value)} className="h-11" /></Campo>
@@ -486,7 +489,7 @@ function MateriaDialog({ open, materia, onClose, onSaved }: { open: boolean; mat
           <Campo label="Lote atual"><Input value={form.lote_atual} onChange={e => set("lote_atual", e.target.value)} className="h-11" /></Campo>
 
           <div className="rounded-xl border p-3 space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"><Scale className="h-3.5 w-3.5" />Barra — compra por kg, consumo por metro</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"><Scale className="h-3.5 w-3.5" />Barra — nota em kg, gasto em barras</p>
             <div className="grid grid-cols-2 gap-3">
               <Campo label="Diâmetro (mm)"><Input inputMode="decimal" value={form.diametro_mm} onChange={e => set("diametro_mm", dec(e.target.value))} placeholder="Ex.: 4" className="h-11 tabular-nums" /></Campo>
               <Campo label="Comprimento da barra (m)"><Input inputMode="decimal" value={form.comprimento_barra_m} onChange={e => set("comprimento_barra_m", dec(e.target.value))} className="h-11 tabular-nums" /></Campo>
@@ -494,14 +497,12 @@ function MateriaDialog({ open, materia, onClose, onSaved }: { open: boolean; mat
                 <Input inputMode="decimal" value={form.peso_barra_kg} onChange={e => set("peso_barra_kg", dec(e.target.value))}
                   placeholder={teorico ? `teórico ≈ ${teorico.toLocaleString("pt-BR", { maximumFractionDigits: 3 })}` : "pese uma barra"} className="h-11 tabular-nums" />
               </Campo>
-              <Campo label="Ponta que sobra (mm/barra)"><Input inputMode="decimal" value={form.sobra_barra_mm} onChange={e => set("sobra_barra_mm", dec(e.target.value))} placeholder="0" className="h-11 tabular-nums" /></Campo>
             </div>
             <p className="text-xs text-muted-foreground">
               {Number(form.peso_barra_kg) > 0
-                ? `1 kg ≈ ${(Number(form.comprimento_barra_m || 3) / Number(form.peso_barra_kg)).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m de barra.`
-                : teorico ? `Sem o peso medido, o pedido em kg não é convertido. Estimativa pela densidade: ${fmtKg(teorico)} por barra — confira na balança.`
+                ? `Nota de 1 kg ≈ ${(1 / Number(form.peso_barra_kg)).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} barras.`
+                : teorico ? `Sem o peso medido, a nota em kg não é convertida em barras. Estimativa pela densidade: ${fmtKg(teorico)} por barra — confira na balança.`
                 : "Pese uma barra inteira deste diâmetro e informe aqui."}
-              {" "}Saldo, mínimo e máximo são em metros ({comprimentoBarraM(previa).toLocaleString("pt-BR")} m = 1 barra).
             </p>
           </div>
         </div>
@@ -654,17 +655,19 @@ export function MateriaPrimaPanel() {
                     </div>
                     <div>
                       <div className="flex items-baseline justify-between gap-2 text-sm">
-                        <strong className={cn("tabular-nums", abaixo && "text-amber-600")}>{fmtQ(m.estoque_atual)} {m.unidade}</strong>
-                        <span className="text-xs text-muted-foreground tabular-nums">mín {fmtQ(m.estoque_minimo)} · máx {fmtQ(m.estoque_maximo)}</span>
+                        <strong className={cn("tabular-nums", abaixo && "text-amber-600")}>{fmtBarras(metrosParaBarras(m.estoque_atual, m))}</strong>
+                        <span className="text-xs text-muted-foreground tabular-nums">mín {fmtQ(metrosParaBarras(m.estoque_minimo, m))} · máx {fmtQ(metrosParaBarras(m.estoque_maximo, m))}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground tabular-nums">≈ {equivalencias(Math.max(0, m.estoque_atual), m)}</p>
+                      <p className="text-xs text-muted-foreground tabular-nums">
+                        {fmtMetros(m.estoque_atual)}{(() => { const kg = metrosParaKg(Math.max(0, m.estoque_atual), m, true); return kg != null ? ` · ${fmtKg(kg)}${pesoBarraKg(m) ? "" : " (est.)"}` : ""; })()}
+                      </p>
                       <div className="relative mt-1 h-2 rounded-full bg-muted">
                         <div className={cn("h-full rounded-full", abaixo ? "bg-amber-500" : "bg-green-500")} style={{ width: `${pct}%` }} />
                         <div className="absolute -top-0.5 -bottom-0.5 w-0.5 bg-foreground/50" style={{ left: `${minPct}%` }} aria-hidden />
                       </div>
                       {prev && prev.porDia > 0 && (
                         <p className={cn("mt-1 text-xs tabular-nums", prev.dias != null && prev.dias <= DIAS_ALERTA ? "text-amber-700 dark:text-amber-400 font-medium" : "text-muted-foreground")}>
-                          Gasta ~{fmtMetros(prev.porDia)}/dia · {prev.dias != null && prev.dias < 1 ? "acaba hoje" : `acaba em ~${Math.floor(prev.dias ?? 0)} dias`}
+                          Gasta ~{fmtBarras(metrosParaBarras(prev.porDia, m))}/dia · {prev.dias != null && prev.dias < 1 ? "acaba hoje" : `acaba em ~${Math.floor(prev.dias ?? 0)} dias`}
                         </p>
                       )}
                     </div>
@@ -738,7 +741,10 @@ export function MateriaPrimaPanel() {
                 </div>
                 <div className="text-right shrink-0">
                   <p className={cn("font-semibold tabular-nums", m.tipo === "entrada" ? "text-green-600" : m.tipo === "saida" ? "text-red-600" : "text-blue-600")}>
-                    {m.tipo === "entrada" ? "+" : m.tipo === "saida" ? "−" : "±"}{fmtQ(m.quantidade)}
+                    {m.tipo === "entrada" ? "+" : m.tipo === "saida" ? "−" : "±"}{(() => {
+                      const mp = materias.find(x => x.id === m.materia_prima_id);
+                      return mp ? fmtBarras(Math.abs(metrosParaBarras(m.quantidade, mp))) : `${fmtQ(m.quantidade)} m`;
+                    })()}
                   </p>
                   <p className="text-xs text-muted-foreground">{fmtD(m.created_at)}</p>
                 </div>
