@@ -61,7 +61,7 @@ function EmissorCard({ emissor, onMudou }: { emissor: EmissorStatus; onMudou: ()
   return (
     <section className={cn("rounded-2xl border p-5 space-y-3", emissor.ativo ? "border-green-500/30 bg-green-500/5" : "bg-card")}>
       <div className="flex flex-wrap items-start gap-3">
-        <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center", emissor.ativo ? "bg-green-500/15 text-green-700" : "bg-primary/10 text-primary")}><ShieldCheck className="h-6 w-6" /></div>
+        <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center", emissor.ativo ? "bg-green-500/15 text-green-700 dark:text-green-400" : "bg-primary/10 text-primary")}><ShieldCheck className="h-6 w-6" /></div>
         <div className="flex-1 min-w-[14rem]">
           <h3 className="font-semibold">Emissor de NF-e</h3>
           <p className="text-sm text-muted-foreground">
@@ -210,7 +210,7 @@ function DadosFiscais({ onSalvo }: { onSalvo: () => void }) {
           <div className="flex gap-1.5">
             {[["2", "Homologação (teste)"], ["1", "Produção"]].map(([k, l]) => (
               <button key={k} type="button" onClick={() => set("ambiente", k)}
-                className={cn("h-11 flex-1 rounded-xl border text-sm", c.ambiente === k ? (k === "1" ? "border-green-600 bg-green-600/10 text-green-700 font-medium" : "border-primary bg-primary/10 text-primary font-medium") : "text-muted-foreground")}>{l}</button>
+                className={cn("h-11 flex-1 rounded-xl border text-sm", c.ambiente === k ? (k === "1" ? "border-green-600 bg-green-600/10 text-green-700 dark:text-green-400 font-medium" : "border-primary bg-primary/10 text-primary font-medium") : "text-muted-foreground")}>{l}</button>
             ))}
           </div>
         </label>

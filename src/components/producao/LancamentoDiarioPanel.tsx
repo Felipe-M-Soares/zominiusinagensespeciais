@@ -107,7 +107,7 @@ export interface ApontamentoHoje {
   id: string; maquina_codigo: string | null; maquina: string; produto: string;
   quantidade: number; qtde_plan_disp: number; horas_planejadas: number; turno: string;
   operador: string; created_at: string;
-  seq_producao?: number | null; qtde_por_hora?: number | null;
+  seq_producao?: number | null; qtde_por_hora?: number | null; lote?: string | null;
   descricao_mp?: string | null; consumo_mp_metros?: number | null; baixa_mp_metros?: number | null;
 }
 interface ParadaHoje {
@@ -271,6 +271,7 @@ export function LancamentoDiarioPanel() {
   const [vinculos, setVinculos]     = useState<Map<string, VinculoBarra>>(new Map());
   const [barrasGastas, setBarrasGastas] = useState(""); // nº de barras de 3 m gastas
   const [loteMp, setLoteMp]         = useState("");
+  const [lote, setLote]             = useState("");   // lote da produção (vazio = o sistema gera)
   const [lembrarBarra, setLembrarBarra] = useState(true);
   const [ritmoManual, setRitmoManual]   = useState(""); // Qtde/hora digitada (vazio = automático)
   const [turno, setTurno] = useState<string>(() => {
@@ -299,7 +300,7 @@ export function LancamentoDiarioPanel() {
       supabase.from("tipo_refugo_producao").select("id,nome").order("id"),
       loadWithFallback<MateriaPrima>("materias_primas_producao", "materias_primas"),
       supabase.from("apontamentos_producao")
-        .select("id,seq_producao,maquina_codigo,maquina,produto,quantidade,qtde_plan_disp,qtde_por_hora,horas_planejadas,turno,operador,created_at,descricao_mp,consumo_mp_metros,baixa_mp_metros")
+        .select("id,seq_producao,lote,maquina_codigo,maquina,produto,quantidade,qtde_plan_disp,qtde_por_hora,horas_planejadas,turno,operador,created_at,descricao_mp,consumo_mp_metros,baixa_mp_metros")
         .eq("data_apontamento", dia).order("created_at", { ascending: false }),
       supabase.from("paradas_producao")
         .select("id,maquina,motivo,tipo,inicio,fim,duracao_min,operador,observacoes,user_id")
@@ -478,7 +479,7 @@ export function LancamentoDiarioPanel() {
 
   function limparFormulario() {
     setQuantidade(""); setHorasSel(""); setParadas([]); setParadaAberta(null);
-    setMinCustom(""); setPecaSetup(""); setRefugos({}); setMostrarRefugo(false); setRitmoManual(""); setBarrasGastas("");
+    setMinCustom(""); setPecaSetup(""); setRefugos({}); setMostrarRefugo(false); setRitmoManual(""); setBarrasGastas(""); setLote("");
     setModo("produziu"); setMotivoDia(null);
     // A barra da peça volta sozinha pelo vínculo (recarregado no load()).
   }
@@ -518,7 +519,7 @@ export function LancamentoDiarioPanel() {
           p_horario_inicio: +inicioDec.toFixed(4), p_horario_fim: +fimDec.toFixed(4),
           p_cycle_time_min: qtdNum > 0 && horasProdutivas > 0 ? +((horasProdutivas * 60) / qtdNum).toFixed(4) : null,
           p_lead_time_horas: horasPeriodo || null,
-          p_lote: "", p_lote_mp: mp ? (loteMp.trim() || mp.lote_atual || "") : "", p_descricao_mp: mp?.descricao ?? "",
+          p_lote: lote.trim(), p_lote_mp: mp ? (loteMp.trim() || mp.lote_atual || "") : "", p_descricao_mp: mp?.descricao ?? "",
           // Barras gastas × 3 m; o banco dá baixa no saldo da barra.
           p_comprimento_mm: null,
           p_consumo_mp_metros: mp && temConsumo ? +metrosGastos.toFixed(3) : null,
@@ -530,7 +531,7 @@ export function LancamentoDiarioPanel() {
           produto: peca, descricao_produto: pecaInfo?.descricao,
           qtde_por_hora: porHora, horas_planejadas: horasPeriodo, qtde_plan_disp: planDisp,
           quantidade: qtdNum, horario_inicio: inicioDec, horario_fim: fimDec,
-          lote: "(pendente)", operador: op, status: "concluido", created_at: agora.toISOString(),
+          lote: lote.trim() || "(pendente)", operador: op, status: "concluido", created_at: agora.toISOString(),
         };
         const { ok } = await saveRpcWithFallback("criar_apontamento_ppi51", args, "apontamentos", preview);
         if (!ok) throw new Error("Falha ao gravar produção");
@@ -780,6 +781,11 @@ export function LancamentoDiarioPanel() {
                       <span className="font-medium text-foreground">{pecaInfo.codigo}</span> · {pecaInfo.descricao} · UM: PC
                     </p>
                   )}
+                  <label className="block max-w-xs space-y-1 pt-1">
+                    <span className="block text-xs font-medium text-muted-foreground">Lote da produção</span>
+                    <Input value={lote} onChange={e => setLote(e.target.value.toUpperCase().slice(0, 40))}
+                      placeholder="Vazio = o sistema gera" aria-label="Lote da produção" className="h-11 font-mono" />
+                  </label>
                 </div>
               </Etapa>
 
@@ -1080,6 +1086,7 @@ export function LancamentoDiarioPanel() {
               {modo === "produziu" ? (
                 <>
                   <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Peça</dt><dd className="font-semibold truncate">{peca || "—"}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Lote</dt><dd className="font-mono text-xs truncate">{lote.trim() || "automático"}</dd></div>
                   <div className="border-t my-2" />
                   <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Tempo</dt><dd className="tabular-nums">{fmtH(horasPeriodo)}</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-muted-foreground">− Paradas</dt><dd className="tabular-nums">{fmtH(horasParadas)}</dd></div>
@@ -1180,7 +1187,7 @@ export function LancamentoDiarioPanel() {
                     {a.maquina_codigo || a.maquina} · {a.produto}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {a.turno} · {a.operador} · {fmtHora(a.created_at)}
+                    {a.turno}{a.lote ? <> · lote <span className="font-mono">{a.lote}</span></> : null} · {a.operador} · {fmtHora(a.created_at)}
                     {Number(a.consumo_mp_metros) > 0 && <> · <Boxes className="inline h-3 w-3 -mt-0.5" /> {fmtBarras(Number(a.consumo_mp_metros) / 3)}</>}
                   </p>
                 </div>
@@ -1400,6 +1407,7 @@ export function EditarApontamentoDialog({ apontamento, onClose, onSaved, maquina
   const [materias, setMaterias] = useState<MateriaPrima[]>([]);
   const [materiaId, setMateriaId] = useState("");
   const [barras, setBarras] = useState("");
+  const [loteEd, setLoteEd] = useState("");
 
   useEffect(() => {
     if (!apontamento) return;
@@ -1414,12 +1422,13 @@ export function EditarApontamentoDialog({ apontamento, onClose, onSaved, maquina
     Promise.all([
       supabase.from("apontamento_paradas").select("id,tipo_parada_id,tipo_parada_nome,duracao_horas").eq("apontamento_id", apontamento.id),
       supabase.from("apontamento_refugos").select("tipo_refugo_id,quantidade").eq("apontamento_id", apontamento.id),
-      supabase.from("apontamentos_producao").select("turno,qtde_por_hora,materia_prima_id,consumo_mp_metros").eq("id", apontamento.id).maybeSingle(),
+      supabase.from("apontamentos_producao").select("turno,lote,qtde_por_hora,materia_prima_id,consumo_mp_metros").eq("id", apontamento.id).maybeSingle(),
       supabase.from("materias_primas_producao").select("*").order("codigo"),
     ]).then(([pr, rr, ar, mr]) => {
       const ap = ar.data;
       if (ap) {
         setTurno(ap.turno || TURNO_DIA);
+        setLoteEd(ap.lote ?? "");
         setRitmo(Number(ap.qtde_por_hora) > 0 ? String(Number(ap.qtde_por_hora)) : "");
         setMateriaId(ap.materia_prima_id ?? "");
         setBarras(Number(ap.consumo_mp_metros) > 0 ? String(+(Number(ap.consumo_mp_metros) / 3).toFixed(2)) : "");
@@ -1456,6 +1465,7 @@ export function EditarApontamentoDialog({ apontamento, onClose, onSaved, maquina
       p_materia_prima_id: materiaId || null,
       p_barras: materiaId ? barrasNum : null,
       p_turno: turno,
+      p_lote: loteEd.trim() || null,
     });
     setSalvando(false);
     const res = data as { ok?: boolean; error?: string } | null;
@@ -1520,6 +1530,9 @@ export function EditarApontamentoDialog({ apontamento, onClose, onSaved, maquina
             </div>
             <div className="space-y-1.5"><label className={lblCls}>Peça</label>
               <PecaCombobox pecas={pecas} value={peca} onChange={v => v && setPeca(v)} placeholder="Buscar peça..." />
+            </div>
+            <div className="space-y-1.5"><label className={lblCls}>Lote da produção</label>
+              <Input value={loteEd} onChange={e => setLoteEd(e.target.value.toUpperCase().slice(0, 40))} className="h-11 font-mono" aria-label="Lote da produção" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
               <div className="space-y-1.5"><label className={lblCls}>Peças boas</label>

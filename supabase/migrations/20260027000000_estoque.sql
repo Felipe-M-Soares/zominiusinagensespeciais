@@ -879,7 +879,9 @@ GRANT EXECUTE ON FUNCTION get_devices_regularizacao_counts() TO authenticated;
 -- 20260027000000_load_stock_page_qty_by_fase.sql
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Retorna soma de quantity por fase para o header do Estoque mostrar o total
--- real mesmo quando há paginação (cliente só recebe até 500 itens por página)
+-- real mesmo quando há paginação (cliente só recebe até 500 itens por página).
+-- O app busca todas as páginas; "si.id" desempata a ordem para a paginação não
+-- repetir nem pular itens com o mesmo updated_at (ex.: após uma importação).
 
 CREATE OR REPLACE FUNCTION public.load_stock_page(
   p_search      text    DEFAULT NULL,
@@ -924,7 +926,7 @@ BEGIN
         ) AS device
       FROM public.stock_items si JOIN public.devices d ON d.id = si.device_id
       WHERE si.device_id = ANY(p_device_ids)
-      ORDER BY si.updated_at DESC LIMIT v_limit OFFSET COALESCE(p_offset,0)
+      ORDER BY si.updated_at DESC, si.id LIMIT v_limit OFFSET COALESCE(p_offset,0)
     ) t;
   ELSE
     SELECT jsonb_agg(row_to_json(t)) INTO v_items FROM (
@@ -937,7 +939,7 @@ BEGIN
           'icon_url',d.icon_url,'sterile',d.sterile,'single_use',d.single_use,'implantable',d.implantable
         ) AS device
       FROM public.stock_items si JOIN public.devices d ON d.id = si.device_id
-      ORDER BY si.updated_at DESC LIMIT v_limit OFFSET COALESCE(p_offset,0)
+      ORDER BY si.updated_at DESC, si.id LIMIT v_limit OFFSET COALESCE(p_offset,0)
     ) t;
   END IF;
 
@@ -995,3 +997,197 @@ END;
 $f01$;
 
 GRANT EXECUTE ON FUNCTION public.load_stock_page(text, integer, integer, uuid[]) TO authenticated;
+
+-- ── importar_saldo_estoque ───────────────────────────────────────────────────
+-- Importa o relatório "SALDO DE ESTOQUE" (PDF do ERP antigo) ou a planilha de
+-- importação, em blocos de até 500 peças por chamada:
+--   • acha a peça já cadastrada à mão no app pelo código de referência
+--     (ex.: ANM 4520AT — só quando bate com UMA peça) ou pelo nome igual; se
+--     não existir, CADASTRA com nome e referência e marca a regularização como
+--     "pendente" (peças ainda sem registro na ANVISA). Peças criadas por
+--     importação são reencontradas pelo código do ERP (udi_di "ERP-<código>");
+--   • garante o item de estoque em Intermediário e/ou Expedição;
+--   • deixa o saldo de cada LOTE igual ao do arquivo (entrada ou saída da
+--     diferença). Rodar o mesmo arquivo de novo não duplica nada.
+-- Antes, o importador criava as peças pelo navegador com udi_di = "—" (campo
+-- único): a 1ª peça nova entrava e todas as outras davam erro; e cada lote
+-- passava pelo stock_movement_atomic, que trava em 60 chamadas por minuto.
+CREATE OR REPLACE FUNCTION public.norm_codigo_peca(p text)
+RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $f_ncp$
+  SELECT upper(regexp_replace(coalesce(p, ''), '\s+', '', 'g'))
+$f_ncp$;
+
+CREATE INDEX IF NOT EXISTS devices_norm_reference_idx     ON public.devices (public.norm_codigo_peca(reference));
+CREATE INDEX IF NOT EXISTS devices_norm_internal_code_idx ON public.devices (public.norm_codigo_peca(internal_code));
+CREATE INDEX IF NOT EXISTS devices_norm_model_idx         ON public.devices (public.norm_codigo_peca(model));
+CREATE INDEX IF NOT EXISTS stock_movements_item_lote_idx  ON public.stock_movements (stock_item_id, lote);
+
+CREATE OR REPLACE FUNCTION public.importar_saldo_estoque(p_pecas jsonb, p_origem text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $f_imp_saldo$
+DECLARE
+  v_uid        uuid := auth.uid();
+  v_user_nome  text;
+  v_motivo     text;
+  v_p          jsonb;
+  v_nome       text;
+  v_cod        text;
+  v_ref        text;
+  v_refs       text[];
+  v_chave      text;
+  v_dev_id     uuid;
+  v_qtd_match  integer;
+  v_fase       text;
+  v_lotes      jsonb;
+  v_l          jsonb;
+  v_lote       text;
+  v_item       uuid;
+  v_atual      integer;
+  v_alvo       integer;
+  v_dif        integer;
+  v_criadas    integer := 0;
+  v_existentes integer := 0;
+  v_lotes_aj   integer := 0;
+  v_entrou     integer := 0;
+  v_saiu       integer := 0;
+  v_erros      jsonb := '[]'::jsonb;
+  v_novas      jsonb := '[]'::jsonb;
+BEGIN
+  IF v_uid IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'Não autenticado'); END IF;
+  IF NOT (public.is_admin_user() OR COALESCE(public.get_my_role(), '') IN ('estoque', 'gerente')) THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Sem permissão para importar estoque (admin, estoque ou gerente).');
+  END IF;
+  IF p_pecas IS NULL OR jsonb_typeof(p_pecas) <> 'array' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Formato inválido');
+  END IF;
+  IF jsonb_array_length(p_pecas) > 500 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Envie no máximo 500 peças por vez');
+  END IF;
+
+  SELECT display_name INTO v_user_nome FROM public.profiles WHERE user_id = v_uid;
+  v_motivo := 'Importação de saldo (' || left(COALESCE(NULLIF(trim(p_origem), ''), 'arquivo'), 80) || ')';
+
+  FOR v_p IN SELECT value FROM jsonb_array_elements(p_pecas) LOOP
+    BEGIN
+      v_nome := left(trim(COALESCE(v_p->>'nome', '')), 200);
+      v_cod  := NULLIF(left(trim(COALESCE(v_p->>'codigo_erp', '')), 30), '');
+      v_ref  := left(trim(COALESCE(v_p->>'referencia', '')), 120);
+      IF v_nome = '' THEN RAISE EXCEPTION 'Peça sem nome'; END IF;
+
+      -- Só referências "de código" (ex.: ANM 4520AT, ADMGM 0016N). As antigas
+      -- ("NC Ø3.5 ST", "HEX. 0.9MM CURTA") se repetem entre peças diferentes
+      -- (análogo × transfer, chave digital × torque) e não servem para identificar.
+      SELECT COALESCE(array_agg(DISTINCT public.norm_codigo_peca(r)), '{}') INTO v_refs
+      FROM jsonb_array_elements_text(COALESCE(v_p->'referencias', '[]'::jsonb)) r
+      WHERE public.norm_codigo_peca(r) ~ '^[A-Z]{2,10}[0-9]{3,}[A-Z0-9]*$';
+
+      v_chave := 'ERP-' || COALESCE(v_cod, left(md5(upper(v_nome)), 12));
+      v_dev_id := NULL;
+
+      -- 1) já criada por uma importação anterior
+      SELECT id INTO v_dev_id FROM public.devices WHERE udi_di = v_chave LIMIT 1;
+
+      -- 2) peça cadastrada à mão com o mesmo código — só se for uma única
+      IF v_dev_id IS NULL AND array_length(v_refs, 1) > 0 THEN
+        SELECT count(*) INTO v_qtd_match FROM public.devices
+        WHERE udi_di NOT LIKE 'ERP-%'
+          AND (public.norm_codigo_peca(reference) = ANY(v_refs) OR public.norm_codigo_peca(internal_code) = ANY(v_refs));
+        IF v_qtd_match = 1 THEN
+          SELECT id INTO v_dev_id FROM public.devices
+          WHERE udi_di NOT LIKE 'ERP-%'
+            AND (public.norm_codigo_peca(reference) = ANY(v_refs) OR public.norm_codigo_peca(internal_code) = ANY(v_refs));
+        END IF;
+      END IF;
+
+      -- 3) peça cadastrada à mão com o mesmo nome — só se for uma única
+      IF v_dev_id IS NULL THEN
+        SELECT count(*) INTO v_qtd_match FROM public.devices
+        WHERE udi_di NOT LIKE 'ERP-%' AND public.norm_codigo_peca(model) = public.norm_codigo_peca(v_nome);
+        IF v_qtd_match = 1 THEN
+          SELECT id INTO v_dev_id FROM public.devices
+          WHERE udi_di NOT LIKE 'ERP-%' AND public.norm_codigo_peca(model) = public.norm_codigo_peca(v_nome);
+        END IF;
+      END IF;
+
+      -- 4) não existe: cadastra com nome e referência (resto fica para completar)
+      IF v_dev_id IS NULL THEN
+        INSERT INTO public.devices (
+          udi_di, model, reference, internal_code, anvisa_registration, primary_material,
+          classification_code, risk_class, intended_use, body_region, brand_name,
+          manufacturer_country, exocad_compatibility, implantable, sterile, single_use,
+          status_regularizacao, ativo
+        ) VALUES (
+          v_chave, v_nome, v_ref, COALESCE(NULLIF(v_ref, ''), v_cod, ''), 'PENDENTE', '—',
+          '—', '—', '—', '—', '—',
+          '—', '—', false, false, false,
+          'pendente', true
+        ) RETURNING id INTO v_dev_id;
+        v_criadas := v_criadas + 1;
+        v_novas := v_novas || jsonb_build_object('nome', v_nome, 'referencia', v_ref);
+      ELSE
+        v_existentes := v_existentes + 1;
+        -- Sobra do importador antigo (udi_di "—" e o lote no lugar da referência): corrige.
+        UPDATE public.devices SET udi_di = v_chave,
+               reference = CASE WHEN v_ref <> '' THEN v_ref ELSE reference END,
+               internal_code = CASE WHEN internal_code IN ('', '—') THEN COALESCE(NULLIF(v_ref, ''), v_cod, internal_code) ELSE internal_code END,
+               status_regularizacao = 'pendente'
+         WHERE id = v_dev_id AND udi_di = '—';
+      END IF;
+
+      -- Estoque por fase e lote
+      FOR v_fase, v_lotes IN SELECT key, value FROM jsonb_each(COALESCE(v_p->'fases', '{}'::jsonb)) LOOP
+        CONTINUE WHEN v_fase NOT IN ('intermediaria', 'expedicao') OR jsonb_typeof(v_lotes) <> 'array';
+
+        SELECT id INTO v_item FROM public.stock_items WHERE device_id = v_dev_id AND fase = v_fase LIMIT 1;
+        IF v_item IS NULL THEN
+          INSERT INTO public.stock_items (device_id, fase, quantity, min_quantity)
+          VALUES (v_dev_id, v_fase, 0, 0) RETURNING id INTO v_item;
+        END IF;
+
+        FOR v_l IN SELECT value FROM jsonb_array_elements(v_lotes) LOOP
+          v_lote := left(trim(COALESCE(v_l->>'lote', '')), 60);
+          CONTINUE WHEN v_lote = '';
+          v_alvo := GREATEST(0, COALESCE((v_l->>'quantidade')::numeric, 0)::integer);
+
+          SELECT COALESCE(SUM(CASE WHEN type = 'entrada' THEN quantity ELSE -quantity END), 0)
+            INTO v_atual FROM public.stock_movements WHERE stock_item_id = v_item AND lote = v_lote;
+          v_dif := v_alvo - GREATEST(v_atual, 0);
+          CONTINUE WHEN v_dif = 0;
+
+          IF v_dif > 0 THEN
+            UPDATE public.stock_items SET quantity = quantity + v_dif, updated_at = now() WHERE id = v_item;
+            INSERT INTO public.stock_movements (stock_item_id, type, quantity, reason, lote, user_id, user_display_name)
+            VALUES (v_item, 'entrada', v_dif, v_motivo, v_lote, v_uid, COALESCE(v_user_nome, 'Importação'));
+            v_entrou := v_entrou + v_dif;
+          ELSE
+            UPDATE public.stock_items SET quantity = GREATEST(0, quantity + v_dif), updated_at = now() WHERE id = v_item;
+            INSERT INTO public.stock_movements (stock_item_id, type, quantity, reason, lote, user_id, user_display_name)
+            VALUES (v_item, 'saida', -v_dif, v_motivo || ' — ajuste ao saldo do arquivo', v_lote, v_uid, COALESCE(v_user_nome, 'Importação'));
+            v_saiu := v_saiu - v_dif;
+          END IF;
+          v_lotes_aj := v_lotes_aj + 1;
+        END LOOP;
+        v_item := NULL;
+      END LOOP;
+    EXCEPTION WHEN OTHERS THEN
+      v_erros := v_erros || jsonb_build_object('nome', v_nome, 'codigo_erp', v_cod, 'erro', SQLERRM);
+    END;
+  END LOOP;
+
+  INSERT INTO public.audit_log (user_id, user_name, action, entity_type, details)
+  VALUES (v_uid, COALESCE(v_user_nome, 'Desconhecido'), 'importar_saldo_estoque', 'stock_items',
+    jsonb_build_object('origem', p_origem, 'pecas', jsonb_array_length(p_pecas), 'criadas', v_criadas,
+                       'lotes_ajustados', v_lotes_aj, 'entrada', v_entrou, 'saida', v_saiu,
+                       'erros', jsonb_array_length(v_erros)));
+
+  RETURN jsonb_build_object('ok', true, 'criadas', v_criadas, 'existentes', v_existentes,
+    'lotes_ajustados', v_lotes_aj, 'unidades_entrada', v_entrou, 'unidades_saida', v_saiu,
+    'novas', v_novas, 'erros', v_erros);
+END;
+$f_imp_saldo$;
+
+REVOKE EXECUTE ON FUNCTION public.importar_saldo_estoque(jsonb, text) FROM anon, PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.importar_saldo_estoque(jsonb, text) TO authenticated;

@@ -387,8 +387,26 @@ export const SECOES_GUIA: SecaoGuia[] = [
           "**Lotes do intermediário**: ver os lotes com saldo e imprimir a etiqueta (impressora Zebra ou impressão comum).",
           "**Lista para imprimir**: lista das peças da fase.",
           "**Todas as movimentações**: histórico geral.",
-          "**Importar Excel / PDF** e **Importar CSV**: carregar saldos de uma planilha.",
+          "**Importar Excel / PDF** e **Importar CSV**: carregar saldos de uma planilha ou do PDF do sistema antigo (veja a próxima tarefa).",
         ],
+      },
+      {
+        id: "importar-saldo", titulo: "Importar o saldo do sistema antigo (PDF Saldo de Estoque)", perfis: ["estoque"],
+        palavras: "importar pdf saldo estoque erp sistema antigo planilha excel carga inicial",
+        resumo: "Cadastra todas as peças (nome e referência) e deixa o saldo de cada lote igual ao do relatório.",
+        passos: [
+          "No sistema antigo, gere o relatório **SALDO DE ESTOQUE** em PDF.",
+          "No Estoque, toque no menu **⋮** e em **Importar Excel / PDF**. Arraste o PDF.",
+          "Confira a pré-visualização: peças, lotes de **Intermediário** e de **Expedição** e o total de unidades. Ferramentas, uso e consumo e outros endereços são ignorados.",
+          "Toque em **Importar** e não feche a janela até terminar.",
+          "No fim aparecem as peças que já existiam, as **cadastradas** agora e os lotes ajustados.",
+        ],
+        dicas: [
+          "Entra a coluna SALDO (quantidade menos o reservado): o que está reservado já foi separado para venda.",
+          "Pode importar o mesmo arquivo de novo: o saldo de cada lote fica igual ao do arquivo, sem duplicar.",
+          "Peças que ainda não existiam ficam com regularização **pendente** — complete o cadastro em Admin → Dispositivos.",
+        ],
+        atencao: ["Lote sem número no relatório não entra — dê entrada dele à mão."],
       },
     ],
   },
@@ -683,7 +701,11 @@ export const SECOES_GUIA: SecaoGuia[] = [
           "Toque em **Editar**. Informe preço de venda, desconto máximo, custo, NCM (8 números), CFOP (4 números) e IPI.",
           "Veja a margem calculada e salve. Desmarque **Peça ativa** para tirar da venda.",
         ],
-        dicas: ["NCM, CFOP e IPI daqui são usados na NF-e. Custo e margem só aparecem no Financeiro."],
+        dicas: [
+          "NCM, CFOP e IPI daqui são usados na NF-e. Custo e margem só aparecem no Financeiro.",
+          "Peça fabricada pela empresa: CFOP **5101** (o sistema já usa esse padrão). Item comprado pronto para revender: marque **5102**.",
+          "Implantes e componentes protéticos dentários: NCM **9021.29.00**. Confirme a classificação de cada linha de produto com o contador.",
+        ],
       },
       {
         id: "configuracoes", titulo: "Dados fiscais e contas bancárias", rota: "/financeiro?aba=configuracoes",
@@ -702,7 +724,11 @@ export const SECOES_GUIA: SecaoGuia[] = [
           "Toque em **Ativar emissor**, escolha **Homologação** (testes) e cole a chave de acesso fornecida pelo provedor.",
           "Emita uma nota de teste. Depois troque para **Produção** com a chave de produção.",
         ],
-        atencao: ["Só o administrador ativa ou desativa o emissor. Enquanto estiver desligado, use Registrar NF-e."],
+        atencao: [
+          "Só o administrador ativa ou desativa o emissor. Enquanto estiver desligado, use Registrar NF-e.",
+          "Antes de ligar em Produção: no painel do provedor, ajuste a série e o **próximo número** para continuar a numeração do sistema que emite hoje.",
+          "Combine com o contador o tratamento de ICMS, IPI e PIS/COFINS dos produtos (há isenções para implantes) — a nota sai com as regras configuradas aqui.",
+        ],
       },
       {
         id: "apagar-historico", titulo: "Apagar histórico financeiro", perfis: ["admin"],
@@ -722,17 +748,21 @@ export const SECOES_GUIA: SecaoGuia[] = [
     resumo: "Lançamento do dia, apontamento detalhado, planejamento de ordens, paradas, refugo, matéria-prima e indicadores (OEE). Abas: Diário, Desempenho, Controle, Planejamento, Cadastros, Paradas, Refugo, Mat.-Prima.",
     tarefas: [
       {
-        id: "diario", titulo: "Lançar o dia de uma máquina (Diário)", palavras: "lancamento apontamento producao turno",
+        id: "diario", titulo: "Lançar o dia de uma máquina (Diário)", palavras: "lancamento apontamento producao turno lote barra materia prima ritmo",
         passos: [
           "Abra **Produção → Diário**. Confira o **Dia do lançamento** (ou escolha **Outra data**) e o seu nome em **Seu nome (operador)**.",
+          "Escolha o **Turno** (Dia, 1º, 2º ou 3º) no topo — ele fica lembrado no aparelho.",
           "Toque na máquina. Em \"O que aconteceu na máquina?\", escolha **Produziu peças** ou **Só ficou parada**.",
-          "Escolha a peça, informe **Quantas peças boas?** e o tempo trabalhado.",
-          "Adicione as paradas (motivo e duração), as peças refugadas e a matéria-prima, se houver.",
-          "Confira o **Resumo do lançamento** (tempo produtivo, esperado, produzido) e toque em **Salvar lançamento**. A próxima máquina já abre.",
+          "Escolha a peça e, se quiser, informe o **Lote da produção** (vazio = o sistema gera). Informe **Quantas peças boas?** e o tempo trabalhado.",
+          "Confira a **Qtde / hora (ritmo)** — dá para digitar outro valor — e a **Qtde planejada** (horas × ritmo).",
+          "Adicione as paradas (motivo e duração) e as peças refugadas, se houver.",
+          "Em **Quantas barras gastou?**, escolha a barra e informe o número de barras (cada uma tem 3 m). O estoque da barra baixa sozinho.",
+          "Confira o **Resumo do lançamento** e toque em **Salvar lançamento**. A próxima máquina já abre.",
         ],
         dicas: [
-          "Errou? Em **Lançados no dia**, toque no lápis para corrigir ou excluir.",
+          "Errou? Em **Lançados no dia**, toque no lápis para corrigir ou excluir (turno, lote, barra e barras gastas também). O estoque da barra é ajustado.",
           "O \"esperado\" usa o tempo real da peça quando ela já tem histórico.",
+          "Marque **Lembrar esta barra** para a peça já vir com a barra certa da próxima vez.",
         ],
       },
       {
@@ -751,6 +781,7 @@ export const SECOES_GUIA: SecaoGuia[] = [
         passos: [
           "Abra **Planejamento** e toque em **Nova ordem**.",
           "Escolha a peça (busca por nome, código ou referência), a máquina, a quantidade e a prioridade.",
+          "Escolha o **Turno** da ordem (1º, 2º, 3º ou **Dia inteiro** quando ela atravessa os turnos).",
           "Informe o dia e a hora de início. O fim é calculado pelo ritmo da peça (use **recalcular** ou ajuste à mão).",
           "Salve. Na lista, use **Iniciar** quando começar e **Concluir** quando terminar — isso grava os horários reais.",
           "**Reabrir**, **Editar** e **Cancelar ordem** ficam nas ações. Excluir é só para admin.",
@@ -777,12 +808,20 @@ export const SECOES_GUIA: SecaoGuia[] = [
         ],
       },
       {
-        id: "materia-prima", titulo: "Controlar a matéria-prima (barras)",
+        id: "materia-prima", titulo: "Controlar a matéria-prima (barras)", palavras: "barra kg peso pedido nota recebimento consumo acabando",
+        resumo: "A barra é comprada por peso (kg) e gasta em barras de 3 m. O sistema converte usando o peso de 1 barra de cada diâmetro.",
         passos: [
-          "Abra **Mat.-Prima**. **Novo material** cadastra código, descrição, mínimo e máximo.",
-          "**Movimentar**: escolha **Entrada** ou **Saída**, o material, a quantidade, o lote e o operador.",
-          "**Pedir barras**: escolha o fornecedor e as barras. O pedido também aparece em Processos → Compras.",
+          "Abra **Mat.-Prima**. **Novo material** (ou o lápis) cadastra código, descrição, diâmetro, mínimo e máximo **em barras** e o **Peso de 1 barra (kg)** — pese uma barra inteira de cada diâmetro.",
+          "**Pedir barras**: escolha o fornecedor, a barra e a quantidade em kg (ou barras). O pedido também aparece em Processos → Compras.",
+          "Quando a nota chegar, em **Pedidos** toque em **Receber**: informe os kg da nota e, se contar, o número de barras. O estoque entra em barras.",
+          "O consumo vem dos lançamentos do Diário (barras gastas) e baixa sozinho. **Movimentar → Saída** é só para perda ou sucata.",
+          "Use **Movimentar → Contagem** para acertar o saldo com o que há na prateleira.",
         ],
+        dicas: [
+          "Cada barra mostra quanto gasta por dia e em quantos dias acaba; o cartão **Acaba em 15 dias** reúne as que estão no fim.",
+          "Ao receber contando as barras, marque **Gravar peso medido** — o peso por barra fica certo para as próximas notas.",
+        ],
+        atencao: ["Sem o peso de 1 barra cadastrado, a nota em kg só entra se você contar as barras no recebimento."],
       },
       {
         id: "metas-oee", titulo: "Ver OEE e definir metas", palavras: "oee meta eficiencia indicador",

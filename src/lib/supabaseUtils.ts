@@ -53,6 +53,27 @@ export async function fetchAllPages<T>(
 }
 
 /**
+ * Lê todas as linhas de uma consulta qualquer, de 1000 em 1000 (limite do
+ * Supabase por requisição). `montar(de, ate)` deve devolver a consulta já com
+ * `.order(...)` estável e `.range(de, ate)`.
+ */
+export async function buscarTodasPaginas<T>(
+  montar: (de: number, ate: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  tamanho = 1000,
+  maxPaginas = 100,
+): Promise<T[]> {
+  const todas: T[] = [];
+  for (let p = 0; p < maxPaginas; p++) {
+    const { data, error } = await montar(p * tamanho, (p + 1) * tamanho - 1);
+    if (error) throw error;
+    const linhas = (data ?? []) as T[];
+    todas.push(...linhas);
+    if (linhas.length < tamanho) break;
+  }
+  return todas;
+}
+
+/**
  * Busca uma página de dispositivos com filtro de texto e contagem total.
  * Usado em AdminDevices para paginação server-side (evita carregar tudo em memória).
  */

@@ -143,22 +143,45 @@ export function useStock(search: string) {
       }
 
       // ── Passo 2: RPC principal — 1 chamada, tudo incluído ─────────────────
-      const { data: rpcResult, error: rpcError } = await supabase.rpc("load_stock_page", {
-        p_search:     null,
-        p_limit:      500,       // máximo permitido pelo RPC (clampado no servidor)
-        p_offset:     0,
-        p_device_ids: deviceIds, // null = sem filtro (carrega todos)
-      });
-
-      if (rpcError) throw rpcError;
-      if (gen !== genRef.current) return; // carga obsoleta — descarta
-
-      const payload = rpcResult as {
+      // O RPC devolve no máximo 500 itens por chamada: busca a 1ª página e,
+      // sabendo o total, as demais em paralelo (antes só a 1ª — a Expedição
+      // mostrava no máximo 500 peças).
+      type Pagina = {
         total_count:  number;
         items:        Record<string, unknown>[];
         reserved_map: Record<string, number>;
         lote_map:     Record<string, number>;
         qty_by_fase?: { intermediaria: number; expedicao: number; retrabalho: number; count_intermediaria: number; count_expedicao: number; count_retrabalho: number };
+      };
+      const POR_PAGINA = 500; // máximo permitido pelo RPC (clampado no servidor)
+      const buscarPagina = async (offset: number): Promise<Pagina> => {
+        const { data, error } = await supabase.rpc("load_stock_page", {
+          p_search:     null,
+          p_limit:      POR_PAGINA,
+          p_offset:     offset,
+          p_device_ids: deviceIds, // null = sem filtro (carrega todos)
+        });
+        if (error) throw error;
+        return data as unknown as Pagina;
+      };
+
+      const primeira = await buscarPagina(0);
+      if (gen !== genRef.current) return; // carga obsoleta — descarta
+      const total = primeira.total_count ?? 0;
+      const offsets: number[] = [];
+      for (let o = POR_PAGINA; o < total; o += POR_PAGINA) offsets.push(o);
+      const demais: Pagina[] = [];
+      for (let k = 0; k < offsets.length; k += 4) { // até 4 chamadas simultâneas
+        demais.push(...await Promise.all(offsets.slice(k, k + 4).map(buscarPagina)));
+        if (gen !== genRef.current) return;
+      }
+      const vistos = new Set<string>();
+      const payload: Pagina = {
+        ...primeira,
+        items: [primeira, ...demais].flatMap(p => p.items ?? [])
+          .filter(it => { const id = it.id as string; if (vistos.has(id)) return false; vistos.add(id); return true; }),
+        reserved_map: Object.assign({}, ...[primeira, ...demais].map(p => p.reserved_map ?? {})),
+        lote_map:     Object.assign({}, ...[primeira, ...demais].map(p => p.lote_map ?? {})),
       };
 
       const reservedMap = payload.reserved_map ?? {};

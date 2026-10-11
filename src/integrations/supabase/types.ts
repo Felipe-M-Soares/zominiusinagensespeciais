@@ -2867,7 +2867,12 @@ export type Database = {
           p_materia_prima_id?: string | null
           p_barras?: number | null
           p_turno?: string | null
+          p_lote?: string | null
         }
+        Returns: Json
+      }
+      importar_saldo_estoque: {
+        Args: { p_pecas: Json; p_origem?: string | null }
         Returns: Json
       }
       receber_barras_pedido: {

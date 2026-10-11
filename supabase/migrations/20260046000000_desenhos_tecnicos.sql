@@ -212,10 +212,11 @@ $turno_dia$;
 -- operador, paradas e refugos — tudo numa transação, recalculando o
 -- planejado e o tempo de ciclo. Também corrige turno, barra (matéria-prima)
 -- e nº de barras gastas (× 3 m) — o estoque da barra é ajustado pelos
--- triggers de 20260030. Quem pode: admin, produção,
+-- triggers de 20260030 — e o lote da produção. Quem pode: admin, produção,
 -- gerente ou quem lançou. O DROP remove a versão antiga de 10 parâmetros, para
 -- não haver duas ("could not choose the best candidate function").
 DROP FUNCTION IF EXISTS public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb);
+DROP FUNCTION IF EXISTS public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb,uuid,numeric,text);
 
 CREATE OR REPLACE FUNCTION public.editar_apontamento_producao(
   p_id                 uuid,
@@ -230,7 +231,8 @@ CREATE OR REPLACE FUNCTION public.editar_apontamento_producao(
   p_refugos            jsonb DEFAULT '[]',
   p_materia_prima_id   uuid    DEFAULT NULL,
   p_barras             numeric DEFAULT NULL,
-  p_turno              text    DEFAULT NULL
+  p_turno              text    DEFAULT NULL,
+  p_lote               text    DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -288,6 +290,7 @@ BEGIN
   UPDATE public.apontamentos_producao SET
     maquina = p_maquina, maquina_codigo = p_maquina, equipamento = p_maquina,
     turno = COALESCE(p_turno, turno),
+    lote = COALESCE(NULLIF(left(trim(p_lote), 40), ''), lote),
     produto = p_produto, descricao_produto = p_descricao_produto,
     qtde_por_hora = COALESCE(p_qtde_por_hora, 0),
     horas_planejadas = p_horas_planejadas, lead_time_horas = p_horas_planejadas,
@@ -319,7 +322,7 @@ BEGIN
   INSERT INTO public.audit_log (user_id, user_name, action, entity_type, entity_id, details)
   VALUES (v_uid, COALESCE(v_nome, 'Desconhecido'), 'editar_apontamento', 'apontamento_producao', p_id,
     jsonb_build_object('produto', p_produto, 'quantidade', p_qtde_produzida, 'horas', p_horas_planejadas,
-                       'materia_prima_id', v_mp_id, 'barras', p_barras));
+                       'materia_prima_id', v_mp_id, 'barras', p_barras, 'lote', p_lote));
 
   RETURN jsonb_build_object('ok', true);
 END;
@@ -363,9 +366,9 @@ BEGIN
 END;
 $f_del_ap$;
 
-REVOKE EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb,uuid,numeric,text) FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb,uuid,numeric,text,text) FROM anon, PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.excluir_lancamento_producao(text, uuid) FROM anon, PUBLIC;
-GRANT EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb,uuid,numeric,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.editar_apontamento_producao(uuid,text,text,text,numeric,numeric,integer,text,jsonb,jsonb,uuid,numeric,text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.excluir_lancamento_producao(text, uuid) TO authenticated;
 
 -- ── R9. Tempo de peça aprendido automaticamente ─────────────────────────────

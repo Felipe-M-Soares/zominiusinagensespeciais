@@ -18,6 +18,7 @@ import {
 import type { BackupConfig, BackupSchedule, StockBackup } from "@/hooks/useStock";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { buscarTodasPaginas } from "@/lib/supabaseUtils";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -55,16 +56,20 @@ interface Props {
 // ─── Export Excel (.xlsx via ExcelJS) ────────────────────────────────────────
 async function exportExcel() {
   const ExcelJS = (await import("exceljs")).default;
-  const { data: items, error } = await supabase
-    .from("stock_items")
-    .select(`
-      quantity, min_quantity, location, notes, updated_at,
-      device:devices(model, reference, udi_di, internal_code,
-        classification_code, risk_class, primary_material, sterile, single_use)
-    `)
-    .order("updated_at", { ascending: false });
-
-  if (error || !items) { toast.error("Erro ao buscar dados do estoque."); return; }
+  // Lê todas as linhas (o Supabase devolve no máximo 1000 por consulta).
+  let items: Record<string, unknown>[];
+  try {
+    items = await buscarTodasPaginas<Record<string, unknown>>((de, ate) => supabase
+      .from("stock_items")
+      .select(`
+        quantity, min_quantity, location, notes, updated_at,
+        device:devices(model, reference, udi_di, internal_code,
+          classification_code, risk_class, primary_material, sterile, single_use)
+      `)
+      .order("updated_at", { ascending: false })
+      .order("id")
+      .range(de, ate));
+  } catch { toast.error("Erro ao buscar dados do estoque."); return; }
 
   const bool = (v: unknown) => v === true ? "Sim" : v === false ? "Não" : "";
 

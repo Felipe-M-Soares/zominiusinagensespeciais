@@ -789,8 +789,8 @@ export function AdminDevices() {
                     let ncmDesc = "Prótese dentária";
                     if (imp && (b.includes("oral") || b.includes("dent") || b.includes("buc"))) {
                       if (c.includes("implant") || c.includes("fixture") || c.includes("parafus") || m.includes("titani")) {
-                        ncm = "9021.29.10"; ncmDesc = "Implante intraósseo";
-                      } else { ncm = "9021.39.90"; ncmDesc = "Componente protético"; }
+                        ncm = "9021.29.00"; ncmDesc = "Implante intraósseo";
+                      } else { ncm = "9021.29.00"; ncmDesc = "Componente protético"; } // prótese dentária: 9021.29.00
                     } else if (b.includes("oral") || b.includes("dent")) {
                       if (c.includes("instrumen") || c.includes("broca") || c.includes("fresa")) {
                         ncm = "9018.49.90"; ncmDesc = "Instrumento odontológico";

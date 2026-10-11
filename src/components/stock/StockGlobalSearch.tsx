@@ -16,6 +16,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { buscarTodasPaginas } from "@/lib/supabaseUtils";
 import { sanitizeQuery } from "@/lib/sanitize";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils";
@@ -185,9 +186,12 @@ async function searchPecas(query: string): Promise<{ suggestions: Suggestion[]; 
 
   // ── Busca por nome: 2 etapas para garantir que peças com estoque aparecem ─
   // Etapa 1: devices que batem com a busca E têm stock_items com qty > 0
-  const { data: stockComQty } = await supabase.from("stock_items")
-    .select("id, device_id, quantity, quantity_reserved, location, fase")
-    .gt("quantity", 0);
+  // Todas as linhas com saldo (são milhares — o Supabase devolve 1000 por consulta).
+  const stockComQty = await buscarTodasPaginas<{ id: string; device_id: string; quantity: number; quantity_reserved: number; location: string | null; fase: string }>(
+    (de, ate) => supabase.from("stock_items")
+      .select("id, device_id, quantity, quantity_reserved, location, fase")
+      .gt("quantity", 0).order("id").range(de, ate),
+  ).catch(() => []);
 
   const devIdsComQty = new Set(
     (stockComQty ?? []).map((s: { device_id: string }) => s.device_id)

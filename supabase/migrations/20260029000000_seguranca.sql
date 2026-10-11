@@ -641,10 +641,9 @@ DECLARE
   v_material text := lower(coalesce(p_primary_material,''));
 BEGIN
   IF p_implantable = true AND (v_body LIKE '%oral%' OR v_body LIKE '%dent%' OR v_body LIKE '%buc%') THEN
-    IF v_class LIKE '%implant%' OR v_class LIKE '%fixture%' OR v_class LIKE '%parafus%' THEN RETURN '9021.29.10'; END IF;
-    IF v_class LIKE '%pilar%' OR v_class LIKE '%abutment%' OR v_class LIKE '%proteti%' OR v_class LIKE '%protese%' OR v_class LIKE '%prótese%' THEN RETURN '9021.39.90'; END IF;
-    IF v_material LIKE '%titani%' OR v_material LIKE '%ti-6%' OR v_material LIKE '%titanium%' THEN RETURN '9021.29.10'; END IF;
-    RETURN '9021.39.90';
+    -- Prótese dentária (implante, pilar, componente protético): 9021.29.00.
+    -- O código 9021.29.10 não existe na tabela NCM (a SEFAZ rejeita a nota).
+    RETURN '9021.29.00';
   END IF;
   IF v_body LIKE '%oral%' OR v_body LIKE '%dent%' OR v_body LIKE '%buc%' THEN
     IF v_class LIKE '%instrumen%' OR v_class LIKE '%tool%' OR v_class LIKE '%broca%' OR v_class LIKE '%fresa%' OR v_class LIKE '%kit%' THEN RETURN '9018.49.90'; END IF;
@@ -659,7 +658,7 @@ $f02$;
 CREATE OR REPLACE FUNCTION public.resolve_cfop_device(p_implantable boolean)
 RETURNS text LANGUAGE sql IMMUTABLE
 SET search_path = public
-AS $f03$ SELECT '5102'; $f03$;
+AS $f03$ SELECT '5101'; $f03$;  -- fabricante: venda de produção do estabelecimento
 
 CREATE OR REPLACE FUNCTION public.trg_auto_ncm_cfop()
 RETURNS trigger LANGUAGE plpgsql
@@ -669,13 +668,29 @@ BEGIN
   IF NEW.ncm IS NULL OR NEW.ncm = '' OR NEW.ncm = '90213990' THEN
     NEW.ncm := replace(public.resolve_ncm_device(NEW.risk_class, NEW.implantable, NEW.body_region, NEW.classification_code, NEW.primary_material), '.', '');
   END IF;
-  IF NEW.cfop_padrao IS NULL OR NEW.cfop_padrao = '' OR NEW.cfop_padrao = '5102' THEN
+  -- Só preenche quando vazio: um 5102 (revenda) definido de propósito na
+  -- Tabela de Preços é mantido.
+  IF NEW.cfop_padrao IS NULL OR NEW.cfop_padrao = '' THEN
     NEW.cfop_padrao := public.resolve_cfop_device(NEW.implantable);
   END IF;
   IF NEW.unidade IS NULL OR NEW.unidade = '' THEN NEW.unidade := 'UN'; END IF;
   RETURN NEW;
 END;
 $f04$;
+
+-- ── NF-e: CFOP e NCM padrão corretos para fabricante ─────────────────────────
+-- Antes toda peça nascia com CFOP 5102 (revenda de mercadoria de terceiros) e
+-- implantes com NCM 9021.29.10 (código inexistente). A empresa fabrica as
+-- peças → 5101/6101 ("Venda de produção do estabelecimento", igual à natureza
+-- padrão do faturamento); prótese dentária → 9021.29.00. Itens comprados para
+-- revenda devem ser marcados como 5102 na Tabela de Preços.
+ALTER TABLE public.devices ALTER COLUMN cfop_padrao SET DEFAULT '5101';
+UPDATE public.devices SET cfop_padrao = '5101' WHERE cfop_padrao = '5102';
+UPDATE public.devices SET ncm = '90212900' WHERE ncm = '90212910';
+UPDATE public.devices
+   SET ncm = replace(public.resolve_ncm_device(risk_class, implantable, body_region, classification_code, primary_material), '.', '')
+ WHERE ncm = '90213990' AND implantable = true
+   AND (lower(coalesce(body_region, '')) LIKE '%oral%' OR lower(coalesce(body_region, '')) LIKE '%dent%' OR lower(coalesce(body_region, '')) LIKE '%buc%');
 
 CREATE OR REPLACE FUNCTION public.get_total_stock_quantity()
 RETURNS integer LANGUAGE sql SECURITY DEFINER STABLE

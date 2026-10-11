@@ -2,8 +2,8 @@
  * PlanejamentoPanel — Programação da produção (ordens de produção).
  *
  * Redesenho (set/2026), no formato usado por sistemas de PCP/APS:
- *  • sem turno: a ordem tem DIA e HORA de início e de fim — pode atravessar
- *    os dois turnos seguidos;
+ *  • turno da ordem (1º, 2º, 3º ou dia inteiro) + DIA e HORA de início e de
+ *    fim — no "dia inteiro" a ordem pode atravessar os turnos seguidos;
  *  • o fim previsto é sugerido automaticamente pela quantidade ÷ ritmo da peça
  *    (ritmo aprendido pelos lançamentos; se não houver, o do cadastro);
  *  • tabela com progresso real (peças apontadas no Diário/Controle para a
@@ -35,8 +35,11 @@ interface Ordem {
   quantidade: number; status: OPStatus; prioridade: Prioridade;
   inicio_previsto: string | null; fim_previsto: string | null;
   inicio_real: string | null; fim_real: string | null;
-  data_inicio: string; data_fim: string; observacoes: string | null;
+  data_inicio: string; data_fim: string; observacoes: string | null; turno?: string;
 }
+/** Mesmos turnos do lançamento diário (apontamentos_producao_turno_check). */
+const TURNOS = ["1º Turno", "2º Turno", "3º Turno", "Dia inteiro"] as const;
+const turnoCurto = (t?: string | null) => !t ? "" : t === "Dia inteiro" ? "Dia inteiro" : t.replace(" Turno", " turno");
 interface Maquina { codigo: string; nome: string; }
 
 const STATUS: Record<OPStatus, { label: string; cls: string }> = {
@@ -100,6 +103,7 @@ function OrdemDialog({ open, ordem, onClose, onSaved, maquinas, pecas, ritmos, o
   const [fimManual, setFimManual] = useState(false);
   const [prioridade, setPrioridade] = useState<Prioridade>("normal");
   const [obs, setObs] = useState("");
+  const [turno, setTurno] = useState<string>("1º Turno");
   const [salvando, setSalvando] = useState(false);
 
   // Próximo horário livre da máquina: depois da última ordem aberta dela (ou agora).
@@ -115,6 +119,7 @@ function OrdemDialog({ open, ordem, onClose, onSaved, maquinas, pecas, ritmos, o
     setPeca(ordem?.produto ?? ""); setMaquina(ordem?.maquina ?? "");
     setQtd(ordem ? String(ordem.quantidade) : ""); setPrioridade(ordem?.prioridade ?? "normal");
     setObs(ordem?.observacoes ?? ""); setFimManual(!!ordem);
+    setTurno(ordem?.turno || "1º Turno");
     const ini = ordem?.inicio_previsto ? new Date(ordem.inicio_previsto) : null;
     const fim = ordem?.fim_previsto ? new Date(ordem.fim_previsto) : null;
     setDiaIni(ini ? isoDia(ini) : ""); setHoraIni(ini ? isoHora(ini) : "");
@@ -159,7 +164,7 @@ function OrdemDialog({ open, ordem, onClose, onSaved, maquinas, pecas, ritmos, o
     setSalvando(true);
     const base = {
       produto: peca, descricao_produto: pecas.find(p => p.codigo === peca)?.descricao ?? null, maquina,
-      quantidade: qtdNum, prioridade, observacoes: obs.trim() || null, turno: "Dia inteiro",
+      quantidade: qtdNum, prioridade, observacoes: obs.trim() || null, turno,
       inicio_previsto: inicio.toISOString(), fim_previsto: fim.toISOString(),
       data_inicio: isoDia(inicio), data_fim: isoDia(fim),
       capacidade: pph > 0 ? Math.round(pph * 100) / 100 : null,
@@ -236,6 +241,18 @@ function OrdemDialog({ open, ordem, onClose, onSaved, maquinas, pecas, ritmos, o
             </div>
           </div>
 
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Turno</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 rounded-xl border bg-muted/40 p-1" role="radiogroup" aria-label="Turno da ordem">
+              {TURNOS.map(t => (
+                <button key={t} type="button" role="radio" aria-checked={turno === t} onClick={() => setTurno(t)}
+                  className={cn("h-9 rounded-lg text-sm font-medium", turno === t ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="h-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center">Início (dia e hora)</label>
@@ -266,7 +283,7 @@ function OrdemDialog({ open, ordem, onClose, onSaved, maquinas, pecas, ritmos, o
             ) : (
               <p className="text-muted-foreground">{peca ? "Esta peça ainda não tem ritmo conhecido — informe o fim previsto." : "Escolha a peça e a quantidade para calcular o fim."}</p>
             )}
-            {inicio && fim && fim > inicio && <p className="text-muted-foreground">Período da ordem: {fmtDur(horasEntre(inicio.toISOString(), fim.toISOString()))} (pode atravessar os dois turnos)</p>}
+            {inicio && fim && fim > inicio && <p className="text-muted-foreground">Período da ordem: {fmtDur(horasEntre(inicio.toISOString(), fim.toISOString()))} {turno === "Dia inteiro" ? " (pode atravessar os turnos)" : ` · ${turno}`}</p>}
           </div>
 
           {conflitos.length > 0 && (
@@ -323,7 +340,7 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
     const desde = new Date(); desde.setDate(desde.getDate() - 120);
     const [ordRes, progRes, maqRes, prodRes, tempoRes] = await Promise.all([
       supabase.from("ordens_planejamento")
-        .select("id,numero,produto,descricao_produto,maquina,quantidade,status,prioridade,inicio_previsto,fim_previsto,inicio_real,fim_real,data_inicio,data_fim,observacoes")
+        .select("id,numero,produto,descricao_produto,maquina,quantidade,status,prioridade,inicio_previsto,fim_previsto,inicio_real,fim_real,data_inicio,data_fim,observacoes,turno")
         .or(`status.in.(planejada,em_producao),data_fim.gte.${isoDia(desde)}`)
         .order("inicio_previsto", { ascending: true }),
       supabase.from("ordens_planejamento_progresso").select("id,quantidade_produzida"),
@@ -516,6 +533,7 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
                     <div className="min-w-0">
                       <p className="font-semibold tabular-nums">{o.numero} <span className={cn("text-[11px] font-medium", PRIORIDADE[o.prioridade].cls)}>· {PRIORIDADE[o.prioridade].label}</span></p>
                       <p className="text-sm"><strong>{o.produto}</strong> <span className="text-muted-foreground">em</span> <strong>{o.maquina}</strong>
+                        {o.turno && <span className="text-muted-foreground"> · {turnoCurto(o.turno)}</span>}
                         {emConflito.has(o.id) && aberta && <AlertTriangle className="inline ml-1 h-3.5 w-3.5 text-amber-600" aria-label="Horário em conflito" />}</p>
                       {o.descricao_produto && <p className="text-xs text-muted-foreground truncate">{o.descricao_produto}</p>}
                     </div>
@@ -572,6 +590,7 @@ export function PlanejamentoPanel({ isAdmin }: { isAdmin: boolean }) {
                       </td>
                       <td className="px-3 py-2.5 font-semibold">
                         {o.maquina}
+                        {o.turno && <span className="block text-[11px] font-normal text-muted-foreground whitespace-nowrap">{turnoCurto(o.turno)}</span>}
                         {emConflito.has(o.id) && aberta && <span className="ml-1.5 inline-flex items-center text-amber-600" title="Horário em conflito com outra ordem desta máquina"><AlertTriangle className="h-3.5 w-3.5" /></span>}
                       </td>
                       <td className="px-3 py-2.5 min-w-[8.5rem]">

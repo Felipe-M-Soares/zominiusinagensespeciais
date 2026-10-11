@@ -337,3 +337,29 @@ html, body, #root {
   .scrollbar-none::-webkit-scrollbar { display: none; }
   .scrollbar-thin { scrollbar-width: thin; }
 }
+
+/* ── Tema escuro: controles nativos e gráficos ───────────────────────────────
+   Sem color-scheme, o navegador desenha listas de <select>, calendário/relógio
+   dos campos de data e hora e barras de rolagem no tema CLARO do sistema —
+   no modo escuro apareciam textos pretos sobre fundo escuro (ou brancos sobre
+   branco). Os tooltips padrão do Recharts têm fundo branco fixo e herdavam o
+   texto claro do tema. */
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }
+.dark select option,
+.dark select optgroup {
+  background-color: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+}
+.dark .recharts-default-tooltip {
+  background-color: hsl(var(--popover)) !important;
+  border-color: hsl(var(--border)) !important;
+  color: hsl(var(--popover-foreground));
+  border-radius: 8px;
+}
+.dark .recharts-cartesian-axis-tick-value,
+.dark .recharts-polar-angle-axis-tick-value,
+.dark .recharts-polar-radius-axis-tick-value,
+.dark .recharts-label {
+  fill: hsl(var(--muted-foreground));
+}
